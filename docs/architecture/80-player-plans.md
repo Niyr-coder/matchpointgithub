@@ -195,44 +195,71 @@ Registrada en el dispatcher: `src/app/dashboard/[role]/[section]/page.tsx` → `
 
 ---
 
-## 7 · Pendientes (fase 3+)
+## 7 · Fase 3 — operación end-to-end (✅ hecha)
 
-### Cron de expiry
-Tabla `player_subscriptions` debería marcar filas como `expired` cuando `expires_at < now() AND status='active'`. Equivalente para `profiles.plan_tier` (volver a `free`). Hoy `getPlanForUser` ya normaliza Premium expirado a Free en lectura, pero el dato en la columna se queda inconsistente hasta que se haga la lectura. Implementar con `pg_cron` o edge function diaria.
+### Cron de expiry — ✅
+Migration `049_plan_cron_and_expiry.sql`. Instala `pg_cron`, crea `fn_process_player_plans()` y la programa diaria a las **08:00 UTC** (03:00 ECT, baja carga). La función:
+- Marca subs `active` con `expires_at < now()` como `expired`.
+- Normaliza `profiles.plan_tier='free'` y `plan_expires_at=null` para premium vencidos.
+- Encola jobs `plan_expiring_soon` para subs activas con `expires_at` en los próximos 7 días.
+- **Dedup:** no inserta si ya existe un job `pending|sent` para esa `subscription_id` en los últimos 7 días.
 
-### Auto-activación al aprobar comprobante
-Hoy `approvePaymentProofAdmin` (Agente F) marca la transaction como `captured` pero **no activa el plan**. El admin tiene que clickear "Activar plan" separadamente desde otra UI. Para automatizar: dentro de `approvePaymentProofAdmin`, después de `captured`, detectar si la transaction tiene `kind='plan'` y llamar `approvePlanSubscriptionAdmin(...)` con el `subscriptionId` correspondiente (buscar por `transaction_id`).
+### Auto-activación al aprobar comprobante — ✅
+`approvePaymentProofAdmin` (Agente F) ahora detecta `tx.kind='plan'` y llama `approvePlanSubscriptionAdmin` automáticamente. Si la sub asociada no existe, log warn y continúa (no aborta la aprobación del comprobante). El admin **ya no necesita** activar el plan en un segundo paso.
 
-### Aviso de expiry inminente
-Notification push/email "Tu Premium expira en N días" cuando `expires_at - now() ≤ 7 días`. Encolar en `notification_jobs` con kind `plan_expiring`. Requiere que el dispatcher de notificaciones esté integrado (hoy solo encola, no envía).
+### Aviso de expiry inminente — ✅ encolado
+Notification kind `plan_expiring_soon` registrado en `notification_kinds` con `category='plans'`, `allowed_roles=[user]`, `default_channels=[inapp]`. La función del cron encola un job con payload `{ subscription_id, tier, expires_at, days_remaining }`. **Dispatcher real de notif (envío push/email) sigue pendiente** — los jobs se acumulan en `notification_jobs` esperando consumer.
 
-### UI admin para activar planes
-Pantalla `/dashboard/admin/admin-plans` (o tab en admin-pagos) que liste subscriptions `pending`, muestre el comprobante asociado y permita aprobar/rechazar. Hoy solo se aprueban comprobantes "ciegos" sin saber que son de planes.
+### UI admin para activar planes — ✅
+Pantalla `/dashboard/admin/admin-plans` registrada en el dispatcher + sidebar admin. Server actions en `src/server/actions/admin-plans.ts`:
+- `listPendingPlanSubscriptionsAdmin` — subs pending con join a profiles + transactions.
+- `listRecentPlanSubscriptionsAdmin({ limit })` — historial.
+- `rejectPlanSubscriptionAdmin({ subscriptionId, reason })` — marca rejected + audit log (`plan_subscription.admin_reject`).
 
-### Endpoint público / API
-`/api/v1/me/plan` GET y POST para integraciones futuras (app móvil, etc.).
+KPIs en la pantalla: pendientes, activadas hoy, vencidas este mes. Cards de pendientes con preview del comprobante + botones "Aprobar plan" (reusa `approvePlanSubscriptionAdmin`) y "Rechazar" (modal con motivo).
+
+### Endpoint público / API — ✅
+- `GET /api/v1/me/plan` → `{ tier, expiresAt, active }`.
+- `POST /api/v1/me/plan` body `{ tier, durationMonths? }` → `{ subscriptionId, transactionId, amountCents, nextStep: '/pagos/<txId>' }`.
+- `GET /api/v1/me/plan/subscriptions` → array `{ id, tier, status, startsAt, expiresAt, durationMonths, transactionId, createdAt }`.
+
+Mapeo de errores HTTP completo (401/400/409/500). Defensa en profundidad: `.eq('user_id', userId)` aunque RLS ya filtra.
 
 ---
 
-## 8 · Pruebas manuales
+## 8 · Pendientes verdaderos (fase 4)
+
+| Item | Notas |
+|---|---|
+| Dispatcher de notificaciones real | `notification_jobs` se acumulan pero no se envían. Sin esto, `plan_expiring_soon`, `event_rescheduled`, `tournament_rescheduled` etc. no llegan al user. Es el bloqueador #1 para que el sistema completo "se sienta vivo". |
+| Gating real por feature | Sub está cobrada y registrada pero Premium no diferencia experiencia hoy. Decidir qué se limita: candidatos en §6. |
+| Activación de planes desde `/admin-plans` automatiza, pero el rechazo del comprobante asociado | Si el admin rechaza la sub, la transaction queda en `pending_proof`. Considerar reject combinado. |
+| Plantilla email para `plan_expiring_soon` | Cuando exista el dispatcher, necesita un template. |
+| Tests E2E del flujo completo de upgrade | Playwright cubriendo: request → upload proof → approve → plan active. |
+
+---
+
+## 9 · Pruebas manuales
 
 1. Como user Free, abrir `/dashboard/user/mi-plan` → ver tier Free.
 2. Click "Activar Premium · USD 5/mes" → redirect a `/pagos/[id]`.
 3. Subir cualquier imagen como comprobante (`PaymentProofView`).
-4. Como admin, ir a `/dashboard/admin/admin-pagos`, sección "Comprobantes pendientes" → aprobar.
-5. Llamar manualmente `approvePlanSubscriptionAdmin({ subscriptionId })` desde el admin panel o via SQL hasta que (7§) automatice. La fila en `player_subscriptions` pasa a `active`; `profiles.plan_tier='premium'`, `plan_expires_at = now + 1 month`.
+4. Como admin, ir a `/dashboard/admin/admin-pagos` (o `/dashboard/admin/admin-plans` directamente), aprobar el comprobante.
+5. **Automático ahora:** la sub pasa a `active`, `profiles.plan_tier='premium'`, `plan_expires_at = now + 1 mes`. Sin pasos extra.
 6. Refrescar `/dashboard/user` → banner desaparece. Refrescar `/dashboard/user/mi-plan` → tier Premium con expiry visible.
-7. Volver a clickear "Extender 1 mes" → segundo comprobante. Tras aprobar, `expires_at` se extiende desde el primer expiry (no desde hoy).
-8. Borrar la fila de subscription / setear `expires_at` en el pasado → `getPlanForUser` retorna `tier='free'`, banner reaparece.
+7. Click "Extender 1 mes" → segundo comprobante. Tras aprobar, `expires_at` se extiende desde el primer expiry (no desde hoy).
+8. Setear `expires_at` manualmente en el pasado → siguiente corrida del cron (o `select fn_process_player_plans()` manual) normaliza a free + encola `plan_expiring_soon` (si todavía estaba en ventana).
 
 ---
 
-## 9 · Referencias
+## 10 · Referencias
 
-- Migration: `supabase/migrations/048_player_plans.sql`.
-- Actions: `src/server/actions/player-subscriptions.ts`.
+- Migrations: `supabase/migrations/048_player_plans.sql`, `049_plan_cron_and_expiry.sql`.
+- Actions: `src/server/actions/player-subscriptions.ts`, `src/server/actions/admin-plans.ts`.
 - Helper gating: `src/lib/auth/plan.ts`.
-- UI: `src/components/dashboard/user/MiPlanScreen.tsx`, `MiPlanScreenView.tsx`, `UserHomeView.tsx`.
+- UI user: `src/components/dashboard/user/MiPlanScreen.tsx`, `MiPlanScreenView.tsx`, `UserHomeView.tsx` (banner).
+- UI admin: `src/components/dashboard/admin/AdminPlansScreen.tsx`, `AdminPlansScreenView.tsx`.
 - Dispatcher: `src/app/dashboard/[role]/[section]/page.tsx`.
+- REST: `src/app/api/v1/me/plan/route.ts`, `src/app/api/v1/me/plan/subscriptions/route.ts`.
 - Página pública con tiers: `src/components/landing/precios/PreciosPageView.tsx`.
-- Flujo de comprobantes (dependencia): ver `src/server/actions/payment-proofs.ts` (Agente F).
+- Flujo de comprobantes (dependencia): `src/server/actions/payment-proofs.ts` (con auto-activación de planes).
