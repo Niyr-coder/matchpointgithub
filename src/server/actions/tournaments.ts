@@ -250,6 +250,12 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
   return runAction(TournamentCreateSchema, input, async (data) => {
     const userId = await requirePartnerAdmin(data.partnerId);
     const supabase = await getServerClient();
+    const resolvedPolicy =
+      data.entryFeeCents === 0
+        ? "free"
+        : data.paymentPolicy && data.paymentPolicy !== "free"
+          ? data.paymentPolicy
+          : "prepay";
     const { data: row, error } = await supabase
       .from("tournaments")
       .insert({
@@ -268,6 +274,7 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
         max_participants: data.maxParticipants ?? null,
         entry_fee_cents: data.entryFeeCents,
         currency: data.currency ?? null,
+        payment_policy: resolvedPolicy,
         prize_pool_cents: data.prizePoolCents ?? null,
         created_by: userId,
       } as never)

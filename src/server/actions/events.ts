@@ -126,6 +126,14 @@ export async function createEvent(input: unknown): Promise<ActionResult<EventRow
   return runAction(EventCreateSchema, input, async (data) => {
     const userId = await assertCanCreateEvent(data.clubId, data.partnerId);
     const supabase = await getServerClient();
+    // Normaliza payment_policy con el CHECK: 'free' iff price=0; si tiene
+    // precio defaultea a 'prepay' salvo que el cliente pida 'onsite'/'flexible'.
+    const resolvedPolicy =
+      data.priceCents === 0
+        ? "free"
+        : data.paymentPolicy && data.paymentPolicy !== "free"
+          ? data.paymentPolicy
+          : "prepay";
     const { data: row, error } = await supabase
       .from("events")
       .insert({
@@ -143,6 +151,7 @@ export async function createEvent(input: unknown): Promise<ActionResult<EventRow
         capacity: data.capacity ?? null,
         price_cents: data.priceCents,
         currency: data.currency ?? null,
+        payment_policy: resolvedPolicy,
         visibility: data.visibility,
       } as never)
       .select()

@@ -85,6 +85,7 @@ export const EventCreateSchema = z
     capacity: z.number().int().positive().optional(),
     priceCents: z.number().int().min(0).default(0),
     currency: MpCurrencySchema.optional(),
+    paymentPolicy: EventPaymentPolicySchema.optional(),
     visibility: EventVisibilitySchema.default("public"),
   })
   .openapi("EventCreate");

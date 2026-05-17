@@ -156,6 +156,7 @@ export const TournamentCreateSchema = z
     maxParticipants: z.number().int().positive().optional(),
     entryFeeCents: z.number().int().min(0).default(0),
     currency: MpCurrencySchema.optional(),
+    paymentPolicy: TournamentPaymentPolicySchema.optional(),
     prizePoolCents: z.number().int().min(0).optional(),
   })
   .openapi("TournamentCreate");
