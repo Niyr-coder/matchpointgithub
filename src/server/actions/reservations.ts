@@ -26,10 +26,6 @@ import {
 } from "@/lib/schemas/reservations";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
-import { getPlanForUser } from "@/lib/auth/plan";
-
-// Free tier: cap mensual de reservas que un usuario puede organizar.
-const FREE_RESERVATIONS_PER_MONTH = 4;
 
 // Postgres `tstzrange` looks like `[2026-05-17T18:00:00+00:00,2026-05-17T19:30:00+00:00)`.
 // We round-trip it into discrete startsAt/endsAt camelCase fields for the API.
@@ -155,39 +151,6 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
       { key: idemKey, scope: "createReservation", userId, input: data },
       async () => {
         const supabase = await getServerClient();
-
-        // Gating por plan: Free puede crear hasta FREE_RESERVATIONS_PER_MONTH/mes.
-        // Premium expirado se trata como Free en getPlanForUser. Premium activo no tiene tope.
-        const plan = await getPlanForUser(supabase, userId);
-        if (plan.tier === "free") {
-          // Mes calendario en UTC para alinear con la columna `during` (tstzrange en UTC).
-          const now = new Date();
-          const monthStart = new Date(
-            Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
-          );
-          const monthEnd = new Date(
-            Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0),
-          );
-          const overlap = `[${monthStart.toISOString()},${monthEnd.toISOString()})`;
-
-          const { count, error: countErr } = await supabase
-            .from("reservations")
-            .select("id", { count: "exact", head: true })
-            .eq("organizer_id", userId)
-            .neq("status", "cancelled")
-            .filter("during", "&&", overlap);
-
-          if (countErr) {
-            throw new MpError("RESERVATIONS.DB_ERROR", countErr.message, 500);
-          }
-          if ((count ?? 0) >= FREE_RESERVATIONS_PER_MONTH) {
-            throw new MpError(
-              "PLAN.FREE_LIMIT_REACHED",
-              "Llegaste al límite mensual de reservas del plan Free (4/mes). Activa Premium para reservas ilimitadas.",
-              402,
-            );
-          }
-        }
 
         // Ventana de reserva: no permitir reservar más allá del horizonte del club.
         const { data: settings } = await supabase
