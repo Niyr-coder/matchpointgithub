@@ -103,6 +103,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Operación",
         items: [
           { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
+          { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
           { k: "admin-mod", label: "Moderación", icon: "shield-alert", badge: "7" },
           { k: "admin-support", label: "Soporte", icon: "life-buoy", badge: "12" },
           { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
@@ -314,6 +315,7 @@ export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
     "admin-users",
     "admin-mod",
     "admin-pagos",
+    "admin-plans",
     "admin-events",
     "admin-support",
     "admin-metrics",

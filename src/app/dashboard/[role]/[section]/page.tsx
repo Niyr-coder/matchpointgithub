@@ -5,6 +5,7 @@ import { AdminClubsScreen } from "@/components/dashboard/admin/AdminClubsScreen"
 import { AdminUsersScreen } from "@/components/dashboard/admin/AdminUsersScreen";
 import { AdminModScreen } from "@/components/dashboard/admin/AdminModScreen";
 import { AdminPagosScreen } from "@/components/dashboard/admin/AdminPagosScreen";
+import { AdminPlansScreen } from "@/components/dashboard/admin/AdminPlansScreen";
 import { AdminEventsScreen } from "@/components/dashboard/admin/AdminEventsScreen";
 import { AdminSupportScreen } from "@/components/dashboard/admin/AdminSupportScreen";
 import { AdminMetricsScreen } from "@/components/dashboard/admin/AdminMetricsScreen";
@@ -67,6 +68,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-users": () => <AdminUsersScreen />,
     "admin-mod": () => <AdminModScreen />,
     "admin-pagos": () => <AdminPagosScreen />,
+    "admin-plans": () => <AdminPlansScreen />,
     "admin-events": () => <AdminEventsScreen />,
     "admin-support": () => <AdminSupportScreen />,
     "admin-metrics": () => <AdminMetricsScreen />,
