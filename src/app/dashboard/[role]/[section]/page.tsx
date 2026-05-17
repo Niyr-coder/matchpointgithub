@@ -25,6 +25,7 @@ import { SolicitarClubScreen } from "@/components/dashboard/user/SolicitarClubSc
 import { TeamScreen } from "@/components/dashboard/user/TeamScreen";
 import { AcademiaScreen } from "@/components/dashboard/user/AcademiaScreen";
 import { MisClasesScreen } from "@/components/dashboard/user/MisClasesScreen";
+import { MiPlanScreen } from "@/components/dashboard/user/MiPlanScreen";
 import { ClubReservasScreen } from "@/components/dashboard/club/ClubReservasScreen";
 import { ClubCanchasScreen } from "@/components/dashboard/club/ClubCanchasScreen";
 import { ClubClientesScreen } from "@/components/dashboard/club/ClubClientesScreen";
@@ -88,6 +89,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     team: () => <TeamScreen />,
     academia: () => <AcademiaScreen />,
     "mis-clases": () => <MisClasesScreen />,
+    "mi-plan": () => <MiPlanScreen />,
   },
   owner: {
     "club-reservas": () => <ClubReservasScreen />,
