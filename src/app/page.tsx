@@ -1,65 +1,246 @@
-import Image from "next/image";
+// Renderiza siempre con datos frescos; el landing depende del estado vivo de
+// clubes/torneos publicados.
+export const dynamic = "force-dynamic";
 
-export default function Home() {
+import { LandingShell } from "@/components/landing/LandingShell";
+import { listFeaturedClubs } from "@/server/actions/clubs";
+import { listFeaturedTournaments } from "@/server/actions/tournaments";
+import { getServerClient } from "@/lib/db/client.server";
+import type { ClubFeatured } from "@/lib/schemas/clubs";
+import type { TournamentFeatured } from "@/lib/schemas/tournaments";
+
+const CARD_GRADIENTS = [
+  "linear-gradient(135deg,#064e3b,#10b981)",
+  "linear-gradient(135deg,#7c2d12,#fb923c)",
+  "linear-gradient(135deg,#1e3a8a,#0ea5e9)",
+  "linear-gradient(135deg,#0a0a0a,#374151)",
+  "linear-gradient(135deg,#581c87,#a855f7)",
+  "linear-gradient(135deg,#7f1d1d,#ef4444)",
+];
+
+const EVENT_GRADIENTS = [
+  "linear-gradient(135deg,#064e3b,#10b981)",
+  "linear-gradient(135deg,#1e3a8a,#3b82f6)",
+  "linear-gradient(135deg,#7c2d12,#dc2626)",
+];
+
+const MONTHS_ES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+
+function formatPrice(cents: number | null): number | null {
+  if (cents == null) return null;
+  return Math.round(cents / 100);
+}
+
+function formatMoney(cents: number | null): string {
+  if (cents == null || cents === 0) return "—";
+  const n = Math.round(cents / 100);
+  return n >= 1000 ? `$${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : `$${n}`;
+}
+
+function tournamentTag(format: string): string {
+  if (format === "round_robin" || format === "swiss") return "LIGA";
+  if (format === "groups_to_knockout") return "ESTELAR";
+  return "TORNEO";
+}
+
+function eventDateLabel(startsAt: string, endsAt: string): { d: string; m: string } {
+  const s = new Date(startsAt);
+  const e = new Date(endsAt);
+  const sd = s.getUTCDate();
+  const ed = e.getUTCDate();
+  const sameMonth = s.getUTCMonth() === e.getUTCMonth();
+  const m = MONTHS_ES[s.getUTCMonth()];
+  const d = sameMonth && sd !== ed ? `${sd}-${ed}` : `${sd}`;
+  return { d, m };
+}
+
+function adaptClubs(rows: ClubFeatured[], ratingByClub: Map<string, number>) {
+  return rows.map((c, i) => ({
+    n: c.name,
+    city: c.city,
+    rating: ratingByClub.get(c.id) ?? 0,
+    courts: c.courtsCount,
+    price: formatPrice(c.minPriceCents) ?? 0,
+    color: CARD_GRADIENTS[i % CARD_GRADIENTS.length],
+  }));
+}
+
+function adaptTournaments(rows: TournamentFeatured[]) {
+  return rows.map((t, i) => {
+    const { d, m } = eventDateLabel(t.startsAt, t.endsAt);
+    const insc =
+      t.maxParticipants != null
+        ? `${t.registrationsCount} / ${t.maxParticipants}`
+        : `${t.registrationsCount}`;
+    const club = [t.clubName, t.clubCity].filter(Boolean).join(" · ") || "Multi-club";
+    return {
+      d,
+      m,
+      n: t.name,
+      club,
+      prize: formatMoney(t.prizePoolCents),
+      insc,
+      tag: tournamentTag(t.format),
+      color: EVENT_GRADIENTS[i % EVENT_GRADIENTS.length],
+    };
+  });
+}
+
+// House promos — slots propios que cubren cuando faltan datos reales.
+const CLUB_PROMOS = [
+  {
+    n: "Tu club aquí",
+    city: "Onboarding en 48 horas · sin costo",
+    rating: 0,
+    courts: 0,
+    price: 0,
+    color: "linear-gradient(135deg,#0a0a0a,#1f1f23)",
+    href: "/soy-club",
+    promo: { ctaLabel: "Registra tu club" },
+  },
+  {
+    n: "Invita a tus amigos",
+    city: "Más jugadores · mejores partidos",
+    rating: 0,
+    courts: 0,
+    price: 0,
+    color: "linear-gradient(135deg,#064e3b,#10b981)",
+    href: "/?auth=signup",
+    promo: { ctaLabel: "Comparte MatchPoint" },
+  },
+];
+
+const EVENT_PROMOS = [
+  {
+    n: "Crea tu torneo",
+    d: "+",
+    m: "NEW",
+    club: "Para clubes y partners",
+    prize: "",
+    insc: "",
+    tag: "MATCHPOINT",
+    color: "linear-gradient(135deg,#0a0a0a,#1f1f23)",
+    href: "/soy-club",
+    promo: { ctaLabel: "Publica tu torneo" },
+  },
+  {
+    n: "Únete al ranking",
+    d: "MP",
+    m: "2.5+",
+    club: "Empieza a sumar puntos hoy",
+    prize: "",
+    insc: "",
+    tag: "RANKING",
+    color: "linear-gradient(135deg,#7c2d12,#fb923c)",
+    href: "/?auth=signup",
+    promo: { ctaLabel: "Crea tu cuenta" },
+  },
+];
+
+const TARGET_CLUBS = 4;
+const TARGET_EVENTS = 3;
+
+function fillSlots<T>(real: T[], promos: T[], target: number): T[] {
+  if (real.length >= target) return real.slice(0, target);
+  const need = target - real.length;
+  return [...real, ...promos.slice(0, need)];
+}
+
+type LandingStats = {
+  players: string;
+  clubs: string;
+  gmv: string;
+  rating: string;
+};
+
+async function loadLandingExtras(): Promise<{
+  stats: LandingStats;
+  marqueeClubs: string[];
+  ratingByClub: Map<string, number>;
+}> {
+  const supabase = await getServerClient();
+  const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+
+  const [
+    { count: playersCount },
+    { count: clubsActiveCount },
+    { data: gmvRows },
+    { data: ratingRows },
+    { data: clubNames },
+  ] = await Promise.all([
+    supabase.from("profiles").select("id", { count: "exact", head: true }),
+    supabase
+      .from("clubs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active"),
+    supabase
+      .from("transactions")
+      .select("amount_cents")
+      .eq("status", "captured")
+      .gte("created_at", yearStart),
+    supabase.from("club_reviews").select("club_id,rating"),
+    supabase
+      .from("clubs_public_summary")
+      .select("name")
+      .order("courts_count", { ascending: false })
+      .limit(12),
+  ]);
+
+  const gmvCents = (gmvRows ?? []).reduce(
+    (s, r) => s + ((r.amount_cents as number) ?? 0),
+    0,
+  );
+  const gmvDollars = Math.round(gmvCents / 100);
+  const gmvLabel =
+    gmvDollars >= 1000 ? `$${(gmvDollars / 1000).toFixed(0)}k` : `$${gmvDollars.toLocaleString("en-US")}`;
+
+  const sumByClub = new Map<string, { total: number; count: number }>();
+  for (const r of ratingRows ?? []) {
+    const id = r.club_id as string;
+    const cur = sumByClub.get(id) ?? { total: 0, count: 0 };
+    cur.total += (r.rating as number) ?? 0;
+    cur.count += 1;
+    sumByClub.set(id, cur);
+  }
+  const ratingByClub = new Map<string, number>();
+  let globalTotal = 0;
+  let globalCount = 0;
+  for (const [id, agg] of sumByClub) {
+    const avg = agg.total / agg.count;
+    ratingByClub.set(id, Math.round(avg * 10) / 10);
+    globalTotal += agg.total;
+    globalCount += agg.count;
+  }
+  const globalAvg = globalCount > 0 ? Math.round((globalTotal / globalCount) * 10) / 10 : null;
+
+  return {
+    stats: {
+      players: (playersCount ?? 0).toLocaleString("en-US"),
+      clubs: String(clubsActiveCount ?? 0),
+      gmv: gmvCents > 0 ? gmvLabel : "—",
+      rating: globalAvg != null ? `${globalAvg.toFixed(1)} ★` : "—",
+    },
+    marqueeClubs: (clubNames ?? []).map((c) => c.name as string),
+    ratingByClub,
+  };
+}
+
+export default async function HomePage() {
+  const [clubsRes, eventsRes, extras] = await Promise.all([
+    listFeaturedClubs({ limit: TARGET_CLUBS }),
+    listFeaturedTournaments({ limit: TARGET_EVENTS }),
+    loadLandingExtras(),
+  ]);
+  const realClubs = clubsRes.ok ? adaptClubs(clubsRes.data, extras.ratingByClub) : [];
+  const realEvents = eventsRes.ok ? adaptTournaments(eventsRes.data) : [];
+  const clubs = fillSlots(realClubs, CLUB_PROMOS, TARGET_CLUBS);
+  const events = fillSlots(realEvents, EVENT_PROMOS, TARGET_EVENTS);
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <LandingShell
+      clubs={clubs}
+      events={events}
+      stats={extras.stats}
+      marqueeClubs={extras.marqueeClubs}
+    />
   );
 }
