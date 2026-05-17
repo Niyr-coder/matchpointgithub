@@ -3724,6 +3724,70 @@ export type Database = {
           },
         ]
       }
+      player_subscriptions: {
+        Row: {
+          cancelled_reason: string | null
+          created_at: string
+          duration_months: number
+          expires_at: string | null
+          id: string
+          starts_at: string | null
+          status: string
+          tier: Database["public"]["Enums"]["mp_player_plan"]
+          transaction_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancelled_reason?: string | null
+          created_at?: string
+          duration_months?: number
+          expires_at?: string | null
+          id?: string
+          starts_at?: string | null
+          status?: string
+          tier: Database["public"]["Enums"]["mp_player_plan"]
+          transaction_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancelled_reason?: string | null
+          created_at?: string
+          duration_months?: number
+          expires_at?: string | null
+          id?: string
+          starts_at?: string | null
+          status?: string
+          tier?: Database["public"]["Enums"]["mp_player_plan"]
+          transaction_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_subscriptions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_categories: {
         Row: {
           club_id: string | null
@@ -3853,6 +3917,8 @@ export type Database = {
           onboarded_at: string | null
           phone: string | null
           phone_verified_at: string | null
+          plan_expires_at: string | null
+          plan_tier: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport: Database["public"]["Enums"]["mp_sport"] | null
           skill_level: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at: string
@@ -3871,6 +3937,8 @@ export type Database = {
           onboarded_at?: string | null
           phone?: string | null
           phone_verified_at?: string | null
+          plan_expires_at?: string | null
+          plan_tier?: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at?: string
@@ -3889,6 +3957,8 @@ export type Database = {
           onboarded_at?: string | null
           phone?: string | null
           phone_verified_at?: string | null
+          plan_expires_at?: string | null
+          plan_tier?: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at?: string
@@ -7267,6 +7337,7 @@ export type Database = {
         | "disputed"
         | "pending_proof"
         | "proof_submitted"
+      mp_player_plan: "free" | "premium"
       mp_report_status: "pending" | "reviewing" | "actioned" | "dismissed"
       mp_reservation_status:
         | "booked"
@@ -7505,6 +7576,7 @@ export const Constants = {
         "pending_proof",
         "proof_submitted",
       ],
+      mp_player_plan: ["free", "premium"],
       mp_report_status: ["pending", "reviewing", "actioned", "dismissed"],
       mp_reservation_status: [
         "booked",
