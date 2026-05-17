@@ -2939,6 +2939,122 @@ export type Database = {
           },
         ]
       }
+      matches: {
+        Row: {
+          club_id: string | null
+          confirmed_at: string | null
+          confirmed_by: string[]
+          court_id: string | null
+          created_at: string
+          created_by: string
+          disputed_reason: string | null
+          duration_min: number
+          id: string
+          mode: Database["public"]["Enums"]["mp_match_mode"]
+          played_at: string
+          reported_at: string | null
+          reported_by: string | null
+          score: Json | null
+          sport: Database["public"]["Enums"]["mp_sport"]
+          status: Database["public"]["Enums"]["mp_match_status"]
+          team_a_player_ids: string[]
+          team_b_player_ids: string[]
+          updated_at: string
+        }
+        Insert: {
+          club_id?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string[]
+          court_id?: string | null
+          created_at?: string
+          created_by: string
+          disputed_reason?: string | null
+          duration_min?: number
+          id?: string
+          mode: Database["public"]["Enums"]["mp_match_mode"]
+          played_at: string
+          reported_at?: string | null
+          reported_by?: string | null
+          score?: Json | null
+          sport: Database["public"]["Enums"]["mp_sport"]
+          status?: Database["public"]["Enums"]["mp_match_status"]
+          team_a_player_ids: string[]
+          team_b_player_ids: string[]
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string[]
+          court_id?: string | null
+          created_at?: string
+          created_by?: string
+          disputed_reason?: string | null
+          duration_min?: number
+          id?: string
+          mode?: Database["public"]["Enums"]["mp_match_mode"]
+          played_at?: string
+          reported_at?: string | null
+          reported_by?: string | null
+          score?: Json | null
+          sport?: Database["public"]["Enums"]["mp_sport"]
+          status?: Database["public"]["Enums"]["mp_match_status"]
+          team_a_player_ids?: string[]
+          team_b_player_ids?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matches_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_court_id_fkey"
+            columns: ["court_id"]
+            isOneToOne: false
+            referencedRelation: "courts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_attachments: {
         Row: {
           id: string
@@ -7343,6 +7459,7 @@ export type Database = {
         | "live"
         | "finished"
         | "cancelled"
+      mp_match_mode: "singles" | "doubles"
       mp_match_status:
         | "scheduled"
         | "live"
@@ -7580,6 +7697,7 @@ export const Constants = {
         "finished",
         "cancelled",
       ],
+      mp_match_mode: ["singles", "doubles"],
       mp_match_status: [
         "scheduled",
         "live",
