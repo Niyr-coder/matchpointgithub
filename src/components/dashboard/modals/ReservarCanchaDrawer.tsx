@@ -31,16 +31,16 @@ type Club = {
 };
 
 type Court = { id: string; name: string; ordinal: number; active: boolean };
-type Duration = 60 | 90;
+type Duration = 60 | 120;
 
 const DAY_NAMES_ES = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 const MONTH_SHORT_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-// Ventana de reserva: 09:00 → 22:00. Slots cada 30 min. El último start
-// permitido es 22:00 - duración (60 min → 21:00; 90 min → 20:30).
+// Ventana de reserva: 09:00 → 22:00. Slots cada hora en punto. El último
+// start permitido es 22:00 - duración (60 min → 21:00; 120 min → 20:00).
 const SLOT_OPEN_MIN = 9 * 60;
 const SLOT_CLOSE_MIN = 22 * 60;
-const SLOT_STEP_MIN = 30;
+const SLOT_STEP_MIN = 60;
 
 const INVITE_AVATARS = [
   "linear-gradient(135deg,#10b981,#047857)",
@@ -147,7 +147,7 @@ export function ReservarCanchaDrawer() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [pickerQuery, setPickerQuery] = useState("");
   const [day, setDay] = useState(0);
-  const [duration, setDuration] = useState<Duration>(90);
+  const [duration, setDuration] = useState<Duration>(60);
   const [courts, setCourts] = useState<Court[] | null>(null);
   const [courtId, setCourtId] = useState<string | null>(null);
   const [mockCourtIdx, setMockCourtIdx] = useState(0);
@@ -184,7 +184,7 @@ export function ReservarCanchaDrawer() {
       const hasFullCtx = !!(detail.clubId && detail.clubSlug);
       setOpen(true);
       setDay(0);
-      setDuration(90);
+      setDuration(60);
       setCourts(null);
       setCourtId(null);
       setMockCourtIdx(0);
@@ -704,7 +704,7 @@ export function ReservarCanchaDrawer() {
 
               <div className="label-mp" style={{ marginBottom: 8 }}>3 · Duración</div>
               <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                {([60, 90] as Duration[]).map((m) => (
+                {([60, 120] as Duration[]).map((m) => (
                   <button
                     key={m}
                     onClick={() => setDuration(m)}
@@ -720,7 +720,7 @@ export function ReservarCanchaDrawer() {
                       fontWeight: 900,
                     }}
                   >
-                    {m} min
+                    {m === 60 ? "1 h" : `${m / 60} h`}
                   </button>
                 ))}
               </div>
