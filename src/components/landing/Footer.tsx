@@ -1,14 +1,56 @@
-// Footer — migrado 1:1 desde MatchPoint Public.html (líneas 144-184)
+// Footer del landing. Todos los links apuntan a rutas reales del app
+// (o mailto: al dominio matchpoint.top). Los iconos sociales quedan
+// disabled hasta que se confirmen URLs reales.
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 
-const COLS = [
-  { t: "Jugadores", l: ["Crear cuenta", "Cómo funciona", "Encontrar clubes", "Eventos", "Ranking"] },
-  { t: "Clubes", l: ["Registra tu club", "Precios", "Casos de éxito", "Soporte clubes"] },
-  { t: "Coaches", l: ["Soy coach", "Cómo cobrar", "Material de marketing"] },
-  { t: "MatchPoint", l: ["Acerca de", "Blog", "Trabaja con nosotros", "Términos", "Privacidad"] },
+type FooterLink = { label: string; href: string; external?: boolean };
+
+const COLS: { t: string; l: FooterLink[] }[] = [
+  {
+    t: "Jugadores",
+    l: [
+      { label: "Crear cuenta", href: "/auth/signup" },
+      { label: "Cómo funciona", href: "/como-funciona" },
+      { label: "Encontrar clubes", href: "/clubes" },
+      { label: "Eventos", href: "/eventos" },
+      { label: "Ranking", href: "/ranking" },
+    ],
+  },
+  {
+    t: "Clubes",
+    l: [
+      { label: "Registra tu club", href: "/soy-club" },
+      { label: "Precios", href: "/clubes/precios" },
+      { label: "Casos de éxito", href: "/clubes/casos" },
+      {
+        label: "Soporte clubes",
+        href: "mailto:soporte-clubes@matchpoint.top?subject=Soporte%20MatchPoint",
+        external: true,
+      },
+    ],
+  },
+  {
+    t: "Coaches",
+    l: [
+      { label: "Soy coach", href: "/coaches" },
+      { label: "Cómo cobrar", href: "/coaches/como-cobrar" },
+      { label: "Material de marketing", href: "/coaches/material" },
+    ],
+  },
+  {
+    t: "MatchPoint",
+    l: [
+      { label: "Acerca de", href: "/acerca-de" },
+      { label: "Blog", href: "/blog" },
+      { label: "Trabaja con nosotros", href: "/trabaja-con-nosotros" },
+      { label: "Términos", href: "/legal/terminos" },
+      { label: "Privacidad", href: "/legal/privacidad" },
+    ],
+  },
 ];
 
-const SOCIAL = ["instagram", "message-circle", "youtube", "twitter"];
+const SOCIAL = ["instagram", "message-circle", "youtube", "twitter"] as const;
 
 export function Footer() {
   return (
@@ -56,23 +98,25 @@ export function Footer() {
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
               {SOCIAL.map((i) => (
-                <a
+                <span
                   key={i}
-                  href="#"
+                  aria-disabled="true"
+                  title="Próximamente"
                   style={{
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#fff",
+                    color: "rgba(255,255,255,0.35)",
+                    cursor: "not-allowed",
                   }}
                 >
-                  <Icon name={i} size={14} />
-                </a>
+                  <Icon name={i} size={14} color="rgba(255,255,255,0.35)" />
+                </span>
               ))}
             </div>
           </div>
@@ -81,21 +125,37 @@ export function Footer() {
               <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)", marginBottom: 14 }}>
                 {col.t}
               </div>
-              {col.l.map((l) => (
-                <a
-                  key={l}
-                  href="#"
-                  style={{
-                    display: "block",
-                    color: "rgba(255,255,255,0.7)",
-                    fontSize: 12,
-                    marginBottom: 8,
-                    textDecoration: "none",
-                  }}
-                >
-                  {l}
-                </a>
-              ))}
+              {col.l.map((link) =>
+                link.external ? (
+                  <a
+                    key={link.label}
+                    href={link.href}
+                    style={{
+                      display: "block",
+                      color: "rgba(255,255,255,0.7)",
+                      fontSize: 12,
+                      marginBottom: 8,
+                      textDecoration: "none",
+                    }}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    style={{
+                      display: "block",
+                      color: "rgba(255,255,255,0.7)",
+                      fontSize: 12,
+                      marginBottom: 8,
+                      textDecoration: "none",
+                    }}
+                  >
+                    {link.label}
+                  </Link>
+                ),
+              )}
             </div>
           ))}
         </div>
@@ -111,7 +171,7 @@ export function Footer() {
             gap: 10,
           }}
         >
-          <span>© 2026 MatchPoint Ecuador · matchpoint.app</span>
+          <span>© 2026 MatchPoint Ecuador · matchpoint.top</span>
           <span>
             Hecho con <span style={{ color: "#dc2626" }}>♥</span> para la comunidad deportiva · Quito,
             Ecuador
