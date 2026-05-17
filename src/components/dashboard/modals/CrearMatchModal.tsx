@@ -1,8 +1,22 @@
 // CrearMatchModal — migrado 1:1 desde ui_kits/dashboard/CrearMatchModal.jsx
 // Escucha window event 'mp-open-crear-match' (sin detail)
+//
+// Wireup mínimo a backend (Agente T):
+//  · El botón final llama a `createMatch` cuando hay datos válidos.
+//  · LIMITACIÓN ACTUAL: el form trabaja con nombres de clubes y de amigos
+//    como strings (mocks). No hay selectores reales que devuelvan UUIDs.
+//    Por eso `clubId`, `courtId` y `teamBPlayerIds` van como null/[]
+//    mientras no exista un selector real. Ver TODOs marcados.
+//  · Cuando no hay datos suficientes (rival sin UUID), el botón final
+//    se deshabilita con el copy "Próximamente · falta selector de jugadores".
+//  · La modalidad 'mixto' del UI se mapea a 'doubles' en el backend
+//    (el schema solo distingue cardinalidad, no género).
 "use client";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { useToast } from "../ToastProvider";
+import { createMatch } from "@/server/actions/matches";
 
 type Sport = "pickleball" | "padel" | "tenis";
 type Mode = "singles" | "dobles" | "mixto";
@@ -22,6 +36,10 @@ type Form = {
   splitCost: boolean;
   totalCost: number;
   notes: string;
+  // Wireup real: cuando exista selector real de jugadores, aquí van los UUIDs
+  // del rival. Hoy se queda vacío y el botón final se deshabilita.
+  // TODO: cablear selector real de usuarios y poblar este array.
+  rivalPlayerIds: string[];
 };
 
 const INITIAL_FORM: Form = {
@@ -38,6 +56,20 @@ const INITIAL_FORM: Form = {
   splitCost: true,
   totalCost: 24,
   notes: "",
+  rivalPlayerIds: [],
+};
+
+// Mapas UI → backend
+const SPORT_TO_DB: Record<Sport, "tennis" | "padel" | "pickleball"> = {
+  pickleball: "pickleball",
+  padel: "padel",
+  tenis: "tennis",
+};
+const MODE_TO_DB: Record<Mode, "singles" | "doubles"> = {
+  singles: "singles",
+  dobles: "doubles",
+  // 'mixto' es doubles a nivel de cardinalidad; el backend no distingue género.
+  mixto: "doubles",
 };
 
 const STEPS = ["Tipo", "Cuándo y dónde", "Jugadores", "Resumen"];
@@ -47,6 +79,9 @@ export function CrearMatchModal() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Form>(INITIAL_FORM);
   const [done, setDone] = useState(false);
+  const [submitting, startSubmit] = useTransition();
+  const toast = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     const handler = () => {
@@ -58,6 +93,57 @@ export function CrearMatchModal() {
     window.addEventListener("mp-open-crear-match", handler);
     return () => window.removeEventListener("mp-open-crear-match", handler);
   }, []);
+
+  // Validez de submit: necesitamos UUIDs reales del rival. Mientras el selector
+  // de jugadores no exista, `rivalPlayerIds` siempre será []. El botón se
+  // deshabilita en ese caso.
+  const needed = form.mode === "singles" ? 1 : 2;
+  const hasRealRivals =
+    form.rivalPlayerIds.length === needed &&
+    form.rivalPlayerIds.every((id) => /^[0-9a-f-]{36}$/i.test(id));
+  const canSubmit = hasRealRivals;
+
+  const handleSubmit = () => {
+    if (!canSubmit) {
+      toast({
+        icon: "alert-triangle",
+        title: "Falta seleccionar rival",
+        sub: "Aún no hay selector real de jugadores conectado.",
+      });
+      return;
+    }
+    startSubmit(async () => {
+      // Combina date + time en horario local del navegador.
+      const playedAt = new Date(`${form.date}T${form.time}:00`).toISOString();
+      const res = await createMatch({
+        sport: SPORT_TO_DB[form.sport],
+        mode: MODE_TO_DB[form.mode],
+        // TODO: cuando exista selector real de club/cancha, pasar UUIDs reales.
+        clubId: null,
+        courtId: null,
+        playedAt,
+        durationMin: form.duration,
+        // TODO: el "self" debería venir del selector real. Hoy el server action
+        // valida que el creador esté en alguno de los dos equipos vía
+        // requireUserId, pero necesitamos enviar el UUID. Cuando exista el
+        // selector real, el primer elemento de teamAPlayerIds debe ser el
+        // current user (auth.uid()).
+        teamAPlayerIds: form.rivalPlayerIds.slice(0, 0), // placeholder
+        teamBPlayerIds: form.rivalPlayerIds,
+      });
+      if (!res.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo crear el match",
+          sub: res.error.message,
+        });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Match creado" });
+      setDone(true);
+      router.refresh();
+    });
+  };
 
   if (!open) return null;
   const close = () => setOpen(false);
@@ -247,13 +333,37 @@ export function CrearMatchModal() {
               </button>
               <button
                 className="btn btn-primary"
-                onClick={() => (step === 3 ? setDone(true) : setStep((s) => s + 1))}
+                disabled={step === 3 && (submitting || !canSubmit)}
+                onClick={() => {
+                  if (step !== 3) {
+                    setStep((s) => s + 1);
+                    return;
+                  }
+                  handleSubmit();
+                }}
+                style={
+                  step === 3 && !canSubmit
+                    ? { opacity: 0.55, cursor: "not-allowed" }
+                    : undefined
+                }
+                title={
+                  step === 3 && !canSubmit
+                    ? "Próximamente · falta selector de jugadores"
+                    : undefined
+                }
               >
                 {step === 3 ? (
-                  <>
-                    <Icon name="check" size={13} color="#fff" />
-                    Confirmar match
-                  </>
+                  canSubmit ? (
+                    <>
+                      <Icon name="check" size={13} color="#fff" />
+                      {submitting ? "Creando…" : "Confirmar match"}
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="clock" size={13} color="#fff" />
+                      Próximamente · falta selector de jugadores
+                    </>
+                  )
                 ) : (
                   <>
                     Siguiente
