@@ -3378,8 +3378,10 @@ export type Database = {
         Row: {
           body: string | null
           created_at: string
+          delivered_at: string | null
           id: string
           kind: string
+          link: string | null
           payload: Json
           read_at: string | null
           recipient_role: Database["public"]["Enums"]["mp_role"]
@@ -3389,8 +3391,10 @@ export type Database = {
         Insert: {
           body?: string | null
           created_at?: string
+          delivered_at?: string | null
           id?: string
           kind: string
+          link?: string | null
           payload?: Json
           read_at?: string | null
           recipient_role: Database["public"]["Enums"]["mp_role"]
@@ -3400,8 +3404,10 @@ export type Database = {
         Update: {
           body?: string | null
           created_at?: string
+          delivered_at?: string | null
           id?: string
           kind?: string
+          link?: string | null
           payload?: Json
           read_at?: string | null
           recipient_role?: Database["public"]["Enums"]["mp_role"]
@@ -3912,6 +3918,7 @@ export type Database = {
           country: string | null
           created_at: string
           display_name: string
+          favorite_club_id: string | null
           id: string
           locale: string
           onboarded_at: string | null
@@ -3932,6 +3939,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           display_name: string
+          favorite_club_id?: string | null
           id: string
           locale?: string
           onboarded_at?: string | null
@@ -3952,6 +3960,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           display_name?: string
+          favorite_club_id?: string | null
           id?: string
           locale?: string
           onboarded_at?: string | null
@@ -3964,7 +3973,22 @@ export type Database = {
           updated_at?: string
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_favorite_club_id_fkey"
+            columns: ["favorite_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_favorite_club_id_fkey"
+            columns: ["favorite_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ranking_snapshots: {
         Row: {
@@ -6466,6 +6490,7 @@ export type Database = {
         }
         Returns: string
       }
+      fn_dispatch_inapp_notifications: { Args: never; Returns: number }
       fn_enqueue_notification: {
         Args: {
           p_body?: string
@@ -6488,6 +6513,7 @@ export type Database = {
           key: string
         }[]
       }
+      fn_process_player_plans: { Args: never; Returns: undefined }
       fn_purge_expired_idempotency: { Args: never; Returns: undefined }
       fn_rate_limit_consume: {
         Args: {
