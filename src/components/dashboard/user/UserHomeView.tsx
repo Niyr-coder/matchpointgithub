@@ -1,5 +1,6 @@
 // Client view of UserHome. Receives data ya fetcheada por el server.
 "use client";
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
@@ -28,7 +29,18 @@ export type UserHomeData = {
   reservations: ReservationLite[];
   tournaments: TournamentFeatured[];
   ratingHistory: RatingPoint[];
+  planTier: "free" | "premium";
+  planExpiresAt: string | null;
 };
+
+const UPGRADE_WARN_DAYS = 7;
+
+function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.ceil((t - Date.now()) / (24 * 60 * 60 * 1000));
+}
 
 const MONTHS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const DAYS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -105,6 +117,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
   return (
     <>
       <WelcomeBanner data={data} />
+      <UpgradeBanner data={data} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <ReservasPanel reservations={data.reservations} />
         <TorneosPanel tournaments={data.tournaments} />
@@ -192,6 +205,146 @@ function WelcomeBanner({ data }: { data: UserHomeData }) {
           <Stat n={String(data.matchesTotal)} l="Partidos jugados" />
           <Stat n={ratingDisplay(data.currentRating)} l="MP Rating" accent />
           <Stat n={rankStr} l="Ranking nacional" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpgradeBanner({ data }: { data: UserHomeData }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  // Guests no ven el banner — primero deben crear cuenta.
+  if (data.meUserId === null) return null;
+  if (dismissed) return null;
+
+  const remaining = daysUntil(data.planExpiresAt);
+  const isFree = data.planTier === "free";
+  const isExpiringSoon =
+    data.planTier === "premium" && remaining !== null && remaining <= UPGRADE_WARN_DAYS;
+
+  if (!isFree && !isExpiringSoon) return null;
+
+  const renewing = isExpiringSoon;
+  const title = renewing ? "Tu Premium está por expirar" : "Activa MatchPoint Premium";
+  const lead = renewing
+    ? `Tu Premium expira en ${remaining} ${remaining === 1 ? "día" : "días"}. Renueva para no perder beneficios.`
+    : "Reservas ilimitadas, estadísticas y más por USD 5/mes.";
+  const ctaLabel = renewing ? "Renovar" : "Activar Premium";
+
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        background:
+          "linear-gradient(135deg, #0a0a0a 0%, #111827 55%, #0a0a0a 100%)",
+        color: "#fff",
+        borderRadius: 14.4,
+        padding: "18px 20px",
+        position: "relative",
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 90% 30%, rgba(250,204,21,0.18), transparent 55%), radial-gradient(ellipse at 10% 80%, rgba(16,185,129,0.14), transparent 60%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: "rgba(250,204,21,0.14)",
+              color: "#facc15",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px solid rgba(250,204,21,0.3)",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="crown" size={18} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div
+              className="font-heading"
+              style={{
+                fontWeight: 900,
+                fontSize: 16,
+                letterSpacing: "-0.02em",
+                lineHeight: 1.1,
+              }}
+            >
+              {title}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "rgba(255,255,255,0.65)",
+                marginTop: 4,
+              }}
+            >
+              {lead}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link
+            href="/dashboard/user/mi-plan"
+            style={{
+              background: "#facc15",
+              color: "#0a0a0a",
+              fontSize: 12,
+              fontWeight: 900,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              padding: "10px 16px",
+              borderRadius: 10,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {ctaLabel} →
+          </Link>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            aria-label="Cerrar"
+            style={{
+              background: "transparent",
+              color: "rgba(255,255,255,0.6)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 8,
+              width: 32,
+              height: 32,
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "inherit",
+            }}
+          >
+            ×
+          </button>
         </div>
       </div>
     </div>

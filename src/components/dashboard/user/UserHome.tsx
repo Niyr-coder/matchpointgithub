@@ -23,6 +23,8 @@ async function loadData(): Promise<UserHomeData> {
       reservations: [],
       tournaments: tournaments.ok ? tournaments.data : [],
       ratingHistory: [],
+      planTier: "free",
+      planExpiresAt: null,
     };
   }
 
@@ -38,7 +40,7 @@ async function loadData(): Promise<UserHomeData> {
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name,city,onboarded_at")
+      .select("display_name,city,onboarded_at,plan_tier,plan_expires_at")
       .eq("id", userId)
       .maybeSingle(),
     supabase
@@ -98,6 +100,8 @@ async function loadData(): Promise<UserHomeData> {
     reservations: reservationsAdapted,
     tournaments: tournamentsRes.ok ? tournamentsRes.data : [],
     ratingHistory,
+    planTier: ((profile?.plan_tier as string | undefined) === "premium" ? "premium" : "free") as "free" | "premium",
+    planExpiresAt: (profile?.plan_expires_at as string | null | undefined) ?? null,
   };
 }
 
