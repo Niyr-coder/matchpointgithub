@@ -149,6 +149,40 @@ const FeaturedParamsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(24).default(3),
 });
 
+export async function listPastTournaments(
+  input: unknown = {},
+): Promise<ActionResult<TournamentFeatured[]>> {
+  return runAction(FeaturedParamsSchema, input, async ({ limit }) => {
+    const supabase = await getServerClient();
+    const { data, error } = await supabase
+      .from("tournaments_public_summary")
+      .select("*")
+      .or(`status.eq.finished,ends_at.lt.${new Date().toISOString()}`)
+      .order("ends_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new MpError("TOURNAMENTS.DB_ERROR", error.message, 500);
+    return (data ?? []).map((row) =>
+      TournamentFeaturedSchema.parse({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+        prizePoolCents: row.prize_pool_cents ?? null,
+        entryFeeCents: row.entry_fee_cents ?? 0,
+        currency: row.currency ?? null,
+        maxParticipants: row.max_participants ?? null,
+        sport: row.sport,
+        format: row.format,
+        status: row.status,
+        clubName: row.club_name ?? null,
+        clubCity: row.club_city ?? null,
+        registrationsCount: row.registrations_count ?? 0,
+      }),
+    );
+  });
+}
+
 export async function listFeaturedTournaments(
   input: unknown = {},
 ): Promise<ActionResult<TournamentFeatured[]>> {

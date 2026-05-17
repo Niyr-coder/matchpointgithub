@@ -62,13 +62,13 @@ function padTournaments(arr: TournamentFeatured[]): GridCard[] {
   return out;
 }
 
-const PAST_MOCK = [
-  { d: "dic", n: "Open Quito 2024", winners: "Vélez · Rojas", prize: "$2,000" },
-  { d: "nov", n: "Liga IC 2024 · final", winners: "Equipo HDN", prize: "$1,800" },
-  { d: "oct", n: "Master Pickle 4.5+", winners: "Vega · Carrasco", prize: "$1,200" },
-];
-
-export function EventosPageView({ tournaments }: { tournaments: TournamentFeatured[] }) {
+export function EventosPageView({
+  tournaments,
+  pastTournaments,
+}: {
+  tournaments: TournamentFeatured[];
+  pastTournaments: TournamentFeatured[];
+}) {
   const onPaywall = usePaywall();
   const [tab, setTab] = useState<"proximos" | "curso" | "pasados">("proximos");
 
@@ -80,7 +80,7 @@ export function EventosPageView({ tournaments }: { tournaments: TournamentFeatur
   const tabs = [
     { k: "proximos", l: "Próximos", n: upcoming.length },
     { k: "curso", l: "En curso", n: live.length },
-    { k: "pasados", l: "Pasados", n: PAST_MOCK.length },
+    { k: "pasados", l: "Pasados", n: pastTournaments.length },
   ] as const;
 
   return (
@@ -207,75 +207,7 @@ export function EventosPageView({ tournaments }: { tournaments: TournamentFeatur
         </>
       )}
 
-      {tab === "pasados" && (
-        <div>
-          <div className="label-mp" style={{ marginBottom: 14 }}>Últimos campeones</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
-            {PAST_MOCK.map((p) => (
-              <div key={p.n} className="card" style={{ padding: 20, position: "relative", overflow: "hidden" }}>
-                <Icon name="trophy" size={22} color="#fbbf24" style={{ position: "absolute", top: 16, right: 16 }} />
-                <div
-                  style={{
-                    fontSize: 9.5,
-                    fontWeight: 900,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "var(--muted-fg)",
-                  }}
-                >
-                  {p.d} 2024
-                </div>
-                <div
-                  className="font-heading"
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 900,
-                    letterSpacing: "-0.02em",
-                    textTransform: "uppercase",
-                    margin: "8px 0",
-                  }}
-                >
-                  {p.n}
-                  <span className="dot">.</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
-                  Ganadores: <b style={{ color: "#0a0a0a" }}>{p.winners}</b>
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4 }}>
-                  Premio: <b style={{ color: "var(--primary)" }}>{p.prize}</b>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ padding: 28, textAlign: "center", background: "#0a0a0a", color: "#fff", borderRadius: 14.4 }}>
-            <div
-              className="font-heading"
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                letterSpacing: "-0.025em",
-                textTransform: "uppercase",
-              }}
-            >
-              38 torneos en 2024<span style={{ color: "#fbbf24" }}>.</span>
-            </div>
-            <p
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.7)",
-                margin: "8px auto 14px",
-                maxWidth: 460,
-              }}
-            >
-              $48,200 en premios repartidos · 1,420 jugadores compitieron · 142 clubes anfitriones.
-            </p>
-            <button className="btn btn-primary" onClick={() => onPaywall("inscripcion")}>
-              Quiero competir
-              <Icon name="arrow-right" size={13} />
-            </button>
-          </div>
-        </div>
-      )}
+      {tab === "pasados" && <PastTournamentsTab past={pastTournaments} onPaywall={onPaywall} />}
     </main>
   );
 }
@@ -827,5 +759,135 @@ function EventGridCard({ t, index }: { t: TournamentFeatured; index: number }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function PastTournamentsTab({
+  past,
+  onPaywall,
+}: {
+  past: TournamentFeatured[];
+  onPaywall: ReturnType<typeof usePaywall>;
+}) {
+  if (past.length === 0) {
+    return (
+      <div
+        style={{
+          padding: 48,
+          textAlign: "center",
+          background: "var(--muted)",
+          borderRadius: 16,
+          border: "1px dashed var(--border)",
+        }}
+      >
+        <Icon name="trophy" size={32} color="var(--muted-fg)" />
+        <div
+          className="font-heading"
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            letterSpacing: "-0.02em",
+            textTransform: "uppercase",
+            margin: "12px 0 6px",
+          }}
+        >
+          Sin torneos pasados todavía<span className="dot">.</span>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--muted-fg)", maxWidth: 420, margin: "0 auto" }}>
+          Cuando termine el primer torneo aparecerá aquí con sus ganadores y premios.
+        </p>
+      </div>
+    );
+  }
+
+  const totalPrize = past.reduce((s, t) => s + (t.prizePoolCents ?? 0), 0);
+  const totalPlayers = past.reduce((s, t) => s + t.registrationsCount, 0);
+  const uniqueClubs = new Set(past.map((t) => t.clubName).filter(Boolean)).size;
+  const year = new Date().getFullYear();
+
+  return (
+    <div>
+      <div className="label-mp" style={{ marginBottom: 14 }}>Últimos torneos finalizados</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+        {past.slice(0, 9).map((t) => {
+          const { d, m } = dateLabel(t.startsAt, t.endsAt);
+          return (
+            <Link
+              key={t.id}
+              href={`/eventos/${t.slug}`}
+              className="card"
+              style={{
+                padding: 20,
+                position: "relative",
+                overflow: "hidden",
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              <Icon name="trophy" size={22} color="#fbbf24" style={{ position: "absolute", top: 16, right: 16 }} />
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "var(--muted-fg)",
+                }}
+              >
+                {d} {m}
+              </div>
+              <div
+                className="font-heading"
+                style={{
+                  fontSize: 18,
+                  fontWeight: 900,
+                  letterSpacing: "-0.02em",
+                  textTransform: "uppercase",
+                  margin: "8px 0",
+                }}
+              >
+                {t.name}
+                <span className="dot">.</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+                {t.clubName ?? "Multi-club"}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4 }}>
+                Premio:{" "}
+                <b style={{ color: "var(--primary)" }}>{formatPrize(t.prizePoolCents)}</b>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+      <div style={{ padding: 28, textAlign: "center", background: "#0a0a0a", color: "#fff", borderRadius: 14.4 }}>
+        <div
+          className="font-heading"
+          style={{
+            fontSize: 22,
+            fontWeight: 900,
+            letterSpacing: "-0.025em",
+            textTransform: "uppercase",
+          }}
+        >
+          {past.length} torneo{past.length === 1 ? "" : "s"} finalizado{past.length === 1 ? "" : "s"} en {year}
+          <span style={{ color: "#fbbf24" }}>.</span>
+        </div>
+        <p
+          style={{
+            fontSize: 13,
+            color: "rgba(255,255,255,0.7)",
+            margin: "8px auto 14px",
+            maxWidth: 460,
+          }}
+        >
+          {formatPrize(totalPrize)} en premios repartidos · {totalPlayers.toLocaleString("es-EC")} jugadores compitieron · {uniqueClubs} club{uniqueClubs === 1 ? "" : "es"} anfitri{uniqueClubs === 1 ? "ón" : "ones"}.
+        </p>
+        <button className="btn btn-primary" onClick={() => onPaywall("inscripcion")}>
+          Quiero competir
+          <Icon name="arrow-right" size={13} />
+        </button>
+      </div>
+    </div>
   );
 }
