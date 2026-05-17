@@ -185,8 +185,8 @@ Registrada en el dispatcher: `src/app/dashboard/[role]/[section]/page.tsx` → `
 |---|---|---|
 | Reservar canchas | ❌ sin gate | Reservas ilimitadas en Free (decisión: usar la app mucho NO debería ser premium-gated). |
 | Inscribirse a eventos / torneos | ❌ sin gate | Sin restricción. |
-| Crear teams | ⏳ TODO | Candidato fuerte para Premium-only — ver `teams.ts:117` (`createTeam`). |
-| Estadísticas avanzadas (UI) | ⏳ TODO | Free vería ranking actual + últimos 5 matches; Premium ve historial, evolución, head-to-head. |
+| Crear teams | ✅ gated | `createTeam` en `src/server/actions/teams.ts` llama `requirePlan('premium')`. Free puede unirse via `joinTeamByCode` / `requestJoinTeam` pero no fundar. |
+| Estadísticas avanzadas (UI) | ✅ gated | `RankingScreen` oculta el card "Tu evolución" (chart histórico + delta + período) a Free y muestra teaser con CTA a `/dashboard/user/mi-plan`. Free ve ranking, top 3, leaderboard y rating actual. |
 | Crear matches/juegos sociales | ⏳ no aplica todavía | Las modales `CrearMatchModal` / `CrearJuegoModal` son UI mocks sin backend. Cuando se construya, decidir gate. |
 | Multi-deporte | ⏳ TODO | Opcional: Free 1 deporte primario, Premium ilimitado. |
 | Mensajería | ❌ sin gate | No recomendable gatear — fricción social mala para retención. |
@@ -236,6 +236,7 @@ Mapeo de errores HTTP completo (401/400/409/500). Defensa en profundidad: `.eq('
 | Activación de planes desde `/admin-plans` automatiza, pero el rechazo del comprobante asociado | Si el admin rechaza la sub, la transaction queda en `pending_proof`. Considerar reject combinado. |
 | Plantilla email para `plan_expiring_soon` | Cuando exista el dispatcher, necesita un template. |
 | Tests E2E del flujo completo de upgrade | Playwright cubriendo: request → upload proof → approve → plan active. |
+| Gating en invitaciones de match | Bloqueado por falta de backend de matches. Cuando exista `createMatch` / `inviteToMatch` en `src/server/actions/`, aplicar `requirePlan('premium')` o un counter mensual con tope para Free. |
 
 ---
 

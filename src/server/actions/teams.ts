@@ -8,6 +8,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { requirePlan } from "@/lib/auth/plan";
 import {
   InviteToTeamSchema,
   TeamCreateSchema,
@@ -118,6 +119,9 @@ export async function createTeam(input: unknown): Promise<ActionResult<Team>> {
   return runAction(TeamCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
+    // Gate: solo Premium puede crear team. Free se queda con joinTeamByCode /
+    // requestJoinTeam (puede ser miembro normal, pero no fundador).
+    await requirePlan(supabase, userId, "premium");
     const { data: team, error } = await supabase
       .from("teams")
       .insert({

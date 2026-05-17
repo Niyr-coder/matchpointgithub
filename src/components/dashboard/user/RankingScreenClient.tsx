@@ -8,6 +8,7 @@ type Props = {
   entries: RankingEntry[];
   meUserId: string | null;
   history: RankingSnapshot[];
+  isPremium: boolean;
 };
 
 const W = 360;
@@ -88,7 +89,7 @@ function ensureChartHistory(
   ];
 }
 
-export function RankingScreenClient({ entries, meUserId, history }: Props) {
+export function RankingScreenClient({ entries, meUserId, history, isPremium }: Props) {
   // Realtime: leaderboard cambia cuando alguien sube rating; tu history al confirmar match.
   useRealtimeRefresh(
     [
@@ -263,6 +264,7 @@ export function RankingScreenClient({ entries, meUserId, history }: Props) {
           </div>
         </div>
 
+        {isPremium ? (
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
@@ -344,6 +346,9 @@ export function RankingScreenClient({ entries, meUserId, history }: Props) {
             <span>Hoy</span>
           </div>
         </div>
+        ) : (
+          <PremiumEvolutionTeaser currentRating={displayRating} />
+        )}
       </div>
 
       <div className="card">
@@ -566,6 +571,103 @@ function PodiumSpot({ entry, center }: { entry: SlotEntry; center: boolean }) {
         >
           {entry.rank}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Teaser que reemplaza el card "Tu evolución" cuando el user es Free.
+// Muestra rating actual + lista de features Premium gateadas + CTA a /dashboard/user/mi-plan.
+function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 24,
+        position: "relative",
+        overflow: "hidden",
+        background: "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)",
+        color: "#fff",
+        border: 0,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "radial-gradient(ellipse at 90% 10%, rgba(251,191,36,0.18), transparent 60%)",
+        }}
+      />
+      <div style={{ position: "relative" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <div className="label-mp" style={{ color: "#fbbf24" }}>Tu evolución</div>
+            <div
+              className="font-heading tabular"
+              style={{ fontWeight: 900, fontSize: 36, lineHeight: 1, letterSpacing: "-0.03em", marginTop: 8 }}
+            >
+              {ratingDisplay(currentRating)}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+              MP Rating actual
+            </div>
+          </div>
+          <span
+            style={{
+              background: "rgba(251,191,36,0.15)",
+              color: "#fbbf24",
+              border: "1px solid rgba(251,191,36,0.4)",
+              padding: "4px 10px",
+              borderRadius: 9999,
+              fontSize: 10,
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+            }}
+          >
+            Premium
+          </span>
+        </div>
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: "18px 0 0",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            fontSize: 12.5,
+            color: "rgba(255,255,255,0.85)",
+          }}
+        >
+          {[
+            "Evolución mensual de tu MP Rating",
+            "Tendencia 30d / 90d / Año",
+            "Head-to-head con tus rivales",
+          ].map((t) => (
+            <li key={t} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#fbbf24" }}>•</span>
+              {t}
+            </li>
+          ))}
+        </ul>
+        <a
+          href="/dashboard/user/mi-plan"
+          className="btn"
+          style={{
+            marginTop: 18,
+            background: "#fbbf24",
+            color: "#0a0a0a",
+            border: 0,
+            fontWeight: 900,
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          Activar Premium →
+        </a>
       </div>
     </div>
   );
