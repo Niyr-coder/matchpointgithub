@@ -1560,6 +1560,7 @@ export type Database = {
           currency: Database["public"]["Enums"]["mp_currency"]
           description: string | null
           email: string | null
+          featured_until: string | null
           geo: unknown
           id: string
           logo_url: string | null
@@ -1584,6 +1585,7 @@ export type Database = {
           currency?: Database["public"]["Enums"]["mp_currency"]
           description?: string | null
           email?: string | null
+          featured_until?: string | null
           geo?: unknown
           id?: string
           logo_url?: string | null
@@ -1608,6 +1610,7 @@ export type Database = {
           currency?: Database["public"]["Enums"]["mp_currency"]
           description?: string | null
           email?: string | null
+          featured_until?: string | null
           geo?: unknown
           id?: string
           logo_url?: string | null

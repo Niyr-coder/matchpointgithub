@@ -120,7 +120,27 @@ export async function listFeaturedClubs(
       .order("courts_count", { ascending: false })
       .limit(limit);
     if (error) throw new MpError("CLUBS.DB_ERROR", error.message, 500);
-    return (data ?? []).map((row) =>
+
+    const rows = data ?? [];
+    if (rows.length === 0) return [];
+
+    // featured_until vive en la tabla `clubs` (no en la vista pública).
+    // Lo traemos en un segundo query y lo unimos.
+    const ids = rows.map((r) => r.id as string);
+    const { data: featuredRows } = await supabase
+      .from("clubs")
+      .select("id,featured_until")
+      .in("id", ids);
+    const featuredById = new Map<string, string | null>();
+    for (const f of featuredRows ?? []) {
+      const fid = f.id as string;
+      const until = (f.featured_until as string | null) ?? null;
+      // Tratamos como null si ya expiró: la UI no debe destacarlo.
+      const stillActive = until != null && new Date(until) > new Date();
+      featuredById.set(fid, stillActive ? until : null);
+    }
+
+    return rows.map((row) =>
       ClubFeaturedSchema.parse({
         id: row.id,
         slug: row.slug,
@@ -131,6 +151,7 @@ export async function listFeaturedClubs(
         currency: row.currency,
         courtsCount: row.courts_count ?? 0,
         minPriceCents: row.min_price_cents ?? null,
+        featuredUntil: featuredById.get(row.id as string) ?? null,
       }),
     );
   });

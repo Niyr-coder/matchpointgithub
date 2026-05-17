@@ -121,11 +121,10 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
     });
   }, [clubs, q, active]);
 
-  // Destacado solo cuando hay suficientes clubes como para que tenga sentido
-  // resaltar uno. Con 1 o 2 clubes promover uno al hero queda raro y deja la
-  // grilla casi vacía; mejor mostrar todos en cards normales.
-  const FEATURE_MIN_CLUBS = 3;
-  const featured = filtered.length >= FEATURE_MIN_CLUBS ? filtered[0] : null;
+  // Destacado solo para clubes que pagaron el slot (featured_until > now).
+  // Si hay varios pagos vigentes, gana el más reciente en la lista filtrada.
+  // Si no hay ninguno pagado, no se muestra el hero — todos van a la grilla.
+  const featured = filtered.find((c) => c.featuredUntil != null) ?? null;
   const rest = featured ? filtered.filter((c) => c.id !== featured.id) : filtered;
 
   const padded: ListItem[] = [...rest.map((c) => ({ ...c, placeholder: false as const }))];

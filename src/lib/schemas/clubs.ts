@@ -113,6 +113,9 @@ export const ClubFeaturedSchema = z
     currency: MpCurrencySchema,
     courtsCount: z.number().int(),
     minPriceCents: z.number().int().nullable(),
+    // null = club no pagó featuring; ISO string si está activo (futuro).
+    // En lectura: si <= now(), tratar como null (expirado).
+    featuredUntil: z.string().datetime({ offset: true }).nullable(),
   })
   .openapi("ClubFeatured");
 
