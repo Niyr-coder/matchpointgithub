@@ -24,6 +24,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
 
 // ── helpers de auth ─────────────────────────────────────────────────────
 async function requireUserId(): Promise<string> {
@@ -177,6 +178,40 @@ export async function approvePaymentProofAdmin(
         .from("registrations")
         .update({ status: "accepted" } as never)
         .eq("paid_transaction_id", transactionId);
+    } else if (tx.kind === "plan") {
+      // Auto-activar la subscription de plan asociada a esta transaction.
+      // Si algo falla, logueamos pero no abortamos: el comprobante ya quedó
+      // aprobado y el admin puede activar la subscription manualmente.
+      try {
+        const { data: pendingSub, error: subReadErr } = await supabase
+          .from("player_subscriptions")
+          .select("id")
+          .eq("transaction_id", transactionId)
+          .eq("status", "pending")
+          .maybeSingle();
+        if (subReadErr) {
+          console.error(
+            "[approvePaymentProof] plan auto-activate failed:",
+            subReadErr,
+          );
+        } else if (!pendingSub) {
+          console.warn(
+            `[approvePaymentProof] no pending player_subscription for transaction ${transactionId}; skipping auto-activate`,
+          );
+        } else {
+          const activateResult = await approvePlanSubscriptionAdmin({
+            subscriptionId: pendingSub.id as string,
+          });
+          if (!activateResult.ok) {
+            console.error(
+              "[approvePaymentProof] plan auto-activate failed:",
+              activateResult.error,
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[approvePaymentProof] plan auto-activate failed:", err);
+      }
     }
 
     return mapResult(data);
