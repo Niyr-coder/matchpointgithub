@@ -121,7 +121,11 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
     });
   }, [clubs, q, active]);
 
-  const featured = filtered[0] ?? clubs[0] ?? null;
+  // Destacado solo cuando hay suficientes clubes como para que tenga sentido
+  // resaltar uno. Con 1 o 2 clubes promover uno al hero queda raro y deja la
+  // grilla casi vacía; mejor mostrar todos en cards normales.
+  const FEATURE_MIN_CLUBS = 3;
+  const featured = filtered.length >= FEATURE_MIN_CLUBS ? filtered[0] : null;
   const rest = featured ? filtered.filter((c) => c.id !== featured.id) : filtered;
 
   const padded: ListItem[] = [...rest.map((c) => ({ ...c, placeholder: false as const }))];
@@ -203,18 +207,15 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
         </button>
       </div>
 
-      {/* Featured */}
-      {featured ? (
-        <FeaturedCard
-          c={featured}
-          ratingInfo={ratingFor(featured.id, ratingByClubId)}
-          saved={saved.has(featured.slug)}
-          onToggleSave={() => toggleSave(featured.slug, featured.name)}
-          onReservar={() => openReservar(featured)}
-        />
-      ) : (
-        <FeaturedPlaceholder />
-      )}
+      {/* Featured: solo cuando hay suficientes clubes. Con pocos resultados
+          o filtros que dejan 0 matches no mostramos el hero (queda raro). */}
+      {featured && <FeaturedCard
+        c={featured}
+        ratingInfo={ratingFor(featured.id, ratingByClubId)}
+        saved={saved.has(featured.slug)}
+        onToggleSave={() => toggleSave(featured.slug, featured.name)}
+        onReservar={() => openReservar(featured)}
+      />}
 
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
         <h2
