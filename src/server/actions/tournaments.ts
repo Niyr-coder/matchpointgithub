@@ -304,7 +304,7 @@ export async function registerToTournament(
         const supabase = await getServerClient();
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -316,6 +316,31 @@ export async function registerToTournament(
           );
         }
 
+        const feeCents = (t.entry_fee_cents as number) ?? 0;
+        let paidTransactionId: string | null = null;
+
+        if (feeCents > 0) {
+          const { data: tx, error: txErr } = await supabase
+            .from("transactions")
+            .insert({
+              club_id: (t.club_id as string | null) ?? null,
+              kind: "tournament",
+              ref_id: tournamentId,
+              customer_user_id: userId,
+              amount_cents: feeCents,
+              currency: ((t.currency as string | null) ?? "USD"),
+              method: "transfer",
+              status: "pending_proof",
+              created_by: userId,
+            } as never)
+            .select("id")
+            .single();
+          if (txErr || !tx) {
+            throw new MpError("TOURNAMENTS.TX_CREATE_FAILED", txErr?.message ?? "tx error", 500);
+          }
+          paidTransactionId = tx.id as string;
+        }
+
         const { data: row, error } = await supabase
           .from("registrations")
           .insert({
@@ -325,6 +350,7 @@ export async function registerToTournament(
             player_ids: body.playerIds,
             registered_by: userId,
             status: "pending",
+            paid_transaction_id: paidTransactionId,
           } as never)
           .select()
           .single();
@@ -337,6 +363,7 @@ export async function registerToTournament(
           playerIds: row.player_ids,
           registeredBy: row.registered_by,
           status: row.status,
+          paidTransactionId: (row.paid_transaction_id as string | null) ?? null,
           createdAt: row.created_at,
         });
       },

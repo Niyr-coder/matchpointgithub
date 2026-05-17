@@ -5788,7 +5788,7 @@ export type Database = {
         Row: {
           amount_cents: number
           cash_session_id: string | null
-          club_id: string
+          club_id: string | null
           created_at: string
           created_by: string | null
           currency: Database["public"]["Enums"]["mp_currency"]
@@ -5815,7 +5815,7 @@ export type Database = {
         Insert: {
           amount_cents: number
           cash_session_id?: string | null
-          club_id: string
+          club_id?: string | null
           created_at?: string
           created_by?: string | null
           currency: Database["public"]["Enums"]["mp_currency"]
@@ -5842,7 +5842,7 @@ export type Database = {
         Update: {
           amount_cents?: number
           cash_session_id?: string | null
-          club_id?: string
+          club_id?: string | null
           created_at?: string
           created_by?: string | null
           currency?: Database["public"]["Enums"]["mp_currency"]

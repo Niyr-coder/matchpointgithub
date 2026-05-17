@@ -188,6 +188,11 @@ export async function publishEvent(input: unknown): Promise<ActionResult<EventRo
 }
 
 // ── registerToEvent (idempotent) ───────────────────────────────────────
+// Si el evento tiene price_cents > 0, se crea una transaction en estado
+// 'pending_proof' y la inscripción queda 'pending_payment' hasta que el
+// admin apruebe el comprobante (ver payment-proofs.approvePaymentProofAdmin).
+// La capacidad cuenta tanto 'registered' como 'pending_payment' para evitar
+// que se sobrevendan cupos mientras hay pagos pendientes.
 export async function registerToEvent(input: unknown): Promise<ActionResult<EventRegistration>> {
   return runAction(z.object({ id: UuidSchema }), input, async ({ id }) => {
     const userId = await requireUserId();
@@ -198,7 +203,7 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
         const supabase = await getServerClient();
         const { data: event } = await supabase
           .from("events")
-          .select("status,capacity")
+          .select("status,capacity,price_cents,currency,club_id")
           .eq("id", id)
           .single();
         if (!event) throw new MpError("EVENTS.NOT_FOUND", "Event not found", 404);
@@ -214,17 +219,44 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
             .from("event_registrations")
             .select("*", { count: "exact", head: true })
             .eq("event_id", id)
-            .eq("status", "registered");
+            .in("status", ["registered", "pending_payment"]);
           if ((count ?? 0) >= (event.capacity as number)) {
             throw new MpError("EVENTS.FULL", "Event is at capacity", 409);
           }
         }
+
+        const priceCents = (event.price_cents as number) ?? 0;
+        let paidTransactionId: string | null = null;
+
+        if (priceCents > 0) {
+          const { data: tx, error: txErr } = await supabase
+            .from("transactions")
+            .insert({
+              club_id: (event.club_id as string | null) ?? null,
+              kind: "event",
+              ref_id: id,
+              customer_user_id: userId,
+              amount_cents: priceCents,
+              currency: ((event.currency as string | null) ?? "USD"),
+              method: "transfer",
+              status: "pending_proof",
+              created_by: userId,
+            } as never)
+            .select("id")
+            .single();
+          if (txErr || !tx) {
+            throw new MpError("EVENTS.TX_CREATE_FAILED", txErr?.message ?? "tx error", 500);
+          }
+          paidTransactionId = tx.id as string;
+        }
+
         const { data: row, error } = await supabase
           .from("event_registrations")
           .insert({
             event_id: id,
             user_id: userId,
-            status: "registered",
+            status: paidTransactionId ? "pending_payment" : "registered",
+            paid_transaction_id: paidTransactionId,
           } as never)
           .select()
           .single();
@@ -239,6 +271,7 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
           eventId: row.event_id,
           userId: row.user_id,
           status: row.status,
+          paidTransactionId: (row.paid_transaction_id as string | null) ?? null,
           createdAt: row.created_at,
         });
       },
