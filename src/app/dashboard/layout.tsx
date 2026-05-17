@@ -4,7 +4,7 @@ import { ToastProvider } from "@/components/dashboard/ToastProvider";
 import { PromptModalProvider } from "@/components/dashboard/widgets/PromptModal";
 import { DashboardModals } from "@/components/dashboard/modals/DashboardModals";
 import { getSession } from "@/lib/auth/session";
-import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 
 export const metadata = {
   title: "MatchPoint · Dashboard",
@@ -19,8 +19,13 @@ export const metadata = {
 // y el timestamp string cuando ya completó el wizard.
 type OnboardedAtState = { profileExists: false } | { profileExists: true; onboardedAt: string | null };
 
+// Usamos el admin client (service role) en vez del server client porque
+// unstable_cache prohíbe acceder a fuentes dinámicas como cookies()/headers()
+// dentro de su scope, y getServerClient() lee cookies para hidratar la sesión.
+// Aquí el userId ya viene resuelto desde afuera (getSession antes del cache),
+// así que leer onboarded_at sin RLS es seguro: el cache key es por userId.
 async function readOnboardedAtUncached(userId: string): Promise<OnboardedAtState> {
-  const supabase = await getServerClient();
+  const supabase = getAdminClient();
   const { data } = await supabase
     .from("profiles")
     .select("onboarded_at")
