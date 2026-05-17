@@ -1,15 +1,52 @@
-// ReservarCanchaDrawer — migrado 1:1 desde ui_kits/dashboard/ClubesActionsModals.jsx (líneas 50-214)
-// Drawer slide-in desde la derecha. Escucha 'mp-open-reservar' con detail = { name, city, price, sport }
+// ReservarCanchaDrawer — drawer slide-in para reservar cancha.
+// Escucha 'mp-open-reservar' con detail = {
+//   name, city, price, sport?, clubId?, clubSlug?
+// }
+// Modo real (clubId + clubSlug presentes): fetcha canchas reales, calcula
+// disponibilidad por cancha/dia y crea la reserva via POST /api/v1/reservations.
+// Modo demo (sin esos campos): muestra canchas y horarios mock; el boton
+// confirmar solo navega a la pantalla "reserva confirmada" sin tocar DB.
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 
-type Club = { name: string; city?: string; price?: number; sport?: string };
+type Sport = "pickleball" | "padel" | "tennis" | "futbol";
 
-const HOURS = ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"];
-const TAKEN = new Set(["18:30", "20:00"]);
+type EventDetail = {
+  name?: string;
+  city?: string;
+  price?: number;
+  sport?: Sport;
+  clubId?: string;
+  clubSlug?: string;
+};
+
+type Club = {
+  name: string;
+  city?: string;
+  price?: number;
+  sport?: Sport;
+  clubId?: string;
+  clubSlug?: string;
+};
+
+type Court = { id: string; name: string; ordinal: number; active: boolean };
+type Duration = 60 | 90;
+
 const DAY_NAMES_ES = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 const MONTH_SHORT_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+// Ventana de reserva: 09:00 → 22:00. Slots cada 30 min. El último start
+// permitido es 22:00 - duración (60 min → 21:00; 90 min → 20:30).
+const SLOT_OPEN_MIN = 9 * 60;
+const SLOT_CLOSE_MIN = 22 * 60;
+const SLOT_STEP_MIN = 30;
+
+const INVITE_AVATARS = [
+  "linear-gradient(135deg,#10b981,#047857)",
+  "linear-gradient(135deg,#0a0a0a,#374151)",
+  "linear-gradient(135deg,#7c3aed,#db2777)",
+];
 
 type DayOption = {
   label: string;     // "HOY" / "LUN" / "MAR" …
@@ -18,9 +55,7 @@ type DayOption = {
   iso: string;       // "2026-05-17"
 };
 
-// Construye N días consecutivos desde hoy hacia adelante. Nunca retrocede:
-// si hoy es domingo, la lista arranca en domingo y avanza, no muestra el
-// viernes pasado.
+// 7 días consecutivos desde hoy; nunca retrocede.
 function buildUpcomingDays(count = 7): DayOption[] {
   const out: DayOption[] = [];
   const today = new Date();
@@ -36,36 +71,125 @@ function buildUpcomingDays(count = 7): DayOption[] {
   }
   return out;
 }
-const INVITE_AVATARS = [
-  "linear-gradient(135deg,#10b981,#047857)",
-  "linear-gradient(135deg,#0a0a0a,#374151)",
-  "linear-gradient(135deg,#7c3aed,#db2777)",
-];
+
+function buildStartSlots(duration: Duration): string[] {
+  const last = SLOT_CLOSE_MIN - duration;
+  const out: string[] = [];
+  for (let m = SLOT_OPEN_MIN; m <= last; m += SLOT_STEP_MIN) {
+    out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function slotToMin(slot: string): number {
+  const [h, m] = slot.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function combineLocalIso(dayIso: string, slot: string): string {
+  // Construye un Date local desde "YYYY-MM-DD" + "HH:MM" y devuelve ISO UTC.
+  const [y, mo, d] = dayIso.split("-").map(Number);
+  const [h, mi] = slot.split(":").map(Number);
+  return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
+}
+
+function addMinutesIso(iso: string, mins: number): string {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
+}
+
+type ExistingReservation = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+};
+
+// Slot S (HH:MM) está ocupado si [S, S+duration) se cruza con cualquier
+// reserva activa de la lista. Ignoramos status='cancelled'.
+function computeTakenSet(
+  dayIso: string,
+  slots: string[],
+  duration: Duration,
+  existing: ExistingReservation[],
+): Set<string> {
+  const ranges = existing
+    .filter((r) => r.status !== "cancelled")
+    .map((r) => ({ start: new Date(r.startsAt).getTime(), end: new Date(r.endsAt).getTime() }));
+  const taken = new Set<string>();
+  for (const slot of slots) {
+    const start = new Date(combineLocalIso(dayIso, slot)).getTime();
+    const end = start + duration * 60_000;
+    for (const r of ranges) {
+      if (start < r.end && end > r.start) {
+        taken.add(slot);
+        break;
+      }
+    }
+  }
+  return taken;
+}
 
 export function ReservarCanchaDrawer() {
   const [open, setOpen] = useState(false);
   const [club, setClub] = useState<Club | null>(null);
   const [day, setDay] = useState(0);
-  const [court, setCourt] = useState(3);
-  const [time, setTime] = useState("19:30");
-  const [done, setDone] = useState(false);
+  const [duration, setDuration] = useState<Duration>(90);
+  const [courts, setCourts] = useState<Court[] | null>(null);
+  const [courtId, setCourtId] = useState<string | null>(null);
+  const [mockCourtIdx, setMockCourtIdx] = useState(0);
+  const [time, setTime] = useState<string | null>(null);
+  const [existing, setExisting] = useState<ExistingReservation[]>([]);
+  const [loadingAvail, setLoadingAvail] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ id: string } | null>(null);
   const [enter, setEnter] = useState(false);
   // Construido una sola vez al montar para no derivar fechas en cada render.
   const [days] = useState<DayOption[]>(() => buildUpcomingDays(7));
   const selectedDay = days[day] ?? days[0];
 
+  const realMode = !!(club?.clubId && club?.clubSlug);
+  const slots = useMemo(() => buildStartSlots(duration), [duration]);
+  const taken = useMemo(
+    () => computeTakenSet(selectedDay.iso, slots, duration, existing),
+    [selectedDay.iso, slots, duration, existing],
+  );
+
+  const done = !!created;
+  const courtLabel = (() => {
+    if (realMode && courts && courtId) {
+      const c = courts.find((x) => x.id === courtId);
+      return c?.name ?? `Cancha ${c?.ordinal ?? "?"}`;
+    }
+    return `C${mockCourtIdx + 1}`;
+  })();
+
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<Partial<Club>>).detail;
-      const c: Club = detail?.name
-        ? { name: detail.name, city: detail.city, price: detail.price, sport: detail.sport }
+      const detail = (e as CustomEvent<EventDetail>).detail ?? {};
+      const c: Club = detail.name
+        ? {
+            name: detail.name,
+            city: detail.city,
+            price: detail.price,
+            sport: detail.sport,
+            clubId: detail.clubId,
+            clubSlug: detail.clubSlug,
+          }
         : { name: "Club Norte Pickleball", city: "Cumbayá · 4 canchas outdoor", price: 14 };
       setClub(c);
       setOpen(true);
       setDay(0);
-      setCourt(3);
-      setTime("19:30");
-      setDone(false);
+      setDuration(90);
+      setCourts(null);
+      setCourtId(null);
+      setMockCourtIdx(0);
+      setTime(null);
+      setExisting([]);
+      setErrorMsg(null);
+      setCreated(null);
     };
     window.addEventListener("mp-open-reservar", handler);
     return () => window.removeEventListener("mp-open-reservar", handler);
@@ -79,9 +203,148 @@ export function ReservarCanchaDrawer() {
     setEnter(false);
   }, [open]);
 
+  // Carga inicial de canchas reales cuando hay clubSlug.
+  useEffect(() => {
+    if (!open || !club?.clubSlug) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/clubs/${club.clubSlug}/courts`, { cache: "no-store" });
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setErrorMsg(`Canchas: ${json?.error?.message ?? "no se pudieron cargar"}`);
+          setCourts([]);
+          return;
+        }
+        const list: Court[] = (json.data ?? [])
+          .map((c: Record<string, unknown>) => ({
+            id: c.id as string,
+            name: (c.name as string) ?? `Cancha ${c.ordinal ?? "?"}`,
+            ordinal: (c.ordinal as number) ?? 0,
+            active: (c.active as boolean) ?? true,
+          }))
+          .filter((c: Court) => c.active)
+          .sort((a: Court, b: Court) => a.ordinal - b.ordinal);
+        setCourts(list);
+        setCourtId(list[0]?.id ?? null);
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMsg(`Canchas: ${err instanceof Error ? err.message : "error de red"}`);
+          setCourts([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, club?.clubSlug]);
+
+  // Carga reservas existentes para el día/cancha en modo real.
+  const loadAvailability = useCallback(async () => {
+    if (!realMode || !club?.clubId || !courtId) return;
+    setLoadingAvail(true);
+    try {
+      const fromIso = combineLocalIso(selectedDay.iso, "00:00");
+      const toIso = addMinutesIso(fromIso, 24 * 60);
+      const params = new URLSearchParams({
+        clubId: club.clubId,
+        courtId,
+        from: fromIso,
+        to: toIso,
+        pageSize: "100",
+      });
+      const res = await fetch(`/api/v1/reservations?${params}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) {
+        setErrorMsg(`Disponibilidad: ${json?.error?.message ?? "no se pudo cargar"}`);
+        setExisting([]);
+      } else {
+        setExisting(
+          (json.data ?? []).map((r: Record<string, unknown>) => ({
+            id: r.id as string,
+            startsAt: r.startsAt as string,
+            endsAt: r.endsAt as string,
+            status: r.status as string,
+          })),
+        );
+      }
+    } catch (err) {
+      setErrorMsg(`Disponibilidad: ${err instanceof Error ? err.message : "error de red"}`);
+      setExisting([]);
+    } finally {
+      setLoadingAvail(false);
+    }
+  }, [realMode, club?.clubId, courtId, selectedDay.iso]);
+
+  useEffect(() => {
+    if (!realMode) {
+      // Modo demo: simular 2 slots ocupados.
+      setExisting([]);
+      return;
+    }
+    loadAvailability();
+  }, [realMode, loadAvailability]);
+
+  // Si el slot seleccionado quedó ocupado tras cambiar día/cancha/duración,
+  // lo limpiamos para forzar al usuario a re-elegir.
+  useEffect(() => {
+    if (time && taken.has(time)) setTime(null);
+    if (time && !slots.includes(time)) setTime(null);
+  }, [time, taken, slots]);
+
+  const handleConfirm = async () => {
+    if (!time) {
+      setErrorMsg("Elige un horario disponible.");
+      return;
+    }
+    setErrorMsg(null);
+    if (!realMode) {
+      // Modo demo: marca un id ficticio para mostrar la pantalla de éxito.
+      setCreated({ id: "demo-2614" });
+      return;
+    }
+    if (!club?.clubId || !courtId) {
+      setErrorMsg("Falta clubId o cancha.");
+      return;
+    }
+    const startsAt = combineLocalIso(selectedDay.iso, time);
+    const endsAt = addMinutesIso(startsAt, duration);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/v1/reservations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clubId: club.clubId,
+          courtId,
+          startsAt,
+          endsAt,
+          sport: club.sport ?? "pickleball",
+          visibility: "private",
+          maxPlayers: 4,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setErrorMsg(json?.error?.message ?? `HTTP ${res.status}`);
+        // Si fue SLOT_TAKEN refrescamos disponibilidad.
+        if (json?.error?.code === "RESERVATION.SLOT_TAKEN") {
+          await loadAvailability();
+        }
+      } else {
+        setCreated({ id: (json.data?.id as string) ?? "—" });
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Error de red");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!open || !club) return null;
   const close = () => setOpen(false);
-  const price = (club.price || 14) * 1.5;
+  const price = (club.price || 14) * (duration / 60);
 
   return (
     <div
@@ -122,6 +385,7 @@ export function ReservarCanchaDrawer() {
           <div>
             <div className="label-mp" style={{ color: "var(--primary)" }}>
               ● {done ? "Reserva confirmada" : "Reserva rápida"}
+              {!realMode && !done ? " · DEMO" : ""}
             </div>
             <div
               className="font-heading"
@@ -167,9 +431,24 @@ export function ReservarCanchaDrawer() {
         {!done ? (
           <>
             <div style={{ padding: "16px 22px", overflow: "auto", flex: 1 }}>
-              <div className="label-mp" style={{ marginBottom: 8 }}>
-                1 · Día
-              </div>
+              {!realMode && (
+                <div
+                  style={{
+                    padding: 10,
+                    background: "#fef3c7",
+                    border: "1px solid #fbbf24",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    color: "#78350f",
+                    marginBottom: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Modo demo: este drawer no fue abierto desde un club específico, así que las canchas y horarios son simulados. Abre el drawer desde el listado de clubes para reservar de verdad.
+                </div>
+              )}
+
+              <div className="label-mp" style={{ marginBottom: 8 }}>1 · Día</div>
               <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                 {days.map((opt, i) => (
                   <button
@@ -185,20 +464,10 @@ export function ReservarCanchaDrawer() {
                       fontFamily: "inherit",
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 800,
-                        color: "var(--muted-fg)",
-                        letterSpacing: "0.1em",
-                      }}
-                    >
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted-fg)", letterSpacing: "0.1em" }}>
                       {opt.label}
                     </div>
-                    <div
-                      className="font-heading"
-                      style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em" }}
-                    >
+                    <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em" }}>
                       {opt.dateNum}
                     </div>
                   </button>
@@ -206,32 +475,81 @@ export function ReservarCanchaDrawer() {
               </div>
 
               <div className="label-mp" style={{ marginBottom: 8 }}>
-                2 · Cancha
+                2 · Cancha{realMode && !courts ? " · cargando…" : ""}
               </div>
-              <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
-                {[1, 2, 3, 4].map((n) => (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 14 }}>
+                {realMode
+                  ? (courts ?? []).map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setCourtId(c.id)}
+                        style={{
+                          flex: "1 1 auto",
+                          minWidth: 60,
+                          padding: "7px 8px",
+                          borderRadius: 8,
+                          border: courtId === c.id ? "2px solid var(--primary)" : "1px solid var(--border)",
+                          background: courtId === c.id ? "#ecfdf5" : "#fff",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    ))
+                  : [1, 2, 3, 4].map((n, idx) => (
+                      <button
+                        key={n}
+                        onClick={() => setMockCourtIdx(idx)}
+                        style={{
+                          flex: 1,
+                          padding: "7px 4px",
+                          borderRadius: 8,
+                          border: mockCourtIdx === idx ? "2px solid var(--primary)" : "1px solid var(--border)",
+                          background: mockCourtIdx === idx ? "#ecfdf5" : "#fff",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        C{n}
+                      </button>
+                    ))}
+                {realMode && courts && courts.length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                    Este club no tiene canchas activas.
+                  </div>
+                )}
+              </div>
+
+              <div className="label-mp" style={{ marginBottom: 8 }}>3 · Duración</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                {([60, 90] as Duration[]).map((m) => (
                   <button
-                    key={n}
-                    onClick={() => setCourt(n)}
+                    key={m}
+                    onClick={() => setDuration(m)}
                     style={{
                       flex: 1,
-                      padding: "7px 4px",
+                      padding: "8px 4px",
                       borderRadius: 8,
-                      border: court === n ? "2px solid var(--primary)" : "1px solid var(--border)",
-                      background: court === n ? "#ecfdf5" : "#fff",
+                      border: duration === m ? "2px solid var(--primary)" : "1px solid var(--border)",
+                      background: duration === m ? "#ecfdf5" : "#fff",
                       cursor: "pointer",
                       fontFamily: "inherit",
-                      fontSize: 11,
-                      fontWeight: 800,
+                      fontSize: 11.5,
+                      fontWeight: 900,
                     }}
                   >
-                    C{n}
+                    {m} min
                   </button>
                 ))}
               </div>
 
               <div className="label-mp" style={{ marginBottom: 8 }}>
-                3 · Hora · <span style={{ color: "var(--muted-fg)" }}>90 min</span>
+                4 · Hora{loadingAvail ? " · cargando disponibilidad…" : ""}
               </div>
               <div
                 style={{
@@ -241,9 +559,9 @@ export function ReservarCanchaDrawer() {
                   marginBottom: 14,
                 }}
               >
-                {HOURS.map((h) => {
+                {slots.map((h) => {
                   const isSel = h === time;
-                  const isTaken = TAKEN.has(h);
+                  const isTaken = taken.has(h);
                   return (
                     <button
                       key={h}
@@ -271,7 +589,7 @@ export function ReservarCanchaDrawer() {
               </div>
 
               <div className="label-mp" style={{ marginBottom: 8 }}>
-                4 · Invitar jugadores · <span style={{ color: "var(--muted-fg)" }}>opcional</span>
+                5 · Invitar jugadores · <span style={{ color: "var(--muted-fg)" }}>opcional</span>
               </div>
               <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                 {["CA", "JM", "AR"].map((i, idx) => (
@@ -332,10 +650,10 @@ export function ReservarCanchaDrawer() {
                 >
                   <div>
                     <div style={{ fontSize: 11.5, fontWeight: 800 }}>
-                      {selectedDay.label} {selectedDay.dateNum} {selectedDay.monthShort} · {time}
+                      {selectedDay.label} {selectedDay.dateNum} {selectedDay.monthShort} · {time ?? "—"}
                     </div>
                     <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.6)" }}>
-                      Cancha {court} · 90 min
+                      {courtLabel} · {duration} min
                     </div>
                   </div>
                   <div
@@ -359,6 +677,22 @@ export function ReservarCanchaDrawer() {
                   </span>
                 </div>
               </div>
+
+              {errorMsg && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 10,
+                    background: "#fee2e2",
+                    border: "1px solid #fca5a5",
+                    borderRadius: 8,
+                    fontSize: 11.5,
+                    color: "#b91c1c",
+                  }}
+                >
+                  {errorMsg}
+                </div>
+              )}
             </div>
 
             <div
@@ -378,11 +712,12 @@ export function ReservarCanchaDrawer() {
               </button>
               <button
                 className="btn btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => setDone(true)}
+                style={{ flex: 1, opacity: submitting || !time ? 0.6 : 1 }}
+                onClick={handleConfirm}
+                disabled={submitting || !time}
               >
                 <Icon name="lock" size={13} color="#fff" />
-                Confirmar y pagar
+                {submitting ? "Reservando…" : "Confirmar y pagar"}
               </button>
             </div>
           </>
@@ -441,7 +776,7 @@ export function ReservarCanchaDrawer() {
                 </div>
                 <div>
                   <div className="label-mp" style={{ color: "rgba(255,255,255,0.7)" }}>
-                    Reserva #RV-2614
+                    Reserva #{created?.id.slice(0, 8) ?? "—"}
                   </div>
                   <div
                     className="font-heading"
@@ -463,10 +798,10 @@ export function ReservarCanchaDrawer() {
               {(
                 [
                   ["Club", club.name],
-                  ["Cancha", "Cancha " + court + " · Outdoor"],
+                  ["Cancha", courtLabel],
                   ["Fecha", `${selectedDay.label} ${selectedDay.dateNum} ${selectedDay.monthShort}`],
-                  ["Hora", time + " · 90 min"],
-                  ["Pago", "$" + price.toFixed(2) + " · Visa ··4886"],
+                  ["Hora", `${time ?? "—"} · ${duration} min`],
+                  ["Total", `$${price.toFixed(2)}`],
                 ] as [string, string][]
               ).map(([k, v]) => (
                 <div
