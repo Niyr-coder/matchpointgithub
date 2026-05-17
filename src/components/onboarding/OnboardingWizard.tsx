@@ -1,16 +1,15 @@
 // Wizard de onboarding post-signup (4 pasos).
 //
-// Comportamiento:
-//  · Al montar (en /dashboard/*) consulta `getOnboardingStatus()`.
-//    Si `completed=true` no renderiza nada. Si está pending, abre modal
-//    en el `currentStep` reportado por el server.
-//  · Cada paso persiste su campo con `saveOnboardingStep()` y avanza.
-//  · El botón "Saltar onboarding" del header llama `skipOnboarding()`
-//    y marca `onboarded_at = now()`, así no vuelve a aparecer.
-//  · Si el user cierra el modal sin completar (Esc, clic afuera, X),
-//    NO marcamos onboarded_at: lo que ya guardó queda persistido y el
-//    wizard reaparecerá en la próxima visita al dashboard, retomando
-//    desde el primer paso pendiente.
+// Dos modos:
+//  · mode='page' (default actual del flujo): renderiza fullscreen sin overlay
+//    cerrable, sin X ni "Saltar". Completar es obligatorio. Se usa en
+//    /onboarding/page.tsx, que es a donde el layout del dashboard redirige
+//    cuando profiles.onboarded_at es null.
+//  · mode='modal' (legacy/back-compat): renderiza como modal cerrable con X
+//    y botón "Saltar onboarding". No se gatilla automáticamente desde
+//    DashboardModals — quedó disponible para casos puntuales.
+//
+// Cada paso persiste su campo con `saveOnboardingStep()` y avanza.
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -47,20 +46,32 @@ const SKILLS: { value: Skill; label: string; sub: string }[] = [
   { value: "pro", label: "Profesional", sub: "Nivel torneo / federado" },
 ];
 
-export function OnboardingWizard() {
+export function OnboardingWizard({
+  mode = "page",
+  initialStatus,
+}: {
+  mode?: "page" | "modal";
+  initialStatus?: OnboardingStatus;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const inDashboard = pathname?.startsWith("/dashboard") ?? false;
+  const isPage = mode === "page";
 
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
-  const [status, setStatus] = useState<OnboardingStatus | null>(null);
+  // En mode='page' arrancamos open=true siempre; el server ya decidió que
+  // toca onboardear (si no, no estaríamos en /onboarding).
+  const [open, setOpen] = useState(isPage);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(
+    initialStatus ? initialStatus.currentStep : 0,
+  );
+  const [status, setStatus] = useState<OnboardingStatus | null>(initialStatus ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const checkedRef = useRef(false);
 
-  // Chequeo inicial: solo en /dashboard/*, una vez por mount.
+  // Solo en modal: consulta de status al montar (en page el server ya lo hizo).
   useEffect(() => {
+    if (isPage) return;
     if (!inDashboard) return;
     if (checkedRef.current) return;
     checkedRef.current = true;
@@ -69,25 +80,24 @@ export function OnboardingWizard() {
       try {
         const res = await getOnboardingStatus();
         if (cancelled) return;
-        if (!res.ok) return; // si el endpoint falla, no bloqueamos al user
+        if (!res.ok) return;
         if (res.data.completed) return;
         setStatus(res.data);
         setStep(res.data.currentStep);
         setOpen(true);
       } catch {
-        // silencioso: no bloquea el dashboard si falla
+        /* silencioso */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [inDashboard]);
+  }, [isPage, inDashboard]);
 
   const close = useCallback(() => {
-    // Cerrar sin completar: el progreso parcial ya está persistido en DB.
-    // El wizard reaparecerá en la próxima visita al dashboard.
+    if (isPage) return; // en page no se cierra
     setOpen(false);
-  }, []);
+  }, [isPage]);
 
   const handleSkip = useCallback(async () => {
     setBusy(true);
@@ -161,14 +171,71 @@ export function OnboardingWizard() {
         setError(res.error?.message ?? "No se pudo finalizar el onboarding");
         return;
       }
-      setOpen(false);
-      router.refresh();
+      if (isPage) {
+        // En mode page navegamos al dashboard al terminar.
+        router.replace("/dashboard/user");
+      } else {
+        setOpen(false);
+        router.refresh();
+      }
     } finally {
       setBusy(false);
     }
-  }, [router]);
+  }, [router, isPage]);
 
   if (!open) return null;
+
+  // Layout: en page tomamos toda la pantalla (sin overlay clickable, sin X).
+  if (isPage) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Bienvenido a MatchPoint"
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "linear-gradient(180deg, #0a0a0a 0%, #064e3b 100%)",
+          zIndex: 220,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+        }}
+      >
+        <div
+          className="card"
+          style={{ padding: 0, overflow: "hidden", width: 560, maxWidth: "100%" }}
+        >
+          <WizardHeader step={step} onSkip={null} onClose={null} busy={busy} />
+          <div style={{ padding: 24, minHeight: 340 }}>
+            {step === 0 && <StepSport busy={busy} onPick={handleSport} />}
+            {step === 1 && <StepSkill busy={busy} onPick={handleSkill} onSkip={() => setStep(2)} />}
+            {step === 2 && <StepClub busy={busy} onPick={handleClub} />}
+            {step === 3 && (
+              <StepFinish busy={busy} onFinish={handleFinish} summary={status} />
+            )}
+            {error && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: "10px 12px",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  color: "#991b1b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -235,8 +302,8 @@ function WizardHeader({
   busy,
 }: {
   step: 0 | 1 | 2 | 3;
-  onSkip: () => void;
-  onClose: () => void;
+  onSkip: (() => void) | null;
+  onClose: (() => void) | null;
   busy: boolean;
 }) {
   const pct = ((step + 1) / 4) * 100;
@@ -255,38 +322,42 @@ function WizardHeader({
           Paso {step + 1} de 4
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            onClick={onSkip}
-            disabled={busy}
-            className="btn"
-            style={{
-              background: "transparent",
-              border: 0,
-              color: "var(--muted-fg)",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: busy ? "not-allowed" : "pointer",
-            }}
-          >
-            Saltar onboarding
-          </button>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              background: "var(--muted)",
-              border: 0,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="x" size={13} />
-          </button>
+          {onSkip && (
+            <button
+              onClick={onSkip}
+              disabled={busy}
+              className="btn"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "var(--muted-fg)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: busy ? "not-allowed" : "pointer",
+              }}
+            >
+              Saltar onboarding
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "var(--muted)",
+                border: 0,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="x" size={13} />
+            </button>
+          )}
         </div>
       </div>
       <div style={{ height: 3, background: "var(--muted)" }}>

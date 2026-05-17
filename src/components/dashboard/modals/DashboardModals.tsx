@@ -7,7 +7,9 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { CarritoModal } from "./CarritoModal";
-import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+// El wizard de onboarding ya no se monta acá. Ahora vive en /onboarding
+// como página dedicada y `dashboard/layout.tsx` redirige cuando
+// profiles.onboarded_at es null.
 
 type LazyEvents = readonly string[];
 
@@ -77,9 +79,6 @@ export function DashboardModals() {
       <CarritoModal />
       {evento && <CrearEventoModal />}
       {clase && <InscribirClaseModal />}
-      {/* Wizard de onboarding: se renderiza siempre, internamente decide si abrir.
-          Solo aparece en /dashboard/* cuando profiles.onboarded_at IS NULL. */}
-      <OnboardingWizard />
     </>
   );
 }
