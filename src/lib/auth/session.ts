@@ -2,6 +2,7 @@
 // Server Components to read who is doing what.
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import type { RoleKey } from "@/lib/roles";
@@ -25,7 +26,12 @@ export type SessionResult =
   | { authenticated: true; session: SessionShape }
   | { authenticated: false; session: null };
 
-export async function getSession(): Promise<SessionResult> {
+// React.cache memoiza el resultado por request. Múltiples server components
+// del dashboard (layout, [role]/layout, UserHome, RankingScreen, EventosScreen)
+// invocan getSession en el mismo render; sin cache cada llamada cuesta un
+// roundtrip a supabase.auth.getUser(). El cache se invalida automáticamente
+// entre requests.
+export const getSession = cache(async (): Promise<SessionResult> => {
   const supabase = await getServerClient();
   const {
     data: { user },
@@ -46,7 +52,7 @@ export async function getSession(): Promise<SessionResult> {
       activeClubId,
     },
   };
-}
+});
 
 export async function requireSession(): Promise<SessionShape> {
   const r = await getSession();

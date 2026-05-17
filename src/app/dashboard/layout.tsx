@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { ToastProvider } from "@/components/dashboard/ToastProvider";
 import { PromptModalProvider } from "@/components/dashboard/widgets/PromptModal";
 import { DashboardModals } from "@/components/dashboard/modals/DashboardModals";
@@ -8,6 +9,42 @@ import { getServerClient } from "@/lib/db/client.server";
 export const metadata = {
   title: "MatchPoint · Dashboard",
 };
+
+// Cacheamos el flag `onboarded_at` por userId. La sesión cambia muy poco y este
+// gate se ejecuta en cada request al dashboard; sin cache se traduce a 1 query
+// extra a profiles por navegación. La invalidación se hace desde las actions
+// `saveOnboardingStep` (paso finish) y `skipOnboarding` con revalidateTag.
+// Devuelve "missing" cuando no hay fila en profiles (caso borde durante el
+// trigger de signup), "null" cuando la fila existe pero onboarded_at IS NULL,
+// y el timestamp string cuando ya completó el wizard.
+type OnboardedAtState = { profileExists: false } | { profileExists: true; onboardedAt: string | null };
+
+async function readOnboardedAtUncached(userId: string): Promise<OnboardedAtState> {
+  const supabase = await getServerClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("onboarded_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!data) return { profileExists: false };
+  return { profileExists: true, onboardedAt: (data.onboarded_at as string | null | undefined) ?? null };
+}
+
+function readOnboardedAtCached(userId: string): Promise<OnboardedAtState> {
+  // unstable_cache cachea por la combinación de keyParts; el tag permite
+  // invalidación quirúrgica por usuario cuando termina/skipea el wizard.
+  const fn = unstable_cache(
+    async () => readOnboardedAtUncached(userId),
+    ["dashboard:onboarded_at", userId],
+    {
+      tags: [`onboarding:${userId}`],
+      // Revalidación pasiva cada 5 min como red de seguridad; la invalidación
+      // activa por tag es la fuente de verdad.
+      revalidate: 300,
+    },
+  );
+  return fn();
+}
 
 // Gate de onboarding: si el usuario está autenticado pero no completó el
 // wizard (profiles.onboarded_at IS NULL), lo mandamos a /onboarding antes
@@ -19,13 +56,10 @@ export default async function DashboardLayout({
 }) {
   const session = await getSession();
   if (session.authenticated) {
-    const supabase = await getServerClient();
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("onboarded_at")
-      .eq("id", session.session.userId)
-      .maybeSingle();
-    if (profile && profile.onboarded_at == null) {
+    const state = await readOnboardedAtCached(session.session.userId);
+    // Solo redirigimos cuando la fila existe pero onboarded_at IS NULL — mismo
+    // comportamiento que antes del cache (sin fila ⇒ no bloqueamos).
+    if (state.profileExists && state.onboardedAt == null) {
       redirect("/onboarding");
     }
   }

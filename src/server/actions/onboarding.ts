@@ -11,6 +11,7 @@
 //   step 'finish' → profiles.onboarded_at = now()
 import "server-only";
 
+import { updateTag } from "next/cache";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
@@ -126,6 +127,10 @@ export async function saveOnboardingStep(
         .update({ onboarded_at: new Date().toISOString() } as never)
         .eq("id", userId);
       if (error) throw new MpError("ONBOARDING.UPDATE_FAILED", error.message, 500);
+      // updateTag (Next 16, server-action only) invalida y rehidrata el cache
+      // de unstable_cache atado al tag (ver dashboard/layout.tsx) con semántica
+      // read-your-own-writes para el próximo render del dashboard.
+      updateTag(`onboarding:${userId}`);
       return { ok: true as const };
     }
 
@@ -155,6 +160,8 @@ export async function skipOnboarding(): Promise<ActionResult<{ ok: true }>> {
       .update({ onboarded_at: new Date().toISOString() } as never)
       .eq("id", userId);
     if (error) throw new MpError("ONBOARDING.UPDATE_FAILED", error.message, 500);
+    // updateTag — invalida el cache del gate de onboarding (ver dashboard/layout.tsx).
+    updateTag(`onboarding:${userId}`);
     return { ok: true as const };
   });
 }

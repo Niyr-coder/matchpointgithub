@@ -4,15 +4,35 @@ import { getSession } from "@/lib/auth/session";
 import { TournamentFeaturedSchema, type TournamentFeatured } from "@/lib/schemas/tournaments";
 import { EventosScreenClient } from "./EventosScreenClient";
 
-async function fetchTournaments(): Promise<TournamentFeatured[]> {
+export async function EventosScreen() {
+  // Resolvemos sesión una sola vez y compartimos el cliente Supabase entre
+  // ambas queries. La versión previa llamaba getSession()+getServerClient()
+  // dentro de cada helper, lo que costaba 2 viajes a auth.getUser() y 3
+  // instancias del client por render.
+  const session = await getSession();
+  const userId = session.authenticated ? session.session.userId : null;
   const supabase = await getServerClient();
-  const { data } = await supabase
+
+  const tournamentsPromise = supabase
     .from("tournaments_public_summary")
     .select("*")
     .order("starts_at", { ascending: true })
     .limit(60);
-  if (!data) return [];
-  return data
+
+  const myRegisteredPromise = userId
+    ? supabase
+        .from("registrations")
+        .select("tournament_id")
+        .contains("player_ids", [userId])
+        .in("status", ["pending", "accepted"])
+    : Promise.resolve({ data: [] as { tournament_id: string }[] });
+
+  const [tournamentsRes, myRegisteredRes] = await Promise.all([
+    tournamentsPromise,
+    myRegisteredPromise,
+  ]);
+
+  const tournaments: TournamentFeatured[] = (tournamentsRes.data ?? [])
     .map((row) => {
       try {
         return TournamentFeaturedSchema.parse({
@@ -37,27 +57,11 @@ async function fetchTournaments(): Promise<TournamentFeatured[]> {
       }
     })
     .filter((t): t is TournamentFeatured => t != null);
-}
 
-async function fetchMyRegisteredIds(): Promise<string[]> {
-  const session = await getSession();
-  if (!session.authenticated) return [];
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("registrations")
-    .select("tournament_id")
-    .contains("player_ids", [session.session.userId])
-    .in("status", ["pending", "accepted"]);
-  return (data ?? []).map((r) => r.tournament_id as string);
-}
+  const myRegisteredIds = (myRegisteredRes.data ?? []).map(
+    (r) => r.tournament_id as string,
+  );
 
-export async function EventosScreen() {
-  const session = await getSession();
-  const userId = session.authenticated ? session.session.userId : null;
-  const [tournaments, myRegisteredIds] = await Promise.all([
-    fetchTournaments(),
-    fetchMyRegisteredIds(),
-  ]);
   return (
     <EventosScreenClient
       tournaments={tournaments}
