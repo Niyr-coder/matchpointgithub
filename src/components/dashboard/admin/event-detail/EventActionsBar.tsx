@@ -16,13 +16,6 @@ import { searchUsers } from "@/server/actions/roles";
 import { useToast } from "../../ToastProvider";
 import { CancelDialog } from "./primitives";
 
-// TODO(Agente D): `AdminEventDetail` no expone hoy `organizerEmail`. Para
-// habilitar el botón "Contactar organizador" con un mailto: real,
-// `getEventForAdmin` (src/server/actions/events.ts) debería incluir el email
-// del organizador (auth.users.email, ya que profiles no guarda email). Por
-// ahora dejamos el botón disabled con tooltip cuando el dato no existe.
-type MaybeWithEmail = AdminEventDetail & { organizerEmail?: string | null };
-
 export function EventActionsBar({ data }: { data: AdminEventDetail }) {
   const router = useRouter();
   const toast = useToast();
@@ -34,7 +27,7 @@ export function EventActionsBar({ data }: { data: AdminEventDetail }) {
   const canCancel =
     data.event.status !== "cancelled" && data.event.status !== "finished";
 
-  const organizerEmail = (data as MaybeWithEmail).organizerEmail ?? null;
+  const organizerEmail = data.organizerEmail;
   const organizerLabel = data.organizerName ?? "organizador";
 
   const handleCancel = () => {

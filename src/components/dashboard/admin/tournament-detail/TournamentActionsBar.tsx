@@ -12,14 +12,6 @@ import { searchUsers } from "@/server/actions/roles";
 import { useToast } from "../../ToastProvider";
 import { CancelDialog } from "../event-detail/primitives";
 
-// TODO(Agente D): `AdminTournamentDetail` no expone hoy `organizerEmail`.
-// Para que "Contactar organizador" abra un mailto: real,
-// `getTournamentForAdmin` (src/server/actions/tournaments.ts) debería incluir
-// el email del organizador (auth.users.email vía service role; profiles no
-// guarda email). Mientras tanto el botón queda disabled con tooltip cuando el
-// dato no existe.
-type MaybeWithEmail = AdminTournamentDetail & { organizerEmail?: string | null };
-
 export function TournamentActionsBar({ data }: { data: AdminTournamentDetail }) {
   const router = useRouter();
   const toast = useToast();
@@ -31,7 +23,7 @@ export function TournamentActionsBar({ data }: { data: AdminTournamentDetail }) 
   const canCancel =
     data.tournament.status !== "cancelled" && data.tournament.status !== "finished";
 
-  const organizerEmail = (data as MaybeWithEmail).organizerEmail ?? null;
+  const organizerEmail = data.organizerEmail;
   const organizerLabel = data.organizerName ?? "organizador";
 
   const handleCancel = () => {

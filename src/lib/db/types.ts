@@ -5797,10 +5797,19 @@ export type Database = {
           id: string
           kind: string
           method: Database["public"]["Enums"]["mp_payment_method"]
+          proof_rejection_reason: string | null
+          proof_reviewed_at: string | null
+          proof_reviewed_by: string | null
+          proof_submitted_at: string | null
+          proof_url: string | null
           provider: string | null
           provider_payment_id: string | null
           receipt_url: string | null
           ref_id: string | null
+          refund_reason: string | null
+          refund_reference: string | null
+          refunded_at: string | null
+          refunded_by: string | null
           status: Database["public"]["Enums"]["mp_payment_status"]
         }
         Insert: {
@@ -5815,10 +5824,19 @@ export type Database = {
           id?: string
           kind: string
           method: Database["public"]["Enums"]["mp_payment_method"]
+          proof_rejection_reason?: string | null
+          proof_reviewed_at?: string | null
+          proof_reviewed_by?: string | null
+          proof_submitted_at?: string | null
+          proof_url?: string | null
           provider?: string | null
           provider_payment_id?: string | null
           receipt_url?: string | null
           ref_id?: string | null
+          refund_reason?: string | null
+          refund_reference?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           status?: Database["public"]["Enums"]["mp_payment_status"]
         }
         Update: {
@@ -5833,10 +5851,19 @@ export type Database = {
           id?: string
           kind?: string
           method?: Database["public"]["Enums"]["mp_payment_method"]
+          proof_rejection_reason?: string | null
+          proof_reviewed_at?: string | null
+          proof_reviewed_by?: string | null
+          proof_submitted_at?: string | null
+          proof_url?: string | null
           provider?: string | null
           provider_payment_id?: string | null
           receipt_url?: string | null
           ref_id?: string | null
+          refund_reason?: string | null
+          refund_reference?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           status?: Database["public"]["Enums"]["mp_payment_status"]
         }
         Relationships: [
@@ -5885,6 +5912,20 @@ export type Database = {
           {
             foreignKeyName: "transactions_customer_user_id_fkey"
             columns: ["customer_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunded_by_fkey"
+            columns: ["refunded_by"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
@@ -6329,6 +6370,15 @@ export type Database = {
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      fn_admin_audit_log: {
+        Args: {
+          p_action: string
+          p_diff?: Json
+          p_entity: string
+          p_entity_id: string
+        }
+        Returns: undefined
+      }
       fn_create_sale: {
         Args: {
           p_club_id: string
@@ -6339,15 +6389,6 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
-      }
-      fn_admin_audit_log: {
-        Args: {
-          p_entity: string
-          p_entity_id: string
-          p_action: string
-          p_diff?: Json
-        }
-        Returns: undefined
       }
       fn_enqueue_notification: {
         Args: {
@@ -7217,6 +7258,8 @@ export type Database = {
         | "refunded"
         | "failed"
         | "disputed"
+        | "pending_proof"
+        | "proof_submitted"
       mp_report_status: "pending" | "reviewing" | "actioned" | "dismissed"
       mp_reservation_status:
         | "booked"
@@ -7451,6 +7494,8 @@ export const Constants = {
         "refunded",
         "failed",
         "disputed",
+        "pending_proof",
+        "proof_submitted",
       ],
       mp_report_status: ["pending", "reviewing", "actioned", "dismissed"],
       mp_reservation_status: [
