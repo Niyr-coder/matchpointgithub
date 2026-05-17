@@ -13,7 +13,11 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-import { TournamentSchema, type Tournament } from "@/lib/schemas/tournaments";
+import {
+  TournamentPaymentPolicySchema,
+  TournamentSchema,
+  type Tournament,
+} from "@/lib/schemas/tournaments";
 
 async function requireAdminUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -52,6 +56,7 @@ function mapTournament(row: Record<string, unknown>): Tournament {
     maxParticipants: (row.max_participants as number | null) ?? null,
     entryFeeCents: row.entry_fee_cents,
     currency: (row.currency as string | null) ?? null,
+    paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     prizePoolCents: (row.prize_pool_cents as number | null) ?? null,
     rulesUrl: (row.rules_url as string | null) ?? null,
     createdAt: row.created_at,
@@ -71,6 +76,7 @@ const UpdateTournamentAdminSchema = z.object({
       registrationClosesAt: z.string().datetime({ offset: true }).nullable().optional(),
       maxParticipants: z.number().int().positive().nullable().optional(),
       entryFeeCents: z.number().int().min(0).optional(),
+      paymentPolicy: TournamentPaymentPolicySchema.optional(),
     })
     .refine((p) => Object.keys(p).length > 0, {
       message: "patch vacío",
@@ -90,7 +96,7 @@ export async function updateTournamentAdmin(
       const { data: existing, error: readErr } = await supabase
         .from("tournaments")
         .select(
-          "id,name,description,starts_at,ends_at,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,status",
+          "id,name,description,starts_at,ends_at,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,status,payment_policy",
         )
         .eq("id", tournamentId)
         .single();
@@ -122,6 +128,8 @@ export async function updateTournamentAdmin(
         update.max_participants = patch.maxParticipants;
       if (patch.entryFeeCents !== undefined)
         update.entry_fee_cents = patch.entryFeeCents;
+      if (patch.paymentPolicy !== undefined)
+        update.payment_policy = patch.paymentPolicy;
 
       const newStart =
         (update.starts_at as string | undefined) ?? (existing.starts_at as string);
@@ -131,6 +139,27 @@ export async function updateTournamentAdmin(
         throw new MpError(
           "TOURNAMENTS.BAD_RANGE",
           "La fecha de inicio debe ser anterior a la de fin",
+          422,
+        );
+      }
+
+      const resultingFee =
+        (update.entry_fee_cents as number | undefined) ??
+        (existing.entry_fee_cents as number);
+      const resultingPolicy =
+        (update.payment_policy as string | undefined) ??
+        (existing.payment_policy as string);
+      if (resultingFee === 0 && resultingPolicy !== "free") {
+        throw new MpError(
+          "TOURNAMENTS.POLICY_MISMATCH",
+          "Torneos sin cuota deben tener policy='free'",
+          422,
+        );
+      }
+      if (resultingFee > 0 && resultingPolicy === "free") {
+        throw new MpError(
+          "TOURNAMENTS.POLICY_MISMATCH",
+          "Torneos con cuota no pueden tener policy='free'; usa prepay/onsite/flexible",
           422,
         );
       }

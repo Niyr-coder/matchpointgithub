@@ -145,6 +145,17 @@ function TournamentEditDialog({
   const [entryFeeCents, setEntryFeeCents] = useState<string>(
     String(data.tournament.entryFeeCents),
   );
+  const [paymentPolicy, setPaymentPolicy] = useState<
+    "free" | "prepay" | "onsite" | "flexible"
+  >(data.tournament.paymentPolicy);
+
+  const effectivePolicy: "free" | "prepay" | "onsite" | "flexible" = (() => {
+    const fee = Number(entryFeeCents);
+    if (Number.isNaN(fee)) return paymentPolicy;
+    if (fee === 0) return "free";
+    if (paymentPolicy === "free") return "prepay";
+    return paymentPolicy;
+  })();
 
   const handleSave = () => {
     const patch: Record<string, unknown> = {};
@@ -174,6 +185,9 @@ function TournamentEditDialog({
     const newFee = Number(entryFeeCents);
     if (!Number.isNaN(newFee) && newFee !== data.tournament.entryFeeCents) {
       patch.entryFeeCents = newFee;
+    }
+    if (effectivePolicy !== data.tournament.paymentPolicy) {
+      patch.paymentPolicy = effectivePolicy;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -316,6 +330,36 @@ function TournamentEditDialog({
             />
           </Field>
         </div>
+
+        {effectivePolicy !== "free" && (
+          <Field label="Política de cobro">
+            <select
+              value={effectivePolicy}
+              onChange={(e) =>
+                setPaymentPolicy(e.target.value as "prepay" | "onsite" | "flexible")
+              }
+              style={inputStyle}
+            >
+              <option value="prepay">Pago previo (comprobante online)</option>
+              <option value="onsite">Pago en sitio (cobro en mostrador)</option>
+              <option value="flexible">El jugador elige al inscribirse</option>
+            </select>
+          </Field>
+        )}
+        {effectivePolicy === "free" && Number(entryFeeCents) === 0 && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--muted-fg)",
+              padding: "8px 10px",
+              background: "var(--muted)",
+              borderRadius: 8,
+              marginTop: 4,
+            }}
+          >
+            Torneo gratis · sin política de cobro.
+          </div>
+        )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
           <button

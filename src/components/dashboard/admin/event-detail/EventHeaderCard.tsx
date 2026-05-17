@@ -126,6 +126,19 @@ function EventEditDialog({
     data.event.capacity != null ? String(data.event.capacity) : "",
   );
   const [priceCents, setPriceCents] = useState<string>(String(data.event.priceCents));
+  const [paymentPolicy, setPaymentPolicy] = useState<
+    "free" | "prepay" | "onsite" | "flexible"
+  >(data.event.paymentPolicy);
+
+  // Mantener policy coherente cuando el admin cambia el precio en el form.
+  // Si baja a 0 → forzar free; si lo sube desde 0 → defaultear a prepay.
+  const effectivePolicy: "free" | "prepay" | "onsite" | "flexible" = (() => {
+    const price = Number(priceCents);
+    if (Number.isNaN(price)) return paymentPolicy;
+    if (price === 0) return "free";
+    if (paymentPolicy === "free") return "prepay";
+    return paymentPolicy;
+  })();
 
   const handleSave = () => {
     const patch: Record<string, unknown> = {};
@@ -141,6 +154,9 @@ function EventEditDialog({
     const newPrice = Number(priceCents);
     if (!Number.isNaN(newPrice) && newPrice !== data.event.priceCents) {
       patch.priceCents = newPrice;
+    }
+    if (effectivePolicy !== data.event.paymentPolicy) {
+      patch.paymentPolicy = effectivePolicy;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -261,6 +277,36 @@ function EventEditDialog({
             />
           </Field>
         </div>
+
+        {effectivePolicy !== "free" && (
+          <Field label="Política de cobro">
+            <select
+              value={effectivePolicy}
+              onChange={(e) =>
+                setPaymentPolicy(e.target.value as "prepay" | "onsite" | "flexible")
+              }
+              style={inputStyle}
+            >
+              <option value="prepay">Pago previo (comprobante online)</option>
+              <option value="onsite">Pago en sitio (cobro en mostrador)</option>
+              <option value="flexible">El jugador elige al inscribirse</option>
+            </select>
+          </Field>
+        )}
+        {effectivePolicy === "free" && Number(priceCents) === 0 && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--muted-fg)",
+              padding: "8px 10px",
+              background: "var(--muted)",
+              borderRadius: 8,
+              marginTop: 4,
+            }}
+          >
+            Evento gratis · sin política de cobro.
+          </div>
+        )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
           <button

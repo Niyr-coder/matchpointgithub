@@ -13,7 +13,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-import { EventSchema, type EventRow } from "@/lib/schemas/events";
+import { EventPaymentPolicySchema, EventSchema, type EventRow } from "@/lib/schemas/events";
 
 async function requireAdminUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -49,6 +49,7 @@ function mapEvent(row: Record<string, unknown>): EventRow {
     capacity: (row.capacity as number | null) ?? null,
     priceCents: row.price_cents,
     currency: (row.currency as string | null) ?? null,
+    paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     visibility: row.visibility,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -65,6 +66,7 @@ const UpdateEventAdminSchema = z.object({
       endsAt: z.string().datetime({ offset: true }).optional(),
       capacity: z.number().int().positive().nullable().optional(),
       priceCents: z.number().int().min(0).optional(),
+      paymentPolicy: EventPaymentPolicySchema.optional(),
     })
     .refine((p) => Object.keys(p).length > 0, {
       message: "patch vacío",
@@ -80,7 +82,7 @@ export async function updateEventAdmin(
 
     const { data: existing, error: readErr } = await supabase
       .from("events")
-      .select("id,name,description,starts_at,ends_at,capacity,price_cents,status")
+      .select("id,name,description,starts_at,ends_at,capacity,price_cents,status,payment_policy")
       .eq("id", eventId)
       .single();
     if (readErr || !existing) {
@@ -102,6 +104,7 @@ export async function updateEventAdmin(
     if (patch.endsAt !== undefined) update.ends_at = patch.endsAt;
     if (patch.capacity !== undefined) update.capacity = patch.capacity;
     if (patch.priceCents !== undefined) update.price_cents = patch.priceCents;
+    if (patch.paymentPolicy !== undefined) update.payment_policy = patch.paymentPolicy;
 
     // Validar coherencia start < end con valores resultantes.
     const newStart = (update.starts_at as string | undefined) ?? (existing.starts_at as string);
@@ -110,6 +113,26 @@ export async function updateEventAdmin(
       throw new MpError(
         "EVENTS.BAD_RANGE",
         "La fecha de inicio debe ser anterior a la de fin",
+        422,
+      );
+    }
+
+    // Validar coherencia precio ↔ policy (mismo CHECK que la DB, mensaje claro).
+    const resultingPrice =
+      (update.price_cents as number | undefined) ?? (existing.price_cents as number);
+    const resultingPolicy =
+      (update.payment_policy as string | undefined) ?? (existing.payment_policy as string);
+    if (resultingPrice === 0 && resultingPolicy !== "free") {
+      throw new MpError(
+        "EVENTS.POLICY_MISMATCH",
+        "Eventos sin precio deben tener policy='free'",
+        422,
+      );
+    }
+    if (resultingPrice > 0 && resultingPolicy === "free") {
+      throw new MpError(
+        "EVENTS.POLICY_MISMATCH",
+        "Eventos con precio no pueden tener policy='free'; usa prepay/onsite/flexible",
         422,
       );
     }
