@@ -2316,6 +2316,7 @@ export type Database = {
           name: string
           organizer_id: string
           partner_id: string | null
+          payment_policy: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents: number
           slug: string
           starts_at: string
@@ -2336,6 +2337,7 @@ export type Database = {
           name: string
           organizer_id: string
           partner_id?: string | null
+          payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents?: number
           slug: string
           starts_at: string
@@ -2356,6 +2358,7 @@ export type Database = {
           name?: string
           organizer_id?: string
           partner_id?: string | null
+          payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents?: number
           slug?: string
           starts_at?: string
@@ -5679,6 +5682,7 @@ export type Database = {
           max_participants: number | null
           name: string
           partner_id: string | null
+          payment_policy: Database["public"]["Enums"]["mp_event_payment_policy"]
           prize_pool_cents: number | null
           registration_closes_at: string | null
           registration_opens_at: string | null
@@ -5704,6 +5708,7 @@ export type Database = {
           max_participants?: number | null
           name: string
           partner_id?: string | null
+          payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           prize_pool_cents?: number | null
           registration_closes_at?: string | null
           registration_opens_at?: string | null
@@ -5729,6 +5734,7 @@ export type Database = {
           max_participants?: number | null
           name?: string
           partner_id?: string | null
+          payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           prize_pool_cents?: number | null
           registration_closes_at?: string | null
           registration_opens_at?: string | null
@@ -7232,6 +7238,7 @@ export type Database = {
       mp_club_doc_status: "pending" | "uploaded" | "approved" | "rejected"
       mp_club_org_type: "private" | "public" | "concession"
       mp_currency: "USD" | "MXN" | "CLP" | "ARS" | "BRL" | "EUR"
+      mp_event_payment_policy: "free" | "prepay" | "onsite" | "flexible"
       mp_event_status:
         | "draft"
         | "published"
@@ -7466,6 +7473,7 @@ export const Constants = {
       mp_club_doc_status: ["pending", "uploaded", "approved", "rejected"],
       mp_club_org_type: ["private", "public", "concession"],
       mp_currency: ["USD", "MXN", "CLP", "ARS", "BRL", "EUR"],
+      mp_event_payment_policy: ["free", "prepay", "onsite", "flexible"],
       mp_event_status: [
         "draft",
         "published",

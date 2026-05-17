@@ -184,6 +184,83 @@ export async function markEventAttendanceAdmin(
   });
 }
 
+// ── markEventNoShowAdmin ───────────────────────────────────────────────
+// Marca la inscripción como 'no_show' (el jugador no se presentó al evento).
+// Si la transacción ligada no está cobrada todavía (pending / pending_proof /
+// proof_submitted), también se marca como 'failed' porque ya no hay nada que
+// cobrar — el cupo se perdió. Si ya estaba 'captured' no se toca el dinero
+// (pagó pero no asistió: el organizador decide qué hacer).
+const NoShowSchema = z.object({
+  registrationId: UuidSchema,
+  reason: z.string().max(500).optional(),
+});
+
+export async function markEventNoShowAdmin(
+  input: unknown,
+): Promise<ActionResult<EventRegistrationRow>> {
+  return runAction(NoShowSchema, input, async ({ registrationId, reason }) => {
+    await requireAdminUserId();
+    const supabase = await getServerClient();
+    const { data: existing } = await supabase
+      .from("event_registrations")
+      .select("id,event_id,user_id,status,paid_transaction_id,created_at")
+      .eq("id", registrationId)
+      .single();
+    if (!existing) {
+      throw new MpError("EVENT_REG.NOT_FOUND", "Inscripción no encontrada", 404);
+    }
+    if (existing.status === "cancelled") {
+      throw new MpError(
+        "EVENT_REG.CANCELLED",
+        "La inscripción está cancelada; no aplica no-show",
+        409,
+      );
+    }
+
+    const { data: updated, error } = await supabase
+      .from("event_registrations")
+      .update({ status: "no_show" } as never)
+      .eq("id", registrationId)
+      .select("id,event_id,user_id,status,paid_transaction_id,created_at")
+      .single();
+    if (error) {
+      throw new MpError("EVENT_REG.NO_SHOW_FAILED", error.message, 500);
+    }
+
+    // Si hay tx ligada y no está captured/refunded, marcarla failed.
+    let txMarkedFailed = false;
+    const txId = existing.paid_transaction_id as string | null;
+    if (txId) {
+      const { data: tx } = await supabase
+        .from("transactions")
+        .select("status")
+        .eq("id", txId)
+        .maybeSingle();
+      if (tx && tx.status !== "captured" && tx.status !== "refunded" && tx.status !== "failed") {
+        await supabase
+          .from("transactions")
+          .update({ status: "failed" } as never)
+          .eq("id", txId);
+        txMarkedFailed = true;
+      }
+    }
+
+    await writeAuditLog({
+      entity: "event_registrations",
+      entityId: registrationId,
+      action: "event_registration.admin_mark_no_show",
+      diff: {
+        previousStatus: existing.status,
+        reason: reason ?? null,
+        linkedTransactionId: txId,
+        txMarkedFailed,
+      },
+    });
+
+    return mapReg(updated);
+  });
+}
+
 // ── transferEventSlotAdmin ─────────────────────────────────────────────
 const TransferSchema = z.object({
   registrationId: UuidSchema,

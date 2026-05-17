@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icon";
 import type { AdminEventDetail } from "@/server/actions/events";
 import {
   markEventAttendanceAdmin,
+  markEventNoShowAdmin,
   removeEventRegistrationAdmin,
   transferEventSlotAdmin,
 } from "@/server/actions/admin-event-registrations";
@@ -23,7 +24,8 @@ type Reg = AdminEventDetail["registrations"][number];
 type DialogState =
   | { kind: "none" }
   | { kind: "remove"; reg: Reg }
-  | { kind: "transfer"; reg: Reg };
+  | { kind: "transfer"; reg: Reg }
+  | { kind: "noShow"; reg: Reg };
 
 export function EventRegistrationsTable({
   regs,
@@ -173,6 +175,10 @@ export function EventRegistrationsTable({
                         closeMenu();
                         setDialog({ kind: "transfer", reg: r });
                       }}
+                      onNoShow={() => {
+                        closeMenu();
+                        setDialog({ kind: "noShow", reg: r });
+                      }}
                       onRemove={() => {
                         closeMenu();
                         setDialog({ kind: "remove", reg: r });
@@ -199,6 +205,29 @@ export function EventRegistrationsTable({
               });
               if (res.ok) {
                 toast({ icon: "check", title: "Inscripción removida" });
+                setDialog({ kind: "none" });
+                router.refresh();
+              } else {
+                toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+              }
+            });
+          }}
+        />
+      )}
+
+      {dialog.kind === "noShow" && (
+        <NoShowDialog
+          reg={dialog.reg}
+          pending={pending}
+          onClose={() => setDialog({ kind: "none" })}
+          onConfirm={(reason) => {
+            startTransition(async () => {
+              const res = await markEventNoShowAdmin({
+                registrationId: dialog.reg.id,
+                reason: reason || undefined,
+              });
+              if (res.ok) {
+                toast({ icon: "check", title: "Marcado como no-show" });
                 setDialog({ kind: "none" });
                 router.refresh();
               } else {
@@ -242,16 +271,19 @@ function RowMenu({
   onClose,
   onAttendance,
   onTransfer,
+  onNoShow,
   onRemove,
 }: {
   reg: Reg;
   onClose: () => void;
   onAttendance: (attended: boolean) => void;
   onTransfer: () => void;
+  onNoShow: () => void;
   onRemove: () => void;
 }) {
   const isCancelled = reg.status === "cancelled";
   const isAttended = reg.status === "attended";
+  const isNoShow = reg.status === "no_show";
   return (
     <>
       <div
@@ -284,6 +316,13 @@ function RowMenu({
             icon="user-cog"
             label="Transferir cupo"
             onClick={onTransfer}
+          />
+        )}
+        {!isCancelled && !isNoShow && (
+          <MenuItem
+            icon="user-x"
+            label="Marcar no-show"
+            onClick={onNoShow}
           />
         )}
         {!isCancelled && (
@@ -388,6 +427,58 @@ function RemoveDialog({
         >
           <Icon name="x-octagon" size={13} color="#fff" />
           {pending ? "Removiendo…" : "Confirmar"}
+        </button>
+      </DialogFooter>
+    </ModalShell>
+  );
+}
+
+function NoShowDialog({
+  reg,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  reg: Reg;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const hasUncapturedTx = reg.paidTransactionId != null;
+  return (
+    <ModalShell onClose={onClose}>
+      <h3
+        className="font-heading"
+        style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
+      >
+        Marcar no-show: {reg.displayName}
+      </h3>
+      <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+        La inscripción queda con estado <strong>no_show</strong>.
+        {hasUncapturedTx
+          ? " Si la transacción ligada no está cobrada, se marca como failed automáticamente. Si ya estaba captured, el dinero no se toca."
+          : " No tiene pago asociado."}
+      </p>
+      <FieldLabel>Motivo (opcional)</FieldLabel>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={3}
+        maxLength={500}
+        placeholder="Queda en el audit log."
+        style={textareaStyle}
+      />
+      <DialogFooter>
+        <SecondaryBtn onClick={onClose} disabled={pending}>Volver</SecondaryBtn>
+        <button
+          onClick={() => onConfirm(reason.trim())}
+          disabled={pending}
+          className="btn"
+          style={{ background: "#0a0a0a", color: "#fff", opacity: pending ? 0.6 : 1 }}
+        >
+          <Icon name="user-x" size={13} color="#fff" />
+          {pending ? "Marcando…" : "Confirmar no-show"}
         </button>
       </DialogFooter>
     </ModalShell>

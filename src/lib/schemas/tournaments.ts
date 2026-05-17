@@ -16,6 +16,10 @@ export const TournamentFormatSchema = z
   .enum(["single_elim", "double_elim", "round_robin", "swiss", "groups_to_knockout"])
   .openapi("TournamentFormat");
 
+export const TournamentPaymentPolicySchema = z
+  .enum(["free", "prepay", "onsite", "flexible"])
+  .openapi("TournamentPaymentPolicy");
+
 export const EventStatusSchema = z
   .enum(["draft", "published", "registration_open", "registration_closed", "live", "finished", "cancelled"])
   .openapi("EventStatus");
@@ -56,6 +60,7 @@ export const TournamentSchema = z
     maxParticipants: z.number().int().nullable(),
     entryFeeCents: z.number().int(),
     currency: MpCurrencySchema.nullable(),
+    paymentPolicy: TournamentPaymentPolicySchema,
     prizePoolCents: z.number().int().nullable(),
     rulesUrl: z.string().nullable(),
     createdAt: IsoDateTimeSchema,

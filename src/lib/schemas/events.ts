@@ -22,6 +22,10 @@ export const EventVisibilitySchema = z
   .enum(["public", "members", "private"])
   .openapi("EventVisibility");
 
+export const EventPaymentPolicySchema = z
+  .enum(["free", "prepay", "onsite", "flexible"])
+  .openapi("EventPaymentPolicy");
+
 export const EventSchema = z
   .object({
     id: UuidSchema,
@@ -39,6 +43,7 @@ export const EventSchema = z
     capacity: z.number().int().nullable(),
     priceCents: z.number().int(),
     currency: MpCurrencySchema.nullable(),
+    paymentPolicy: EventPaymentPolicySchema,
     visibility: EventVisibilitySchema,
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,

@@ -38,6 +38,7 @@ function mapEvent(row: Record<string, unknown>): EventRow {
     capacity: (row.capacity as number | null) ?? null,
     priceCents: row.price_cents,
     currency: (row.currency as string | null) ?? null,
+    paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     visibility: row.visibility,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -188,22 +189,30 @@ export async function publishEvent(input: unknown): Promise<ActionResult<EventRo
 }
 
 // ── registerToEvent (idempotent) ───────────────────────────────────────
-// Si el evento tiene price_cents > 0, se crea una transaction en estado
-// 'pending_proof' y la inscripción queda 'pending_payment' hasta que el
-// admin apruebe el comprobante (ver payment-proofs.approvePaymentProofAdmin).
-// La capacidad cuenta tanto 'registered' como 'pending_payment' para evitar
-// que se sobrevendan cupos mientras hay pagos pendientes.
+// El comportamiento depende de event.payment_policy:
+//   - free      → sin transaction; registración 'registered'.
+//   - prepay    → transaction 'pending_proof' + registración 'pending_payment'.
+//                 Admin aprueba comprobante en /pagos/[id] → captured + registered.
+//   - onsite    → transaction 'pending' (cobro en mostrador) + registración
+//                 'registered'. Admin marca captured cuando cobra en sitio.
+//   - flexible  → el usuario decide via paymentMode ('online' | 'onsite').
+// La capacidad cuenta 'registered' + 'pending_payment' (no oversell).
+const RegisterToEventSchema = z.object({
+  id: UuidSchema,
+  paymentMode: z.enum(["online", "onsite"]).optional(),
+});
+
 export async function registerToEvent(input: unknown): Promise<ActionResult<EventRegistration>> {
-  return runAction(z.object({ id: UuidSchema }), input, async ({ id }) => {
+  return runAction(RegisterToEventSchema, input, async ({ id, paymentMode }) => {
     const userId = await requireUserId();
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;
     return withIdempotency(
-      { key: idemKey, scope: "registerEvent", userId, input: { id } },
+      { key: idemKey, scope: "registerEvent", userId, input: { id, paymentMode } },
       async () => {
         const supabase = await getServerClient();
         const { data: event } = await supabase
           .from("events")
-          .select("status,capacity,price_cents,currency,club_id")
+          .select("status,capacity,price_cents,currency,club_id,payment_policy")
           .eq("id", id)
           .single();
         if (!event) throw new MpError("EVENTS.NOT_FOUND", "Event not found", 404);
@@ -225,10 +234,31 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
           }
         }
 
+        const policy = (event.payment_policy as string) ?? "prepay";
         const priceCents = (event.price_cents as number) ?? 0;
-        let paidTransactionId: string | null = null;
 
-        if (priceCents > 0) {
+        // Resolver mode efectivo según policy.
+        let effectiveMode: "free" | "online" | "onsite";
+        if (policy === "free" || priceCents === 0) {
+          effectiveMode = "free";
+        } else if (policy === "prepay") {
+          effectiveMode = "online";
+        } else if (policy === "onsite") {
+          effectiveMode = "onsite";
+        } else {
+          // flexible
+          if (!paymentMode) {
+            throw new MpError(
+              "EVENTS.PAYMENT_MODE_REQUIRED",
+              "Este evento requiere elegir entre pago online u onsite",
+              422,
+            );
+          }
+          effectiveMode = paymentMode;
+        }
+
+        let paidTransactionId: string | null = null;
+        if (effectiveMode !== "free") {
           const { data: tx, error: txErr } = await supabase
             .from("transactions")
             .insert({
@@ -239,7 +269,7 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
               amount_cents: priceCents,
               currency: ((event.currency as string | null) ?? "USD"),
               method: "transfer",
-              status: "pending_proof",
+              status: effectiveMode === "online" ? "pending_proof" : "pending",
               created_by: userId,
             } as never)
             .select("id")
@@ -250,12 +280,16 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
           paidTransactionId = tx.id as string;
         }
 
+        // Onsite y free → inscripción ya 'registered'. Online → 'pending_payment'.
+        const registrationStatus =
+          effectiveMode === "online" ? "pending_payment" : "registered";
+
         const { data: row, error } = await supabase
           .from("event_registrations")
           .insert({
             event_id: id,
             user_id: userId,
-            status: paidTransactionId ? "pending_payment" : "registered",
+            status: registrationStatus,
             paid_transaction_id: paidTransactionId,
           } as never)
           .select()

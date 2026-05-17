@@ -70,6 +70,7 @@ function mapTournament(row: Record<string, unknown>): Tournament {
     maxParticipants: (row.max_participants as number | null) ?? null,
     entryFeeCents: row.entry_fee_cents,
     currency: (row.currency as string | null) ?? null,
+    paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     prizePoolCents: (row.prize_pool_cents as number | null) ?? null,
     rulesUrl: (row.rules_url as string | null) ?? null,
     createdAt: row.created_at,
@@ -283,15 +284,26 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
 }
 
 // ── registerToTournament (idempotent) ──────────────────────────────────
+// Honra tournament.payment_policy igual que registerToEvent:
+//   - free      → registration 'pending' (espera aprobación admin) sin tx.
+//   - prepay    → tx pending_proof + registration 'pending' con paid_transaction_id.
+//                 approvePaymentProof flippa a 'accepted'.
+//   - onsite    → tx pending (cobro en mostrador) + registration 'pending'.
+//                 Admin acepta manualmente; al cobrar marca tx captured.
+//   - flexible  → usuario elige paymentMode.
+// Las registrations de torneo arrancan en 'pending' siempre (revisión admin),
+// no en 'accepted' — admin las acepta vía updateRegistrationStatus / aprobando
+// el comprobante.
 const RegisterInputSchema = z.object({
   tournamentId: UuidSchema,
   body: TournamentRegisterSchema,
+  paymentMode: z.enum(["online", "onsite"]).optional(),
 });
 
 export async function registerToTournament(
   input: unknown,
 ): Promise<ActionResult<Registration>> {
-  return runAction(RegisterInputSchema, input, async ({ tournamentId, body }) => {
+  return runAction(RegisterInputSchema, input, async ({ tournamentId, body, paymentMode }) => {
     const userId = await requireUserId();
     if (!body.playerIds.includes(userId)) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "You must be in the registered playerIds");
@@ -299,12 +311,12 @@ export async function registerToTournament(
 
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;
     return withIdempotency(
-      { key: idemKey, scope: "registerTournament", userId, input: { tournamentId, body } },
+      { key: idemKey, scope: "registerTournament", userId, input: { tournamentId, body, paymentMode } },
       async () => {
         const supabase = await getServerClient();
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -316,10 +328,29 @@ export async function registerToTournament(
           );
         }
 
+        const policy = (t.payment_policy as string) ?? "prepay";
         const feeCents = (t.entry_fee_cents as number) ?? 0;
-        let paidTransactionId: string | null = null;
 
-        if (feeCents > 0) {
+        let effectiveMode: "free" | "online" | "onsite";
+        if (policy === "free" || feeCents === 0) {
+          effectiveMode = "free";
+        } else if (policy === "prepay") {
+          effectiveMode = "online";
+        } else if (policy === "onsite") {
+          effectiveMode = "onsite";
+        } else {
+          if (!paymentMode) {
+            throw new MpError(
+              "TOURNAMENTS.PAYMENT_MODE_REQUIRED",
+              "Este torneo requiere elegir entre pago online u onsite",
+              422,
+            );
+          }
+          effectiveMode = paymentMode;
+        }
+
+        let paidTransactionId: string | null = null;
+        if (effectiveMode !== "free") {
           const { data: tx, error: txErr } = await supabase
             .from("transactions")
             .insert({
@@ -330,7 +361,7 @@ export async function registerToTournament(
               amount_cents: feeCents,
               currency: ((t.currency as string | null) ?? "USD"),
               method: "transfer",
-              status: "pending_proof",
+              status: effectiveMode === "online" ? "pending_proof" : "pending",
               created_by: userId,
             } as never)
             .select("id")
