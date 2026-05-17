@@ -131,9 +131,21 @@ function computeTakenSet(
   return taken;
 }
 
+type ClubPickerItem = {
+  id: string;
+  slug: string;
+  name: string;
+  city: string;
+  sports: string[];
+};
+
 export function ReservarCanchaDrawer() {
   const [open, setOpen] = useState(false);
   const [club, setClub] = useState<Club | null>(null);
+  const [pickingClub, setPickingClub] = useState(false);
+  const [pickerClubs, setPickerClubs] = useState<ClubPickerItem[] | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [pickerQuery, setPickerQuery] = useState("");
   const [day, setDay] = useState(0);
   const [duration, setDuration] = useState<Duration>(90);
   const [courts, setCourts] = useState<Court[] | null>(null);
@@ -169,17 +181,7 @@ export function ReservarCanchaDrawer() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<EventDetail>).detail ?? {};
-      const c: Club = detail.name
-        ? {
-            name: detail.name,
-            city: detail.city,
-            price: detail.price,
-            sport: detail.sport,
-            clubId: detail.clubId,
-            clubSlug: detail.clubSlug,
-          }
-        : { name: "Club Norte Pickleball", city: "Cumbayá · 4 canchas outdoor", price: 14 };
-      setClub(c);
+      const hasFullCtx = !!(detail.clubId && detail.clubSlug);
       setOpen(true);
       setDay(0);
       setDuration(90);
@@ -190,10 +192,81 @@ export function ReservarCanchaDrawer() {
       setExisting([]);
       setErrorMsg(null);
       setCreated(null);
+      setPickerQuery("");
+      if (hasFullCtx && detail.name) {
+        setClub({
+          name: detail.name,
+          city: detail.city,
+          price: detail.price,
+          sport: detail.sport,
+          clubId: detail.clubId,
+          clubSlug: detail.clubSlug,
+        });
+        setPickingClub(false);
+      } else {
+        // Sin contexto suficiente → muestro picker primero.
+        setClub(null);
+        setPickingClub(true);
+      }
     };
     window.addEventListener("mp-open-reservar", handler);
     return () => window.removeEventListener("mp-open-reservar", handler);
   }, []);
+
+  // Carga lista de clubes cuando el picker se abre.
+  useEffect(() => {
+    if (!pickingClub) return;
+    let cancelled = false;
+    setPickerError(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/clubs?pageSize=50", { cache: "no-store" });
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setPickerError(json?.error?.message ?? "No se pudieron cargar los clubes");
+          setPickerClubs([]);
+          return;
+        }
+        const list: ClubPickerItem[] = (json.data ?? []).map((c: Record<string, unknown>) => ({
+          id: c.id as string,
+          slug: c.slug as string,
+          name: c.name as string,
+          city: (c.city as string) ?? "",
+          sports: (c.sports as string[]) ?? [],
+        }));
+        setPickerClubs(list);
+      } catch (err) {
+        if (!cancelled) {
+          setPickerError(err instanceof Error ? err.message : "Error de red");
+          setPickerClubs([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pickingClub]);
+
+  const selectClubFromPicker = (c: ClubPickerItem) => {
+    setClub({
+      name: c.name,
+      city: c.city,
+      sport: c.sports[0] as Sport | undefined,
+      clubId: c.id,
+      clubSlug: c.slug,
+    });
+    setPickingClub(false);
+  };
+
+  const filteredPickerClubs = useMemo(() => {
+    if (!pickerClubs) return null;
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return pickerClubs;
+    return pickerClubs.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.city.toLowerCase().includes(q),
+    );
+  }, [pickerClubs, pickerQuery]);
 
   useEffect(() => {
     if (open) {
@@ -342,9 +415,9 @@ export function ReservarCanchaDrawer() {
     }
   };
 
-  if (!open || !club) return null;
+  if (!open) return null;
   const close = () => setOpen(false);
-  const price = (club.price || 14) * (duration / 60);
+  const price = club ? (club.price || 14) * (duration / 60) : 0;
 
   return (
     <div
@@ -384,8 +457,8 @@ export function ReservarCanchaDrawer() {
         >
           <div>
             <div className="label-mp" style={{ color: "var(--primary)" }}>
-              ● {done ? "Reserva confirmada" : "Reserva rápida"}
-              {!realMode && !done ? " · DEMO" : ""}
+              ● {done ? "Reserva confirmada" : pickingClub ? "Elige un club" : "Reserva rápida"}
+              {club && !realMode && !done ? " · DEMO" : ""}
             </div>
             <div
               className="font-heading"
@@ -396,7 +469,7 @@ export function ReservarCanchaDrawer() {
                 textTransform: "uppercase",
               }}
             >
-              {club.name}
+              {club?.name ?? "¿Dónde quieres jugar?"}
               <span style={{ color: "var(--primary)" }}>.</span>
             </div>
             <div
@@ -410,7 +483,7 @@ export function ReservarCanchaDrawer() {
               }}
             >
               <Icon name="map-pin" size={10} />
-              {club.city || "Cumbayá"}
+              {club?.city ?? "Elige un club para reservar"}
             </div>
           </div>
           <button
@@ -428,7 +501,111 @@ export function ReservarCanchaDrawer() {
           </button>
         </div>
 
-        {!done ? (
+        {pickingClub ? (
+          <div style={{ padding: "16px 22px", overflow: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="label-mp">Selecciona un club</div>
+            <div style={{ position: "relative" }}>
+              <input
+                value={pickerQuery}
+                onChange={(e) => setPickerQuery(e.target.value)}
+                placeholder="Buscar por nombre o ciudad…"
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "10px 14px 10px 36px",
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                }}
+              />
+              <Icon
+                name="search"
+                size={14}
+                color="var(--muted-fg)"
+                style={{ position: "absolute", top: 12, left: 12 }}
+              />
+            </div>
+
+            {pickerError && (
+              <div
+                style={{
+                  padding: 10,
+                  background: "#fee2e2",
+                  border: "1px solid #fca5a5",
+                  borderRadius: 8,
+                  fontSize: 11.5,
+                  color: "#b91c1c",
+                }}
+              >
+                {pickerError}
+              </div>
+            )}
+
+            {filteredPickerClubs == null ? (
+              <div style={{ padding: 20, textAlign: "center", color: "var(--muted-fg)", fontSize: 12 }}>
+                Cargando clubes…
+              </div>
+            ) : filteredPickerClubs.length === 0 ? (
+              <div
+                style={{
+                  padding: 24,
+                  textAlign: "center",
+                  border: "1px dashed var(--border)",
+                  borderRadius: 10,
+                  color: "var(--muted-fg)",
+                  fontSize: 12.5,
+                }}
+              >
+                {pickerQuery ? "Sin resultados para esa búsqueda." : "No hay clubes activos todavía."}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {filteredPickerClubs.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => selectClubFromPicker(c)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid var(--border)",
+                      background: "#fff",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg,#10b981,#047857)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon name="map-pin" size={16} color="#fff" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800 }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                        {c.city || "—"}
+                        {c.sports.length > 0 ? ` · ${c.sports.join(", ")}` : ""}
+                      </div>
+                    </div>
+                    <Icon name="chevron-right" size={14} color="var(--muted-fg)" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : !done && club ? (
           <>
             <div style={{ padding: "16px 22px", overflow: "auto", flex: 1 }}>
               {!realMode && (
@@ -797,7 +974,7 @@ export function ReservarCanchaDrawer() {
             <div className="card" style={{ padding: 14 }}>
               {(
                 [
-                  ["Club", club.name],
+                  ["Club", club?.name ?? "—"],
                   ["Cancha", courtLabel],
                   ["Fecha", `${selectedDay.label} ${selectedDay.dateNum} ${selectedDay.monthShort}`],
                   ["Hora", `${time ?? "—"} · ${duration} min`],
