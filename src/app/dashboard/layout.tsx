@@ -51,24 +51,26 @@ function readOnboardedAtCached(userId: string): Promise<OnboardedAtState> {
   return fn();
 }
 
-// Gate de onboarding: si el usuario está autenticado pero no completó el
-// wizard (profiles.onboarded_at IS NULL), lo mandamos a /onboarding antes
-// de dejarle ver cualquier pantalla del dashboard.
+// Doble gate del dashboard:
+//   1) Si no hay sesión → /login?next=/dashboard/user (defensa en profundidad;
+//      el proxy.ts ya redirige acceso anónimo a /dashboard/*, pero por
+//      cinturones y tirantes lo replicamos acá en caso de que el matcher
+//      no aplique o la cookie esté corrupta).
+//   2) Si hay sesión pero el wizard no se completó (profiles.onboarded_at IS
+//      NULL), lo mandamos a /onboarding antes de cualquier pantalla.
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  let currentUserId: string | null = null;
-  if (session.authenticated) {
-    currentUserId = session.session.userId;
-    const state = await readOnboardedAtCached(session.session.userId);
-    // Solo redirigimos cuando la fila existe pero onboarded_at IS NULL — mismo
-    // comportamiento que antes del cache (sin fila ⇒ no bloqueamos).
-    if (state.profileExists && state.onboardedAt == null) {
-      redirect("/onboarding");
-    }
+  if (!session.authenticated) {
+    redirect("/login?next=/dashboard/user");
+  }
+  const currentUserId = session.session.userId;
+  const state = await readOnboardedAtCached(currentUserId);
+  if (state.profileExists && state.onboardedAt == null) {
+    redirect("/onboarding");
   }
   return (
     <ToastProvider>
