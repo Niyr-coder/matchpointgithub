@@ -68,6 +68,12 @@ export async function SolicitarClubScreen() {
         sports: a.sports ?? [],
         description: a.shortDescription ?? "",
         accentColor: "#10b981",
+        coverPhoto: (() => {
+          const cover = detail.data.photos.find((p) => p.ordinal === 0);
+          return cover
+            ? { id: cover.id, previewUrl: cover.previewUrl ?? null }
+            : null;
+        })(),
         city: a.district ?? "",
         province: a.province ?? "",
         country: a.country ?? "Ecuador",

@@ -144,6 +144,9 @@ export const ClubApplicationPhotoSchema = z
     caption: z.string().nullable(),
     ordinal: z.number().int().min(0).max(5),
     createdAt: IsoDateTimeSchema,
+    // Signed URL del bucket privado club-covers, TTL ~1h. Solo se genera
+    // cuando el caller la necesita (uploads y reads del detail).
+    previewUrl: z.string().nullable().optional(),
   })
   .openapi("ClubApplicationPhoto");
 

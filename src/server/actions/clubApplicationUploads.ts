@@ -182,6 +182,11 @@ export async function uploadApplicationPhoto(
         .single();
       if (error) throw new MpError("CLUB_APP.PHOTO_PERSIST_FAILED", error.message, 500);
 
+      // Signed URL para preview inmediato en el wizard. 1h TTL.
+      const { data: signed } = await supabase.storage
+        .from(STORAGE_BUCKETS.CLUB_COVERS)
+        .createSignedUrl(path, 60 * 60);
+
       return ClubApplicationPhotoSchema.parse({
         id: data.id,
         applicationId: data.application_id,
@@ -189,6 +194,7 @@ export async function uploadApplicationPhoto(
         caption: data.caption ?? null,
         ordinal: data.ordinal,
         createdAt: data.created_at,
+        previewUrl: signed?.signedUrl ?? null,
       });
     },
   );

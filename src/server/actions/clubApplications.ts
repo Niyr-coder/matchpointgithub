@@ -208,14 +208,22 @@ export async function getApplicationDetail(
         reviewedAt: r.reviewed_at ?? null,
         rejectionReason: r.rejection_reason ?? null,
       })),
-      photos: (phR.data ?? []).map((r) => ({
-        id: r.id,
-        applicationId: r.application_id,
-        storagePath: r.storage_path,
-        caption: r.caption ?? null,
-        ordinal: r.ordinal,
-        createdAt: r.created_at,
-      })),
+      photos: await Promise.all(
+        (phR.data ?? []).map(async (r) => {
+          const { data: signed } = await supabase.storage
+            .from("club-covers")
+            .createSignedUrl(r.storage_path as string, 60 * 60);
+          return {
+            id: r.id,
+            applicationId: r.application_id,
+            storagePath: r.storage_path,
+            caption: r.caption ?? null,
+            ordinal: r.ordinal,
+            createdAt: r.created_at,
+            previewUrl: signed?.signedUrl ?? null,
+          };
+        }),
+      ),
       events: (evR.data ?? []).map((r) => ({
         id: r.id,
         applicationId: r.application_id,

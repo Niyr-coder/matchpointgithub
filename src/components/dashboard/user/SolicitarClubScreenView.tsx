@@ -58,6 +58,11 @@ export type WeeklyHours = {
   sun: { open: string; close: string } | null;
 };
 
+// Convención: la foto con ordinal=0 es la portada (hero). Las del 1-5
+// son galería. Una sola cover por application; subir nueva reemplaza la
+// anterior (remove + insert).
+export type CoverPhoto = { id: string; previewUrl: string | null } | null;
+
 export type ClubDraft = {
   applicationId: string | null;
   name: string;
@@ -65,6 +70,7 @@ export type ClubDraft = {
   sports: string[];
   description: string;
   accentColor: string;
+  coverPhoto: CoverPhoto;
   city: string;
   province: string;
   country: string;
@@ -119,6 +125,7 @@ const EMPTY_DRAFT: ClubDraft = {
   sports: ["pickleball"],
   description: "",
   accentColor: "#10b981",
+  coverPhoto: null,
   city: "",
   province: "",
   country: "Ecuador",
@@ -946,6 +953,32 @@ const ACCENT_COLORS = ["#10b981", "#fbbf24", "#dc2626", "#7c3aed", "#0ea5e9", "#
 
 function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
   const { draft, set, saveStep1 } = useClubDraft();
+  const toast = useToast();
+  const coverInput = useRef<HTMLInputElement | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+
+  const handleCoverUpload = async (file: File) => {
+    if (!draft.applicationId) return;
+    setCoverBusy(true);
+    // Si ya hay cover, removerla antes de subir la nueva (ordinal=0 es único).
+    if (draft.coverPhoto?.id) {
+      await removeApplicationPhoto({ photoId: draft.coverPhoto.id });
+    }
+    const r = await uploadApplicationPhoto({
+      applicationId: draft.applicationId,
+      filename: file.name,
+      mimeType: file.type || "image/jpeg",
+      sizeBytes: file.size,
+      ordinal: 0,
+      file,
+    });
+    setCoverBusy(false);
+    if (!r.ok) {
+      toast({ icon: "alert-triangle", title: "Error al subir portada", sub: formatActionError(r.error) });
+      return;
+    }
+    set("coverPhoto", { id: r.data.id, previewUrl: r.data.previewUrl ?? null });
+  };
 
   const toggleSport = (k: string) => {
     if (draft.sports.includes(k)) {
@@ -1056,10 +1089,24 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             required
             hint="Es el gradient/imagen detrás del nombre. 1600×900px ideal."
           >
+            <input
+              ref={coverInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleCoverUpload(f);
+                e.target.value = "";
+              }}
+            />
             <div
+              onClick={() => !coverBusy && coverInput.current?.click()}
               style={{
                 aspectRatio: "16/9",
-                background: `linear-gradient(135deg, #064e3b 0%, #047857 60%, ${draft.accentColor} 100%)`,
+                background: draft.coverPhoto?.previewUrl
+                  ? `center/cover no-repeat url("${draft.coverPhoto.previewUrl}")`
+                  : `linear-gradient(135deg, #064e3b 0%, #047857 60%, ${draft.accentColor} 100%)`,
                 borderRadius: 12,
                 border: "2px dashed rgba(255,255,255,0.4)",
                 display: "flex",
@@ -1067,26 +1114,57 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 justifyContent: "center",
                 color: "#fff",
                 position: "relative",
-                cursor: "pointer",
+                cursor: coverBusy ? "wait" : "pointer",
+                overflow: "hidden",
               }}
             >
-              <div style={{ textAlign: "center" }}>
-                <Icon name="image-plus" size={32} color="#fff" />
+              {!draft.coverPhoto?.previewUrl && (
+                <div style={{ textAlign: "center" }}>
+                  <Icon name="image-plus" size={32} color="#fff" />
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.12em",
+                      marginTop: 8,
+                    }}
+                  >
+                    {coverBusy ? "Subiendo…" : "Sube tu portada"}
+                  </div>
+                  <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 4 }}>
+                    JPG, PNG o WEBP · máx 8 MB
+                  </div>
+                </div>
+              )}
+              {draft.coverPhoto?.previewUrl && !coverBusy && (
                 <div
                   style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.12em",
-                    marginTop: 8,
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "flex-end",
+                    padding: 12,
+                    background: "linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.4))",
                   }}
                 >
-                  Sube tu portada
+                  <span
+                    style={{
+                      background: "rgba(0,0,0,0.7)",
+                      color: "#fff",
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Cambiar portada
+                  </span>
                 </div>
-                <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 4 }}>
-                  Mientras tanto usaremos este gradient como placeholder.
-                </div>
-              </div>
+              )}
             </div>
           </Field>
           <Field label="Color de acento" hint="Pintará el dot decorativo del nombre y el gradient">
