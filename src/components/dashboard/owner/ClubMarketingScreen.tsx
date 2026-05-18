@@ -41,10 +41,23 @@ function fmtDate(iso: string | null): string {
 async function loadData(): Promise<MarketingData> {
   const clubId = await resolveActiveClubId();
   if (!clubId) {
-    return { clubId: null, campaigns: [], reachMonth: 0, sentCount: 0, channels: [] };
+    return {
+      clubId: null,
+      clubName: "",
+      campaigns: [],
+      reachMonth: 0,
+      sentCount: 0,
+      channels: [],
+    };
   }
 
   const supabase = await getServerClient();
+  const { data: clubRow } = await supabase
+    .from("clubs")
+    .select("name")
+    .eq("id", clubId)
+    .maybeSingle();
+  const clubName = (clubRow?.name as string | null) ?? "Tu club";
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -130,6 +143,7 @@ async function loadData(): Promise<MarketingData> {
 
   return {
     clubId,
+    clubName,
     campaigns,
     reachMonth: monthRecipientsCount,
     sentCount,

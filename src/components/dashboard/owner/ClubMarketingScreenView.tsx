@@ -8,6 +8,7 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { createBroadcast } from "@/server/actions/marketing";
+import { ClubFeaturingPanel } from "./ClubFeaturingPanel";
 
 export type CampaignCard = {
   id: string;
@@ -31,6 +32,7 @@ export type ChannelStat = {
 };
 export type MarketingData = {
   clubId: string | null;
+  clubName: string;
   campaigns: CampaignCard[];
   reachMonth: number;
   sentCount: number;
@@ -512,6 +514,10 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
           </button>
         }
       />
+
+      {data.clubId && (
+        <ClubFeaturingPanel clubId={data.clubId} clubName={data.clubName} />
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         {KPIS.map((k) => (
