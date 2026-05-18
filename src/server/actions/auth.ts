@@ -252,6 +252,21 @@ function mapProfile(row: Record<string, unknown>): Profile {
 }
 
 // ── Form helpers (used by /login and /signup pages) ─────────────────────
+//
+// Post-auth redirect:
+//   · Signup: SIEMPRE pasa por /onboarding (es flow obligatorio para users
+//     nuevos). El `next` original viaja como query param y el wizard
+//     redirige ahí al terminar.
+//   · Signin: si profiles.onboarded_at IS NULL → /onboarding?next=... (user
+//     viejo que nunca completó). Si ya está onboardeado → next directo.
+//   · Fallback de next: /dashboard/user.
+function buildPostAuthRedirect(next: string, needsOnboarding: boolean): string {
+  if (needsOnboarding) {
+    return `/onboarding?next=${encodeURIComponent(next)}`;
+  }
+  return next;
+}
+
 export async function signUpFromForm(prevState: unknown, formData: FormData) {
   const result = await signUp({
     email: formData.get("email"),
@@ -262,7 +277,8 @@ export async function signUpFromForm(prevState: unknown, formData: FormData) {
   });
   if (result.ok) {
     const next = (formData.get("next") as string) || "/dashboard/user";
-    redirect(next);
+    // signup ⇒ user nuevo ⇒ siempre onboarding.
+    redirect(buildPostAuthRedirect(next, true));
   }
   return result;
 }
@@ -274,7 +290,19 @@ export async function signInFromForm(prevState: unknown, formData: FormData) {
   });
   if (result.ok) {
     const next = (formData.get("next") as string) || "/dashboard/user";
-    redirect(next);
+    // signin ⇒ verificar si ya completó onboarding.
+    const supabase = await getServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    let needsOnboarding = false;
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarded_at")
+        .eq("id", user.id)
+        .maybeSingle();
+      needsOnboarding = profile != null && profile.onboarded_at == null;
+    }
+    redirect(buildPostAuthRedirect(next, needsOnboarding));
   }
   return result;
 }

@@ -49,9 +49,13 @@ const SKILLS: { value: Skill; label: string; sub: string }[] = [
 export function OnboardingWizard({
   mode = "page",
   initialStatus,
+  nextOnFinish,
 }: {
   mode?: "page" | "modal";
   initialStatus?: OnboardingStatus;
+  // Solo aplica en mode='page': URL relativa a la que redirigir al terminar
+  // el wizard. Si null/undefined cae a /dashboard/user.
+  nextOnFinish?: string | null;
 } = {}) {
   const pathname = usePathname();
   const router = useRouter();
@@ -172,8 +176,10 @@ export function OnboardingWizard({
         return;
       }
       if (isPage) {
-        // En mode page navegamos al dashboard al terminar.
-        router.replace("/dashboard/user");
+        // En mode page navegamos al destino que el server pasó (caso típico:
+        // el user venía de /clubes/<slug> y se registró, queremos devolverlo
+        // ahí). Sin destino, fallback al dashboard del user.
+        router.replace(nextOnFinish || "/dashboard/user");
       } else {
         setOpen(false);
         router.refresh();
@@ -181,7 +187,7 @@ export function OnboardingWizard({
     } finally {
       setBusy(false);
     }
-  }, [router, isPage]);
+  }, [router, isPage, nextOnFinish]);
 
   if (!open) return null;
 
