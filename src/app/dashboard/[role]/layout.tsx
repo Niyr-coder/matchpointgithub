@@ -126,6 +126,97 @@ export default async function RoleLayout({
       "club-walkins": walkinsHoy.count ?? 0,
     };
   }
+
+  // Coach: clases activas + alumnos únicos. No filtramos por club_id porque
+  // un coach puede dictar en varios; el badge muestra el total propio.
+  if (role === "coach") {
+    const userId = session.session.userId;
+    const [clases, enrollments] = await Promise.all([
+      supabase
+        .from("classes")
+        .select("id", { count: "exact", head: true })
+        .eq("coach_id", userId),
+      supabase
+        .from("class_enrollments")
+        .select("student_id, classes!inner(coach_id)")
+        .eq("classes.coach_id", userId)
+        .eq("status", "active"),
+    ]);
+    const uniqueStudents = new Set(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (((enrollments as any)?.data ?? []) as Array<{ student_id: string | null }>)
+        .map((r) => r.student_id)
+        .filter(Boolean) as string[],
+    );
+    badgeOverrides = {
+      "c-clases": clases.count ?? 0,
+      "c-alumnos": uniqueStudents.size,
+    };
+  }
+
+  // Employee: check-ins pendientes hoy + walk-ins hoy. Requiere club_id.
+  if (clubId && role === "employee") {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    const [checkins, walkinsHoy] = await Promise.all([
+      supabase
+        .from("check_ins")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .gte("created_at", todayStart.toISOString())
+        .lt("created_at", tomorrowStart.toISOString()),
+      supabase
+        .from("walkins")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .gte("created_at", todayStart.toISOString())
+        .lt("created_at", tomorrowStart.toISOString()),
+    ]);
+    badgeOverrides = {
+      "e-checkin": checkins.count ?? 0,
+      "e-walkins": walkinsHoy.count ?? 0,
+    };
+  }
+
+  // Partner: torneos del partner + inscritos totales + ligas activas.
+  // Lee el partner_id desde partner_members (puede tener varios; usamos el
+  // primero por joined_at asc, mismo criterio que el contextLabel).
+  if (role === "partner") {
+    const userId = session.session.userId;
+    const { data: pm } = await supabase
+      .from("partner_members")
+      .select("partner_id")
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const partnerId = (pm as { partner_id?: string } | null)?.partner_id;
+    if (partnerId) {
+      const [torneos, ligas, inscritos] = await Promise.all([
+        supabase
+          .from("tournaments")
+          .select("id", { count: "exact", head: true })
+          .eq("partner_id", partnerId),
+        supabase
+          .from("leagues")
+          .select("id", { count: "exact", head: true })
+          .eq("partner_id", partnerId),
+        supabase
+          .from("registrations")
+          .select("id, tournaments!inner(partner_id)", { count: "exact", head: true })
+          .eq("tournaments.partner_id", partnerId)
+          .eq("status", "accepted"),
+      ]);
+      badgeOverrides = {
+        "p-torneos": torneos.count ?? 0,
+        "p-ligas": ligas.count ?? 0,
+        "p-inscritos": inscritos.count ?? 0,
+      };
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const partnerOrg = (partnerMember as any)?.partner_orgs as { name?: string } | null | undefined;
   const contextLabel: string | null =

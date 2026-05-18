@@ -211,15 +211,15 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Mis torneos",
         items: [
           { k: "home", label: "Overview", icon: "layout-dashboard" },
-          { k: "p-ligas", label: "Mis ligas", icon: "list-ordered", badge: "3" },
-          { k: "p-torneos", label: "Mis torneos", icon: "trophy", badge: "8" },
+          { k: "p-ligas", label: "Mis ligas", icon: "list-ordered" },
+          { k: "p-torneos", label: "Mis torneos", icon: "trophy" },
           { k: "p-brackets", label: "Brackets", icon: "git-branch" },
         ],
       },
       {
         h: "Inscripciones",
         items: [
-          { k: "p-inscritos", label: "Inscritos", icon: "users", badge: "244" },
+          { k: "p-inscritos", label: "Inscritos", icon: "users" },
           { k: "p-clubes", label: "Clubes asociados", icon: "building-2" },
         ],
       },
@@ -246,8 +246,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Coaching",
         items: [
           { k: "home", label: "Hoy", icon: "layout-dashboard" },
-          { k: "c-clases", label: "Mis clases", icon: "graduation-cap", badge: "5" },
-          { k: "c-alumnos", label: "Alumnos", icon: "users", badge: "28" },
+          { k: "c-clases", label: "Mis clases", icon: "graduation-cap" },
+          { k: "c-alumnos", label: "Alumnos", icon: "users" },
           { k: "c-calendar", label: "Calendario", icon: "calendar" },
         ],
       },
@@ -278,8 +278,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Recepción",
         items: [
           { k: "home", label: "Mi turno", icon: "layout-dashboard" },
-          { k: "e-checkin", label: "Check-in", icon: "user-check", badge: "4" },
-          { k: "e-walkins", label: "Walk-ins", icon: "user-plus", badge: "2" },
+          { k: "e-checkin", label: "Check-in", icon: "user-check" },
+          { k: "e-walkins", label: "Walk-ins", icon: "user-plus" },
           { k: "e-reservas", label: "Reservas hoy", icon: "calendar-days" },
         ],
       },
