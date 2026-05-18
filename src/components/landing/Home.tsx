@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import type { PaywallTrigger } from "./Paywall";
+import { Counter } from "./widgets/Counter";
 
 type ClubCard = { n: string; city: string; rating: number; courts: number; price: number; color: string; href?: string; promo?: { ctaLabel: string } };
 type EventCard = { n: string; d: string; m: string; club: string; prize: string; insc: string; tag: string; color: string; href?: string; promo?: { ctaLabel: string } };
@@ -175,7 +176,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
           </p>
           <div style={{ display: "flex", gap: 12, marginTop: 36, flexWrap: "wrap" }}>
             <button
-              className="lp-btn lp-btn-primary"
+              className="lp-btn lp-btn-primary mp-shine"
               style={{ padding: "16px 28px", fontSize: 13 }}
               onClick={() => onPaywall("reservar")}
             >
@@ -214,7 +215,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                       color: empty ? "rgba(255,255,255,0.35)" : "#fff",
                     }}
                   >
-                    {v}
+                    <Counter value={v} />
                   </div>
                   <div
                     style={{
@@ -429,11 +430,12 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
               <Icon name="arrow-right" size={13} />
             </Link>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {EVENTS.map((e) => (
               <Link
                 key={e.n}
                 href={e.href ?? `/eventos/${slug(e.n)}`}
+                className="mp-card-hover"
                 style={{
                   padding: 0,
                   overflow: "hidden",
@@ -616,12 +618,12 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
         >
           Las mejores canchas<span className="dot">.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
           {CLUBS_FEATURED.map((c) => (
             <Link
               key={c.n}
               href={c.href ?? `/clubes/${slug(c.n)}`}
-              className="card"
+              className="card mp-card-hover"
               style={{
                 overflow: "hidden",
                 textDecoration: "none",
@@ -630,7 +632,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                 flexDirection: "column",
               }}
             >
-              <div style={{ height: 160, background: c.color, position: "relative" }}>
+              <div className="mp-card-image" style={{ height: 160, background: c.color, position: "relative" }}>
                 <div
                   style={{
                     position: "absolute",

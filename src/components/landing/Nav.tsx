@@ -136,6 +136,7 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
                 <Link
                   key={it.k}
                   href={it.k}
+                  className="mp-nav-link"
                   style={{
                     padding: "8px 14px",
                     borderRadius: 9999,
@@ -144,7 +145,7 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
                     fontWeight: active ? 900 : 700,
                     fontSize: 12.5,
                     textDecoration: "none",
-                    transition: "all 0.15s",
+                    transition: "background 180ms var(--ease-out), color 180ms var(--ease-out)",
                   }}
                 >
                   {it.l}

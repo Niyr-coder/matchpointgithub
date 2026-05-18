@@ -161,7 +161,7 @@ export function EventosPageView({
       {tab === "proximos" && (
         <>
           {featured ? <FeaturedCard t={featured} /> : <FeaturedPlaceholder />}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
             {padTournaments(rest).map((t, i) =>
               t.placeholder ? (
                 <EventPlaceholderCard key={t.key} />
@@ -195,7 +195,7 @@ export function EventosPageView({
               </span>
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
             {padTournaments(live).map((t, i) =>
               t.placeholder ? (
                 <EventPlaceholderCard key={t.key} />
@@ -520,7 +520,7 @@ function FeaturedPlaceholder() {
 function EventPlaceholderCard() {
   return (
     <div
-      className="card"
+      className="card mp-card-hover"
       style={{
         padding: 0,
         overflow: "hidden",
@@ -530,6 +530,7 @@ function EventPlaceholderCard() {
       }}
     >
       <div
+        className="mp-card-image"
         style={{
           height: 160,
           background: "linear-gradient(135deg, #e5e5e5, #d4d4d4)",
@@ -603,7 +604,7 @@ function EventGridCard({ t, index }: { t: TournamentFeatured; index: number }) {
   return (
     <Link
       href={`/eventos/${t.slug}`}
-      className="card"
+      className="card mp-card-hover"
       style={{
         padding: 0,
         overflow: "hidden",
@@ -613,6 +614,7 @@ function EventGridCard({ t, index }: { t: TournamentFeatured; index: number }) {
       }}
     >
       <div
+        className="mp-card-image"
         style={{
           height: 160,
           background: color,
@@ -808,14 +810,14 @@ function PastTournamentsTab({
   return (
     <div>
       <div className="label-mp" style={{ marginBottom: 14 }}>Últimos torneos finalizados</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+      <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
         {past.slice(0, 9).map((t) => {
           const { d, m } = dateLabel(t.startsAt, t.endsAt);
           return (
             <Link
               key={t.id}
               href={`/eventos/${t.slug}`}
-              className="card"
+              className="card mp-card-hover"
               style={{
                 padding: 20,
                 position: "relative",

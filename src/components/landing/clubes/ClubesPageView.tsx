@@ -304,13 +304,13 @@ export function ClubesPageView({
         );
       })()}
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+        <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
           {padded.map((c, i) => {
             if (c.placeholder) {
               return (
                 <div
                   key={c.key}
-                  className="card"
+                  className="card mp-card-hover"
                   style={{
                     overflow: "hidden",
                     opacity: 0.55,
@@ -371,10 +371,11 @@ export function ClubesPageView({
               <Link
                 key={c.id}
                 href={`/clubes/${c.slug}`}
-                className="card"
+                className="card mp-card-hover"
                 style={{ overflow: "hidden", textDecoration: "none", color: "#0a0a0a" }}
               >
                 <div
+                  className="mp-card-image"
                   style={{
                     height: 140,
                     background: CARD_GRADIENTS[i % CARD_GRADIENTS.length],

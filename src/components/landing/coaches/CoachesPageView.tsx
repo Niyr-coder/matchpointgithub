@@ -150,6 +150,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
         </div>
       )}
       <div
+        className="mp-stagger"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",
@@ -163,7 +164,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
               return (
                 <div
                   key={c.key}
-                  className="card"
+                  className="card mp-card-hover"
                   style={{
                     padding: 20,
                     display: "flex",
@@ -236,7 +237,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
               <Link
                 key={c.id}
                 href={`/coaches/${c.id}`}
-                className="card"
+                className="card mp-card-hover"
                 style={{ padding: 20, textDecoration: "none", color: "#0a0a0a", display: "flex", flexDirection: "column", gap: 14 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

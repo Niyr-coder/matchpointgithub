@@ -10,7 +10,6 @@ const COLS: { t: string; l: FooterLink[] }[] = [
   {
     t: "Jugadores",
     l: [
-      { label: "Crear cuenta", href: "/auth/signup" },
       { label: "Cómo funciona", href: "/como-funciona" },
       { label: "Encontrar clubes", href: "/clubes" },
       { label: "Eventos", href: "/eventos" },
@@ -137,13 +136,7 @@ export function Footer() {
                   <a
                     key={link.label}
                     href={link.href}
-                    style={{
-                      display: "block",
-                      color: "rgba(255,255,255,0.7)",
-                      fontSize: 12,
-                      marginBottom: 8,
-                      textDecoration: "none",
-                    }}
+                    className="footer-link"
                   >
                     {link.label}
                   </a>
@@ -151,13 +144,7 @@ export function Footer() {
                   <Link
                     key={link.label}
                     href={link.href}
-                    style={{
-                      display: "block",
-                      color: "rgba(255,255,255,0.7)",
-                      fontSize: 12,
-                      marginBottom: 8,
-                      textDecoration: "none",
-                    }}
+                    className="footer-link"
                   >
                     {link.label}
                   </Link>

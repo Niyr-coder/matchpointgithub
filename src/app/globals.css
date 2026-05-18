@@ -42,7 +42,16 @@
 }
 
 :root {
-  --mp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Motion tokens (Emil Kowalski).
+     ease-out es el default para UI: arranca rápido = se siente responsivo.
+     ease-in-out para movimientos on-screen (algo que ya está y se mueve).
+     ease-drawer es la curva iOS-like para drawers/modales grandes.
+     mp-ease se mantiene como alias del default (back-compat). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --mp-ease: var(--ease-out);
+
   /* Dashboard tokens */
   --bg: #fafafa; --card: #fff; --border: #e5e5e5; --muted: #f5f5f5;
   --muted-fg: #737373; --fg: #0a0a0a;
@@ -177,8 +186,9 @@ body {
   border-radius: 9999px; padding: 10px 18px; font-weight: 900; font-size: 12px;
   text-transform: uppercase; letter-spacing: 0.05em; border: 0;
   white-space: nowrap; cursor: pointer; font-family: var(--font-sans);
-  transition: background 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, transform 160ms var(--ease-out);
 }
+.btn:active { transform: scale(0.97); }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); }
 .btn-outline { background: transparent; color: #0a0a0a; border: 1.5px solid var(--border); padding: 8.5px 16.5px; }
@@ -216,8 +226,14 @@ body {
   border-radius: 9999px; padding: 11px 20px; font-weight: 900; font-size: 12px;
   text-transform: uppercase; letter-spacing: 0.05em; border: 0; white-space: nowrap;
   cursor: pointer; font-family: var(--font-sans); text-decoration: none;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Propiedades específicas (no `all`) — `all` repinta más de la cuenta y suele
+     incluir cosas que no queremos animar (color, font, etc.). */
+  transition:
+    background 200ms var(--ease-out),
+    border-color 200ms var(--ease-out),
+    transform 160ms var(--ease-out);
 }
+.lp-btn:active { transform: scale(0.97); }
 .lp-btn-primary { background: var(--primary); color: #fff; }
 .lp-btn-primary:hover { background: var(--primary-hover); }
 .lp-btn-outline { background: #fff; color: #0a0a0a; border: 1.5px solid var(--border); padding: 9.5px 18.5px; }
@@ -227,6 +243,180 @@ body {
 
 @keyframes lpMpFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lpMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* ── Motion utilities (Emil-style polish) ─────────────────────
+   Solo transform + opacity = GPU, off-main-thread, no repaint.
+   Hover gated a `hover: hover` para no triggear en touch. */
+
+.mp-card-hover {
+  transition:
+    transform 220ms var(--ease-out),
+    box-shadow 220ms var(--ease-out),
+    border-color 220ms var(--ease-out);
+  will-change: transform;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-card-hover:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+    border-color: rgba(10, 10, 10, 0.4);
+  }
+}
+.mp-card-hover:active { transform: translateY(-2px) scale(0.99); }
+
+/* Stagger: aplica delay incremental a hijos directos del contenedor.
+   El delay se mantiene corto (45ms) para no entorpecer la interacción.
+   Cubre hasta 12 items, que basta para grids 3x4 / 4x3 del landing. */
+.mp-stagger > * {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: mpStaggerIn 420ms var(--ease-out) forwards;
+}
+.mp-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.mp-stagger > *:nth-child(2) { animation-delay: 45ms; }
+.mp-stagger > *:nth-child(3) { animation-delay: 90ms; }
+.mp-stagger > *:nth-child(4) { animation-delay: 135ms; }
+.mp-stagger > *:nth-child(5) { animation-delay: 180ms; }
+.mp-stagger > *:nth-child(6) { animation-delay: 225ms; }
+.mp-stagger > *:nth-child(7) { animation-delay: 270ms; }
+.mp-stagger > *:nth-child(8) { animation-delay: 315ms; }
+.mp-stagger > *:nth-child(9) { animation-delay: 360ms; }
+.mp-stagger > *:nth-child(10) { animation-delay: 405ms; }
+.mp-stagger > *:nth-child(11) { animation-delay: 450ms; }
+.mp-stagger > *:nth-child(12) { animation-delay: 495ms; }
+
+@keyframes mpStaggerIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Reveal on first paint usando @starting-style.
+   Browsers sin soporte simplemente verán el estado final (no break). */
+.mp-reveal {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 500ms var(--ease-out),
+    transform 500ms var(--ease-out);
+}
+@starting-style {
+  .mp-reveal {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Accesibilidad: usuarios con reduced-motion ven el contenido sin
+   movimiento. Mantenemos opacity para evitar saltos de layout. */
+@media (prefers-reduced-motion: reduce) {
+  .mp-card-hover,
+  .mp-card-hover:hover,
+  .mp-card-hover:active {
+    transform: none !important;
+    transition: box-shadow 220ms ease, border-color 220ms ease;
+  }
+  .mp-card-hover:hover .mp-card-image {
+    transform: none;
+  }
+  .mp-stagger > * {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+  .mp-reveal {
+    transition: opacity 200ms ease;
+  }
+  .mp-nav-link::after,
+  .mp-shine::after {
+    display: none;
+  }
+  .btn:active,
+  .lp-btn:active {
+    transform: none;
+  }
+}
+
+/* Image zoom dentro de una card. El padre debe tener `mp-card-hover` y
+   `overflow: hidden`. El hijo recibe scale(1.05) al pasar el mouse por la card.
+   Solo se aplica en devices con pointer fino. */
+.mp-card-image {
+  transition: transform 400ms var(--ease-out);
+  will-change: transform;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-card-hover:hover .mp-card-image {
+    transform: scale(1.06);
+  }
+}
+
+/* Nav link con underline animado de izquierda a derecha en hover.
+   El underline se ubica dentro del padding del link y respeta `color: currentColor`. */
+.mp-nav-link {
+  position: relative;
+}
+.mp-nav-link::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 4px;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 220ms var(--ease-out);
+  pointer-events: none;
+  border-radius: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-nav-link:hover::after {
+    transform: scaleX(1);
+  }
+}
+
+/* Shine/sweep sutil para CTA primario del hero. Banda diagonal blanca que
+   atraviesa el botón al hover. Opt-in (no afecta todos los lp-btn-primary). */
+.mp-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.mp-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 70%
+  );
+  transform: translateX(-110%);
+  transition: transform 700ms var(--ease-out);
+  pointer-events: none;
+  z-index: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-shine:hover::after {
+    transform: translateX(110%);
+  }
+}
+.mp-shine > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Footer link hover — texto a blanco para señalar opción activa. */
+.footer-link {
+  display: block;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-decoration: none;
+  transition: color 160ms var(--ease-out);
+}
+.footer-link:hover {
+  color: #fff;
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar {
