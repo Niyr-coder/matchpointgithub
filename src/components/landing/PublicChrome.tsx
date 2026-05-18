@@ -1,54 +1,37 @@
-// Shared chrome for all public marketing pages: Nav + children + Footer.
-// Owns Paywall + AuthFromQuery state; children read it via usePaywall().
-"use client";
-import { Suspense, createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Nav } from "./Nav";
-import { Footer } from "./Footer";
-import { Paywall, type PaywallTrigger } from "./Paywall";
-import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
+// PublicChrome — wrapper server async para todas las páginas del landing.
+// Resuelve la sesión + perfil mínimo del usuario logueado y los baja al Nav
+// vía el componente client interno. Esto evita que el Nav muestre "Iniciar
+// sesión / Crear cuenta" cuando el user YA tiene sesión válida.
+//
+// `usePaywall` sigue exportado desde acá por back-compat (los hijos lo
+// importan así). El hook real vive en PublicChromeClient.
+import type { ReactNode } from "react";
+import { getSession } from "@/lib/auth/session";
+import { getServerClient } from "@/lib/db/client.server";
+import { PublicChromeClient } from "./PublicChromeClient";
+import type { NavAuth } from "./Nav";
 
-type PaywallFn = (t: PaywallTrigger) => void;
-const PaywallCtx = createContext<PaywallFn | null>(null);
+export { usePaywall } from "./PublicChromeClient";
 
-export function usePaywall(): PaywallFn {
-  const fn = useContext(PaywallCtx);
-  if (!fn) throw new Error("usePaywall must be used inside <PublicChrome>");
-  return fn;
-}
-
-function AuthFromQuery() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const raw = params.get("auth");
-  const next = params.get("next") ?? undefined;
-  const initial: AuthMode | null = raw === "signin" || raw === "signup" ? raw : null;
-  const [open, setOpen] = useState<AuthMode | null>(initial);
-
-  useEffect(() => {
-    if (initial) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("auth");
-      router.replace(url.pathname + (url.search || ""));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (!open) return null;
-  return <AuthModal mode={open} next={next} onClose={() => setOpen(null)} />;
-}
-
-export function PublicChrome({ children }: { children: ReactNode }) {
-  const [paywall, setPaywall] = useState<PaywallTrigger | null>(null);
-  return (
-    <PaywallCtx.Provider value={setPaywall}>
-      <Nav onPaywall={setPaywall} />
-      {children}
-      <Footer />
-      {paywall && <Paywall trigger={paywall} onClose={() => setPaywall(null)} />}
-      <Suspense fallback={null}>
-        <AuthFromQuery />
-      </Suspense>
-    </PaywallCtx.Provider>
-  );
+export async function PublicChrome({ children }: { children: ReactNode }) {
+  const session = await getSession();
+  let auth: NavAuth | null = null;
+  if (session.authenticated) {
+    const supabase = await getServerClient();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name,username,avatar_url")
+      .eq("id", session.session.userId)
+      .maybeSingle();
+    auth = {
+      userId: session.session.userId,
+      displayName:
+        (profile?.display_name as string | null) ??
+        (profile?.username as string | null) ??
+        "Tu cuenta",
+      username: (profile?.username as string | null) ?? null,
+      avatarUrl: (profile?.avatar_url as string | null) ?? null,
+    };
+  }
+  return <PublicChromeClient auth={auth}>{children}</PublicChromeClient>;
 }

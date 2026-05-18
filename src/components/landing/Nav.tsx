@@ -1,4 +1,8 @@
-// Nav — landing top bar. "Iniciar sesión" / "Crear cuenta" open the AuthModal.
+// Nav — landing top bar.
+// Si `auth` es null muestra "Iniciar sesión / Crear cuenta" (abren AuthModal).
+// Si `auth` viene seteado (PublicChrome resolvió sesión server-side), muestra
+// "Mi dashboard" + avatar/nombre. Evita el bug en que el user ya tiene
+// cookie pero los CTAs lo seguían empujando a auth.
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -6,7 +10,17 @@ import { useState } from "react";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import type { PaywallTrigger } from "./Paywall";
 
-type Props = { onPaywall: (t: PaywallTrigger) => void };
+export type NavAuth = {
+  userId: string;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+};
+
+type Props = {
+  onPaywall: (t: PaywallTrigger) => void;
+  auth: NavAuth | null;
+};
 
 const ITEMS = [
   { k: "/clubes", l: "Clubes" },
@@ -15,12 +29,21 @@ const ITEMS = [
   { k: "/ranking", l: "Ranking" },
 ];
 
-export function Nav(_props: Props) {
+function avatarInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+export function Nav({ onPaywall: _onPaywall, auth }: Props) {
   const pathname = usePathname() || "/";
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const isAuthed = auth != null;
 
   return (
     <>
+      {/* Banner superior: CTA cambia según sesión */}
       <div
         style={{
           background: "#0a0a0a",
@@ -32,24 +55,40 @@ export function Nav(_props: Props) {
           letterSpacing: "0.04em",
         }}
       >
-        <span style={{ color: "var(--primary)" }}>●</span> Acceso anticipado abierto · 370/500 cupos
-        gratis ·{" "}
-        <button
-          type="button"
-          onClick={() => setAuthMode("signup")}
-          style={{
-            color: "#fbbf24",
-            background: "transparent",
-            border: 0,
-            textDecoration: "underline",
-            cursor: "pointer",
-            font: "inherit",
-            padding: 0,
-          }}
-        >
-          Únete
-        </button>
+        {isAuthed && auth ? (
+          <>
+            <span style={{ color: "var(--primary)" }}>●</span>{" "}
+            Bienvenido de vuelta, {auth.displayName.split(" ")[0]} ·{" "}
+            <Link
+              href="/dashboard/user"
+              style={{ color: "#fbbf24", textDecoration: "underline" }}
+            >
+              Ir a tu dashboard
+            </Link>
+          </>
+        ) : (
+          <>
+            <span style={{ color: "var(--primary)" }}>●</span> Acceso anticipado abierto ·
+            370/500 cupos gratis ·{" "}
+            <button
+              type="button"
+              onClick={() => setAuthMode("signup")}
+              style={{
+                color: "#fbbf24",
+                background: "transparent",
+                border: 0,
+                textDecoration: "underline",
+                cursor: "pointer",
+                font: "inherit",
+                padding: 0,
+              }}
+            >
+              Únete
+            </button>
+          </>
+        )}
       </div>
+
       <nav
         style={{
           position: "sticky",
@@ -113,20 +152,59 @@ export function Nav(_props: Props) {
               );
             })}
           </div>
-          <button
-            type="button"
-            onClick={() => setAuthMode("signin")}
-            className="lp-btn lp-btn-outline"
-          >
-            Iniciar sesión
-          </button>
-          <button
-            type="button"
-            onClick={() => setAuthMode("signup")}
-            className="lp-btn lp-btn-primary"
-          >
-            Crear cuenta
-          </button>
+
+          {isAuthed && auth ? (
+            <Link
+              href="/dashboard/user"
+              className="lp-btn lp-btn-primary"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                textDecoration: "none",
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  background: "rgba(0,0,0,0.15)",
+                  color: "#fff",
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  backgroundImage: auth.avatarUrl ? `url(${auth.avatarUrl})` : undefined,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
+                {!auth.avatarUrl && avatarInitials(auth.displayName)}
+              </span>
+              Mi dashboard
+            </Link>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setAuthMode("signin")}
+                className="lp-btn lp-btn-outline"
+              >
+                Iniciar sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMode("signup")}
+                className="lp-btn lp-btn-primary"
+              >
+                Crear cuenta
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
