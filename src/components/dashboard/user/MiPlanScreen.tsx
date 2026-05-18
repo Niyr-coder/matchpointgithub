@@ -1,7 +1,7 @@
 // Server: trae plan vigente del user + historial de subscriptions.
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
-import { getCurrentPlan } from "@/server/actions/player-subscriptions";
+import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import {
   MiPlanScreenView,
   type PlanInfo,
@@ -12,23 +12,23 @@ async function loadData(): Promise<{
   plan: PlanInfo;
   history: PlanSubscriptionRow[];
 }> {
-  const fallback: PlanInfo = { tier: "free", expiresAt: null, active: true };
-
   const session = await getSession();
   if (!session.authenticated) {
+    const fallback: PlanInfo = { tier: "free", expiresAt: null, active: true };
     return { plan: fallback, history: [] };
   }
   const userId = session.session.userId;
 
-  const planRes = await getCurrentPlan();
-  const plan: PlanInfo = planRes.ok
-    ? {
-        tier: planRes.data.tier,
-        expiresAt: planRes.data.expiresAt,
-        active: planRes.data.active,
-      }
-    : fallback;
-
+  // Antes esto llamaba getCurrentPlan(), que hace otro select a profiles.
+  // getProfileSummary ya trae plan_tier + plan_expires_at y está cacheado por
+  // request, así que evitamos el roundtrip si otro layer ya lo pidió.
+  const summary = await getProfileSummary(userId);
+  const { tier, active } = isPlanActive(summary);
+  const plan: PlanInfo = {
+    tier,
+    expiresAt: summary.planExpiresAt,
+    active,
+  };
   const supabase = await getServerClient();
   const { data: rows } = await supabase
     .from("player_subscriptions")

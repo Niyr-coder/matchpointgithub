@@ -1,6 +1,7 @@
 // Server: fetch profile + stats + reservations + torneos + history.
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import { listFeaturedTournaments } from "@/server/actions/tournaments";
 import { UserHomeView, type UserHomeData } from "./UserHomeView";
 
@@ -31,18 +32,16 @@ async function loadData(): Promise<UserHomeData> {
   const userId = session.session.userId;
 
   const [
-    { data: profile },
+    profile,
     { data: stats },
     { data: rankRows },
     { data: reservations },
     tournamentsRes,
     { data: history },
   ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("display_name,city,onboarded_at,plan_tier,plan_expires_at")
-      .eq("id", userId)
-      .maybeSingle(),
+    // getProfileSummary está cacheado por request: si [role]/layout.tsx ya lo
+    // pidió en el mismo render, esto no dispara query extra.
+    getProfileSummary(userId),
     supabase
       .from("player_stats")
       .select("matches_total,current_rating")
@@ -90,18 +89,20 @@ async function loadData(): Promise<UserHomeData> {
     snapshotAt: h.snapshot_at as string,
   }));
 
+  const { tier: effectiveTier } = isPlanActive(profile);
+
   return {
     meUserId: userId,
-    name: (profile?.display_name as string | undefined) ?? "Jugador",
-    onboardedAt: (profile?.onboarded_at as string | null | undefined) ?? null,
+    name: profile.displayName ?? "Jugador",
+    onboardedAt: profile.onboardedAt,
     currentRating: (stats?.current_rating as number | undefined) ?? STARTING_RATING,
     rank: (rankRows?.[0]?.rank as number | undefined) ?? null,
     matchesTotal: (stats?.matches_total as number | undefined) ?? 0,
     reservations: reservationsAdapted,
     tournaments: tournamentsRes.ok ? tournamentsRes.data : [],
     ratingHistory,
-    planTier: ((profile?.plan_tier as string | undefined) === "premium" ? "premium" : "free") as "free" | "premium",
-    planExpiresAt: (profile?.plan_expires_at as string | null | undefined) ?? null,
+    planTier: effectiveTier,
+    planExpiresAt: profile.planExpiresAt,
   };
 }
 

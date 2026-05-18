@@ -4,6 +4,7 @@ import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { TopBar } from "@/components/dashboard/TopBar";
 import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
 
 function isValidRole(r: string): r is RoleKey {
@@ -46,12 +47,10 @@ export default async function RoleLayout({
 
   // Resuelve nombre del usuario + contexto activo (club / partner) para los
   // chrome del dashboard. Sin esto, TopBar/Sidebar mostrarían datos hardcoded.
-  const [{ data: profile }, { data: ownerRole }, { data: partnerMember }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("display_name,username")
-      .eq("id", session.session.userId)
-      .maybeSingle(),
+  // El profile se lee vía getProfileSummary (React.cache) — múltiples server
+  // components del mismo render reutilizan la misma query.
+  const [profile, { data: ownerRole }, { data: partnerMember }] = await Promise.all([
+    getProfileSummary(session.session.userId),
     role === "owner" || role === "manager" || role === "employee" || role === "coach"
       ? supabase
           .from("role_assignments")
@@ -75,10 +74,7 @@ export default async function RoleLayout({
       : Promise.resolve({ data: null }),
   ]);
 
-  const userName =
-    (profile?.display_name as string | undefined) ??
-    (profile?.username as string | undefined) ??
-    "Usuario";
+  const userName = profile.displayName ?? profile.username ?? "Usuario";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ownerClub = (ownerRole as any)?.clubs as { name?: string; city?: string } | null | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

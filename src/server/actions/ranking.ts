@@ -37,9 +37,14 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
     const from = (params.page - 1) * params.pageSize;
     const to = from + params.pageSize - 1;
 
+    // Una sola query: PostgREST resuelve el embedded join via la FK
+    // player_stats.user_id → profiles(id) declarada en 019_ranking.sql.
+    // Antes hacíamos un select extra a profiles con `in("id", userIds)` (N+1).
     const { data: stats, error } = await supabase
       .from("player_stats")
-      .select("*")
+      .select(
+        "user_id,sport,current_rating,wins,losses,matches_total,profiles!inner(display_name,avatar_url,city)",
+      )
       .eq("sport", params.sport)
       .order("current_rating", { ascending: false })
       .range(from, to);
@@ -47,27 +52,28 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
     const rows = stats ?? [];
     if (rows.length === 0) return [];
 
-    const userIds = rows.map((r) => r.user_id as string);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id,display_name,avatar_url,city")
-      .in("id", userIds);
-    const pById = new Map((profiles ?? []).map((p) => [p.id as string, p]));
-
-    return rows.map((r, i) =>
-      RankingEntrySchema.parse({
+    return rows.map((r, i) => {
+      // El embed puede devolver objeto o array según cardinalidad detectada.
+      // Para una FK to-one declarada en 019, PostgREST devuelve objeto, pero
+      // normalizamos por defensa.
+      const profileEmbed = (r as Record<string, unknown>).profiles as
+        | { display_name?: string | null; avatar_url?: string | null; city?: string | null }
+        | { display_name?: string | null; avatar_url?: string | null; city?: string | null }[]
+        | null;
+      const profile = Array.isArray(profileEmbed) ? profileEmbed[0] ?? null : profileEmbed;
+      return RankingEntrySchema.parse({
         userId: r.user_id,
-        displayName: (pById.get(r.user_id as string)?.display_name as string) ?? "—",
-        avatarUrl: (pById.get(r.user_id as string)?.avatar_url as string | null) ?? null,
-        city: (pById.get(r.user_id as string)?.city as string | null) ?? null,
+        displayName: (profile?.display_name as string | undefined) ?? "—",
+        avatarUrl: (profile?.avatar_url as string | null | undefined) ?? null,
+        city: (profile?.city as string | null | undefined) ?? null,
         sport: r.sport,
         rank: from + i + 1,
         currentRating: r.current_rating,
         wins: r.wins,
         losses: r.losses,
         matchesTotal: r.matches_total,
-      }),
-    );
+      });
+    });
   });
 }
 
