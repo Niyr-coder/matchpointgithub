@@ -1388,6 +1388,84 @@ export type Database = {
           },
         ]
       }
+      club_featuring_subscriptions: {
+        Row: {
+          cancelled_reason: string | null
+          club_id: string
+          created_at: string
+          duration_days: number
+          expires_at: string | null
+          id: string
+          requested_by: string
+          starts_at: string | null
+          status: string
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          cancelled_reason?: string | null
+          club_id: string
+          created_at?: string
+          duration_days?: number
+          expires_at?: string | null
+          id?: string
+          requested_by: string
+          starts_at?: string | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cancelled_reason?: string | null
+          club_id?: string
+          created_at?: string
+          duration_days?: number
+          expires_at?: string | null
+          id?: string
+          requested_by?: string
+          starts_at?: string | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_featuring_subscriptions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_featuring_subscriptions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_featuring_subscriptions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_featuring_subscriptions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_featuring_subscriptions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_photos: {
         Row: {
           caption: string | null
@@ -6632,6 +6710,7 @@ export type Database = {
           key: string
         }[]
       }
+      fn_process_club_featuring: { Args: never; Returns: undefined }
       fn_process_player_plans: { Args: never; Returns: undefined }
       fn_purge_expired_idempotency: { Args: never; Returns: undefined }
       fn_rate_limit_consume: {
