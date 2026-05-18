@@ -501,7 +501,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
       } else {
         const msg =
           res.error.code === "TEAMS.SLUG_TAKEN"
-            ? "Ese nombre ya está tomado. Probá variando el tag."
+            ? "Ese nombre ya está tomado. Prueba variando el tag."
             : res.error.message;
         toast({ icon: "x", title: "No se pudo crear", sub: msg });
       }
@@ -928,7 +928,7 @@ function TeamJoin({
               gridColumn: "1 / -1",
             }}
           >
-            No hay teams públicos abiertos en este momento. Probá con un código de invitación.
+            No hay teams públicos abiertos en este momento. Prueba con un código de invitación.
           </div>
         ) : (
           publicTeams.map((t) => {

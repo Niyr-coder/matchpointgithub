@@ -511,7 +511,7 @@ function FeaturedPlaceholder() {
           textDecoration: "none",
         }}
       >
-        Publicá tu torneo →
+        Publica tu torneo →
       </Link>
     </div>
   );
