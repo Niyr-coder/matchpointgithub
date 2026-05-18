@@ -3,7 +3,8 @@
 // Replaces the ugly standalone /login and /signup full-page forms.
 "use client";
 
-import { useActionState, useState, type CSSProperties } from "react";
+import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { signInFromForm, signUpFromForm } from "@/server/actions/auth";
 import type { ActionResult } from "@/lib/api/action";
@@ -12,6 +13,21 @@ import type { SessionResponse } from "@/lib/schemas/identity";
 export type AuthMode = "signin" | "signup";
 
 type State = ActionResult<SessionResponse> | null;
+
+// Si el server action retornó ok=true pero la página no navegó (caso raro de
+// useActionState + redirect en Next 16), forzamos navegación client-side.
+// Por defecto vamos a /dashboard/user; el caller puede overridear con `next`.
+function useAuthRedirectFallback(state: State, next?: string) {
+  const router = useRouter();
+  const fired = useRef(false);
+  useEffect(() => {
+    if (fired.current) return;
+    if (state && state.ok) {
+      fired.current = true;
+      router.replace(next || "/dashboard/user");
+    }
+  }, [state, next, router]);
+}
 
 const inp: CSSProperties = {
   padding: "11px 13px",
@@ -160,6 +176,9 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
     null,
   );
   const f = state && !state.ok ? state.error.fields : undefined;
+  // Safety net: si el server action devolvió ok pero el redirect no propagó
+  // (cuirks de Next 16 + Turbopack con useActionState), navegamos a mano.
+  useAuthRedirectFallback(state, next);
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -263,6 +282,7 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
     null,
   );
   const f = state && !state.ok ? state.error.fields : undefined;
+  useAuthRedirectFallback(state, next);
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 11 }}>

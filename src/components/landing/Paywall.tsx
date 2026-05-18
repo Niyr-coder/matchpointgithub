@@ -31,6 +31,7 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
     return (
       <AuthModal
         mode={authMode}
+        next="/dashboard/user"
         onClose={() => {
           setAuthMode(null);
           onClose();

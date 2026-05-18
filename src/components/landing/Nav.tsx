@@ -208,7 +208,13 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
         </div>
       </nav>
 
-      {authMode && <AuthModal mode={authMode} onClose={() => setAuthMode(null)} />}
+      {authMode && (
+        <AuthModal
+          mode={authMode}
+          next="/dashboard/user"
+          onClose={() => setAuthMode(null)}
+        />
+      )}
     </>
   );
 }
