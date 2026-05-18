@@ -25,6 +25,7 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
+import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
 
 // ── helpers de auth ─────────────────────────────────────────────────────
 async function requireUserId(): Promise<string> {
@@ -211,6 +212,44 @@ export async function approvePaymentProofAdmin(
         }
       } catch (err) {
         console.error("[approvePaymentProof] plan auto-activate failed:", err);
+      }
+    } else if (tx.kind === "club_featuring") {
+      // Auto-activar la subscription de featuring asociada a esta
+      // transaction. Mismo patrón que 'plan': si algo falla, logueamos
+      // pero no abortamos — el comprobante ya quedó aprobado y el admin
+      // puede activar el featuring manualmente desde el panel.
+      try {
+        const { data: pendingSub, error: subReadErr } = await supabase
+          .from("club_featuring_subscriptions")
+          .select("id")
+          .eq("transaction_id", transactionId)
+          .eq("status", "pending")
+          .maybeSingle();
+        if (subReadErr) {
+          console.error(
+            "[approvePaymentProof] club_featuring auto-activate failed:",
+            subReadErr,
+          );
+        } else if (!pendingSub) {
+          console.warn(
+            `[approvePaymentProof] no pending club_featuring_subscription for transaction ${transactionId}; skipping auto-activate`,
+          );
+        } else {
+          const activateResult = await approveClubFeaturingAdmin({
+            subscriptionId: pendingSub.id as string,
+          });
+          if (!activateResult.ok) {
+            console.error(
+              "[approvePaymentProof] club_featuring auto-activate failed:",
+              activateResult.error,
+            );
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[approvePaymentProof] club_featuring auto-activate failed:",
+          err,
+        );
       }
     }
 
