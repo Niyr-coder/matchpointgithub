@@ -19,7 +19,10 @@ import { UuidSchema } from "@/lib/schemas/common";
 
 // Precio base: USD 200 por 30 días. Para duraciones distintas se prorratea
 // linealmente: amountCents = round(PRICE * durationDays / 30).
-export const CLUB_FEATURING_PRICE_CENTS_PER_30_DAYS = 20000;
+// Nota: en archivos "use server" solo se pueden exportar funciones async,
+// por eso la constante queda privada. Si otra parte de la app la necesita,
+// mover a src/lib/pricing.ts (no-server) y re-importar aquí.
+const CLUB_FEATURING_PRICE_CENTS_PER_30_DAYS = 20000;
 
 function computeAmountCents(durationDays: number): number {
   return Math.round(
