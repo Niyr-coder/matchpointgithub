@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { createMatch } from "@/server/actions/matches";
 import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
+import { RankedBadge } from "@/components/dashboard/widgets/RankedBadge";
 
 type Rival = {
   id?: string;
@@ -609,6 +610,10 @@ function RTStep1({
           )}
         </>
       )}
+
+      <div style={{ margin: "4px 0 8px" }}>
+        <RankedBadge />
+      </div>
 
       <div className="label-mp">Modalidad</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>

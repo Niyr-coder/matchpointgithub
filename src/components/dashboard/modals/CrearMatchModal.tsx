@@ -21,6 +21,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { createMatch } from "@/server/actions/matches";
 import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
+import { RankedBadge } from "@/components/dashboard/widgets/RankedBadge";
 
 type Sport = "pickleball" | "padel" | "tenis";
 type Mode = "singles" | "dobles" | "mixto";
@@ -785,6 +786,9 @@ function Step3({
           siguientes serán los rivales.
         </div>
       )}
+      <div style={{ marginTop: 4 }}>
+        <RankedBadge />
+      </div>
       <CMField
         label="Mensaje al equipo (opcional)"
         hint="Lo verán los invitados al recibir la notificación"

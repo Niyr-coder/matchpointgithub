@@ -3031,8 +3031,10 @@ export type Database = {
           disputed_reason: string | null
           duration_min: number
           id: string
+          is_ranked: boolean
           mode: Database["public"]["Enums"]["mp_match_mode"]
           played_at: string
+          rating_applied_at: string | null
           reported_at: string | null
           reported_by: string | null
           score: Json | null
@@ -3052,8 +3054,10 @@ export type Database = {
           disputed_reason?: string | null
           duration_min?: number
           id?: string
+          is_ranked?: boolean
           mode: Database["public"]["Enums"]["mp_match_mode"]
           played_at: string
+          rating_applied_at?: string | null
           reported_at?: string | null
           reported_by?: string | null
           score?: Json | null
@@ -3073,8 +3077,10 @@ export type Database = {
           disputed_reason?: string | null
           duration_min?: number
           id?: string
+          is_ranked?: boolean
           mode?: Database["public"]["Enums"]["mp_match_mode"]
           played_at?: string
+          rating_applied_at?: string | null
           reported_at?: string | null
           reported_by?: string | null
           score?: Json | null
@@ -6726,6 +6732,11 @@ export type Database = {
           retry_after_seconds: number
         }[]
       }
+      fn_recalculate_elo_for_match: {
+        Args: { p_match_id: string }
+        Returns: undefined
+      }
+      fn_refresh_mv_user_ranking: { Args: never; Returns: undefined }
       gen_team_invite_code: { Args: never; Returns: string }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {

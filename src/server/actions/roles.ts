@@ -62,20 +62,12 @@ async function requireAdminOrClubOwner(clubId: string): Promise<string> {
 
 export async function searchUsers(input: unknown): Promise<ActionResult<{ id: string; username: string; display_name: string }[]>> {
   return runAction(z.object({ q: z.string().min(1).max(40) }), input, async ({ q }) => {
-    // Admin O cualquier club staff (owner/manager) puede buscar usuarios
-    // para asignarlos a su staff. La RLS de profiles ya restringe lo que
-    // pueden leer del row.
-    const userId = await requireUser();
+    // Cualquier usuario autenticado puede buscar (caso de uso: PlayerPicker
+    // de matches/retos). La RLS de profiles ya restringe lo visible por fila.
+    // El gate "premium" se aplica más arriba (ej: si el match cuenta para
+    // ranking solo cuando el creador es Premium), no acá.
+    await requireUser();
     const supabase = await getServerClient();
-    const { data: roles } = await supabase
-      .from("role_assignments")
-      .select("role")
-      .eq("user_id", userId)
-      .is("revoked_at", null)
-      .in("role", ["admin", "owner", "manager"]);
-    if (!roles || roles.length === 0) {
-      throw new AuthError("AUTH.ROLE_REQUIRED", "Admin or club staff required");
-    }
     const term = q.replace(/^@/, "").trim();
     const { data, error } = await supabase
       .from("profiles")

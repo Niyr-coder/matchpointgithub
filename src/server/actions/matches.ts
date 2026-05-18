@@ -16,6 +16,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { IsoDateTimeSchema, MpSportSchema, UuidSchema } from "@/lib/schemas/common";
+import { getPlanForUser } from "@/lib/auth/plan";
 
 // Los tipos generados de Supabase (src/lib/db/types.ts) todavía no incluyen la
 // tabla `matches` — esos tipos se regeneran cuando la migration 053 se aplica.
@@ -120,6 +121,7 @@ export type MatchRow = {
   confirmedAt: string | null;
   disputedReason: string | null;
   status: "scheduled" | "reported" | "confirmed" | "disputed" | "cancelled";
+  isRanked: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -142,6 +144,7 @@ type DbMatch = {
   confirmed_at: string | null;
   disputed_reason: string | null;
   status: MatchRow["status"];
+  is_ranked: boolean | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -165,6 +168,7 @@ function rowToMatch(row: DbMatch): MatchRow {
     confirmedAt: row.confirmed_at,
     disputedReason: row.disputed_reason,
     status: row.status,
+    isRanked: row.is_ranked === true,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -194,6 +198,14 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
         422,
       );
     }
+    const baseSupabase = await getServerClient();
+    // Premium gate: solo matches creados por usuarios Premium cuentan para
+    // ranking (is_ranked=true). Free crea matches casuales (is_ranked=false)
+    // que quedan en historial pero no disparan el recálculo ELO. El opponent
+    // se beneficia del rating si el creador es Premium, sin importar su plan.
+    const creatorPlan = await getPlanForUser(baseSupabase, userId);
+    const isRanked = creatorPlan.tier === "premium";
+
     const supabase = await getMatchesClient();
     const { data: row, error } = await supabase
       .from("matches")
@@ -207,6 +219,7 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
         team_a_player_ids: data.teamAPlayerIds,
         team_b_player_ids: data.teamBPlayerIds,
         status: "scheduled",
+        is_ranked: isRanked,
         created_by: userId,
       } as never)
       .select("*")
