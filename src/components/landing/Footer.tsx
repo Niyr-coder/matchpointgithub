@@ -39,6 +39,13 @@ const COLS: { t: string; l: FooterLink[] }[] = [
     ],
   },
   {
+    t: "Partners",
+    l: [
+      { label: "Publica tu torneo", href: "/soy-partner" },
+      { label: "Ver torneos", href: "/eventos" },
+    ],
+  },
+  {
     t: "MatchPoint",
     l: [
       { label: "Acerca de", href: "/acerca-de" },
@@ -59,7 +66,7 @@ export function Footer() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+            gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr",
             gap: 40,
             marginBottom: 40,
           }}

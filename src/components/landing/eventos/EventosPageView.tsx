@@ -497,7 +497,7 @@ function FeaturedPlaceholder() {
         Aquí va el torneo más grande de la temporada. ¿Tu club organiza uno?
       </p>
       <Link
-        href="/soy-club"
+        href="/soy-partner"
         style={{
           marginTop: 18,
           padding: "8px 16px",
