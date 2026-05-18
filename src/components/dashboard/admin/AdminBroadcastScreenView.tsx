@@ -7,7 +7,7 @@ import { PolHero } from "../widgets/PolHero";
 import { RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import { cancelBroadcast, createBroadcast } from "@/server/actions/marketing";
+import { cancelBroadcast, createBroadcast, dispatchBroadcast } from "@/server/actions/marketing";
 
 export type Kind = "push" | "email" | "banner" | "in-app";
 export type SentRow = {
@@ -166,20 +166,33 @@ export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
     }
     startTransition(async () => {
       const channel = kind === "in-app" || kind === "banner" ? "inapp" : kind;
-      const res = await createBroadcast({
+      const created = await createBroadcast({
         scope: "platform",
         title,
         body,
         channels: [channel],
         targetFilter: {},
       });
-      if (res.ok) {
-        toast({ icon: "send", title: "Campaña creada", sub: "Está como borrador" });
-        setTitle("");
-        setBody("");
-      } else {
-        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      if (!created.ok) {
+        toast({ icon: "alert-triangle", title: "Error", sub: created.error.message });
+        return;
       }
+      const dispatched = await dispatchBroadcast({ id: created.data.id });
+      if (!dispatched.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "Borrador creado, pero no se envió",
+          sub: dispatched.error.message,
+        });
+        return;
+      }
+      toast({
+        icon: "send",
+        title: dispatched.data.sent > 0 ? "Campaña enviada" : "Campaña enviada (sin destinatarios)",
+        sub: `${dispatched.data.sent} ${dispatched.data.sent === 1 ? "destinatario" : "destinatarios"}`,
+      });
+      setTitle("");
+      setBody("");
     });
   };
 
