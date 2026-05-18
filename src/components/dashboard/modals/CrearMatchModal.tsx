@@ -1,22 +1,26 @@
-// CrearMatchModal — migrado 1:1 desde ui_kits/dashboard/CrearMatchModal.jsx
-// Escucha window event 'mp-open-crear-match' (sin detail)
+// CrearMatchModal — migrado desde ui_kits/dashboard/CrearMatchModal.jsx
+// Escucha window event 'mp-open-crear-match' (sin detail).
 //
-// Wireup mínimo a backend (Agente T):
-//  · El botón final llama a `createMatch` cuando hay datos válidos.
-//  · LIMITACIÓN ACTUAL: el form trabaja con nombres de clubes y de amigos
-//    como strings (mocks). No hay selectores reales que devuelvan UUIDs.
-//    Por eso `clubId`, `courtId` y `teamBPlayerIds` van como null/[]
-//    mientras no exista un selector real. Ver TODOs marcados.
-//  · Cuando no hay datos suficientes (rival sin UUID), el botón final
-//    se deshabilita con el copy "Próximamente · falta selector de jugadores".
+// Wireup a backend:
+//  · El botón final llama a `createMatch` con UUIDs reales tomados del
+//    `PlayerPicker` (paso 3).
+//  · `currentUserId` se baja como prop desde `DashboardLayout` (server) → `DashboardModals`
+//    para no hacer un fetch extra al abrir.
 //  · La modalidad 'mixto' del UI se mapea a 'doubles' en el backend
 //    (el schema solo distingue cardinalidad, no género).
+//
+// Convención teamA/teamB en doubles (incluye 'mixto'):
+//  · El creador (current user) siempre va en teamA[0].
+//  · El primer jugador seleccionado en el picker es el partner (teamA[1]).
+//  · Los dos siguientes son los rivales (teamB[0], teamB[1]).
+//  Es decir: picks = [partner, rivalA, rivalB] ⇒ teamA = [me, partner], teamB = [rivalA, rivalB].
 "use client";
 import { useEffect, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { createMatch } from "@/server/actions/matches";
+import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
 
 type Sport = "pickleball" | "padel" | "tenis";
 type Mode = "singles" | "dobles" | "mixto";
@@ -32,14 +36,13 @@ type Form = {
   court: string;
   visibility: Visibility;
   level: string;
-  invited: string[];
   splitCost: boolean;
   totalCost: number;
   notes: string;
-  // Wireup real: cuando exista selector real de jugadores, aquí van los UUIDs
-  // del rival. Hoy se queda vacío y el botón final se deshabilita.
-  // TODO: cablear selector real de usuarios y poblar este array.
-  rivalPlayerIds: string[];
+  // Jugadores reales seleccionados con el PlayerPicker.
+  //  · singles: 1 elemento (el rival).
+  //  · doubles / mixto: 3 elementos en este orden [partner, rivalA, rivalB].
+  picks: Player[];
 };
 
 const INITIAL_FORM: Form = {
@@ -52,11 +55,10 @@ const INITIAL_FORM: Form = {
   court: "Cancha 3",
   visibility: "amigos",
   level: "3.5-4.0",
-  invited: ["Diego Carrasco", "Camila Reyes", "Andrés Vega"],
   splitCost: true,
   totalCost: 24,
   notes: "",
-  rivalPlayerIds: [],
+  picks: [],
 };
 
 // Mapas UI → backend
@@ -74,7 +76,7 @@ const MODE_TO_DB: Record<Mode, "singles" | "doubles"> = {
 
 const STEPS = ["Tipo", "Cuándo y dónde", "Jugadores", "Resumen"];
 
-export function CrearMatchModal() {
+export function CrearMatchModal({ currentUserId }: { currentUserId: string | null }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Form>(INITIAL_FORM);
@@ -94,27 +96,45 @@ export function CrearMatchModal() {
     return () => window.removeEventListener("mp-open-crear-match", handler);
   }, []);
 
-  // Validez de submit: necesitamos UUIDs reales del rival. Mientras el selector
-  // de jugadores no exista, `rivalPlayerIds` siempre será []. El botón se
-  // deshabilita en ese caso.
-  const needed = form.mode === "singles" ? 1 : 2;
-  const hasRealRivals =
-    form.rivalPlayerIds.length === needed &&
-    form.rivalPlayerIds.every((id) => /^[0-9a-f-]{36}$/i.test(id));
-  const canSubmit = hasRealRivals;
+  // Validez de submit: necesitamos current user + selección completa de jugadores.
+  //  · singles → 1 pick (rival).
+  //  · doubles / mixto → 3 picks (partner + 2 rivales).
+  const needed = form.mode === "singles" ? 1 : 3;
+  const hasUser = !!currentUserId;
+  const hasAllPicks = form.picks.length === needed;
+  const canSubmit = hasUser && hasAllPicks;
 
   const handleSubmit = () => {
-    if (!canSubmit) {
+    if (!hasUser) {
       toast({
         icon: "alert-triangle",
-        title: "Falta seleccionar rival",
-        sub: "Aún no hay selector real de jugadores conectado.",
+        title: "Tienes que iniciar sesión",
+        sub: "No se pudo identificar al creador del match.",
+      });
+      return;
+    }
+    if (!hasAllPicks) {
+      toast({
+        icon: "alert-triangle",
+        title: "Faltan jugadores",
+        sub:
+          form.mode === "singles"
+            ? "Selecciona a tu rival."
+            : "Selecciona tu pareja y los 2 rivales.",
       });
       return;
     }
     startSubmit(async () => {
       // Combina date + time en horario local del navegador.
       const playedAt = new Date(`${form.date}T${form.time}:00`).toISOString();
+      const pickIds = form.picks.map((p) => p.id);
+      // Convención (ver header del archivo):
+      //  · singles  → teamA = [me], teamB = [rival]
+      //  · doubles  → teamA = [me, partner], teamB = [rivalA, rivalB]
+      const teamAPlayerIds =
+        form.mode === "singles" ? [currentUserId!] : [currentUserId!, pickIds[0]];
+      const teamBPlayerIds =
+        form.mode === "singles" ? pickIds : pickIds.slice(1);
       const res = await createMatch({
         sport: SPORT_TO_DB[form.sport],
         mode: MODE_TO_DB[form.mode],
@@ -123,13 +143,8 @@ export function CrearMatchModal() {
         courtId: null,
         playedAt,
         durationMin: form.duration,
-        // TODO: el "self" debería venir del selector real. Hoy el server action
-        // valida que el creador esté en alguno de los dos equipos vía
-        // requireUserId, pero necesitamos enviar el UUID. Cuando exista el
-        // selector real, el primer elemento de teamAPlayerIds debe ser el
-        // current user (auth.uid()).
-        teamAPlayerIds: form.rivalPlayerIds.slice(0, 0), // placeholder
-        teamBPlayerIds: form.rivalPlayerIds,
+        teamAPlayerIds,
+        teamBPlayerIds,
       });
       if (!res.ok) {
         toast({
@@ -291,7 +306,7 @@ export function CrearMatchModal() {
           ) : step === 1 ? (
             <Step2 form={form} set={set} />
           ) : step === 2 ? (
-            <Step3 form={form} set={set} />
+            <Step3 form={form} set={set} currentUserId={currentUserId} />
           ) : (
             <Step4 form={form} />
           )}
@@ -348,7 +363,9 @@ export function CrearMatchModal() {
                 }
                 title={
                   step === 3 && !canSubmit
-                    ? "Próximamente · falta selector de jugadores"
+                    ? form.mode === "singles"
+                      ? "Selecciona a tu rival"
+                      : "Selecciona pareja y 2 rivales"
                     : undefined
                 }
               >
@@ -360,8 +377,8 @@ export function CrearMatchModal() {
                     </>
                   ) : (
                     <>
-                      <Icon name="clock" size={13} color="#fff" />
-                      Próximamente · falta selector de jugadores
+                      <Icon name="users" size={13} color="#fff" />
+                      Faltan jugadores
                     </>
                   )
                 ) : (
@@ -695,38 +712,25 @@ function Step2({ form, set }: { form: Form; set: Setter }) {
   );
 }
 
-const FRIENDS = [
-  { name: "Felipe Donoso", level: 4.1 },
-  { name: "Constanza Riquelme", level: 3.6 },
-  { name: "Joaquín Silva", level: 4.3 },
-  { name: "Bárbara Núñez", level: 3.9 },
-  { name: "Matías Rojas", level: 4.6 },
-  { name: "Diego Carrasco", level: 4.0 },
-  { name: "Camila Reyes", level: 3.5 },
-  { name: "Andrés Vega", level: 4.5 },
-];
-
-const FRIEND_AVATARS = [
-  "linear-gradient(135deg,#10b981,#047857)",
-  "linear-gradient(135deg,#0a0a0a,#374151)",
-  "linear-gradient(135deg,#7c3aed,#db2777)",
-  "linear-gradient(135deg,#0891b2,#06b6d4)",
-  "linear-gradient(135deg,#ca8a04,#facc15)",
-  "linear-gradient(135deg,#dc2626,#fb923c)",
-];
-
 const VISIBILITY_OPTIONS: { k: Visibility; t: string; sub: string; i: string }[] = [
   { k: "amigos", t: "Solo amigos", sub: "Invitas tú directamente", i: "users" },
   { k: "club", t: "Club abierto", sub: "Visible para tu club", i: "building-2" },
   { k: "public", t: "Público", sub: "Cualquiera puede unirse", i: "globe" },
 ];
 
-function Step3({ form, set }: { form: Form; set: Setter }) {
-  const toggle = (name: string) => {
-    const has = form.invited.includes(name);
-    set("invited", has ? form.invited.filter((n) => n !== name) : [...form.invited, name]);
-  };
-  const need = form.mode === "singles" ? 1 : 3;
+function Step3({
+  form,
+  set,
+  currentUserId,
+}: {
+  form: Form;
+  set: Setter;
+  currentUserId: string | null;
+}) {
+  const pickerLabel =
+    form.mode === "singles" ? "Tu rival" : "Pareja + rivales (3 jugadores)";
+  const pickerMax = form.mode === "singles" ? 1 : 3;
+  const excludeIds = currentUserId ? [currentUserId] : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <div>
@@ -753,72 +757,34 @@ function Step3({ form, set }: { form: Form; set: Setter }) {
           ))}
         </div>
       </div>
-      <div>
+      {currentUserId == null ? (
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10,
+            padding: 14,
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            background: "#fafafa",
+            fontSize: 12.5,
+            color: "var(--muted-fg)",
           }}
         >
-          <div className="label-mp">Invitar amigos</div>
-          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-            {form.invited.length} de {need} jugadores · {Math.max(0, need - form.invited.length)}{" "}
-            faltan
-          </span>
+          Inicia sesión para invitar jugadores a tu match.
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
-          {FRIENDS.map((f, i) => {
-            const sel = form.invited.includes(f.name);
-            return (
-              <button
-                key={f.name}
-                onClick={() => toggle(f.name)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "9px 10px",
-                  borderRadius: 10,
-                  border: sel ? "2px solid var(--primary)" : "1px solid var(--border)",
-                  background: sel ? "#ecfdf5" : "#fff",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "left",
-                }}
-              >
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: "50%",
-                    background: FRIEND_AVATARS[i % FRIEND_AVATARS.length],
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#fff",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span className="font-heading" style={{ fontSize: 10, fontWeight: 900 }}>
-                    {f.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .slice(0, 2)}
-                  </span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{f.name}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>Nivel {f.level}</div>
-                </div>
-                {sel && <Icon name="check-circle-2" size={15} color="var(--primary)" />}
-              </button>
-            );
-          })}
+      ) : (
+        <PlayerPicker
+          label={pickerLabel}
+          max={pickerMax}
+          selected={form.picks}
+          onChange={(p) => set("picks", p)}
+          excludeIds={excludeIds}
+        />
+      )}
+      {form.mode !== "singles" && (
+        <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: -10 }}>
+          Orden esperado: el primero que selecciones será tu pareja; los dos
+          siguientes serán los rivales.
         </div>
-      </div>
+      )}
       <CMField
         label="Mensaje al equipo (opcional)"
         hint="Lo verán los invitados al recibir la notificación"
@@ -860,7 +826,7 @@ function Step4({ form }: { form: Form }) {
     month: "long",
   });
   const perPlayer = form.splitCost
-    ? (form.totalCost / (form.invited.length + 1)).toFixed(2)
+    ? (form.totalCost / (form.picks.length + 1)).toFixed(2)
     : form.totalCost.toFixed(2);
 
   return (
@@ -957,12 +923,12 @@ function Step4({ form }: { form: Form }) {
 
       <div className="card" style={{ padding: 16 }}>
         <div className="label-mp" style={{ marginBottom: 10 }}>
-          Invitados ({form.invited.length})
+          Jugadores ({form.picks.length})
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {form.invited.map((n) => (
+          {form.picks.map((p) => (
             <span
-              key={n}
+              key={p.id}
               style={{
                 padding: "6px 11px",
                 borderRadius: 9999,
@@ -975,12 +941,12 @@ function Step4({ form }: { form: Form }) {
               }}
             >
               <Icon name="user" size={10} />
-              {n}
+              {p.displayName}
             </span>
           ))}
-          {form.invited.length === 0 && (
+          {form.picks.length === 0 && (
             <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-              Sin invitados aún · el match se publicará abierto.
+              Aún no seleccionas jugadores · vuelve al paso 3.
             </span>
           )}
         </div>
@@ -1049,7 +1015,7 @@ function DoneScreen({ form }: { form: Form }) {
           lineHeight: 1.5,
         }}
       >
-        Enviamos invitaciones a {form.invited.length} jugadores. Recibirás una notificación cuando
+        Enviamos invitaciones a {form.picks.length} jugadores. Recibirás una notificación cuando
         confirmen su asistencia. Puedes ver y editar el match desde Inicio.
       </p>
       <div

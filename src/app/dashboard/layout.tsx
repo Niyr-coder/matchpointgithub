@@ -60,7 +60,9 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
+  let currentUserId: string | null = null;
   if (session.authenticated) {
+    currentUserId = session.session.userId;
     const state = await readOnboardedAtCached(session.session.userId);
     // Solo redirigimos cuando la fila existe pero onboarded_at IS NULL — mismo
     // comportamiento que antes del cache (sin fila ⇒ no bloqueamos).
@@ -72,7 +74,10 @@ export default async function DashboardLayout({
     <ToastProvider>
       <PromptModalProvider>
         {children}
-        <DashboardModals />
+        {/* Bajamos el userId desde server al wrapper de modales para que
+            CrearMatchModal / RetarModal puedan armar teamA con el creador
+            sin necesidad de un fetch extra al abrir. */}
+        <DashboardModals currentUserId={currentUserId} />
       </PromptModalProvider>
     </ToastProvider>
   );

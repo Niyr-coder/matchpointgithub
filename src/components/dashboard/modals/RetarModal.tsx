@@ -1,10 +1,23 @@
-// RetarModal — migrado 1:1 desde ui_kits/dashboard/RetarModal.jsx
-// Escucha window event 'mp-open-retar' con detail = { name, level, sport, city, av, avBg }
+// RetarModal — migrado desde ui_kits/dashboard/RetarModal.jsx
+// Escucha window event 'mp-open-retar' con detail = { id?, name, level, sport, city, av, avBg }
+//
+// Wireup a backend:
+//  · "Enviar reto" llama a `createMatch` con mode='singles', teamA=[me], teamB=[opponent].
+//  · `currentUserId` se baja como prop desde `DashboardLayout` → `DashboardModals`.
+//  · Si el evento trae `id` (UUID del rival), se prefilla y el selector queda oculto.
+//    Si no, el paso 1 muestra un `PlayerPicker` para elegir oponente real.
+//  · UX vs CrearMatchModal: aquí el flujo es "reto rápido" (2 pasos) y siempre singles.
+//    En CrearMatchModal el flujo es completo (4 pasos) y permite singles/doubles/mixto.
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { useToast } from "../ToastProvider";
+import { createMatch } from "@/server/actions/matches";
+import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
 
 type Rival = {
+  id?: string;
   name: string;
   level: number;
   sport?: string;
@@ -49,24 +62,40 @@ const YOU = {
 };
 const H2H = { you: 3, rival: 2, total: 5, streak: "2 victorias seguidas" };
 
-export function RetarModal() {
+export function RetarModal({ currentUserId }: { currentUserId: string | null }) {
   const [open, setOpen] = useState(false);
   const [rival, setRival] = useState<Rival | null>(null);
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
   const [form, setForm] = useState<Form>(INITIAL_FORM);
+  // Oponente real (UUID). Si llega `id` en el evento, lo prefillamos como Player.
+  const [opponent, setOpponent] = useState<Player | null>(null);
+  const [submitting, startSubmit] = useTransition();
+  const toast = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<Partial<Rival>>).detail;
-      setRival({
+      const r: Rival = {
+        id: detail?.id,
         name: detail?.name || "Andrés Vega",
         level: detail?.level ?? 4.5,
         sport: detail?.sport || "Pádel",
         city: detail?.city || "Cumbayá",
         av: detail?.av || "AV",
         avBg: detail?.avBg || "linear-gradient(135deg,#ca8a04,#facc15)",
-      });
+      };
+      setRival(r);
+      setOpponent(
+        r.id
+          ? {
+              id: r.id,
+              username: r.name.toLowerCase().replace(/\s+/g, ""),
+              displayName: r.name,
+            }
+          : null,
+      );
       setOpen(true);
       setStep(0);
       setDone(false);
@@ -79,6 +108,66 @@ export function RetarModal() {
   if (!open || !rival) return null;
   const close = () => setOpen(false);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Mapeo fecha de UI → ISO real para el backend.
+  // El paso 2 solo expone HOY / mar 13 / sáb 17 / dom 18 (mock UI). Para no
+  // cambiar el alcance del wireup, usamos el próximo día de la semana
+  // correspondiente a partir de hoy.
+  const dateToIso = (d: Form["date"], time: string): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [h, m] = time.split(":").map((n) => parseInt(n, 10));
+    const target = new Date(today);
+    if (d === "hoy") {
+      // hoy a la hora indicada
+    } else if (d === "mañ") {
+      target.setDate(target.getDate() + 1);
+    } else {
+      // sáb (6) o dom (0)
+      const desired = d === "sab" ? 6 : 0;
+      const diff = (desired - target.getDay() + 7) % 7 || 7;
+      target.setDate(target.getDate() + diff);
+    }
+    target.setHours(h, m, 0, 0);
+    return target.toISOString();
+  };
+
+  const canSend = !!currentUserId && !!opponent;
+
+  const sendChallenge = () => {
+    if (!currentUserId) {
+      toast({ icon: "alert-triangle", title: "Inicia sesión para retar" });
+      return;
+    }
+    if (!opponent) {
+      toast({ icon: "alert-triangle", title: "Elige un oponente" });
+      return;
+    }
+    startSubmit(async () => {
+      const playedAt = dateToIso(form.date, form.time);
+      const res = await createMatch({
+        sport: "pickleball",
+        mode: "singles",
+        clubId: null,
+        courtId: null,
+        playedAt,
+        durationMin: 60,
+        teamAPlayerIds: [currentUserId],
+        teamBPlayerIds: [opponent.id],
+      });
+      if (!res.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo enviar el reto",
+          sub: res.error.message,
+        });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Reto enviado" });
+      setDone(true);
+      router.refresh();
+    });
+  };
 
   return (
     <div
@@ -186,7 +275,14 @@ export function RetarModal() {
           {done ? (
             <RTDone you={YOU} rival={rival} form={form} onClose={close} />
           ) : step === 0 ? (
-            <RTStep1 form={form} set={set} rival={rival} />
+            <RTStep1
+              form={form}
+              set={set}
+              rival={rival}
+              currentUserId={currentUserId}
+              opponent={opponent}
+              setOpponent={setOpponent}
+            />
           ) : (
             <RTStep2 form={form} set={set} rival={rival} />
           )}
@@ -237,14 +333,32 @@ export function RetarModal() {
               {step === 0 ? "1 · Reglas del duelo" : "2 · Acuerda cuándo"}
             </div>
             <button
-              onClick={() => (step === 1 ? setDone(true) : setStep(1))}
+              onClick={() => {
+                if (step === 1) {
+                  sendChallenge();
+                  return;
+                }
+                setStep(1);
+              }}
+              disabled={step === 1 ? submitting || !canSend : false}
               className="btn btn-primary"
-              style={{ padding: "9px 18px" }}
+              style={{
+                padding: "9px 18px",
+                opacity: step === 1 && !canSend ? 0.55 : 1,
+                cursor: step === 1 && (!canSend || submitting) ? "not-allowed" : "pointer",
+              }}
+              title={
+                step === 1 && !canSend
+                  ? !currentUserId
+                    ? "Inicia sesión para retar"
+                    : "Elige un oponente"
+                  : undefined
+              }
             >
               {step === 1 ? (
                 <>
                   <Icon name="swords" size={13} color="#fff" />
-                  Enviar reto
+                  {submitting ? "Enviando…" : "Enviar reto"}
                 </>
               ) : (
                 <>
@@ -453,13 +567,49 @@ function RTStep1({
   form,
   set,
   rival,
+  currentUserId,
+  opponent,
+  setOpponent,
 }: {
   form: Form;
   set: <K extends keyof Form>(k: K, v: Form[K]) => void;
   rival: Rival;
+  currentUserId: string | null;
+  opponent: Player | null;
+  setOpponent: (p: Player | null) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Selector de oponente real. Si el evento ya trajo `rival.id`, lo
+          mostramos como chip fijo; si no, abrimos el PlayerPicker para elegir. */}
+      {!rival.id && (
+        <>
+          <div className="label-mp">Oponente</div>
+          {currentUserId == null ? (
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                border: "1px dashed var(--border)",
+                background: "#fafafa",
+                fontSize: 12,
+                color: "var(--muted-fg)",
+              }}
+            >
+              Inicia sesión para enviar un reto.
+            </div>
+          ) : (
+            <PlayerPicker
+              label="A quién retas"
+              max={1}
+              selected={opponent ? [opponent] : []}
+              onChange={(arr) => setOpponent(arr[0] ?? null)}
+              excludeIds={[currentUserId]}
+            />
+          )}
+        </>
+      )}
+
       <div className="label-mp">Modalidad</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {[

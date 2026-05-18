@@ -59,7 +59,7 @@ const TRIG_MAPA: LazyEvents = ["mp-open-mapa"];
 const TRIG_EVENTO: LazyEvents = ["mp-open-crear-evento"];
 const TRIG_CLASE: LazyEvents = ["mp-open-inscribir-clase"];
 
-export function DashboardModals() {
+export function DashboardModals({ currentUserId }: { currentUserId: string | null }) {
   const retar = useEventTrigger(TRIG_RETAR);
   const match = useEventTrigger(TRIG_MATCH);
   const juego = useEventTrigger(TRIG_JUEGO);
@@ -70,8 +70,8 @@ export function DashboardModals() {
 
   return (
     <>
-      {retar && <RetarModal />}
-      {match && <CrearMatchModal />}
+      {retar && <RetarModal currentUserId={currentUserId} />}
+      {match && <CrearMatchModal currentUserId={currentUserId} />}
       {juego && <CrearJuegoModal />}
       {reserva && <ReservarCanchaDrawer />}
       {mapa && <VerMapaOverlay />}
