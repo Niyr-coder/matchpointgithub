@@ -1152,9 +1152,11 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
 }
 
 // ── Step 2 — Ubicación ──────────────────────────────────────────────────
-// Mapa de ubicación: iframe de OpenStreetMap (sin API key) centrado en
-// lat/lng del draft. Inputs para coordenadas + botón "Usar mi ubicación"
-// vía navigator.geolocation. El user puede pegar coords desde Google Maps.
+// Mapa de ubicación: Leaflet con OSM tiles (sin API key). Pin draggable
+// + click en el mapa lo mueve. Setear geoLat/geoLng emite onChange al
+// padre. Tiles de tile.openstreetmap.org bajo su Tile Usage Policy
+// (atribución obligatoria, OK para low-traffic — para producción a
+// escala migrar a Mapbox/Maptiler).
 function LocationPicker({
   draft,
   set,
@@ -1165,14 +1167,78 @@ function LocationPicker({
   const lat = draft.geoLat;
   const lng = draft.geoLng;
   const hasCoords = lat != null && lng != null;
-  // bbox ~600m alrededor del pin para zoom razonable.
-  const D = 0.006;
-  const bbox = hasCoords
-    ? `${lng - D},${lat - D},${lng + D},${lat + D}`
-    : "-78.51,-0.23,-78.46,-0.18"; // Quito centro como default visual
-  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik${
-    hasCoords ? `&marker=${lat},${lng}` : ""
-  }`;
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const leafletRef = useRef<{ map: any; marker: any } | null>(null);
+
+  // Inicializa Leaflet 1 sola vez al montar. Carga el CSS via <link>
+  // injectado on-demand para no globalizarlo si nadie usa el wizard.
+  useEffect(() => {
+    if (!mapRef.current || leafletRef.current) return;
+    let cancelled = false;
+    (async () => {
+      // CSS de Leaflet (idempotente — el id evita duplicados).
+      if (!document.getElementById("leaflet-css")) {
+        const link = document.createElement("link");
+        link.id = "leaflet-css";
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      const L = (await import("leaflet")).default;
+      if (cancelled || !mapRef.current) return;
+      // Arregla el bug clásico de iconos rotos con bundlers — apunta
+      // a los PNGs del CDN.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const initLat = lat ?? -0.2061; // Quito centro por defecto
+      const initLng = lng ?? -78.4359;
+      const map = L.map(mapRef.current).setView([initLat, initLng], hasCoords ? 16 : 12);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 19,
+      }).addTo(map);
+      const marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
+      marker.on("dragend", () => {
+        const ll = marker.getLatLng();
+        set("geoLat", Number(ll.lat.toFixed(6)));
+        set("geoLng", Number(ll.lng.toFixed(6)));
+      });
+      map.on("click", (e: { latlng: { lat: number; lng: number } }) => {
+        marker.setLatLng(e.latlng);
+        set("geoLat", Number(e.latlng.lat.toFixed(6)));
+        set("geoLng", Number(e.latlng.lng.toFixed(6)));
+      });
+      leafletRef.current = { map, marker };
+    })();
+    return () => {
+      cancelled = true;
+      if (leafletRef.current) {
+        leafletRef.current.map.remove();
+        leafletRef.current = null;
+      }
+    };
+    // Solo al montar — actualizaciones de lat/lng las sync el useEffect siguiente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync externo (input numérico o geolocation) → mueve el marker.
+  useEffect(() => {
+    if (!leafletRef.current || lat == null || lng == null) return;
+    const { map, marker } = leafletRef.current;
+    const cur = marker.getLatLng();
+    if (Math.abs(cur.lat - lat) > 1e-6 || Math.abs(cur.lng - lng) > 1e-6) {
+      marker.setLatLng([lat, lng]);
+      map.setView([lat, lng], Math.max(map.getZoom(), 15));
+    }
+  }, [lat, lng]);
+
   const useMyLocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -1188,6 +1254,7 @@ function LocationPicker({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div
+        ref={mapRef}
         style={{
           height: 320,
           borderRadius: 12,
@@ -1195,17 +1262,7 @@ function LocationPicker({
           border: "1px solid var(--border)",
           background: "#f4f4f5",
         }}
-      >
-        <iframe
-          key={mapUrl}
-          src={mapUrl}
-          width="100%"
-          height="100%"
-          style={{ border: 0, display: "block" }}
-          loading="lazy"
-          title="Mapa de ubicación"
-        />
-      </div>
+      />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
         <input
           type="number"
