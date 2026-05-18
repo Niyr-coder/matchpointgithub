@@ -31,7 +31,7 @@ async function loadData(): Promise<UsersData> {
 
   const { data: profiles, count: totalCount } = await supabase
     .from("profiles")
-    .select("id,username,display_name,city,avatar_url", { count: "exact" })
+    .select("id,username,display_name,city,avatar_url,plan_tier,plan_expires_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -67,11 +67,16 @@ async function loadData(): Promise<UsersData> {
     }
   }
 
+  const nowMs = Date.now();
   const rows: UserRow[] = (profiles ?? []).map((p) => {
     const id = p.id as string;
     const name = (p.display_name as string) ?? "Sin nombre";
     const elo = ratingByUser.get(id) ?? 1500;
     const spendCents = spendByUser.get(id) ?? 0;
+    const tier = ((p.plan_tier as string) ?? "free") as "free" | "premium";
+    const expires = (p.plan_expires_at as string | null) ?? null;
+    const planActive =
+      tier === "premium" && (expires == null || Date.parse(expires) > nowMs);
     return {
       id,
       n: name,
@@ -84,6 +89,8 @@ async function loadData(): Promise<UsersData> {
       avBg: gradientFor(id),
       spend: `$${Math.round(spendCents / 100).toLocaleString("en-US")}`,
       avatarUrl: (p.avatar_url as string | null) ?? null,
+      planTier: planActive ? "premium" : "free",
+      planExpiresAt: expires,
     };
   });
 

@@ -78,7 +78,7 @@ export function RankedBadge() {
   return (
     <Link
       href="/dashboard/user/mi-plan"
-      title="Activa Premium para que tus matches cuenten para el ranking"
+      title="Activa MatchPoint+ para que tus matches cuenten para el ranking"
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -96,7 +96,7 @@ export function RankedBadge() {
       }}
     >
       <Icon name="info" size={11} />
-      Casual · activa Premium para sumar ranking
+      Casual · activa MatchPoint+ para sumar ranking
     </Link>
   );
 }

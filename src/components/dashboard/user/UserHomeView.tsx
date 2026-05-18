@@ -226,11 +226,11 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
   if (!isFree && !isExpiringSoon) return null;
 
   const renewing = isExpiringSoon;
-  const title = renewing ? "Tu Premium está por expirar" : "Activa MatchPoint Premium";
+  const title = renewing ? "Tu MatchPoint+ está por expirar" : "Activa MatchPoint+";
   const lead = renewing
-    ? `Tu Premium expira en ${remaining} ${remaining === 1 ? "día" : "días"}. Renueva para no perder beneficios.`
+    ? `Tu MatchPoint+ expira en ${remaining} ${remaining === 1 ? "día" : "días"}. Renueva para no perder beneficios.`
     : "Reservas ilimitadas, estadísticas y más por USD 5/mes.";
-  const ctaLabel = renewing ? "Renovar" : "Activar Premium";
+  const ctaLabel = renewing ? "Renovar" : "Activar MatchPoint+";
 
   return (
     <div

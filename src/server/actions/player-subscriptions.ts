@@ -216,6 +216,160 @@ export async function approvePlanSubscriptionAdmin(
   });
 }
 
+// ── grantMatchPointPlusAdmin ───────────────────────────────────────────
+// Atajo admin para activar MatchPoint+ directamente, sin pasar por el flujo
+// de comprobantes. Útil para regalos, soporte, beta testers, recompensas.
+// Crea una subscription con status='active' inmediato y extiende
+// plan_expires_at desde el expiry vigente (o desde ahora si no había).
+//
+// La transacción asociada es opcional: si admin pasa transactionId, se
+// vincula (caso: admin marcó como cobrado en efectivo fuera de la app).
+// Si no, se deja transaction_id NULL.
+const GrantSchema = z.object({
+  userId: UuidSchema,
+  durationMonths: z.number().int().min(1).max(36).default(1),
+  reason: z.string().min(2).max(500).optional(),
+});
+
+export async function grantMatchPointPlusAdmin(
+  input: unknown,
+): Promise<ActionResult<{ subscriptionId: string; userId: string; expiresAt: string }>> {
+  return runAction(GrantSchema, input, async ({ userId, durationMonths, reason }) => {
+    const adminId = await requireAdminUserId();
+    const supabase = await getServerClient();
+
+    // Calcular nuevo expiry extendiendo desde el vigente.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan_expires_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!profile) {
+      throw new MpError("PLAN.USER_NOT_FOUND", "Usuario no encontrado", 404);
+    }
+    const now = new Date();
+    const currentExpiry = profile.plan_expires_at
+      ? new Date(profile.plan_expires_at as string)
+      : null;
+    const startsAt = currentExpiry && currentExpiry > now ? currentExpiry : now;
+    const newExpiry = new Date(startsAt);
+    newExpiry.setMonth(newExpiry.getMonth() + durationMonths);
+
+    // Crear la subscription en estado 'active' directamente.
+    const { data: sub, error: subErr } = await supabase
+      .from("player_subscriptions")
+      .insert({
+        user_id: userId,
+        tier: "premium",
+        status: "active",
+        starts_at: startsAt.toISOString(),
+        expires_at: newExpiry.toISOString(),
+        duration_months: durationMonths,
+        transaction_id: null,
+        cancelled_reason: reason ?? null,
+      } as never)
+      .select("id")
+      .single();
+    if (subErr || !sub) {
+      throw new MpError(
+        "PLAN.SUB_CREATE_FAILED",
+        subErr?.message ?? "No se pudo crear la suscripción",
+        500,
+      );
+    }
+
+    // Actualizar profile.
+    const { error: profUpdErr } = await supabase
+      .from("profiles")
+      .update({
+        plan_tier: "premium",
+        plan_expires_at: newExpiry.toISOString(),
+      } as never)
+      .eq("id", userId);
+    if (profUpdErr) {
+      throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
+    }
+
+    // Audit log (best-effort).
+    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+      p_entity: "player_subscriptions",
+      p_entity_id: sub.id as string,
+      p_action: "plan_subscription.admin_grant",
+      p_diff: {
+        granted_to: userId,
+        granted_by: adminId,
+        duration_months: durationMonths,
+        expires_at: newExpiry.toISOString(),
+        reason: reason ?? null,
+      } as never,
+    });
+    if (auditErr) {
+      console.error("[grantMatchPointPlus] audit log failed", auditErr);
+    }
+
+    return {
+      subscriptionId: sub.id as string,
+      userId,
+      expiresAt: newExpiry.toISOString(),
+    };
+  });
+}
+
+// ── revokeMatchPointPlusAdmin ──────────────────────────────────────────
+// Quita MatchPoint+ inmediato: marca todas las subs activas del user como
+// cancelled y resetea profile a free. Útil para soporte/banear.
+const RevokeSchema = z.object({
+  userId: UuidSchema,
+  reason: z.string().min(2).max(500),
+});
+
+export async function revokeMatchPointPlusAdmin(
+  input: unknown,
+): Promise<ActionResult<{ userId: string; cancelledCount: number }>> {
+  return runAction(RevokeSchema, input, async ({ userId, reason }) => {
+    const adminId = await requireAdminUserId();
+    const supabase = await getServerClient();
+
+    const { data: cancelled, error: subErr } = await supabase
+      .from("player_subscriptions")
+      .update({
+        status: "cancelled",
+        cancelled_reason: reason,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .select("id");
+    if (subErr) {
+      throw new MpError("PLAN.REVOKE_FAILED", subErr.message, 500);
+    }
+
+    const { error: profUpdErr } = await supabase
+      .from("profiles")
+      .update({ plan_tier: "free", plan_expires_at: null } as never)
+      .eq("id", userId);
+    if (profUpdErr) {
+      throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
+    }
+
+    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+      p_entity: "profiles",
+      p_entity_id: userId,
+      p_action: "plan_subscription.admin_revoke",
+      p_diff: {
+        revoked_by: adminId,
+        reason,
+        cancelled_subs: cancelled?.length ?? 0,
+      } as never,
+    });
+    if (auditErr) {
+      console.error("[revokeMatchPointPlus] audit log failed", auditErr);
+    }
+
+    return { userId, cancelledCount: cancelled?.length ?? 0 };
+  });
+}
+
 // ── getCurrentPlan ─────────────────────────────────────────────────────
 // Retorna el plan vigente del user logueado (mas un boolean active).
 export async function getCurrentPlan(): Promise<

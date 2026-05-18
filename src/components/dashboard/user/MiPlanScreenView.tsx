@@ -39,7 +39,7 @@ function fmtDate(iso: string | null): string {
 
 const TIER_LABEL: Record<string, string> = {
   free: "Free",
-  premium: "Premium",
+  premium: "MatchPoint+",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -203,7 +203,7 @@ export function MiPlanScreenView({
               }}
             >
               <Icon name="zap" size={14} color="#fff" />
-              {pending ? "Procesando…" : "Activar Premium · USD 5/mes"}
+              {pending ? "Procesando…" : "Activar MatchPoint+ · USD 5/mes"}
             </button>
           )}
           <div
