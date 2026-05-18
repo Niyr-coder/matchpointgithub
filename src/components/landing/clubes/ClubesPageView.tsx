@@ -45,17 +45,29 @@ function primarySport(sports: string[]): string {
   return sportLabel(sports[0]);
 }
 
-// Stable pseudo-rating (4.5–4.9) per slug, hasta que exista club_reviews.
-function mockRating(slug: string): { rating: number; reviews: number } {
-  let h = 0;
-  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
-  return { rating: Math.round((4.5 + (h % 5) / 10) * 10) / 10, reviews: 40 + (h % 280) };
+// Tipo del payload de stats que viene del server (calculado con
+// get_club_review_stats RPC). null = club sin reseñas todavía.
+export type RatingInfo = { rating: number; reviews: number };
+
+function ratingFor(
+  clubId: string,
+  map: Record<string, RatingInfo>,
+): RatingInfo | null {
+  const r = map[clubId];
+  if (!r || r.reviews === 0) return null;
+  return r;
 }
 
 const MIN_CLUB_CARDS = 6;
 type ClubCard = (ClubFeatured & { placeholder?: false }) | { placeholder: true; key: string };
 
-export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
+export function ClubesPageView({
+  clubs,
+  ratingByClubId = {},
+}: {
+  clubs: ClubFeatured[];
+  ratingByClubId?: Record<string, RatingInfo>;
+}) {
   const onPaywall = usePaywall();
   const [filter, setFilter] = useState("todos");
   const [q, setQ] = useState("");
@@ -145,7 +157,7 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
         })}
       </div>
       {featured && (() => {
-        const { rating, reviews } = mockRating(featured.slug);
+        const featuredStats = ratingFor(featured.id, ratingByClubId);
         const price = featured.minPriceCents != null ? Math.round(featured.minPriceCents / 100) : 12;
         return (
           <Link
@@ -233,24 +245,33 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
             <div style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "4px 10px",
-                      background: "#fef3c7",
-                      borderRadius: 9999,
-                      fontSize: 11,
-                      fontWeight: 800,
-                    }}
-                  >
-                    <Icon name="star" size={11} color="#d97706" />
-                    {rating}
-                  </div>
-                  <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
-                    · {reviews} {reviews === 1 ? "reseña" : "reseñas"}
-                  </span>
+                  {featuredStats ? (
+                    <>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "4px 10px",
+                          background: "#fef3c7",
+                          borderRadius: 9999,
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Icon name="star" size={11} color="#d97706" />
+                        {featuredStats.rating.toFixed(1)}
+                      </div>
+                      <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+                        · {featuredStats.reviews}{" "}
+                        {featuredStats.reviews === 1 ? "reseña" : "reseñas"}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+                      Sin reseñas todavía
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
                   <div style={{ padding: 12, background: "var(--muted)", borderRadius: 10 }}>
@@ -344,7 +365,7 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
                 </div>
               );
             }
-            const { rating, reviews } = mockRating(c.slug);
+            const stats = ratingFor(c.id, ratingByClubId);
             const price = c.minPriceCents != null ? Math.round(c.minPriceCents / 100) : 12;
             return (
               <Link
@@ -387,24 +408,26 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
                   >
                     {primarySport(c.sports)}
                   </div>
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      padding: "3px 9px",
-                      background: "#fef3c7",
-                      borderRadius: 9999,
-                      fontSize: 10,
-                      fontWeight: 800,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <Icon name="star" size={10} color="#d97706" />
-                    {rating}
-                  </div>
+                  {stats && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        padding: "3px 9px",
+                        background: "#fef3c7",
+                        borderRadius: 9999,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <Icon name="star" size={10} color="#d97706" />
+                      {stats.rating.toFixed(1)}
+                    </div>
+                  )}
                   <div style={{ position: "relative", color: "#fff" }}>
                     <div
                       className="font-heading"
@@ -418,7 +441,10 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
                 </div>
                 <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-                    {c.courtsCount} canchas · {reviews} reseñas
+                    {c.courtsCount} canchas
+                    {stats
+                      ? ` · ${stats.reviews} ${stats.reviews === 1 ? "reseña" : "reseñas"}`
+                      : " · sin reseñas"}
                   </span>
                   <span className="font-heading" style={{ fontSize: 18, fontWeight: 900 }}>
                     ${price}
