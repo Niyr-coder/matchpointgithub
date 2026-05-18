@@ -1,4 +1,10 @@
-// Client view de AdminPlansScreen: pending plan subscriptions + historial.
+// Client view de AdminPlansScreen — "Planes y promociones".
+//
+// Decisión de scope (Agente W): se eligió la opción A — una sola pantalla
+// agrupa planes premium de jugador y featuring de clubes, ambos comparten
+// estética (cards de pendiente + tabla de historial). Mantener un solo
+// punto de gestión evita boilerplate y reduce la fricción del admin que
+// hoy ya entra a /dashboard/admin/admin-plans para revisar comprobantes.
 "use client";
 
 import { useMemo, useState } from "react";
@@ -10,10 +16,16 @@ import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
 import { rejectPlanSubscriptionAdmin } from "@/server/actions/admin-plans";
+import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
+import { rejectClubFeaturingAdmin } from "@/server/actions/admin-club-featuring";
 import type {
   PendingPlanSubscriptionRow,
   RecentPlanSubscriptionRow,
 } from "@/server/actions/admin-plans";
+import type {
+  PendingClubFeaturingRow,
+  RecentClubFeaturingRow,
+} from "@/server/actions/admin-club-featuring";
 
 // ── helpers ─────────────────────────────────────────────────────────────
 function fmtMoney(cents: number | null, currency: string | null): string {
@@ -91,13 +103,21 @@ function computeKpis(
 export function AdminPlansScreenView({
   pending,
   recent,
+  pendingFeaturing,
+  recentFeaturing,
+  activeFeaturedCount,
 }: {
   pending: PendingPlanSubscriptionRow[];
   recent: RecentPlanSubscriptionRow[];
+  pendingFeaturing: PendingClubFeaturingRow[];
+  recentFeaturing: RecentClubFeaturingRow[];
+  activeFeaturedCount: number;
 }) {
   useRealtimeRefresh([
     { table: "player_subscriptions" },
+    { table: "club_featuring_subscriptions" },
     { table: "transactions" },
+    { table: "clubs" },
   ]);
   const router = useRouter();
   const toast = useToast();
@@ -156,6 +176,56 @@ export function AdminPlansScreenView({
     }
   };
 
+  const handleApproveFeaturing = async (p: PendingClubFeaturingRow) => {
+    const ok = await confirm({
+      title: "Aprobar featuring",
+      body: `¿Activar el featuring del club ${p.clubName} por ${p.durationDays} día${p.durationDays === 1 ? "" : "s"}?`,
+      confirmLabel: "Aprobar featuring",
+    });
+    if (!ok) return;
+    setBusyId(p.subscriptionId);
+    const res = await approveClubFeaturingAdmin({
+      subscriptionId: p.subscriptionId,
+    });
+    setBusyId(null);
+    if (res.ok) {
+      toast({ icon: "check", title: "Featuring activado", sub: p.clubName });
+      router.refresh();
+    } else {
+      toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+    }
+  };
+
+  const handleRejectFeaturing = async (p: PendingClubFeaturingRow) => {
+    const reason = await ask({
+      title: "Rechazar featuring",
+      label: "Motivo del rechazo",
+      placeholder: "Ej: comprobante no válido, monto incorrecto…",
+      required: true,
+      multiline: true,
+      confirmLabel: "Rechazar",
+      destructive: true,
+      validate: (v) => (v.trim().length < 2 ? "Escribe un motivo" : null),
+    });
+    if (reason == null) return;
+    setBusyId(p.subscriptionId);
+    const res = await rejectClubFeaturingAdmin({
+      subscriptionId: p.subscriptionId,
+      reason: reason.trim(),
+    });
+    setBusyId(null);
+    if (res.ok) {
+      toast({
+        icon: "check",
+        title: "Solicitud rechazada",
+        sub: "El club podrá volver a solicitarlo",
+      });
+      router.refresh();
+    } else {
+      toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+    }
+  };
+
   const KPIS: [string, string | number, string, string][] = [
     [
       "Pendientes",
@@ -175,6 +245,90 @@ export function AdminPlansScreenView({
       "#0a0a0a",
       "del mes en curso",
     ],
+    [
+      "Clubes destacados",
+      activeFeaturedCount,
+      activeFeaturedCount > 0 ? "var(--primary)" : "var(--muted-fg)",
+      activeFeaturedCount === 1 ? "1 activo ahora" : `${activeFeaturedCount} activos ahora`,
+    ],
+  ];
+
+  const recentFeaturingCols: RSColumn<RecentClubFeaturingRow>[] = [
+    {
+      k: "club",
+      l: "Club",
+      render: (r) => (
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 800 }}>{r.clubName}</div>
+          {r.clubCity ? (
+            <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>
+              {r.clubCity}
+            </div>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      k: "amount",
+      l: "Monto",
+      render: (r) => (
+        <span className="tabular" style={{ fontSize: 11.5, fontWeight: 700 }}>
+          {fmtMoney(r.amountCents, r.currency)}
+        </span>
+      ),
+    },
+    {
+      k: "status",
+      l: "Estado",
+      render: (r) => {
+        const st = STATUS_STYLE[r.status] ?? {
+          bg: "var(--muted-fg)",
+          label: r.status,
+        };
+        return <RSPill bg={st.bg}>{st.label}</RSPill>;
+      },
+    },
+    {
+      k: "starts",
+      l: "Inicio",
+      render: (r) => (
+        <span style={{ color: "var(--muted-fg)" }}>{fmtDateShort(r.startsAt)}</span>
+      ),
+    },
+    {
+      k: "expires",
+      l: "Vence",
+      render: (r) => (
+        <span style={{ color: "var(--muted-fg)" }}>{fmtDateShort(r.expiresAt)}</span>
+      ),
+    },
+    {
+      k: "proof",
+      l: "Comprobante",
+      align: "right",
+      render: (r) =>
+        r.proofSignedUrl ? (
+          <a
+            href={r.proofSignedUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              color: "var(--primary)",
+              fontSize: 11,
+              fontWeight: 700,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Icon name="external-link" size={11} />
+            Ver
+          </a>
+        ) : (
+          <span style={{ color: "var(--muted-fg)", fontSize: 11 }}>—</span>
+        ),
+    },
   ];
 
   const recentCols: RSColumn<RecentPlanSubscriptionRow>[] = [
@@ -272,15 +426,15 @@ export function AdminPlansScreenView({
   return (
     <>
       <RSHeader
-        label="Plataforma · Planes de jugador"
+        label="Plataforma · Planes y promociones"
         title={
           <>
-            Suscripciones <span className="dot">●</span> premium
+            Suscripciones <span className="dot">●</span> premium y featuring
           </>
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         {KPIS.map(([l, v, c, sub]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{l}</div>
@@ -310,9 +464,16 @@ export function AdminPlansScreenView({
         onReject={handleReject}
       />
 
+      <PendingClubFeaturingSection
+        pending={pendingFeaturing}
+        busyId={busyId}
+        onApprove={handleApproveFeaturing}
+        onReject={handleRejectFeaturing}
+      />
+
       <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <div className="label-mp">Historial reciente</div>
+          <div className="label-mp">Historial reciente · planes</div>
           <div
             className="font-heading"
             style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}
@@ -337,6 +498,38 @@ export function AdminPlansScreenView({
           <RSTable
             cols={recentCols}
             rows={recent}
+            rowKey={(r) => r.subscriptionId}
+          />
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div className="label-mp">Historial reciente · featuring</div>
+          <div
+            className="font-heading"
+            style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}
+          >
+            Últimas 30 promociones de clubes
+          </div>
+        </div>
+        {recentFeaturing.length === 0 ? (
+          <div
+            style={{
+              padding: "20px 16px",
+              border: "1px dashed var(--border)",
+              borderRadius: 12,
+              textAlign: "center",
+              color: "var(--muted-fg)",
+              fontSize: 12,
+            }}
+          >
+            Aún no hay promociones de clubes registradas.
+          </div>
+        ) : (
+          <RSTable
+            cols={recentFeaturingCols}
+            rows={recentFeaturing}
             rowKey={(r) => r.subscriptionId}
           />
         )}
@@ -561,6 +754,232 @@ function PendingPlansSection({
                   >
                     <Icon name="check" size={13} />
                     {isBusy ? "…" : "Aprobar plan"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sección: pending club featuring subscriptions ───────────────────────
+function PendingClubFeaturingSection({
+  pending,
+  busyId,
+  onApprove,
+  onReject,
+}: {
+  pending: PendingClubFeaturingRow[];
+  busyId: string | null;
+  onApprove: (p: PendingClubFeaturingRow) => void;
+  onReject: (p: PendingClubFeaturingRow) => void;
+}) {
+  return (
+    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div className="label-mp">Featuring de clubes pendientes</div>
+          <div
+            className="font-heading"
+            style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}
+          >
+            Promociones de clubes por aprobar
+          </div>
+        </div>
+        <RSPill bg={pending.length > 0 ? "#fbbf24" : "var(--muted-fg)"}>
+          {pending.length} pendiente{pending.length === 1 ? "" : "s"}
+        </RSPill>
+      </div>
+
+      {pending.length === 0 ? (
+        <div
+          style={{
+            padding: "20px 16px",
+            border: "1px dashed var(--border)",
+            borderRadius: 12,
+            textAlign: "center",
+            color: "var(--muted-fg)",
+            fontSize: 12,
+          }}
+        >
+          No hay solicitudes de featuring pendientes.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {pending.map((p) => {
+            const isBusy = busyId === p.subscriptionId;
+            const hasProof = !!p.proofSignedUrl;
+            const txMissing = p.transactionId == null;
+            return (
+              <div
+                key={p.subscriptionId}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "96px 1fr auto",
+                  gap: 14,
+                  alignItems: "center",
+                  padding: 12,
+                  border: RS_BORDER,
+                  borderRadius: 12,
+                  background: "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    width: 96,
+                    height: 96,
+                    borderRadius: 10,
+                    background: "var(--muted)",
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {hasProof ? (
+                    isImageUrl(p.proofUrl) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.proofSignedUrl as string}
+                        alt="comprobante"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <a
+                        href={p.proofSignedUrl as string}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 4,
+                          color: "var(--muted-fg)",
+                          fontSize: 10,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <Icon name="file-text" size={20} />
+                        <span>Abrir PDF</span>
+                      </a>
+                    )
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 4,
+                        color: "var(--muted-fg)",
+                        fontSize: 9.5,
+                        textAlign: "center",
+                        padding: 4,
+                      }}
+                    >
+                      <Icon name="image-off" size={18} />
+                      <span>Sin comprobante</span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>{p.clubName}</div>
+                    <RSPill bg="#0a0a0a">FEATURING</RSPill>
+                  </div>
+                  {p.clubCity ? (
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        color: "var(--muted-fg)",
+                      }}
+                    >
+                      {p.clubCity}
+                    </div>
+                  ) : null}
+                  <div
+                    className="font-heading tabular"
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 900,
+                      color: "var(--primary)",
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    {fmtMoney(p.amountCents, p.currency)}
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        color: "var(--muted-fg)",
+                        marginLeft: 8,
+                        fontWeight: 600,
+                        letterSpacing: 0,
+                      }}
+                    >
+                      · {p.durationDays} día{p.durationDays === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+                    Solicitado: {fmtDate(p.createdAt)}
+                    {p.proofSignedUrl ? (
+                      <>
+                        {" · "}
+                        <a
+                          href={p.proofSignedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "var(--primary)" }}
+                        >
+                          Ver comprobante
+                        </a>
+                      </>
+                    ) : null}
+                  </div>
+                  {txMissing ? (
+                    <div
+                      style={{
+                        marginTop: 2,
+                        fontSize: 10,
+                        color: "#dc2626",
+                        fontWeight: 700,
+                      }}
+                    >
+                      ⚠ Sin transacción asociada
+                    </div>
+                  ) : !hasProof ? (
+                    <div
+                      style={{
+                        marginTop: 2,
+                        fontSize: 10,
+                        color: "#fbbf24",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Comprobante aún no subido por el club
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btn"
+                    style={{ background: "#fff", border: RS_BORDER }}
+                    onClick={() => onReject(p)}
+                    disabled={isBusy}
+                  >
+                    <Icon name="x" size={12} />
+                    Rechazar
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => onApprove(p)}
+                    disabled={isBusy}
+                  >
+                    <Icon name="check" size={13} />
+                    {isBusy ? "…" : "Aprobar featuring"}
                   </button>
                 </div>
               </div>
