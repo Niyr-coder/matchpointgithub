@@ -41,9 +41,27 @@ export type CourtDraft = {
   indoor: boolean;
 };
 
+export type OrgType = "private" | "public" | "concession";
+export type ParkingType = "unknown" | "street" | "private" | "valet";
+export type CancellationPolicy = "flexible_24h" | "moderate_48h" | "strict_7d";
+
+// Mapa de horario por día. Cada día puede ser cerrado (null) o tener un
+// rango HH:MM-HH:MM. Estructura simple para que persista como jsonb sin
+// complicarse con franjas múltiples (eso es post-MVP).
+export type WeeklyHours = {
+  mon: { open: string; close: string } | null;
+  tue: { open: string; close: string } | null;
+  wed: { open: string; close: string } | null;
+  thu: { open: string; close: string } | null;
+  fri: { open: string; close: string } | null;
+  sat: { open: string; close: string } | null;
+  sun: { open: string; close: string } | null;
+};
+
 export type ClubDraft = {
   applicationId: string | null;
   name: string;
+  orgType: OrgType;
   sports: string[];
   description: string;
   accentColor: string;
@@ -52,6 +70,11 @@ export type ClubDraft = {
   country: string;
   address: string;
   referenceNote: string;
+  parking: ParkingType;
+  geoLat: number | null;
+  geoLng: number | null;
+  weeklyHours: WeeklyHours;
+  cancellationPolicy: CancellationPolicy;
   legalName: string;
   taxId: string;
   foundedYear: number | null;
@@ -70,6 +93,7 @@ type ClubDraftContextValue = {
   // Persist helpers
   saveStep1: () => Promise<boolean>;
   saveStep2: () => Promise<boolean>;
+  saveStep3: () => Promise<boolean>;
   saveStep4: () => Promise<boolean>;
   addCourt: () => Promise<void>;
   updateCourt: (id: string, patch: Partial<CourtDraft>) => Promise<void>;
@@ -78,9 +102,20 @@ type ClubDraftContextValue = {
   pending: boolean;
 };
 
+const EMPTY_WEEKLY_HOURS: WeeklyHours = {
+  mon: { open: "06:00", close: "22:00" },
+  tue: { open: "06:00", close: "22:00" },
+  wed: { open: "06:00", close: "22:00" },
+  thu: { open: "06:00", close: "22:00" },
+  fri: { open: "06:00", close: "22:00" },
+  sat: { open: "07:00", close: "22:00" },
+  sun: { open: "07:00", close: "21:00" },
+};
+
 const EMPTY_DRAFT: ClubDraft = {
   applicationId: null,
   name: "",
+  orgType: "private",
   sports: ["pickleball"],
   description: "",
   accentColor: "#10b981",
@@ -89,6 +124,11 @@ const EMPTY_DRAFT: ClubDraft = {
   country: "Ecuador",
   address: "",
   referenceNote: "",
+  parking: "unknown",
+  geoLat: null,
+  geoLng: null,
+  weeklyHours: EMPTY_WEEKLY_HOURS,
+  cancellationPolicy: "flexible_24h",
   legalName: "",
   taxId: "",
   foundedYear: null,
@@ -98,6 +138,58 @@ const EMPTY_DRAFT: ClubDraft = {
   websiteOrSocial: "",
   courts: [],
 };
+
+// Mapa de paths Zod (camelCase) → label humano en español. Si el backend
+// retorna fields={ contactEmail: ["Invalid email"] }, el toast dice "Email
+// de contacto: formato inválido" en vez del genérico "Invalid input".
+const FIELD_LABEL_ES: Record<string, string> = {
+  name: "Nombre del club",
+  orgType: "Tipo de organización",
+  sports: "Deportes",
+  shortDescription: "Descripción",
+  legalName: "Razón social",
+  taxId: "RUC / Tax ID",
+  foundedYear: "Año de fundación",
+  contactPerson: "Persona de contacto",
+  contactEmail: "Email de contacto",
+  contactPhone: "Celular de contacto",
+  websiteOrSocial: "Web/Redes",
+  address: "Dirección",
+  district: "Ciudad / Distrito",
+  province: "Provincia",
+  country: "País",
+  referenceNote: "Referencia",
+  parking: "Estacionamiento",
+  geoLat: "Coordenadas (lat)",
+  geoLng: "Coordenadas (lng)",
+  cancellationPolicy: "Política de cancelación",
+  weeklyHours: "Horario semanal",
+  currency: "Moneda",
+};
+
+function translateZodMessage(msg: string): string {
+  if (/email/i.test(msg)) return "formato inválido";
+  if (/too small|min/i.test(msg)) return "muy corto";
+  if (/too big|max/i.test(msg)) return "muy largo";
+  if (/required|invalid/i.test(msg)) return "requerido";
+  return msg;
+}
+
+// Convierte el error de una server action en un sub-mensaje útil. Si trae
+// fields (VALIDATION.FAILED), lista el primer problema por campo.
+function formatActionError(err: { message: string; fields?: Record<string, string[]> }): string {
+  if (err.fields && Object.keys(err.fields).length > 0) {
+    return Object.entries(err.fields)
+      .map(([path, msgs]) => {
+        const label = FIELD_LABEL_ES[path] ?? path;
+        const msg = translateZodMessage(msgs[0] ?? "inválido");
+        return `${label}: ${msg}`;
+      })
+      .slice(0, 3)
+      .join(" · ");
+  }
+  return err.message;
+}
 
 const ClubDraftCtx = createContext<ClubDraftContextValue | null>(null);
 
@@ -127,14 +219,14 @@ function ClubDraftProvider({
         step: 1,
         data: {
           name: draft.name,
-          orgType: "private",
+          orgType: draft.orgType,
           sports: draft.sports,
           shortDescription: draft.description,
         },
       },
     });
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: formatActionError(r.error) });
       return false;
     }
     return true;
@@ -160,9 +252,10 @@ function ClubDraftProvider({
     }
     // Solo enviamos lo que esté presente; Step2Schema es partial pero cada
     // campo, si va, debe cumplir su min.
-    const data: Record<string, string> = {
+    const data: Record<string, unknown> = {
       address: draft.address.trim(),
       district: draft.city.trim(),
+      parking: draft.parking,
     };
     if (draft.country && draft.country.trim().length > 0) {
       data.country = draft.country.trim();
@@ -173,12 +266,33 @@ function ClubDraftProvider({
     if (draft.referenceNote && draft.referenceNote.trim().length > 0) {
       data.referenceNote = draft.referenceNote.trim();
     }
+    if (draft.geoLat != null) data.geoLat = draft.geoLat;
+    if (draft.geoLng != null) data.geoLng = draft.geoLng;
     const r = await updateApplication({
       applicationId: draft.applicationId,
       patch: { step: 2, data },
     });
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: formatActionError(r.error) });
+      return false;
+    }
+    return true;
+  };
+
+  const saveStep3 = async (): Promise<boolean> => {
+    if (!draft.applicationId) return false;
+    const r = await updateApplication({
+      applicationId: draft.applicationId,
+      patch: {
+        step: 3,
+        data: {
+          cancellationPolicy: draft.cancellationPolicy,
+          weeklyHours: draft.weeklyHours as Record<string, unknown>,
+        },
+      },
+    });
+    if (!r.ok) {
+      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: formatActionError(r.error) });
       return false;
     }
     return true;
@@ -229,7 +343,7 @@ function ClubDraftProvider({
       patch: { step: 1, data },
     });
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: formatActionError(r.error) });
       return false;
     }
     return true;
@@ -251,7 +365,7 @@ function ClubDraftProvider({
       },
     });
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "No se pudo agregar la cancha", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "No se pudo agregar la cancha", sub: formatActionError(r.error) });
       return;
     }
     setDraft((d) => ({
@@ -307,7 +421,7 @@ function ClubDraftProvider({
       body: { termsAccepted: true },
     });
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "No se pudo enviar", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "No se pudo enviar", sub: formatActionError(r.error) });
       return false;
     }
     toast({ icon: "send", title: "Solicitud enviada", sub: "Te contactamos en 48 h" });
@@ -324,6 +438,7 @@ function ClubDraftProvider({
       set: (key, value) => setDraft((d) => ({ ...d, [key]: value })),
       saveStep1: wrap(saveStep1),
       saveStep2: wrap(saveStep2),
+      saveStep3: wrap(saveStep3),
       saveStep4: wrap(saveStep4),
       addCourt: wrap(addCourt),
       updateCourt: (id, patch) => new Promise((resolve) => startTransition(async () => { await updateCourt(id, patch); resolve(); })),
@@ -1002,27 +1117,32 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
           >
             <div style={{ display: "flex", gap: 8 }}>
               {[
-                { l: "Privado", a: true },
-                { l: "Público" },
-                { l: "Concesión" },
-              ].map((o) => (
-                <button
-                  key={o.l}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 9999,
-                    fontSize: 11,
-                    fontWeight: 800,
-                    fontFamily: "inherit",
-                    cursor: "pointer",
-                    background: o.a ? "#0a0a0a" : "#fff",
-                    color: o.a ? "#fff" : "#0a0a0a",
-                    border: "1px solid " + (o.a ? "#0a0a0a" : "var(--border)"),
-                  }}
-                >
-                  {o.l}
-                </button>
-              ))}
+                { l: "Privado", v: "private" as const },
+                { l: "Público", v: "public" as const },
+                { l: "Concesión", v: "concession" as const },
+              ].map((o) => {
+                const active = draft.orgType === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => set("orgType", o.v)}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 9999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      background: active ? "#0a0a0a" : "#fff",
+                      color: active ? "#fff" : "#0a0a0a",
+                      border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
+                    }}
+                  >
+                    {o.l}
+                  </button>
+                );
+              })}
             </div>
           </Field>
         </div>
@@ -1032,6 +1152,105 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
 }
 
 // ── Step 2 — Ubicación ──────────────────────────────────────────────────
+// Mapa de ubicación: iframe de OpenStreetMap (sin API key) centrado en
+// lat/lng del draft. Inputs para coordenadas + botón "Usar mi ubicación"
+// vía navigator.geolocation. El user puede pegar coords desde Google Maps.
+function LocationPicker({
+  draft,
+  set,
+}: {
+  draft: ClubDraft;
+  set: <K extends keyof ClubDraft>(key: K, value: ClubDraft[K]) => void;
+}) {
+  const lat = draft.geoLat;
+  const lng = draft.geoLng;
+  const hasCoords = lat != null && lng != null;
+  // bbox ~600m alrededor del pin para zoom razonable.
+  const D = 0.006;
+  const bbox = hasCoords
+    ? `${lng - D},${lat - D},${lng + D},${lat + D}`
+    : "-78.51,-0.23,-78.46,-0.18"; // Quito centro como default visual
+  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik${
+    hasCoords ? `&marker=${lat},${lng}` : ""
+  }`;
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        set("geoLat", Number(pos.coords.latitude.toFixed(6)));
+        set("geoLng", Number(pos.coords.longitude.toFixed(6)));
+      },
+      () => {
+        // Permiso denegado: silencioso, el user puede pegar manual.
+      },
+    );
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div
+        style={{
+          height: 320,
+          borderRadius: 12,
+          overflow: "hidden",
+          border: "1px solid var(--border)",
+          background: "#f4f4f5",
+        }}
+      >
+        <iframe
+          key={mapUrl}
+          src={mapUrl}
+          width="100%"
+          height="100%"
+          style={{ border: 0, display: "block" }}
+          loading="lazy"
+          title="Mapa de ubicación"
+        />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+        <input
+          type="number"
+          step="0.000001"
+          placeholder="Latitud (-0.2061)"
+          value={lat ?? ""}
+          onChange={(e) => set("geoLat", e.target.value === "" ? null : Number(e.target.value))}
+          style={{ ...inp, padding: "8px 10px", fontSize: 12 }}
+        />
+        <input
+          type="number"
+          step="0.000001"
+          placeholder="Longitud (-78.4359)"
+          value={lng ?? ""}
+          onChange={(e) => set("geoLng", e.target.value === "" ? null : Number(e.target.value))}
+          style={{ ...inp, padding: "8px 10px", fontSize: 12 }}
+        />
+        <button
+          type="button"
+          onClick={useMyLocation}
+          style={{
+            padding: "8px 12px",
+            fontSize: 11,
+            fontWeight: 800,
+            borderRadius: 8,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            background: "#0a0a0a",
+            color: "#fff",
+            border: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          📍 Mi ubicación
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+        {hasCoords
+          ? "Pin guardado. Validaremos la dirección con campo en 24–48 h."
+          : "Pega coordenadas desde Google Maps (clic derecho → copiar) o usa tu ubicación actual."}
+      </div>
+    </div>
+  );
+}
+
 function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
   const { draft, set, saveStep2 } = useClubDraft();
   const handleNext = async () => {
@@ -1121,136 +1340,39 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
           </Field>
           <Field label="Estacionamientos">
             <div style={{ display: "flex", gap: 8 }}>
-              {["Sin info", "Calle", "Privado", "Valet"].map((opt, i) => (
-                <button
-                  key={opt}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 9999,
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    background: i === 2 ? "#0a0a0a" : "#fff",
-                    color: i === 2 ? "#fff" : "#0a0a0a",
-                    border: "1px solid " + (i === 2 ? "#0a0a0a" : "var(--border)"),
-                  }}
-                >
-                  {opt}
-                </button>
-              ))}
+              {[
+                { l: "Sin info", v: "unknown" as const },
+                { l: "Calle", v: "street" as const },
+                { l: "Privado", v: "private" as const },
+                { l: "Valet", v: "valet" as const },
+              ].map((opt) => {
+                const active = draft.parking === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => set("parking", opt.v)}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 9999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      background: active ? "#0a0a0a" : "#fff",
+                      color: active ? "#fff" : "#0a0a0a",
+                      border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
+                    }}
+                  >
+                    {opt.l}
+                  </button>
+                );
+              })}
             </div>
           </Field>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div
-            style={{
-              position: "relative",
-              height: 360,
-              borderRadius: 12,
-              overflow: "hidden",
-              background:
-                "linear-gradient(180deg, #ddd6fe 0%, #c7d2fe 30%, #e0e7ff 100%)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
-              <defs>
-                <pattern id="sc-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                  <path
-                    d="M 20 0 L 0 0 0 20"
-                    fill="none"
-                    stroke="rgba(99,102,241,0.15)"
-                    strokeWidth="0.5"
-                  />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#sc-grid)" />
-              <path
-                d="M 30 180 Q 130 80 250 140 T 450 200"
-                stroke="rgba(99,102,241,0.4)"
-                strokeWidth="3"
-                fill="none"
-              />
-              <path
-                d="M 80 280 Q 200 240 340 290 T 480 320"
-                stroke="rgba(99,102,241,0.4)"
-                strokeWidth="3"
-                fill="none"
-              />
-              <circle cx="180" cy="100" r="14" fill="rgba(16,185,129,0.2)" />
-              <circle cx="320" cy="220" r="11" fill="rgba(16,185,129,0.2)" />
-            </svg>
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -100%)",
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  background: "var(--primary)",
-                  border: "4px solid #fff",
-                  boxShadow: "0 8px 16px rgba(0,0,0,0.25)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon name="building-2" size={16} color="#fff" />
-              </div>
-              <div
-                style={{
-                  width: 0,
-                  height: 0,
-                  borderLeft: "8px solid transparent",
-                  borderRight: "8px solid transparent",
-                  borderTop: "12px solid #fff",
-                  margin: "-2px auto 0",
-                }}
-              />
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                bottom: 12,
-                left: 12,
-                right: 12,
-                padding: "10px 14px",
-                background: "rgba(255,255,255,0.96)",
-                backdropFilter: "blur(8px)",
-                borderRadius: 10,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 11.5, fontWeight: 800 }}>
-                  Av. Interoceánica km 12, Cumbayá
-                </div>
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-                  Lat -0.2061 · Lng -78.4359
-                </div>
-              </div>
-              <button
-                className="btn"
-                style={{
-                  padding: "6px 10px",
-                  fontSize: 10,
-                  background: "#0a0a0a",
-                  color: "#fff",
-                }}
-              >
-                Ajustar pin
-              </button>
-            </div>
-          </div>
+          <LocationPicker draft={draft} set={set} />
           <div
             style={{
               padding: 14,
@@ -1279,11 +1401,16 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
 
 // ── Step 3 — Canchas ────────────────────────────────────────────────────
 function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
-  const { draft, addCourt, updateCourt, removeCourt } = useClubDraft();
+  const { draft, set, addCourt, updateCourt, removeCourt, saveStep3 } = useClubDraft();
   const courts = draft.courts;
 
   const updatePrice = (id: string, price: number) => {
     updateCourt(id, { price });
+  };
+
+  const handleNext = async () => {
+    const ok = await saveStep3();
+    if (ok) onNext?.();
   };
 
   return (
@@ -1293,7 +1420,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       statusColor="#d97706"
       savedAt="Guardado hace 1 min"
       onBack={onBack}
-      onNext={onNext}
+      onNext={handleNext}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         <div
@@ -1474,26 +1601,90 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             <div className="label-mp" style={{ marginBottom: 10 }}>
               Horario semanal por defecto
             </div>
-            <div
-              style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}
-            >
-              {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: 10,
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    textAlign: "center",
-                    background: i >= 5 ? "#ecfdf5" : "#fff",
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 900 }}>{d}</div>
-                  <div style={{ fontSize: 9.5, color: "var(--muted-fg)", marginTop: 2 }}>
-                    {i >= 5 ? "07–22" : "06–22"}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {(
+                [
+                  { k: "mon", l: "Lunes" },
+                  { k: "tue", l: "Martes" },
+                  { k: "wed", l: "Miércoles" },
+                  { k: "thu", l: "Jueves" },
+                  { k: "fri", l: "Viernes" },
+                  { k: "sat", l: "Sábado" },
+                  { k: "sun", l: "Domingo" },
+                ] as const
+              ).map((d) => {
+                const slot = draft.weeklyHours[d.k];
+                const open = slot?.open ?? "06:00";
+                const close = slot?.close ?? "22:00";
+                const closed = slot == null;
+                const updateDay = (next: { open: string; close: string } | null) => {
+                  set("weeklyHours", { ...draft.weeklyHours, [d.k]: next });
+                };
+                return (
+                  <div
+                    key={d.k}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto auto",
+                      gap: 8,
+                      alignItems: "center",
+                      padding: "6px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      background: closed ? "#fafafa" : "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: closed ? "var(--muted-fg)" : "#0a0a0a" }}>
+                      {d.l}
+                    </div>
+                    <input
+                      type="time"
+                      value={open}
+                      disabled={closed}
+                      onChange={(e) => updateDay({ open: e.target.value, close })}
+                      style={{
+                        ...inp,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                        width: 100,
+                        opacity: closed ? 0.5 : 1,
+                      }}
+                    />
+                    <input
+                      type="time"
+                      value={close}
+                      disabled={closed}
+                      onChange={(e) => updateDay({ open, close: e.target.value })}
+                      style={{
+                        ...inp,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                        width: 100,
+                        opacity: closed ? 0.5 : 1,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateDay(closed ? { open: "06:00", close: "22:00" } : null)
+                      }
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        background: closed ? "var(--primary)" : "#fff",
+                        color: closed ? "#fff" : "#0a0a0a",
+                        border: "1px solid " + (closed ? "var(--primary)" : "var(--border)"),
+                      }}
+                    >
+                      {closed ? "Abrir" : "Cerrar"}
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div>
@@ -1502,29 +1693,34 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {[
-                { l: "Flexible · 24 h antes", a: true },
-                { l: "Moderada · 48 h antes" },
-                { l: "Estricta · 7 días antes" },
-              ].map((o) => (
-                <button
-                  key={o.l}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    background: o.a ? "#ecfdf5" : "#fff",
-                    color: "#0a0a0a",
-                    border:
-                      "1.5px solid " + (o.a ? "var(--primary)" : "var(--border)"),
-                    textAlign: "left",
-                  }}
-                >
-                  {o.l}
-                </button>
-              ))}
+                { l: "Flexible · 24 h antes", v: "flexible_24h" as const },
+                { l: "Moderada · 48 h antes", v: "moderate_48h" as const },
+                { l: "Estricta · 7 días antes", v: "strict_7d" as const },
+              ].map((o) => {
+                const active = draft.cancellationPolicy === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => set("cancellationPolicy", o.v)}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      background: active ? "#ecfdf5" : "#fff",
+                      color: "#0a0a0a",
+                      border:
+                        "1.5px solid " + (active ? "var(--primary)" : "var(--border)"),
+                      textAlign: "left",
+                    }}
+                  >
+                    {o.l}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1607,7 +1803,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
     });
     setBusy(false);
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "Error al subir", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "Error al subir", sub: formatActionError(r.error) });
       return;
     }
     setUploaded((u) => {
@@ -1632,7 +1828,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
     const r = await removeApplicationDocument({ documentId });
     setBusy(false);
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "Error", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "Error", sub: formatActionError(r.error) });
       return;
     }
     setUploaded((u) => ({ ...u, docs: u.docs.filter((d) => d.id !== documentId) }));
@@ -1654,7 +1850,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
     });
     setBusy(false);
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "Error al subir foto", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "Error al subir foto", sub: formatActionError(r.error) });
       return;
     }
     setUploaded((u) => ({
@@ -1675,7 +1871,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
     const r = await removeApplicationPhoto({ photoId });
     setBusy(false);
     if (!r.ok) {
-      toast({ icon: "alert-triangle", title: "Error", sub: r.error.message });
+      toast({ icon: "alert-triangle", title: "Error", sub: formatActionError(r.error) });
       return;
     }
     setUploaded((u) => ({ ...u, photos: u.photos.filter((p) => p.id !== photoId) }));
@@ -2681,7 +2877,7 @@ function ApprovedView({ club }: { club: ApprovedClubSummary | null }) {
     startSwitch(async () => {
       const r = await switchRole({ role: "owner", clubId: club.id });
       if (!r.ok) {
-        toast({ icon: "alert-triangle", title: "Error al cambiar de rol", sub: r.error.message });
+        toast({ icon: "alert-triangle", title: "Error al cambiar de rol", sub: formatActionError(r.error) });
         return;
       }
       router.push("/dashboard/owner");

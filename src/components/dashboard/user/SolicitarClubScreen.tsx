@@ -48,9 +48,23 @@ export async function SolicitarClubScreen() {
     const detail = await getApplicationDetail({ applicationId: application.id });
     if (detail.ok) {
       const a = detail.data.application;
+      const wh = (a.weeklyHours ?? {}) as Record<string, { open?: string; close?: string } | null>;
+      const dayOrDefault = (
+        k: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun",
+        defOpen: string,
+        defClose: string,
+      ): { open: string; close: string } | null => {
+        const v = wh[k];
+        if (v === null) return null;
+        if (v && typeof v === "object") {
+          return { open: v.open ?? defOpen, close: v.close ?? defClose };
+        }
+        return { open: defOpen, close: defClose };
+      };
       initial = {
         applicationId: a.id,
         name: a.name ?? "",
+        orgType: (a.orgType as "private" | "public" | "concession" | null) ?? "private",
         sports: a.sports ?? [],
         description: a.shortDescription ?? "",
         accentColor: "#10b981",
@@ -59,6 +73,21 @@ export async function SolicitarClubScreen() {
         country: a.country ?? "Ecuador",
         address: a.address ?? "",
         referenceNote: a.referenceNote ?? "",
+        parking: (a.parking as "unknown" | "street" | "private" | "valet" | null) ?? "unknown",
+        geoLat: a.geoLat ?? null,
+        geoLng: a.geoLng ?? null,
+        weeklyHours: {
+          mon: dayOrDefault("mon", "06:00", "22:00"),
+          tue: dayOrDefault("tue", "06:00", "22:00"),
+          wed: dayOrDefault("wed", "06:00", "22:00"),
+          thu: dayOrDefault("thu", "06:00", "22:00"),
+          fri: dayOrDefault("fri", "06:00", "22:00"),
+          sat: dayOrDefault("sat", "07:00", "22:00"),
+          sun: dayOrDefault("sun", "07:00", "21:00"),
+        },
+        cancellationPolicy:
+          (a.cancellationPolicy as "flexible_24h" | "moderate_48h" | "strict_7d" | null) ??
+          "flexible_24h",
         legalName: a.legalName ?? "",
         taxId: a.taxId ?? "",
         foundedYear: a.foundedYear ?? null,
