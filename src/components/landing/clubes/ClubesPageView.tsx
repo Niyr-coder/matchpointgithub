@@ -439,17 +439,64 @@ export function ClubesPageView({
                     <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", marginTop: 2 }}>{c.city}</div>
                   </div>
                 </div>
-                <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-                    {c.courtsCount} canchas
-                    {stats
-                      ? ` · ${stats.reviews} ${stats.reviews === 1 ? "reseña" : "reseñas"}`
-                      : " · sin reseñas"}
-                  </span>
-                  <span className="font-heading" style={{ fontSize: 18, fontWeight: 900 }}>
-                    ${price}
-                    <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 600 }}>/h</span>
-                  </span>
+                <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {c.description && (
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: 11.5,
+                        color: "var(--muted-fg)",
+                        lineHeight: 1.4,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {c.description}
+                    </p>
+                  )}
+                  {c.address && (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 10.5,
+                        color: "var(--muted-fg)",
+                      }}
+                    >
+                      <Icon name="map-pin" size={10} />
+                      <span
+                        style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {c.address}
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginTop: 2,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                      {c.courtsCount} canchas
+                      {stats
+                        ? ` · ${stats.reviews} ${stats.reviews === 1 ? "reseña" : "reseñas"}`
+                        : " · sin reseñas"}
+                    </span>
+                    <span className="font-heading" style={{ fontSize: 18, fontWeight: 900 }}>
+                      ${price}
+                      <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 600 }}>/h</span>
+                    </span>
+                  </div>
                 </div>
               </Link>
             );

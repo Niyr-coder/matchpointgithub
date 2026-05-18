@@ -113,6 +113,11 @@ export const ClubFeaturedSchema = z
     currency: MpCurrencySchema,
     courtsCount: z.number().int(),
     minPriceCents: z.number().int().nullable(),
+    // Snippet + dirección para mostrar en la card pública (el detalle entero
+    // ahora vive detrás del gate de auth en /clubes/[slug]). Description la
+    // truncamos en el view a ~120 chars.
+    description: z.string().nullable(),
+    address: z.string().nullable(),
     // null = club no pagó featuring; ISO string si está activo (futuro).
     // En lectura: si <= now(), tratar como null (expirado).
     featuredUntil: z.string().datetime({ offset: true }).nullable(),

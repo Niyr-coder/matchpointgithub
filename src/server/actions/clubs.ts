@@ -124,24 +124,30 @@ export async function listFeaturedClubs(
     const rows = data ?? [];
     if (rows.length === 0) return [];
 
-    // featured_until vive en la tabla `clubs` (no en la vista pública).
-    // Lo traemos en un segundo query y lo unimos.
+    // featured_until + description + address viven en la tabla `clubs`
+    // (no en la vista pública). Lo traemos en un segundo query y unimos.
     const ids = rows.map((r) => r.id as string);
-    const { data: featuredRows } = await supabase
+    const { data: extraRows } = await supabase
       .from("clubs")
-      .select("id,featured_until")
+      .select("id,featured_until,description,address")
       .in("id", ids);
-    const featuredById = new Map<string, string | null>();
-    for (const f of featuredRows ?? []) {
+    type Extra = { featuredUntil: string | null; description: string | null; address: string | null };
+    const extraById = new Map<string, Extra>();
+    for (const f of extraRows ?? []) {
       const fid = f.id as string;
       const until = (f.featured_until as string | null) ?? null;
       // Tratamos como null si ya expiró: la UI no debe destacarlo.
       const stillActive = until != null && new Date(until) > new Date();
-      featuredById.set(fid, stillActive ? until : null);
+      extraById.set(fid, {
+        featuredUntil: stillActive ? until : null,
+        description: (f.description as string | null) ?? null,
+        address: (f.address as string | null) ?? null,
+      });
     }
 
-    return rows.map((row) =>
-      ClubFeaturedSchema.parse({
+    return rows.map((row) => {
+      const extra = extraById.get(row.id as string);
+      return ClubFeaturedSchema.parse({
         id: row.id,
         slug: row.slug,
         name: row.name,
@@ -151,9 +157,11 @@ export async function listFeaturedClubs(
         currency: row.currency,
         courtsCount: row.courts_count ?? 0,
         minPriceCents: row.min_price_cents ?? null,
-        featuredUntil: featuredById.get(row.id as string) ?? null,
-      }),
-    );
+        description: extra?.description ?? null,
+        address: extra?.address ?? null,
+        featuredUntil: extra?.featuredUntil ?? null,
+      });
+    });
   });
 }
 

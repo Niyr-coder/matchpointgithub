@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getClub, listClubReviews, listFeaturedClubs } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
 import { PublicChrome } from "@/components/landing/PublicChrome";
@@ -8,14 +8,21 @@ export const dynamic = "force-dynamic";
 
 export default async function ClubPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [detailRes, summaryRes, session] = await Promise.all([
+  // Gate: el detalle del club es contenido para usuarios registrados.
+  // Los invitados ven la lista en /clubes con info resumida y al hacer click
+  // van a /login?next=. Cuando inician sesión vuelven al detalle automático.
+  const session = await getSession();
+  if (!session.authenticated) {
+    redirect(`/login?next=/clubes/${encodeURIComponent(slug)}`);
+  }
+  const meUserId = session.session.userId;
+
+  const [detailRes, summaryRes] = await Promise.all([
     getClub({ idOrSlug: slug }),
     listFeaturedClubs({ limit: 24 }),
-    getSession(),
   ]);
   if (!detailRes.ok) notFound();
   const summary = summaryRes.ok ? summaryRes.data.find((c) => c.slug === slug) : undefined;
-  const meUserId = session.authenticated ? session.session.userId : null;
 
   // Reseñas reales + detectar si el user actual ya dejó una.
   const reviewsRes = await listClubReviews({
