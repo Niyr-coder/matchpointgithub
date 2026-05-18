@@ -1,7 +1,7 @@
 // /eventos/[slug] — migrado 1:1 desde MatchPoint Public.html (líneas 504-580)
 "use client";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 
 type Props = {

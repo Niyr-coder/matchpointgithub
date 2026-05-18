@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
 
 const CARD_GRADIENTS = [

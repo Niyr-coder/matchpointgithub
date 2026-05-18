@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { RankingEntry } from "@/lib/schemas/ranking";
 
 const SPORTS = [

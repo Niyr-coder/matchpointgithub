@@ -1,6 +1,11 @@
 // Esqueleto genérico para páginas públicas mientras el server fetch corre.
 // Match aproximado a /clubes /eventos /coaches /ranking (hero + grid).
-import { PublicChrome } from "@/components/landing/PublicChrome";
+//
+// Importante: este skeleton se renderiza desde loading.tsx (Suspense fallback)
+// y debe poder hacerlo de forma sincrónica. Por eso NO usamos PublicChrome
+// (que es server async + lee sesión), sino el wrapper client con auth=null.
+// La sesión real la resolverá la pantalla cuando el contenido finalize.
+import { PublicChromeClient } from "@/components/landing/PublicChromeClient";
 
 const BAR: React.CSSProperties = {
   display: "block",
@@ -16,7 +21,7 @@ type Props = {
 
 export function PageSkeleton({ variant = "grid", cols = 3 }: Props) {
   return (
-    <PublicChrome>
+    <PublicChromeClient auth={null}>
       <style>{`@keyframes mpSkeleton { 0%, 100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
       <main style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px" }}>
         <div style={{ ...BAR, width: 220, height: 12, marginBottom: 16 }} />
@@ -67,6 +72,6 @@ export function PageSkeleton({ variant = "grid", cols = 3 }: Props) {
           </div>
         )}
       </main>
-    </PublicChrome>
+    </PublicChromeClient>
   );
 }

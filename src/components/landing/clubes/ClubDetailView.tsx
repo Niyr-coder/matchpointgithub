@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import { createClubReview } from "@/server/actions/clubs";
 import type { ClubDetail, ClubReview } from "@/lib/schemas/clubs";
 

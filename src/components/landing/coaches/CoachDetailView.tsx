@@ -1,7 +1,7 @@
 // /coaches/[id] — migrado 1:1 desde MatchPoint Public.html (líneas 583-657)
 "use client";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { CoachDetail } from "@/lib/schemas/coaches";
 
 function initials(name: string): string {

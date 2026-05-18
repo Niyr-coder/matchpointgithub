@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChrome";
+import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { CoachProfile } from "@/lib/schemas/coaches";
 
 const FILTERS: { label: string; key: string }[] = [
