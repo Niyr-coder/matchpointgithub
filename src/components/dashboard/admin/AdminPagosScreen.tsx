@@ -1,5 +1,6 @@
 // Server: pagos & payouts globales para admin.
 import { getServerClient } from "@/lib/db/client.server";
+import { getTakeRatePct } from "@/server/queries/platform-config";
 import { listPendingProofsAdmin } from "@/server/actions/payment-proofs";
 import {
   AdminPagosScreenView,
@@ -36,22 +37,44 @@ async function loadData(): Promise<PagosData> {
   const supabase = await getServerClient();
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const takeRatePct = await getTakeRatePct();
+  const takeRate = takeRatePct / 100;
 
-  const [{ data: txns }, { data: refunds }, { data: clubsRows }, { data: profilesRows }] =
-    await Promise.all([
-      supabase
-        .from("transactions")
-        .select("id,kind,amount_cents,status,created_at,club_id,customer_user_id,customer_name")
-        .order("created_at", { ascending: false })
-        .limit(50),
-      supabase
-        .from("refunds")
-        .select("id,amount_cents,created_at,transaction_id")
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase.from("clubs").select("id,name"),
-      supabase.from("profiles").select("id,display_name"),
-    ]);
+  const [
+    { data: txns },
+    { data: refunds },
+    { data: clubsRows },
+    { data: profilesRows },
+    payoutsRes,
+  ] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("id,kind,amount_cents,status,created_at,club_id,customer_user_id,customer_name")
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("refunds")
+      .select("id,amount_cents,created_at,transaction_id")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase.from("clubs").select("id,name"),
+    supabase.from("profiles").select("id,display_name"),
+    // payouts aún no está en los types generados.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("payouts" as any)
+      .select("id,club_id,partner_id,amount_cents,status")
+      .in("status", ["pending", "processing"]),
+  ]);
+  type PayoutRow = {
+    id: string;
+    club_id: string | null;
+    partner_id: string | null;
+    amount_cents: number;
+    status: string;
+  };
+  const pendingPayouts = (payoutsRes.data ?? []) as unknown as PayoutRow[];
 
   const clubName = new Map<string, string>();
   for (const c of clubsRows ?? []) clubName.set(c.id as string, c.name as string);
@@ -67,7 +90,7 @@ async function loadData(): Promise<PagosData> {
     if (at >= todayStart && t.status === "captured") {
       const amt = (t.amount_cents as number) ?? 0;
       gmvTodayCents += amt;
-      commissionTodayCents += Math.round(amt * 0.1);
+      commissionTodayCents += Math.round(amt * takeRate);
     }
   }
   for (const r of refunds ?? []) {
@@ -97,12 +120,17 @@ async function loadData(): Promise<PagosData> {
     };
   });
 
+  const payoutsToProcessCents = pendingPayouts.reduce((s, p) => s + (p.amount_cents ?? 0), 0);
+  const payoutsClubCount = new Set(
+    pendingPayouts.map((p) => p.club_id ?? p.partner_id).filter((x): x is string => !!x),
+  ).size;
+
   return {
     rows,
     kpis: {
       gmvTodayCents,
-      payoutsToProcessCents: 0, // sin tabla de payouts modelada
-      payoutsClubCount: 0,
+      payoutsToProcessCents,
+      payoutsClubCount,
       commissionTodayCents,
       refundsTodayCents,
       refundsCountToday,

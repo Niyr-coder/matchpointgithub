@@ -18,12 +18,17 @@ import {
   ClubReviewSchema,
   ClubReviewStatsSchema,
   ClubSchema,
+  ClubSocialViewSchema,
   ClubUpdateSchema,
   type Club,
   type ClubDetail,
   type ClubFeatured,
   type ClubReview,
   type ClubReviewStats,
+  type ClubSocialActivity,
+  type ClubSocialMember,
+  type ClubSocialTournament,
+  type ClubSocialView,
 } from "@/lib/schemas/clubs";
 import type { PageMeta } from "@/lib/api/response";
 import { UuidSchema } from "@/lib/schemas/common";
@@ -145,6 +150,18 @@ export async function listFeaturedClubs(
       });
     }
 
+    // open_hours vive en club_settings (jsonb { monday: {open, close}, ... }).
+    // Calculamos el rango de hoy para mostrarlo en la card.
+    const { data: settingsRows } = await supabase
+      .from("club_settings")
+      .select("club_id,open_hours")
+      .in("club_id", ids);
+    type HoursInfo = { range: string | null; isOpenNow: boolean };
+    const hoursById = new Map<string, HoursInfo>();
+    for (const s of settingsRows ?? []) {
+      hoursById.set(s.club_id as string, computeTodayHours(s.open_hours as unknown));
+    }
+
     return rows.map((row) => {
       const extra = extraById.get(row.id as string);
       return ClubFeaturedSchema.parse({
@@ -160,9 +177,33 @@ export async function listFeaturedClubs(
         description: extra?.description ?? null,
         address: extra?.address ?? null,
         featuredUntil: extra?.featuredUntil ?? null,
+        openHoursToday: hoursById.get(row.id as string)?.range ?? null,
+        isOpenNow: hoursById.get(row.id as string)?.isOpenNow ?? false,
       });
     });
   });
+}
+
+// Calcula horario de hoy en Ecuador (UTC-5) y si el club está abierto ahora.
+// Acepta el jsonb tal cual viene de la DB. Formato esperado:
+// { monday: { open: "HH:MM", close: "HH:MM" }, ... }
+function computeTodayHours(raw: unknown): { range: string | null; isOpenNow: boolean } {
+  if (!raw || typeof raw !== "object") return { range: null, isOpenNow: false };
+  const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  // Ecuador = UTC-5 (sin DST). Restamos el offset al timestamp UTC.
+  const ecu = new Date(Date.now() - 5 * 60 * 60 * 1000);
+  const today = DAYS[ecu.getUTCDay()];
+  const dayData = (raw as Record<string, unknown>)[today];
+  if (!dayData || typeof dayData !== "object") return { range: null, isOpenNow: false };
+  const { open, close } = dayData as { open?: unknown; close?: unknown };
+  if (typeof open !== "string" || typeof close !== "string" || !open || !close) {
+    return { range: null, isOpenNow: false };
+  }
+  const now = `${String(ecu.getUTCHours()).padStart(2, "0")}:${String(ecu.getUTCMinutes()).padStart(2, "0")}`;
+  // Comparación lexicográfica funciona porque ambos lados son "HH:MM" zero-padded.
+  // No soportamos horarios que cruzan medianoche (ej. cierre 02:00 AM).
+  const isOpenNow = now >= open && now < close;
+  return { range: `${open} — ${close}`, isOpenNow };
 }
 
 // ── getClub (public) ────────────────────────────────────────────────────
@@ -207,6 +248,504 @@ export async function getClub(input: unknown): Promise<ActionResult<ClubDetail>>
       })),
     };
     return ClubDetailSchema.parse(detail);
+  });
+}
+
+// ── getClubSocial (auth, dashboard) ─────────────────────────────────────
+// Vista "social" del club que vive dentro del shell del dashboard.
+// Devuelve: header del club + próximos torneos + miembros frecuentes
+// (90d) + amigos del usuario que también juegan ahí + feed de actividad.
+const SocialSchema = z.object({ slug: z.string() });
+
+export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSocialView>> {
+  return runAction(SocialSchema, input, async ({ slug }) => {
+    const supabase = await getServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+    const meId = user.id;
+
+    // Cast acotado: latitude/longitude todavía no están en los types generados.
+    const { data: clubRaw, error } = await supabase
+      .from("clubs")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,slug,name,city,country,sports,cover_url,description,address,latitude,longitude" as any)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error || !clubRaw) throw new MpError("CLUBS.NOT_FOUND", "Club not found", 404);
+    const club = clubRaw as unknown as {
+      id: string;
+      slug: string;
+      name: string;
+      city: string;
+      country: string;
+      sports: string[] | null;
+      cover_url: string | null;
+      description: string | null;
+      address: string | null;
+      latitude: number | string | null;
+      longitude: number | string | null;
+    };
+
+    const clubId = club.id;
+
+    // Detección de rol del visitante respecto a este club:
+    // - admin global → "admin"
+    // - role_assignments con club_id === clubId y role owner/manager → ese rol
+    // - resto → "guest"
+    let viewerRole: "owner" | "manager" | "admin" | "guest" = "guest";
+    const { data: roleRows } = await supabase
+      .from("role_assignments")
+      .select("role,club_id")
+      .eq("user_id", meId)
+      .is("revoked_at", null);
+    const roles = roleRows ?? [];
+    if (roles.some((r) => r.role === "admin")) {
+      viewerRole = "admin";
+    }
+    const clubScoped = roles.find(
+      (r) => r.club_id === clubId && (r.role === "owner" || r.role === "manager"),
+    );
+    if (clubScoped) viewerRole = clubScoped.role as "owner" | "manager";
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      { data: courts },
+      { data: settings },
+      { data: tournamentsRaw },
+      { data: matchesRaw },
+      { data: reservationsRaw },
+      { data: friendships },
+      { data: photosRaw },
+      { data: reviewsRaw },
+      { count: followersCount },
+      { count: myFollowCount },
+      { count: matchesLast30dCount },
+    ] = await Promise.all([
+      supabase.from("courts").select("id", { count: "exact", head: false }).eq("club_id", clubId),
+      supabase.from("club_settings").select("open_hours").eq("club_id", clubId).maybeSingle(),
+      supabase
+        .from("tournaments")
+        .select("id,slug,name,sport,starts_at,status,max_participants,entry_fee_cents,cover_url")
+        .eq("club_id", clubId)
+        // Solo torneos organizados por el propio club (sin partner externo)
+        // y excluyendo cancelados/borradores.
+        .is("partner_id", null)
+        .not("status", "in", "(cancelled,draft)")
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(6),
+      supabase
+        .from("matches")
+        .select("id,played_at,team_a_player_ids,team_b_player_ids,status,reported_by")
+        .eq("club_id", clubId)
+        .gte("played_at", ninetyDaysAgo)
+        .order("played_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("reservations")
+        .select("id,organizer_id,created_at,status")
+        .eq("club_id", clubId)
+        .gte("created_at", ninetyDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("friendships")
+        .select("user_a,user_b")
+        .or(`user_a.eq.${meId},user_b.eq.${meId}`),
+      supabase
+        .from("club_photos")
+        .select("id,url,caption")
+        .eq("club_id", clubId)
+        .order("ordinal", { ascending: true })
+        .limit(12),
+      supabase
+        .from("club_reviews")
+        .select("id,user_id,rating,comment,created_at")
+        .eq("club_id", clubId)
+        .order("created_at", { ascending: false })
+        .limit(6),
+      // club_followers todavía no está en los types generados; cast acotado.
+      (supabase as unknown as {
+        from: (t: string) => {
+          select: (
+            sel: string,
+            opts: { count: "exact"; head: true },
+          ) => {
+            eq: (col: string, val: string) => Promise<{ count: number | null }>;
+          };
+        };
+      })
+        .from("club_followers")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId),
+      (supabase as unknown as {
+        from: (t: string) => {
+          select: (
+            sel: string,
+            opts: { count: "exact"; head: true },
+          ) => {
+            eq: (
+              col: string,
+              val: string,
+            ) => {
+              eq: (col: string, val: string) => Promise<{ count: number | null }>;
+            };
+          };
+        };
+      })
+        .from("club_followers")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("user_id", meId),
+      supabase
+        .from("matches")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .gte("played_at", thirtyDaysAgo),
+    ]);
+
+    // Set de amigos del user actual.
+    const friendIds = new Set<string>();
+    for (const f of friendships ?? []) {
+      const a = f.user_a as string;
+      const b = f.user_b as string;
+      friendIds.add(a === meId ? b : a);
+    }
+
+    // Cuenta de partidos por jugador en últimos 90d. Unnest manual.
+    const matchesByPlayer = new Map<string, { count: number; last: string }>();
+    for (const m of matchesRaw ?? []) {
+      const players = [
+        ...((m.team_a_player_ids as string[] | null) ?? []),
+        ...((m.team_b_player_ids as string[] | null) ?? []),
+      ];
+      const playedAt = m.played_at as string;
+      for (const pid of players) {
+        const cur = matchesByPlayer.get(pid);
+        if (!cur) {
+          matchesByPlayer.set(pid, { count: 1, last: playedAt });
+        } else {
+          cur.count += 1;
+          if (playedAt > cur.last) cur.last = playedAt;
+        }
+      }
+    }
+
+    // Top miembros por cantidad de partidos.
+    const topMemberIds = Array.from(matchesByPlayer.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 20)
+      .map(([id]) => id);
+
+    // Fetch perfiles de miembros + amigos + organizadores de reservas +
+    // reporters de matches + autores de reseñas (todo lo que necesite avatar).
+    const profileIds = new Set<string>(topMemberIds);
+    for (const fid of friendIds) profileIds.add(fid);
+    for (const r of reservationsRaw ?? []) {
+      const oid = r.organizer_id as string | null;
+      if (oid) profileIds.add(oid);
+    }
+    for (const m of matchesRaw ?? []) {
+      const rid = m.reported_by as string | null;
+      if (rid) profileIds.add(rid);
+    }
+    for (const rv of reviewsRaw ?? []) {
+      const uid = rv.user_id as string;
+      if (uid) profileIds.add(uid);
+    }
+    const idsArr = Array.from(profileIds);
+    const { data: profilesRaw } = idsArr.length
+      ? await supabase
+          .from("profiles")
+          .select("id,display_name,avatar_url,city")
+          .in("id", idsArr)
+      : { data: [] as Array<{ id: string; display_name: string | null; avatar_url: string | null; city: string | null }> };
+
+    const profileById = new Map<
+      string,
+      { displayName: string; avatarUrl: string | null; city: string | null }
+    >();
+    for (const p of profilesRaw ?? []) {
+      profileById.set(p.id as string, {
+        displayName: (p.display_name as string | null) ?? "Sin nombre",
+        avatarUrl: safeUrl(p.avatar_url as string | null),
+        city: (p.city as string | null) ?? null,
+      });
+    }
+
+    const buildMember = (id: string): ClubSocialMember => {
+      const stat = matchesByPlayer.get(id);
+      const prof = profileById.get(id);
+      return {
+        userId: id,
+        displayName: prof?.displayName ?? "Jugador",
+        avatarUrl: prof?.avatarUrl ?? null,
+        city: prof?.city ?? null,
+        matchesAtClub: stat?.count ?? 0,
+        lastPlayedAt: stat?.last ?? null,
+        isFriend: friendIds.has(id),
+      };
+    };
+
+    const frequentMembers: ClubSocialMember[] = topMemberIds.map(buildMember);
+    const friendsHere: ClubSocialMember[] = Array.from(friendIds)
+      .filter((fid) => matchesByPlayer.has(fid))
+      .map(buildMember)
+      .sort((a, b) => b.matchesAtClub - a.matchesAtClub);
+
+    // Próximos torneos.
+    const upcomingTournaments: ClubSocialTournament[] = (tournamentsRaw ?? []).map((t) => ({
+      id: t.id as string,
+      slug: t.slug as string,
+      name: t.name as string,
+      sport: t.sport as string,
+      startsAt: t.starts_at as string,
+      status: t.status as string,
+      maxParticipants: (t.max_participants as number | null) ?? null,
+      entryFeeCents: (t.entry_fee_cents as number | null) ?? null,
+    }));
+
+    // Feed de actividad unificado — mezcla cronológica de torneos
+    // publicados + partidos jugados + reservas creadas, cada uno con
+    // actor (avatar + nombre) y thumbnail cuando aplica.
+    const activity: ClubSocialActivity[] = [];
+
+    const { data: recentTournaments } = await supabase
+      .from("tournaments")
+      .select("id,name,slug,sport,created_at,starts_at,cover_url,created_by")
+      .eq("club_id", clubId)
+      // Mismo criterio que el grid superior: solo torneos organizados por el
+      // club (sin partner externo) y excluyendo cancelados/borradores.
+      .is("partner_id", null)
+      .not("status", "in", "(cancelled,draft)")
+      .order("created_at", { ascending: false })
+      .limit(6);
+    // Sumar creadores al map de profiles para resolver avatares.
+    const extraIds: string[] = [];
+    for (const t of recentTournaments ?? []) {
+      const cb = t.created_by as string | null;
+      if (cb && !profileById.has(cb)) extraIds.push(cb);
+    }
+    if (extraIds.length > 0) {
+      const { data: extraProfs } = await supabase
+        .from("profiles")
+        .select("id,display_name,avatar_url,city")
+        .in("id", extraIds);
+      for (const p of extraProfs ?? []) {
+        profileById.set(p.id as string, {
+          displayName: (p.display_name as string | null) ?? "Sin nombre",
+          avatarUrl: (p.avatar_url as string | null) ?? null,
+          city: (p.city as string | null) ?? null,
+        });
+      }
+    }
+
+    for (const t of recentTournaments ?? []) {
+      const author = profileById.get(t.created_by as string);
+      activity.push({
+        id: `t-${t.id as string}`,
+        kind: "tournament_published",
+        at: t.created_at as string,
+        title: `Publicó un torneo: ${t.name as string}`,
+        sub: SPORT_LABEL_MAP[t.sport as string] ?? (t.sport as string),
+        actorName: author?.displayName ?? club.name,
+        actorAvatar: author?.avatarUrl ?? null,
+        thumbnailUrl: safeUrl(t.cover_url as string | null),
+        linkHref: `/eventos/${t.slug as string}`,
+      });
+    }
+    for (const m of (matchesRaw ?? []).slice(0, 12)) {
+      const reporter = profileById.get(m.reported_by as string);
+      activity.push({
+        id: `m-${m.id as string}`,
+        kind: "match_played",
+        at: m.played_at as string,
+        title: reporter ? `${reporter.displayName} jugó un partido` : "Partido jugado",
+        sub: m.status as string,
+        actorName: reporter?.displayName ?? null,
+        actorAvatar: reporter?.avatarUrl ?? null,
+        thumbnailUrl: null,
+        linkHref: null,
+      });
+    }
+    for (const r of (reservationsRaw ?? []).slice(0, 12)) {
+      const orgId = r.organizer_id as string;
+      const prof = profileById.get(orgId);
+      activity.push({
+        id: `r-${r.id as string}`,
+        kind: "reservation_created",
+        at: r.created_at as string,
+        title: prof ? `${prof.displayName} reservó cancha` : "Nueva reserva",
+        sub: null,
+        actorName: prof?.displayName ?? null,
+        actorAvatar: prof?.avatarUrl ?? null,
+        thumbnailUrl: null,
+        linkHref: null,
+      });
+    }
+    activity.sort((a, b) => (a.at < b.at ? 1 : -1));
+    const top = activity.slice(0, 20);
+
+    // Reviews + agregados.
+    const reviewItems = (reviewsRaw ?? []).map((r) => {
+      const prof = profileById.get(r.user_id as string);
+      return {
+        id: r.id as string,
+        userDisplayName: prof?.displayName ?? "Sin nombre",
+        userAvatarUrl: prof?.avatarUrl ?? null,
+        rating: r.rating as number,
+        comment: (r.comment as string | null) ?? null,
+        createdAt: r.created_at as string,
+      };
+    });
+    // Promedio sobre todas las reviews (no solo las top 6). Hacemos un
+    // query más para count + avg total.
+    const { data: ratingAgg } = await supabase
+      .from("club_reviews")
+      .select("rating")
+      .eq("club_id", clubId);
+    const allRatings = (ratingAgg ?? []).map((r) => r.rating as number);
+    const avgRating =
+      allRatings.length > 0
+        ? allRatings.reduce((acc, v) => acc + v, 0) / allRatings.length
+        : null;
+
+    // Filtramos fotos con url inválida para que Zod no rechace el batch entero.
+    const photos = (photosRaw ?? [])
+      .map((p) => ({
+        id: p.id as string,
+        url: safeUrl(p.url as string | null),
+        caption: (p.caption as string | null) ?? null,
+      }))
+      .filter((p): p is { id: string; url: string; caption: string | null } => p.url !== null);
+
+    const courtsCount = (courts ?? []).length;
+    const hours = computeTodayHours(settings?.open_hours as unknown);
+
+    return ClubSocialViewSchema.parse({
+      club: {
+        id: clubId,
+        slug: club.slug,
+        name: club.name,
+        city: club.city,
+        country: club.country,
+        sports: (club.sports as string[] | null) ?? [],
+        coverUrl: safeUrl(club.cover_url as string | null),
+        description: (club.description as string | null) ?? null,
+        address: (club.address as string | null) ?? null,
+        courtsCount,
+        openHoursToday: hours.range,
+        isOpenNow: hours.isOpenNow,
+        latitude:
+          club.latitude != null ? Number(club.latitude as unknown as string) : null,
+        longitude:
+          club.longitude != null ? Number(club.longitude as unknown as string) : null,
+      },
+      stats: {
+        rating: avgRating,
+        reviewsCount: allRatings.length,
+        followersCount: followersCount ?? 0,
+        matchesLast30d: matchesLast30dCount ?? 0,
+      },
+      isFollowing: (myFollowCount ?? 0) > 0,
+      viewerRole,
+      upcomingTournaments,
+      frequentMembers,
+      friendsHere,
+      activity: top,
+      photos,
+      reviews: reviewItems,
+    });
+  });
+}
+
+// Normaliza un campo URL: string vacío → null, todo lo demás se devuelve
+// tal cual. Evita que Zod rechace "" cuando el schema es .url().nullable().
+function safeUrl(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const trimmed = v.trim();
+  if (trimmed === "") return null;
+  // Validación mínima: si no parece URL absoluta, también devolvemos null
+  // para no romper Zod (mejor no mostrar que reventar).
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed;
+}
+
+// Lookup de deporte → label para usar en el feed sin recargar i18n entero.
+const SPORT_LABEL_MAP: Record<string, string> = {
+  pickleball: "Pickleball",
+  padel: "Pádel",
+  tennis: "Tenis",
+  football: "Fútbol",
+  squash: "Squash",
+};
+
+// ── toggleFollowClub ────────────────────────────────────────────────────
+const ToggleFollowSchema = z.object({ clubId: UuidSchema });
+
+export async function toggleFollowClub(
+  input: unknown,
+): Promise<ActionResult<{ isFollowing: boolean; followersCount: number }>> {
+  return runAction(ToggleFollowSchema, input, async ({ clubId }) => {
+    const supabase = await getServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+
+    // club_followers todavía no está en types generados; cast acotado.
+    type RawClient = {
+      from: (t: string) => {
+        select: (sel: string, opts?: { count: "exact"; head: true }) => {
+          eq: (col: string, val: string) => {
+            eq: (col: string, val: string) => {
+              maybeSingle: () => Promise<{ data: { club_id: string } | null }>;
+            };
+            maybeSingle?: () => Promise<{ data: { club_id: string } | null }>;
+          } & Promise<{ count: number | null }>;
+        };
+        delete: () => {
+          eq: (col: string, val: string) => {
+            eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
+          };
+        };
+        insert: (row: { club_id: string; user_id: string }) => Promise<{
+          error: { message: string } | null;
+        }>;
+      };
+    };
+    const raw = supabase as unknown as RawClient;
+
+    const { data: existing } = await raw
+      .from("club_followers")
+      .select("club_id")
+      .eq("club_id", clubId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await raw
+        .from("club_followers")
+        .delete()
+        .eq("club_id", clubId)
+        .eq("user_id", user.id);
+      if (error) throw new MpError("CLUBS.DB_ERROR", error.message, 500);
+    } else {
+      const { error } = await raw
+        .from("club_followers")
+        .insert({ club_id: clubId, user_id: user.id });
+      if (error) throw new MpError("CLUBS.DB_ERROR", error.message, 500);
+    }
+
+    const { count } = await raw
+      .from("club_followers")
+      .select("*", { count: "exact", head: true })
+      .eq("club_id", clubId);
+
+    return { isFollowing: !existing, followersCount: count ?? 0 };
   });
 }
 
@@ -277,6 +816,8 @@ export async function updateClub(input: unknown): Promise<ActionResult<Club>> {
     if (patch.phone !== undefined) payload.phone = patch.phone;
     if (patch.email !== undefined) payload.email = patch.email;
     if (patch.sports !== undefined) payload.sports = patch.sports;
+    if (patch.latitude !== undefined) payload.latitude = patch.latitude;
+    if (patch.longitude !== undefined) payload.longitude = patch.longitude;
 
     const row = await runOptimisticUpdate({
       table: "clubs",
@@ -342,17 +883,31 @@ export async function createClubReview(input: unknown): Promise<ActionResult<Clu
   return runAction(ClubReviewCreateSchema, input, async ({ clubId, rating, comment }) => {
     const userId = await requireUserIdForReview();
     const supabase = await getServerClient();
-    // Tabla original tiene unique(club_id, user_id, reservation_id). Para reviews
-    // generales (sin reserva) usamos null como reservation_id → upsert por par (club, user).
+    // Una reseña por usuario por club — chequeo previo para devolver mensaje
+    // claro (en lugar del 23505 críptico que devolvería el unique constraint).
+    const { data: existing } = await supabase
+      .from("club_reviews")
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      throw new MpError(
+        "REVIEWS.ALREADY_EXISTS",
+        "Ya reseñaste este club. Solo se permite una reseña por usuario.",
+        409,
+      );
+    }
     const { data, error } = await supabase
       .from("club_reviews")
-      .upsert({
+      .insert({
         club_id: clubId,
         user_id: userId,
         rating,
         comment: comment ?? null,
         reservation_id: null,
-      } as never, { onConflict: "club_id,user_id,reservation_id" })
+      } as never)
       .select("id,club_id,user_id,rating,comment,created_at,profiles!club_reviews_user_id_fkey(display_name,avatar_url)")
       .single();
     if (error) throw new MpError("REVIEWS.WRITE_FAILED", error.message, 500);

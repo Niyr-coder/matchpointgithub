@@ -8,6 +8,7 @@ import { PolHero } from "../widgets/PolHero";
 import { RSPill } from "../widgets/RS";
 import { useToast } from "../ToastProvider";
 import { requestPlanUpgrade } from "@/server/actions/player-subscriptions";
+import { MatchPointPlusModal } from "./MatchPointPlusModal";
 
 export type PlanInfo = {
   tier: string;
@@ -70,6 +71,7 @@ export function MiPlanScreenView({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const autoFiredRef = useRef(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const isPremium = plan.tier === "premium";
   const tierLabel = TIER_LABEL[plan.tier] ?? plan.tier;
@@ -98,17 +100,19 @@ export function MiPlanScreenView({
         title: "Solicitud creada",
         sub: "Sube tu comprobante para activar Premium.",
       });
+      setModalOpen(false);
       router.push(`/pagos/${r.data.transactionId}`);
     });
   };
 
-  // Auto-dispara upgrade cuando viene ?upgrade=premium desde un CTA externo.
+  // Auto-abre el modal cuando viene ?upgrade=premium desde un CTA externo.
+  // En vez de crear la transacción al toque, mostramos primero qué ofrece.
   useEffect(() => {
     if (autoFiredRef.current) return;
     if (searchParams?.get("upgrade") !== "premium") return;
     if (plan.tier !== "free" && plan.tier !== "premium") return;
     autoFiredRef.current = true;
-    doUpgrade();
+    setModalOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -179,7 +183,7 @@ export function MiPlanScreenView({
           {isPremium ? (
             <button
               className="btn btn-primary"
-              onClick={doUpgrade}
+              onClick={() => setModalOpen(true)}
               disabled={pending}
               style={{
                 fontSize: 12,
@@ -193,7 +197,7 @@ export function MiPlanScreenView({
           ) : (
             <button
               className="btn btn-primary"
-              onClick={doUpgrade}
+              onClick={() => setModalOpen(true)}
               disabled={pending}
               style={{
                 fontSize: 13,
@@ -333,6 +337,15 @@ export function MiPlanScreenView({
             );
           })}
         </div>
+      )}
+
+      {modalOpen && (
+        <MatchPointPlusModal
+          mode={isPremium ? "renew" : "activate"}
+          pending={pending}
+          onConfirm={doUpgrade}
+          onCancel={() => setModalOpen(false)}
+        />
       )}
     </>
   );

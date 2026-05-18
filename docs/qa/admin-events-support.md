@@ -5,7 +5,7 @@ de soporte admin (Agentes A–F + payment_policy + no-show).
 
 ## Prerequisitos
 
-1. **User admin existe en `auth.users`**. Si todavía no, registrate vía
+1. **User admin existe en `auth.users`**. Si todavía no, regístrate vía
    `/auth/signup` con tu email.
 2. **Correr el seed**:
    - Abrí `scripts/seed-qa-admin-events.sql`.
@@ -112,7 +112,7 @@ de soporte admin (Agentes A–F + payment_policy + no-show).
 - **Esperado**: aparece modal "¿Cómo prefieres pagar?".
   - Si elegís "Pago online" → redirect a `/pagos/[id]`.
   - Si elegís "Pago en sitio" → toast directo, sin redirect.
-- Probá los 2 caminos (registrate con users distintos para no chocar
+- Probá los 2 caminos (regístrate con users distintos para no chocar
   contra el unique constraint).
 
 ### 2.5 · Inscripción en evento (events.kind) vía curl

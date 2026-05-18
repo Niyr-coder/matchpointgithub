@@ -3,6 +3,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import { listFeaturedTournaments } from "@/server/actions/tournaments";
+import type { TournamentFeatured } from "@/lib/schemas/tournaments";
 import { UserHomeView, type UserHomeData } from "./UserHomeView";
 
 const STARTING_RATING = 2500;
@@ -21,9 +22,11 @@ async function loadData(): Promise<UserHomeData> {
       currentRating: STARTING_RATING,
       rank: null,
       matchesTotal: 0,
+      ratingsByMode: { singles: null, doubles: null },
       reservations: [],
       tournaments: tournaments.ok ? tournaments.data : [],
       ratingHistory: [],
+      historiesByMode: { singles: [], doubles: [] },
       planTier: "free",
       planExpiresAt: null,
     };
@@ -33,10 +36,10 @@ async function loadData(): Promise<UserHomeData> {
 
   const [
     profile,
-    { data: stats },
+    { data: statsRows },
     { data: rankRows },
     { data: reservations },
-    tournamentsRes,
+    { data: myTournaments },
     { data: history },
   ] = await Promise.all([
     // getProfileSummary está cacheado por request: si [role]/layout.tsx ya lo
@@ -44,13 +47,12 @@ async function loadData(): Promise<UserHomeData> {
     getProfileSummary(userId),
     supabase
       .from("player_stats")
-      .select("matches_total,current_rating")
+      .select("mode,matches_total,current_rating")
       .eq("user_id", userId)
-      .eq("sport", SPORT_PRIMARY)
-      .maybeSingle(),
+      .eq("sport", SPORT_PRIMARY),
     supabase
       .from("mv_user_ranking")
-      .select("rank,sport")
+      .select("rank,sport,mode")
       .eq("user_id", userId)
       .eq("sport", SPORT_PRIMARY),
     supabase
@@ -61,7 +63,17 @@ async function loadData(): Promise<UserHomeData> {
       .eq("status", "booked")
       .order("during", { ascending: true })
       .limit(3),
-    listFeaturedTournaments({ limit: 3 }),
+    // Torneos en los que el user está inscrito (pending/accepted) y aún no
+    // han pasado. Reemplaza los "featured" globales con algo más relevante.
+    supabase
+      .from("registrations")
+      .select(
+        "tournament_id,tournaments(id,slug,name,starts_at,ends_at,prize_pool_cents,entry_fee_cents,currency,max_participants,sport,format,status,club_id,clubs(name,city))",
+      )
+      .contains("player_ids", [userId])
+      .in("status", ["pending", "accepted"])
+      .order("created_at", { ascending: false })
+      .limit(10),
     supabase
       .from("ranking_snapshots")
       .select("rating,snapshot_at")
@@ -70,6 +82,46 @@ async function loadData(): Promise<UserHomeData> {
       .order("snapshot_at", { ascending: true })
       .limit(8),
   ]);
+
+  // Adaptar inscripciones del user a TournamentFeatured. Filtramos a los
+  // que aún no han pasado y los ordenamos por starts_at ascendente.
+  const nowMs = Date.now();
+  const tournamentsAdapted: TournamentFeatured[] = ((myTournaments ?? []) as Array<Record<string, unknown>>)
+    .map((r) => r.tournaments as Record<string, unknown> | null)
+    .filter((t): t is Record<string, unknown> => t != null)
+    .filter((t) => {
+      // Mantenemos torneos cancelados aunque sean futuros, para que el user
+      // vea el cambio de estado en el widget. Solo descartamos torneos que
+      // ya terminaron y NO están cancelados (los cancelados se ven hasta
+      // que el user cancele su inscripción).
+      const ends = t.ends_at as string | null;
+      const status = t.status as string;
+      if (status === "cancelled") return true;
+      return ends ? new Date(ends).getTime() >= nowMs : true;
+    })
+    .map((t) => {
+      const club = t.clubs as { name?: string; city?: string } | null;
+      return {
+        id: t.id as string,
+        slug: t.slug as string,
+        name: t.name as string,
+        startsAt: t.starts_at as string,
+        endsAt: t.ends_at as string,
+        prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
+        entryFeeCents: (t.entry_fee_cents as number | undefined) ?? 0,
+        currency: (t.currency as TournamentFeatured["currency"]) ?? null,
+        maxParticipants: (t.max_participants as number | null) ?? null,
+        sport: t.sport as TournamentFeatured["sport"],
+        format: t.format as TournamentFeatured["format"],
+        status: (t.status as string) ?? "draft",
+        clubName: club?.name ?? null,
+        clubCity: club?.city ?? null,
+        registrationsCount: 0,
+        isFeatured: false,
+      };
+    })
+    .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt))
+    .slice(0, 3);
 
   const reservationsAdapted = (reservations ?? []).map((r: Record<string, unknown>) => {
     const court = r.courts as { code?: string; name?: string } | null;
@@ -89,18 +141,39 @@ async function loadData(): Promise<UserHomeData> {
     snapshotAt: h.snapshot_at as string,
   }));
 
+  // Stats por modo.
+  const statsSingles = (statsRows ?? []).find((s) => s.mode === "singles");
+  const statsDoubles = (statsRows ?? []).find((s) => s.mode === "doubles");
+  const ratingsByMode = {
+    singles: (statsSingles?.current_rating as number | undefined) ?? null,
+    doubles: (statsDoubles?.current_rating as number | undefined) ?? null,
+  };
+
+  // Legacy aggregate fields: prefer singles, fallback doubles.
+  const legacyStats = statsSingles ?? statsDoubles;
+  // Cast: tipos generados de mv_user_ranking aún no incluyen `mode`.
+  const rankList = (rankRows ?? []) as Array<{ rank?: number; mode?: string }>;
+  const legacyRank = rankList.find((r) => r.mode === "singles")
+    ?? rankList.find((r) => r.mode === "doubles");
+
+  // TODO: ranking_snapshots aún no es mode-aware. Pasamos el mismo array para
+  // ambos modos por ahora; cuando snapshots tenga columna mode, separar aquí.
+  const historiesByMode = { singles: ratingHistory, doubles: ratingHistory };
+
   const { tier: effectiveTier } = isPlanActive(profile);
 
   return {
     meUserId: userId,
     name: profile.displayName ?? "Jugador",
     onboardedAt: profile.onboardedAt,
-    currentRating: (stats?.current_rating as number | undefined) ?? STARTING_RATING,
-    rank: (rankRows?.[0]?.rank as number | undefined) ?? null,
-    matchesTotal: (stats?.matches_total as number | undefined) ?? 0,
+    currentRating: (legacyStats?.current_rating as number | undefined) ?? STARTING_RATING,
+    rank: legacyRank?.rank ?? null,
+    matchesTotal: (legacyStats?.matches_total as number | undefined) ?? 0,
+    ratingsByMode,
     reservations: reservationsAdapted,
-    tournaments: tournamentsRes.ok ? tournamentsRes.data : [],
+    tournaments: tournamentsAdapted,
     ratingHistory,
+    historiesByMode,
     planTier: effectiveTier,
     planExpiresAt: profile.planExpiresAt,
   };

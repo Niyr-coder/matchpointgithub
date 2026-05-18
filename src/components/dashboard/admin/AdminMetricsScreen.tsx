@@ -1,5 +1,6 @@
 // Server: métricas agregadas de plataforma.
 import { getServerClient } from "@/lib/db/client.server";
+import { getTakeRatePct } from "@/server/queries/platform-config";
 import { AdminMetricsScreenView, type MetricsData } from "./AdminMetricsScreenView";
 
 const SPORT_COLOR: Record<string, string> = {
@@ -93,13 +94,14 @@ async function loadData(): Promise<MetricsData> {
       color: SPORT_COLOR[code] ?? "var(--primary)",
     }));
 
+  const takeRatePct = await getTakeRatePct();
   return {
     kpis: {
       mau: mauCount ?? 0,
       dau: dauSet.size,
       gmvCents: gmvMonthCents,
       gmvDeltaPct,
-      takeRatePct: 10.0, // comisión fija MP, no se computa runtime
+      takeRatePct,
     },
     bars30,
     topSports,

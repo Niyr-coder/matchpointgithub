@@ -1,4 +1,4 @@
-// Página dedicada de onboarding. El layout del dashboard redirige acá si
+// Página dedicada de onboarding. El layout del dashboard redirige aquí si
 // profiles.onboarded_at es null. Esta página a su vez:
 //   · Si no hay sesión → /login?next=/onboarding.
 //   · Si ya está onboardeado → respeta ?next= si vino (caso: signin que ya

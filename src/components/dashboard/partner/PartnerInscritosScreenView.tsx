@@ -1,15 +1,30 @@
-// Client view de PartnerInscritosScreen — layout 1:1 (RoleScreens.jsx 564-592).
+// Client view de PartnerInscritosScreen — tabla con player real, status de
+// pago según modo (online/onsite/free) y botón "Marcar pagado" para onsite.
 "use client";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "../ToastProvider";
+import { markRegistrationPaidByPartner } from "@/server/actions/tournaments";
+
+export type PaymentMode = "online" | "onsite" | "free";
+export type PayStatus =
+  | "free"
+  | "paid"
+  | "onsite_pending"
+  | "awaiting_proof"
+  | "review"
+  | "other";
 
 export type InscritoRow = {
   id: string;
   team: string;
-  avg: number | null;
-  club: string;
-  paid: boolean;
+  avatarUrl: string | null;
+  regStatus: string;
+  paymentMode: PaymentMode;
+  payStatus: PayStatus;
   amt: string;
   when: string;
 };
@@ -21,21 +36,75 @@ export type InscritosData = {
   rows: InscritoRow[];
 };
 
+const PAY_LABEL: Record<PayStatus, string> = {
+  free: "GRATIS",
+  paid: "PAGADO",
+  onsite_pending: "EN CLUB · POR COBRAR",
+  awaiting_proof: "ESPERA COMPROBANTE",
+  review: "EN REVISIÓN",
+  other: "—",
+};
+
+const PAY_COLOR: Record<PayStatus, string> = {
+  free: "#0ea5e9",
+  paid: "var(--primary)",
+  onsite_pending: "#fbbf24",
+  awaiting_proof: "#fbbf24",
+  review: "#7c3aed",
+  other: "var(--muted-fg)",
+};
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
 const PLACEHOLDER_ROWS: InscritoRow[] = Array.from({ length: 5 }).map((_, i) => ({
   id: `ph-${i}`,
   team: "—",
-  avg: null,
-  club: "—",
-  paid: false,
+  avatarUrl: null,
+  regStatus: "pending",
+  paymentMode: "online",
+  payStatus: "other",
   amt: "$—",
   when: "—",
 }));
 
 export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [, startTransition] = useTransition();
+  const [marking, setMarking] = useState<string | null>(null);
+
   useRealtimeRefresh(
-    data.partnerId ? [{ table: "registrations" }, { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` }] : [],
+    data.partnerId
+      ? [
+          { table: "registrations" },
+          { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` },
+          { table: "transactions" },
+        ]
+      : [],
     { enabled: !!data.partnerId },
   );
+
+  const handleMarkPaid = (regId: string) => {
+    if (marking) return;
+    setMarking(regId);
+    startTransition(async () => {
+      const res = await markRegistrationPaidByPartner({ registrationId: regId });
+      setMarking(null);
+      if (res.ok) {
+        toast({ icon: "check", title: "Marcado como pagado" });
+        router.refresh();
+      } else {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo marcar",
+          sub: res.error.message,
+        });
+      }
+    });
+  };
 
   const hasReal = data.rows.length > 0;
   const displayRows = hasReal ? data.rows : PLACEHOLDER_ROWS;
@@ -44,41 +113,58 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
   const cols: RSColumn<InscritoRow>[] = [
     {
       k: "team",
-      l: "Pareja",
+      l: "Jugador",
       render: (t) => (
-        <b style={{ fontSize: 12, color: hasReal ? "#0a0a0a" : "var(--muted-fg)" }}>{t.team}</b>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: t.avatarUrl
+                ? `url(${t.avatarUrl}) center/cover`
+                : "linear-gradient(135deg, #10b981, #047857)",
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+              fontWeight: 900,
+              flexShrink: 0,
+            }}
+          >
+            {!t.avatarUrl && hasReal && initialsOf(t.team)}
+          </div>
+          <b style={{ fontSize: 12, color: hasReal ? "#0a0a0a" : "var(--muted-fg)" }}>{t.team}</b>
+        </div>
       ),
     },
     {
-      k: "avg",
-      l: "Nivel prom.",
+      k: "paymentMode",
+      l: "Modo",
       align: "center",
-      render: (t) =>
-        t.avg != null ? (
+      render: (t) => {
+        if (!hasReal) return <span style={{ color: "var(--muted-fg)", fontSize: 10 }}>—</span>;
+        const label =
+          t.paymentMode === "online"
+            ? "Online"
+            : t.paymentMode === "onsite"
+              ? "En club"
+              : "Gratis";
+        return (
           <span
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "2px 7px",
-              background: "#0a0a0a",
-              color: "#fff",
-              borderRadius: 9999,
               fontSize: 10,
               fontWeight: 800,
+              color: "var(--muted-fg)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
             }}
           >
-            <Icon name="zap" size={9} color="#fbbf24" />
-            {t.avg}
+            {label}
           </span>
-        ) : (
-          <span style={{ color: "var(--muted-fg)", fontSize: 10 }}>—</span>
-        ),
-    },
-    {
-      k: "club",
-      l: "Club",
-      render: (t) => <span style={{ color: hasReal ? "#0a0a0a" : "var(--muted-fg)" }}>{t.club}</span>,
+        );
+      },
     },
     {
       k: "amt",
@@ -94,15 +180,11 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
       ),
     },
     {
-      k: "paid",
-      l: "Pago",
+      k: "payStatus",
+      l: "Estado de pago",
       render: (t) =>
         hasReal ? (
-          t.paid ? (
-            <RSPill bg="var(--primary)">PAGADO</RSPill>
-          ) : (
-            <RSPill bg="#fbbf24">PENDIENTE</RSPill>
-          )
+          <RSPill bg={PAY_COLOR[t.payStatus]}>{PAY_LABEL[t.payStatus]}</RSPill>
         ) : (
           <RSPill bg="var(--muted-fg)">—</RSPill>
         ),
@@ -111,6 +193,28 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
       k: "when",
       l: "Inscrito",
       render: (t) => <span style={{ color: "var(--muted-fg)" }}>{t.when}</span>,
+    },
+    {
+      k: "id",
+      l: "",
+      align: "right",
+      render: (t) => {
+        if (!hasReal) return null;
+        // Solo onsite_pending acepta acción manual del partner.
+        if (t.payStatus !== "onsite_pending") return null;
+        const isLoading = marking === t.id;
+        return (
+          <button
+            onClick={() => handleMarkPaid(t.id)}
+            disabled={!!marking}
+            className="btn btn-primary"
+            style={{ fontSize: 10.5, padding: "6px 10px", opacity: isLoading ? 0.7 : 1 }}
+          >
+            <Icon name="check" size={11} color="#fff" />
+            {isLoading ? "Marcando…" : "Marcar pagado"}
+          </button>
+        );
+      },
     },
   ];
 

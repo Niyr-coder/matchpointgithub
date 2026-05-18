@@ -88,6 +88,8 @@ export const ClubUpdateSchema = z
     phone: z.string().nullable(),
     email: z.string().email().nullable(),
     sports: z.array(MpSportSchema).min(1),
+    latitude: z.number().min(-90).max(90).nullable(),
+    longitude: z.number().min(-180).max(180).nullable(),
     expectedVersion: z.number().int(),
   })
   .partial({
@@ -99,6 +101,8 @@ export const ClubUpdateSchema = z
     phone: true,
     email: true,
     sports: true,
+    latitude: true,
+    longitude: true,
   })
   .openapi("ClubUpdate");
 
@@ -121,6 +125,13 @@ export const ClubFeaturedSchema = z
     // null = club no pagó featuring; ISO string si está activo (futuro).
     // En lectura: si <= now(), tratar como null (expirado).
     featuredUntil: z.string().datetime({ offset: true }).nullable(),
+    // Horario de hoy formateado "HH:MM — HH:MM" o null si no hay datos /
+    // si el club marca el día como cerrado. Se calcula server-side desde
+    // club_settings.open_hours.
+    openHoursToday: z.string().nullable(),
+    // true si ahora mismo el club está dentro de su horario de hoy.
+    // Computado contra hora de Ecuador (UTC-5).
+    isOpenNow: z.boolean(),
   })
   .openapi("ClubFeatured");
 
@@ -152,6 +163,97 @@ export const ClubReviewStatsSchema = z
     reviewsCount: z.number().int(),
   })
   .openapi("ClubReviewStats");
+
+// ── Social view del club (vivido dentro del dashboard) ─────────────────
+const ClubSocialMemberSchema = z.object({
+  userId: UuidSchema,
+  displayName: z.string(),
+  avatarUrl: z.string().url().nullable(),
+  city: z.string().nullable(),
+  matchesAtClub: z.number().int(),
+  lastPlayedAt: z.string().nullable(),
+  isFriend: z.boolean(),
+});
+
+const ClubSocialTournamentSchema = z.object({
+  id: UuidSchema,
+  slug: z.string(),
+  name: z.string(),
+  sport: z.string(),
+  startsAt: z.string(),
+  status: z.string(),
+  maxParticipants: z.number().int().nullable(),
+  entryFeeCents: z.number().int().nullable(),
+});
+
+const ClubSocialActivitySchema = z.object({
+  id: z.string(),
+  kind: z.enum(["tournament_published", "match_played", "reservation_created"]),
+  at: z.string(),
+  title: z.string(),
+  sub: z.string().nullable(),
+  actorName: z.string().nullable(),
+  actorAvatar: z.string().url().nullable(),
+  thumbnailUrl: z.string().url().nullable(),
+  linkHref: z.string().nullable(),
+});
+
+const ClubSocialPhotoSchema = z.object({
+  id: UuidSchema,
+  url: z.string().url(),
+  caption: z.string().nullable(),
+});
+
+const ClubSocialReviewSchema = z.object({
+  id: UuidSchema,
+  userDisplayName: z.string(),
+  userAvatarUrl: z.string().url().nullable(),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export const ClubSocialViewSchema = z.object({
+  club: z.object({
+    id: UuidSchema,
+    slug: z.string(),
+    name: z.string(),
+    city: z.string(),
+    country: z.string(),
+    sports: z.array(z.string()),
+    coverUrl: z.string().url().nullable(),
+    description: z.string().nullable(),
+    address: z.string().nullable(),
+    courtsCount: z.number().int(),
+    openHoursToday: z.string().nullable(),
+    isOpenNow: z.boolean(),
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
+  }),
+  stats: z.object({
+    rating: z.number().nullable(),
+    reviewsCount: z.number().int(),
+    followersCount: z.number().int(),
+    matchesLast30d: z.number().int(),
+  }),
+  isFollowing: z.boolean(),
+  // Rol del visitante en relación a este club. Determina afordancias
+  // administrativas en el view (edit / volver al panel).
+  viewerRole: z.enum(["owner", "manager", "admin", "guest"]),
+  upcomingTournaments: z.array(ClubSocialTournamentSchema),
+  frequentMembers: z.array(ClubSocialMemberSchema),
+  friendsHere: z.array(ClubSocialMemberSchema),
+  activity: z.array(ClubSocialActivitySchema),
+  photos: z.array(ClubSocialPhotoSchema),
+  reviews: z.array(ClubSocialReviewSchema),
+});
+
+export type ClubSocialMember = z.infer<typeof ClubSocialMemberSchema>;
+export type ClubSocialTournament = z.infer<typeof ClubSocialTournamentSchema>;
+export type ClubSocialActivity = z.infer<typeof ClubSocialActivitySchema>;
+export type ClubSocialPhoto = z.infer<typeof ClubSocialPhotoSchema>;
+export type ClubSocialReview = z.infer<typeof ClubSocialReviewSchema>;
+export type ClubSocialView = z.infer<typeof ClubSocialViewSchema>;
 
 export type Club = z.infer<typeof ClubSchema>;
 export type ClubDetail = z.infer<typeof ClubDetailSchema>;

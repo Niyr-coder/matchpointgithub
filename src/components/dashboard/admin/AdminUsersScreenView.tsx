@@ -2,7 +2,8 @@
 // (Free / MatchPoint+) y permite al admin activar o revocar el plan en un
 // solo click sin pasar por el flujo de comprobantes.
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
@@ -249,9 +250,33 @@ function RowMenu({
   onRevoke: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Recalcular posición del dropdown al abrir (también ante scroll/resize).
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div style={{ display: "inline-block" }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 28,
@@ -264,23 +289,27 @@ function RowMenu({
       >
         <Icon name="more-horizontal" size={13} />
       </button>
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-          <div
-            style={{
-              position: "absolute",
-              top: 32,
-              right: 0,
-              zIndex: 41,
-              background: "#fff",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              padding: 4,
-              minWidth: 220,
-            }}
-          >
+      {open && mounted && pos &&
+        createPortal(
+          <>
+            <div
+              onClick={() => setOpen(false)}
+              style={{ position: "fixed", inset: 0, zIndex: 9998 }}
+            />
+            <div
+              style={{
+                position: "fixed",
+                top: pos.top,
+                right: pos.right,
+                zIndex: 9999,
+                background: "#fff",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                padding: 4,
+                minWidth: 220,
+              }}
+            >
             {user.planTier === "free" ? (
               <MenuItem
                 icon="crown"
@@ -311,9 +340,10 @@ function RowMenu({
                 />
               </>
             )}
-          </div>
-        </>
-      )}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

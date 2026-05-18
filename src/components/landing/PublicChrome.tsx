@@ -3,7 +3,7 @@
 // vía el componente client interno. Esto evita que el Nav muestre "Iniciar
 // sesión / Crear cuenta" cuando el user YA tiene sesión válida.
 //
-// `usePaywall` sigue exportado desde acá por back-compat (los hijos lo
+// `usePaywall` sigue exportado desde aquí por back-compat (los hijos lo
 // importan así). El hook real vive en PublicChromeClient.
 import type { ReactNode } from "react";
 import { getSession } from "@/lib/auth/session";

@@ -680,8 +680,22 @@ function StepFinish({
             textAlign: "left",
           }}
         >
-          {summary.primarySport && <div>Deporte: <strong style={{ color: "#0a0a0a" }}>{summary.primarySport}</strong></div>}
-          {summary.skillLevel && <div>Nivel: <strong style={{ color: "#0a0a0a" }}>{summary.skillLevel}</strong></div>}
+          {summary.primarySport && (
+            <div>
+              Deporte:{" "}
+              <strong style={{ color: "#0a0a0a" }}>
+                {SPORTS.find((s) => s.value === summary.primarySport)?.label ?? summary.primarySport}
+              </strong>
+            </div>
+          )}
+          {summary.skillLevel && (
+            <div>
+              Nivel:{" "}
+              <strong style={{ color: "#0a0a0a" }}>
+                {SKILLS.find((s) => s.value === summary.skillLevel)?.label ?? summary.skillLevel}
+              </strong>
+            </div>
+          )}
           <div>
             Club favorito:{" "}
             <strong style={{ color: "#0a0a0a" }}>

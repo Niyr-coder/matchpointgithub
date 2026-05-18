@@ -152,7 +152,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
       async () => {
         const supabase = await getServerClient();
 
-        // Ventana de reserva: no permitir reservar más allá del horizonte del club.
+        // Ventana de reserva: no permitir reservar más allí del horizonte del club.
         const { data: settings } = await supabase
           .from("club_settings")
           .select("reservation_window_days")

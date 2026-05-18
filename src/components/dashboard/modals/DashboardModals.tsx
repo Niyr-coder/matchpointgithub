@@ -1,84 +1,39 @@
-// Wrapper que monta los 8 modales globales del dashboard de forma lazy.
-// Cada modal se importa con next/dynamic y se monta recién cuando llega
-// su evento window por primera vez. El evento que disparó el mount se
-// re-despacha tras montar para que el modal lo procese (los useEffect
-// de los hijos corren antes que los del padre, así el listener ya existe).
+// Wrapper que monta los modales globales del dashboard.
+//
+// IMPORTANTE: los modales que se abren con eventos window (`mp-open-*`)
+// se importan SÍNCRONAMENTE. El approach lazy con `next/dynamic` falló
+// en producción porque el dispatch del evento que dispara el mount
+// corría antes de que el chunk lazy se descargara — el listener interno
+// del modal todavía no existía y el evento se perdía. Si en el futuro
+// necesitas lazy por bundle size, hacelo solo para modales NUNCA
+// triggereados por evento (ej. un modal abierto vía prop directa).
 "use client";
-import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
 import { CarritoModal } from "./CarritoModal";
-// El wizard de onboarding ya no se monta acá. Ahora vive en /onboarding
+import { RetarModal } from "./RetarModal";
+import { CrearMatchModal } from "./CrearMatchModal";
+import { CrearJuegoModal } from "./CrearJuegoModal";
+import { ReservarCanchaDrawer } from "./ReservarCanchaDrawer";
+import { VerMapaOverlay } from "./VerMapaOverlay";
+import { CrearEventoModal } from "./CrearEventoModal";
+import { InscribirClaseModal } from "./InscribirClaseModal";
+// El wizard de onboarding ya no se monta aquí. Ahora vive en /onboarding
 // como página dedicada y `dashboard/layout.tsx` redirige cuando
 // profiles.onboarded_at es null.
 
-type LazyEvents = readonly string[];
-
-function useEventTrigger(events: LazyEvents): boolean {
-  const [armed, setArmed] = useState(false);
-  const buffered = useRef<Event | null>(null);
-
-  useEffect(() => {
-    if (armed) {
-      if (buffered.current) {
-        const e = buffered.current;
-        buffered.current = null;
-        window.dispatchEvent(e);
-      }
-      return;
-    }
-    const handler = (e: Event) => {
-      buffered.current = new CustomEvent(e.type, {
-        detail: (e as CustomEvent).detail,
-        bubbles: false,
-        cancelable: false,
-      });
-      setArmed(true);
-    };
-    for (const ev of events) window.addEventListener(ev, handler);
-    return () => {
-      for (const ev of events) window.removeEventListener(ev, handler);
-    };
-  }, [armed, events]);
-
-  return armed;
-}
-
-const RetarModal = dynamic(() => import("./RetarModal").then((m) => m.RetarModal), { ssr: false });
-const CrearMatchModal = dynamic(() => import("./CrearMatchModal").then((m) => m.CrearMatchModal), { ssr: false });
-const CrearJuegoModal = dynamic(() => import("./CrearJuegoModal").then((m) => m.CrearJuegoModal), { ssr: false });
-const ReservarCanchaDrawer = dynamic(() => import("./ReservarCanchaDrawer").then((m) => m.ReservarCanchaDrawer), { ssr: false });
-const VerMapaOverlay = dynamic(() => import("./VerMapaOverlay").then((m) => m.VerMapaOverlay), { ssr: false });
-const CrearEventoModal = dynamic(() => import("./CrearEventoModal").then((m) => m.CrearEventoModal), { ssr: false });
-const InscribirClaseModal = dynamic(() => import("./InscribirClaseModal").then((m) => m.InscribirClaseModal), { ssr: false });
-
-const TRIG_RETAR: LazyEvents = ["mp-open-retar"];
-const TRIG_MATCH: LazyEvents = ["mp-open-crear-match"];
-const TRIG_JUEGO: LazyEvents = ["mp-open-crear-juego"];
-const TRIG_RESERVA: LazyEvents = ["mp-open-reservar"];
-const TRIG_MAPA: LazyEvents = ["mp-open-mapa"];
-const TRIG_EVENTO: LazyEvents = ["mp-open-crear-evento"];
-const TRIG_CLASE: LazyEvents = ["mp-open-inscribir-clase"];
-
 export function DashboardModals({ currentUserId }: { currentUserId: string | null }) {
-  const retar = useEventTrigger(TRIG_RETAR);
-  const match = useEventTrigger(TRIG_MATCH);
-  const juego = useEventTrigger(TRIG_JUEGO);
-  const reserva = useEventTrigger(TRIG_RESERVA);
-  const mapa = useEventTrigger(TRIG_MAPA);
-  const evento = useEventTrigger(TRIG_EVENTO);
-  const clase = useEventTrigger(TRIG_CLASE);
-
+  // Todos mounted siempre. Cada modal mantiene su propio state `open` interno
+  // y solo renderiza UI al recibir el evento. Hacer esto es barato porque los
+  // modals están "cerrados" (return null) cuando no hay open.
   return (
     <>
-      {retar && <RetarModal currentUserId={currentUserId} />}
-      {match && <CrearMatchModal currentUserId={currentUserId} />}
-      {juego && <CrearJuegoModal />}
-      {reserva && <ReservarCanchaDrawer />}
-      {mapa && <VerMapaOverlay />}
-      {/* CarritoModal queda always-mounted: expone window.mpCart usado por ShopScreen. */}
+      <RetarModal currentUserId={currentUserId} />
+      <CrearMatchModal currentUserId={currentUserId} />
+      <CrearJuegoModal />
+      <ReservarCanchaDrawer />
+      <VerMapaOverlay />
       <CarritoModal />
-      {evento && <CrearEventoModal />}
-      {clase && <InscribirClaseModal />}
+      <CrearEventoModal />
+      <InscribirClaseModal />
     </>
   );
 }

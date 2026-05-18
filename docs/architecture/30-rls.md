@@ -980,3 +980,99 @@ Pipeline CI corre `supabase db test` por cada PR — fallar la suite **bloquea m
 6. Triggers de `tg_audit` y `tg_set_updated_at` aplicables.
 7. Agregar fila en la matriz §2 de este doc.
 8. Tests pgTAP cubriendo el rol más restrictivo y el rol con acceso.
+
+---
+
+## 9. Patrones post-MVP (lo que aprendimos a los golpes)
+
+### 9.1 · Tablas que mutamos siempre vía service role
+
+Algunas tablas críticas tienen RLS deliberadamente **restrictiva** y todas
+las mutaciones pasan por server actions que usan `getAdminClient()` después
+de validar el caller en código. Esto da defensa-en-profundidad: si la auth
+del server action falla por cualquier razón, el RLS sigue bloqueando.
+
+| Tabla | Caller permitido en RLS | Mutación real |
+|---|---|---|
+| `transactions` (UPDATE/INSERT) | solo staff de club | `submitPaymentProof`, `approvePaymentProofAdmin`, `rejectPaymentProofAdmin` → service role |
+| `registrations` (UPDATE status) | solo partner/admin del torneo | `updateRegistrationStatus` → service role tras `requirePartnerAdmin` |
+| `tournaments` (UPDATE) | solo partner/admin | `setTournamentStatus`, `updateTournamentByOrganizer` → service role |
+| `player_subscriptions` (INSERT) | `user_id = auth.uid()` ✓ | el INSERT del propio user pasa por anon |
+| `player_subscriptions` (UPDATE) | solo admin | `grantMatchPointPlusAdmin`, `revokeMatchPointPlusAdmin` → service role |
+| `platform_config` (UPDATE) | solo admin SELECT, ningún UPDATE expuesto | mutación manual o vía admin client |
+| `payouts` (INSERT/UPDATE) | solo admin | hoy sin UI, manual via SQL |
+
+**Regla**: si una server action valida rol en código y mutó con `getServerClient`
+y la query falla silenciosa, **revisar si la RLS está dejando pasar**. El
+patrón correcto post-MVP es `getAdminClient()` después del check de rol.
+
+**Cuidado con audit_log al usar service role**: `auth.uid()` retorna null
+en service-role, así que `tg_audit` registraría `actor_id=null,
+actor_role='system'`. Para preservar trazabilidad, llamar el helper
+`setAuditActor(admin, callerId, 'admin')` (en `src/lib/db/client.admin.ts`)
+ANTES de la mutación. Ver `docs/architecture/20-database.md` §0 mig 086
+para el detalle. Aplicado hoy en grant/revoke MatchPoint+ y approve/reject
+payment proof — si agregas un nuevo flujo admin con `getAdminClient`,
+acuérdate de llamarlo o el audit no te va a decir quién hizo qué.
+
+### 9.2 · Fix de recursión infinita en partner_members (mig 069)
+
+La policy `pm_partner_admin` original tenía un `exists(select 1 from
+partner_members ...)` inline contra la misma tabla, causando recursión.
+Reemplazada por el helper `mp_is_partner_admin_of(partner_id)` (SECURITY
+DEFINER) que evade RLS dentro del helper.
+
+```sql
+drop policy if exists pm_partner_admin on public.partner_members;
+create policy pm_partner_admin on public.partner_members
+  for all
+  using (mp_is_partner_admin_of(partner_id))
+  with check (mp_is_partner_admin_of(partner_id));
+```
+
+**Lección**: cualquier policy que necesite chequear membresía en la misma
+tabla → usar SECURITY DEFINER helper. NO inline.
+
+### 9.3 · Tablas nuevas (migs 070+) — políticas resumidas
+
+| Tabla | SELECT | INSERT/UPDATE/DELETE |
+|---|---|---|
+| `tournament_categories` | público (`using (true)`) | admin via service role (CRUD de partner pasa por `requireTournamentEditor`) |
+| `tournament_schedule_blocks` | público | admin via service role (igual ↑) |
+| `tournament_prizes` | público | admin via service role (igual ↑) |
+| `platform_config` | solo admin | mutación manual / service role |
+| `payouts` | admin / club staff / partner admin (cada uno ve los suyos) | solo admin |
+| `coach_commissions` | el coach mismo, staff del club, admin | solo admin |
+
+### 9.4 · Reading vs writing: cuándo usar qué cliente
+
+```
+getServerClient (anon + cookies)
+├── Usar para SELECTs del usuario logueado (RLS los filtra a lo suyo).
+├── NO usar para UPDATE/INSERT en tablas que dejaron a admin/staff
+│   (silenciosamente falla porque la RLS bloquea).
+└── Auth ya validada por cookie de Supabase.
+
+getAdminClient (service role)
+├── Usar SIEMPRE después de validar el rol en código.
+├── Bypassa RLS — toda la responsabilidad de autz queda en el server action.
+└── NUNCA importar en archivos "use client". El módulo lo bloquea con
+    `import "server-only"`.
+```
+
+Patrón canónico:
+
+```ts
+export async function someAdminOnlyAction(input) {
+  return runAction(Schema, input, async (data) => {
+    await requireAdminUserId();          // valida rol PRIMERO
+    const admin = getAdminClient();      // service role DESPUÉS
+    const { error } = await admin
+      .from("alguna_tabla")
+      .update({ ... })
+      .eq("id", data.id);
+    if (error) throw new MpError(...);
+    return result;
+  });
+}
+```

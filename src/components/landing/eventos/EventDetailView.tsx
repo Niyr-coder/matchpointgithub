@@ -1,13 +1,32 @@
 // /eventos/[slug] — migrado 1:1 desde MatchPoint Public.html (líneas 504-580)
 "use client";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { usePaywall } from "@/components/landing/PublicChromeClient";
+import { usePaywall, useLandingAuth } from "@/components/landing/PublicChromeClient";
+import { useToast } from "@/components/dashboard/ToastProvider";
+import { cancelMyRegistration } from "@/server/actions/tournaments";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
+
+export type MyRegistration = {
+  id: string;
+  status: string;
+};
+
+export type TournamentInscrito = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  city: string | null;
+  registeredAt: string;
+};
 
 type Props = {
   detail: TournamentDetail;
   clubName: string | null;
   clubCity: string | null;
+  myRegistration?: MyRegistration | null;
+  inscritos?: TournamentInscrito[];
 };
 
 const MONTHS_ES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -35,9 +54,9 @@ function tagFromFormat(format: string): string {
   return "TORNEO";
 }
 
-function dateLabel(startsAt: string, endsAt: string): { d: string; m: string; full: string } {
+function dateLabel(startsAt: string, endsAt: string | null): { d: string; m: string; full: string } {
   const s = new Date(startsAt);
-  const e = new Date(endsAt);
+  const e = endsAt ? new Date(endsAt) : s;
   const sd = s.getUTCDate();
   const ed = e.getUTCDate();
   const sameMonth = s.getUTCMonth() === e.getUTCMonth();
@@ -62,8 +81,259 @@ function levelRange(cats: TournamentDetail["categories"]): string | null {
   return `${levels[0]}–${levels[levels.length - 1]}`;
 }
 
-export function EventDetailView({ detail, clubName, clubCity }: Props) {
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+function InscritosList({
+  items,
+  maxParticipants,
+}: {
+  items: TournamentInscrito[];
+  maxParticipants: number | null;
+}) {
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div
+        style={{
+          padding: "16px 22px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div className="label-mp">Inscritos</div>
+          <div
+            className="font-heading"
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              letterSpacing: "-0.025em",
+              textTransform: "uppercase",
+              marginTop: 4,
+            }}
+          >
+            {items.length}
+            {maxParticipants != null && (
+              <span style={{ color: "var(--muted-fg)", fontSize: 14, fontWeight: 600 }}>
+                {" "}/ {maxParticipants}
+              </span>
+            )}
+            <span className="dot">.</span>
+          </div>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div
+          style={{
+            padding: "40px 22px",
+            textAlign: "center",
+            color: "var(--muted-fg)",
+            fontSize: 13,
+          }}
+        >
+          <Icon name="users" size={28} color="var(--muted-fg)" />
+          <div style={{ marginTop: 10 }}>
+            Sé el primero en inscribirte. Las inscripciones recientes aparecen aquí.
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 0,
+          }}
+        >
+          {items.map((p, i) => (
+            <div
+              key={p.userId + "-" + i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 18px",
+                borderTop: "1px solid var(--border)",
+                borderRight: "1px solid var(--border)",
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  background: p.avatarUrl
+                    ? `url(${p.avatarUrl}) center/cover`
+                    : "linear-gradient(135deg, #10b981, #047857)",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  flexShrink: 0,
+                }}
+              >
+                {!p.avatarUrl && initialsOf(p.displayName)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {p.displayName}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+                  {p.city ?? "—"}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CancelConfirmModal({
+  tournamentName,
+  cancelling,
+  onConfirm,
+  onClose,
+}: {
+  tournamentName: string;
+  cancelling: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  // ESC cierra. Bloqueo de scroll mientras está abierto.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !cancelling) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose, cancelling]);
+
+  return (
+    <div
+      onClick={() => !cancelling && onClose()}
+      className="mp-modal-backdrop"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10,10,10,0.62)",
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="mp-modal-panel"
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          width: "min(440px, 100%)",
+          padding: "28px 26px 22px",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+        }}
+      >
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: "rgba(220,38,38,0.12)",
+            color: "#dc2626",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 14,
+          }}
+        >
+          <Icon name="alert-triangle" size={22} color="#dc2626" />
+        </div>
+        <h3
+          className="font-heading"
+          style={{
+            fontSize: 22,
+            fontWeight: 900,
+            letterSpacing: "-0.025em",
+            textTransform: "uppercase",
+            margin: "0 0 8px",
+            lineHeight: 1.1,
+          }}
+        >
+          Cancelar inscripción<span className="dot">.</span>
+        </h3>
+        <p style={{ fontSize: 13, color: "#404040", lineHeight: 1.55, margin: "0 0 18px" }}>
+          Vas a salir de <b style={{ color: "#0a0a0a" }}>{tournamentName}</b>.
+          Liberás tu cupo y otro jugador puede tomarlo. Si querés volver,
+          tendrás que inscribirte de nuevo y respetar el orden.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            className="btn"
+            onClick={onClose}
+            disabled={cancelling}
+            style={{
+              background: "#fff",
+              border: "1px solid var(--border)",
+              fontSize: 12,
+            }}
+          >
+            Volver
+          </button>
+          <button
+            className="btn"
+            onClick={onConfirm}
+            disabled={cancelling}
+            style={{
+              background: "#dc2626",
+              color: "#fff",
+              border: 0,
+              fontSize: 12,
+              padding: "11px 18px",
+              opacity: cancelling ? 0.7 : 1,
+            }}
+          >
+            <Icon name="x" size={13} color="#fff" />
+            {cancelling ? "Cancelando…" : "Sí, cancelar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EventDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [] }: Props) {
   const onPaywall = usePaywall();
+  const auth = useLandingAuth();
+  const router = useRouter();
+  const toast = useToast();
+  const [cancelling, startCancel] = useTransition();
+  const [myReg, setMyReg] = useState<MyRegistration | null>(initialReg ?? null);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const registered = myReg != null;
   const { tournament: t, categories, registrationCount } = detail;
   const date = dateLabel(t.startsAt, t.endsAt);
   const sport = sportLabel(t.sport);
@@ -77,6 +347,49 @@ export function EventDetailView({ detail, clubName, clubCity }: Props) {
   const accent = (t.name.split(" ")[0] ?? "OPEN").toUpperCase().slice(0, 6);
   const club = [clubName, clubCity].filter(Boolean).join(" · ") || "Multi-club";
   const fee = Math.round(t.entryFeeCents / 100);
+  // Estados terminales: cancelado/finalizado → bloquear inscripción + banner.
+  const status = t.status as string;
+  const isCancelled = status === "cancelled";
+  const isFinished = status === "finished" || status === "completed";
+  const isClosedState = isCancelled || isFinished;
+
+  // Click en "Inscribirme":
+  //  - Anónimo → abre el paywall/auth modal (como antes).
+  //  - Logueado → llama al endpoint de registro directo. Si pide pago,
+  //    redirige a /pagos/[id]; si es gratis, muestra toast de confirmación.
+  // El flow de inscripción vive solo en el dashboard. Desde el landing
+  // el botón redirige ahí: guests pasan por paywall (auth) primero.
+  // navigating queda en true mientras router.push despacha — da feedback.
+  const [navigating, setNavigating] = useState(false);
+  const handleInscribirme = () => {
+    if (!auth) {
+      onPaywall("inscripcion");
+      return;
+    }
+    if (navigating) return;
+    setNavigating(true);
+    router.push(`/dashboard/eventos/${detail.tournament.slug}`);
+  };
+
+  // Confirmación + cancelación de inscripción.
+  const handleCancelConfirm = () => {
+    if (!myReg || cancelling) return;
+    startCancel(async () => {
+      const res = await cancelMyRegistration({ registrationId: myReg.id });
+      if (!res.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo cancelar",
+          sub: res.error.message,
+        });
+        return;
+      }
+      toast({ icon: "check", title: "Inscripción cancelada" });
+      setMyReg(null);
+      setConfirmCancelOpen(false);
+      router.refresh();
+    });
+  };
 
   // Split prize pool 50% / 30% / 20% para el podio.
   const pool = t.prizePoolCents ?? 0;
@@ -97,6 +410,24 @@ export function EventDetailView({ detail, clubName, clubCity }: Props) {
 
   return (
     <>
+      {isClosedState && (
+        <div
+          style={{
+            background: isCancelled ? "#dc2626" : "#0a0a0a",
+            color: "#fff",
+            padding: "12px 16px",
+            textAlign: "center",
+            fontSize: 13,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+          }}
+        >
+          <Icon name={isCancelled ? "alert-triangle" : "flag"} size={14} color="#fff" />{" "}
+          {isCancelled
+            ? "Este torneo fue cancelado por el organizador. Si pagaste cuota, te será devuelta."
+            : "Este torneo ya finalizó. Las inscripciones están cerradas."}
+        </div>
+      )}
       <section
         style={{
           position: "relative",
@@ -227,14 +558,58 @@ export function EventDetailView({ detail, clubName, clubCity }: Props) {
             )}
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button
-              className="btn btn-primary"
-              style={{ padding: "15px 26px", fontSize: 13 }}
-              onClick={() => onPaywall("inscripcion")}
-            >
-              <Icon name="check" size={14} />
-              Inscribirme {fee > 0 ? `· $${fee}` : "gratis"}
-            </button>
+            {isClosedState ? (
+              <button
+                className="btn"
+                disabled
+                style={{
+                  padding: "15px 26px",
+                  fontSize: 13,
+                  background: "rgba(255,255,255,0.1)",
+                  color: "rgba(255,255,255,0.6)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  cursor: "not-allowed",
+                }}
+              >
+                <Icon name={isCancelled ? "x" : "flag"} size={14} color="rgba(255,255,255,0.6)" />
+                {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
+              </button>
+            ) : registered ? (
+              <button
+                className="btn"
+                style={{
+                  padding: "15px 26px",
+                  fontSize: 13,
+                  background: "rgba(220,38,38,0.15)",
+                  color: "#fff",
+                  border: "1px solid rgba(220,38,38,0.5)",
+                }}
+                onClick={() => setConfirmCancelOpen(true)}
+                disabled={cancelling}
+              >
+                <Icon name="x" size={14} color="#fff" />
+                {cancelling ? "Cancelando…" : "Cancelar inscripción"}
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{
+                  padding: "15px 26px",
+                  fontSize: 13,
+                  opacity: navigating ? 0.7 : 1,
+                  cursor: navigating ? "wait" : "pointer",
+                }}
+                onClick={handleInscribirme}
+                disabled={navigating}
+              >
+                <Icon name={navigating ? "loader" : "check"} size={14} />
+                {navigating
+                  ? "Abriendo tu panel…"
+                  : auth
+                    ? `Continuar inscripción${fee > 0 ? ` · $${fee}` : ""}`
+                    : `Inscribirme${fee > 0 ? ` · $${fee}` : " gratis"}`}
+              </button>
+            )}
             <button
               className="btn"
               style={{
@@ -419,17 +794,83 @@ export function EventDetailView({ detail, clubName, clubCity }: Props) {
                   Premios por anunciar. Inscríbete para asegurar tu cupo.
                 </p>
               )}
-            <button
-              className="btn btn-primary"
-              style={{ width: "100%", marginTop: 14, justifyContent: "center" }}
-              onClick={() => onPaywall("inscripcion")}
-            >
-              Inscribirme
-              <Icon name="arrow-right" size={13} />
-            </button>
+            {isClosedState ? (
+              <button
+                className="btn"
+                disabled
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  justifyContent: "center",
+                  background: "var(--muted)",
+                  color: "var(--muted-fg)",
+                  border: "1px solid var(--border)",
+                  cursor: "not-allowed",
+                }}
+              >
+                <Icon name={isCancelled ? "x" : "flag"} size={13} />
+                {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
+              </button>
+            ) : registered ? (
+              <button
+                className="btn"
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  justifyContent: "center",
+                  background: "#fff",
+                  color: "#dc2626",
+                  border: "1px solid rgba(220,38,38,0.4)",
+                }}
+                onClick={() => setConfirmCancelOpen(true)}
+                disabled={cancelling}
+              >
+                <Icon name="x" size={13} color="#dc2626" />
+                {cancelling ? "Cancelando…" : "Cancelar inscripción"}
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  justifyContent: "center",
+                  opacity: navigating ? 0.7 : 1,
+                  cursor: navigating ? "wait" : "pointer",
+                }}
+                onClick={handleInscribirme}
+                disabled={navigating}
+              >
+                {navigating
+                  ? "Abriendo tu panel…"
+                  : auth
+                    ? "Continuar inscripción"
+                    : "Inscribirme"}
+                <Icon name={navigating ? "loader" : "arrow-right"} size={13} />
+              </button>
+            )}
           </div>
         </div>
       </main>
+
+      <section
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "0 32px 60px",
+        }}
+      >
+        <InscritosList items={inscritos} maxParticipants={t.maxParticipants ?? null} />
+      </section>
+
+      {confirmCancelOpen && (
+        <CancelConfirmModal
+          tournamentName={t.name}
+          cancelling={cancelling}
+          onConfirm={handleCancelConfirm}
+          onClose={() => setConfirmCancelOpen(false)}
+        />
+      )}
     </>
   );
 }

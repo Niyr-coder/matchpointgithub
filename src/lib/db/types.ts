@@ -3888,6 +3888,7 @@ export type Database = {
           last_match_at: string | null
           losses: number
           matches_total: number
+          mode: Database["public"]["Enums"]["mp_match_mode"]
           peak_rating: number
           sport: Database["public"]["Enums"]["mp_sport"]
           updated_at: string
@@ -3899,6 +3900,7 @@ export type Database = {
           last_match_at?: string | null
           losses?: number
           matches_total?: number
+          mode?: Database["public"]["Enums"]["mp_match_mode"]
           peak_rating?: number
           sport: Database["public"]["Enums"]["mp_sport"]
           updated_at?: string
@@ -3910,6 +3912,7 @@ export type Database = {
           last_match_at?: string | null
           losses?: number
           matches_total?: number
+          mode?: Database["public"]["Enums"]["mp_match_mode"]
           peak_rating?: number
           sport?: Database["public"]["Enums"]["mp_sport"]
           updated_at?: string
@@ -6410,6 +6413,7 @@ export type Database = {
         Row: {
           current_rating: number | null
           losses: number | null
+          mode: Database["public"]["Enums"]["mp_match_mode"] | null
           rank: number | null
           sport: Database["public"]["Enums"]["mp_sport"] | null
           user_id: string | null

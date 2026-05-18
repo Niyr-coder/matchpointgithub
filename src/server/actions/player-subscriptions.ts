@@ -11,6 +11,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -236,10 +237,14 @@ export async function grantMatchPointPlusAdmin(
 ): Promise<ActionResult<{ subscriptionId: string; userId: string; expiresAt: string }>> {
   return runAction(GrantSchema, input, async ({ userId, durationMonths, reason }) => {
     const adminId = await requireAdminUserId();
-    const supabase = await getServerClient();
+    // RLS de player_subscriptions/profiles bloquea al admin (solo el dueño
+    // puede escribir). Después de validar rol con requireAdminUserId, usamos
+    // service role para hacer el grant.
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
 
     // Calcular nuevo expiry extendiendo desde el vigente.
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from("profiles")
       .select("plan_expires_at")
       .eq("id", userId)
@@ -256,7 +261,7 @@ export async function grantMatchPointPlusAdmin(
     newExpiry.setMonth(newExpiry.getMonth() + durationMonths);
 
     // Crear la subscription en estado 'active' directamente.
-    const { data: sub, error: subErr } = await supabase
+    const { data: sub, error: subErr } = await admin
       .from("player_subscriptions")
       .insert({
         user_id: userId,
@@ -279,7 +284,7 @@ export async function grantMatchPointPlusAdmin(
     }
 
     // Actualizar profile.
-    const { error: profUpdErr } = await supabase
+    const { error: profUpdErr } = await admin
       .from("profiles")
       .update({
         plan_tier: "premium",
@@ -291,7 +296,7 @@ export async function grantMatchPointPlusAdmin(
     }
 
     // Audit log (best-effort).
-    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+    const { error: auditErr } = await admin.rpc("fn_admin_audit_log", {
       p_entity: "player_subscriptions",
       p_entity_id: sub.id as string,
       p_action: "plan_subscription.admin_grant",
@@ -328,9 +333,11 @@ export async function revokeMatchPointPlusAdmin(
 ): Promise<ActionResult<{ userId: string; cancelledCount: number }>> {
   return runAction(RevokeSchema, input, async ({ userId, reason }) => {
     const adminId = await requireAdminUserId();
-    const supabase = await getServerClient();
+    // Mismo motivo que grant: RLS bloquea admin.
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
 
-    const { data: cancelled, error: subErr } = await supabase
+    const { data: cancelled, error: subErr } = await admin
       .from("player_subscriptions")
       .update({
         status: "cancelled",
@@ -344,7 +351,7 @@ export async function revokeMatchPointPlusAdmin(
       throw new MpError("PLAN.REVOKE_FAILED", subErr.message, 500);
     }
 
-    const { error: profUpdErr } = await supabase
+    const { error: profUpdErr } = await admin
       .from("profiles")
       .update({ plan_tier: "free", plan_expires_at: null } as never)
       .eq("id", userId);
@@ -352,7 +359,7 @@ export async function revokeMatchPointPlusAdmin(
       throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
     }
 
-    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+    const { error: auditErr } = await admin.rpc("fn_admin_audit_log", {
       p_entity: "profiles",
       p_entity_id: userId,
       p_action: "plan_subscription.admin_revoke",

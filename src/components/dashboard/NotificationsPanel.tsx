@@ -1,24 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
-import { useToast } from "./ToastProvider";
-import { useRealtimeRefresh } from "./useRealtimeRefresh";
-import { getBrowserClient } from "@/lib/db/client.browser";
-import {
-  listMyNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-  dismissNotification,
-} from "@/server/actions/notifications";
 
-type Props = {
-  role: RoleKey;
-  onClose: () => void;
-};
-
-type RealNotif = {
+export type RealNotif = {
   id: string;
   kind: string;
   title: string;
@@ -26,6 +11,14 @@ type RealNotif = {
   payload: Record<string, unknown>;
   readAt: string | null;
   createdAt: string;
+};
+
+type Props = {
+  role: RoleKey;
+  items: RealNotif[];
+  onClose: () => void;
+  onMarkOne: (id: string) => void;
+  onMarkAll: () => void;
 };
 
 function timeAgo(iso: string): string {
@@ -42,9 +35,10 @@ function timeAgo(iso: string): string {
 }
 
 function groupKey(iso: string): string {
-  const created = new Date(iso);
   const now = new Date();
-  const diffDays = Math.floor((now.setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000);
+  const diffDays = Math.floor(
+    (now.setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000,
+  );
   if (diffDays <= 0) return "Hoy";
   if (diffDays === 1) return "Ayer";
   if (diffDays < 7) return "Esta semana";
@@ -62,15 +56,10 @@ function iconForKind(kind: string): string {
 }
 
 function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknown>): string | null {
-  // Construye URL con `?focus=<id>` cuando aplique; las vistas pueden
-  // expandir/abrir el item al detectar el parámetro.
-  const appId =
-    typeof payload.applicationId === "string" ? payload.applicationId : null;
-  const reqId =
-    typeof payload.requestId === "string" ? payload.requestId : null;
+  const appId = typeof payload.applicationId === "string" ? payload.applicationId : null;
+  const reqId = typeof payload.requestId === "string" ? payload.requestId : null;
   const tktId = typeof payload.ticketId === "string" ? payload.ticketId : null;
-  const resId =
-    typeof payload.reservationId === "string" ? payload.reservationId : null;
+  const resId = typeof payload.reservationId === "string" ? payload.reservationId : null;
   const friendId = typeof payload.friendUserId === "string" ? payload.friendUserId : null;
 
   if (kind.startsWith("club_application")) {
@@ -122,99 +111,25 @@ function colorForKind(kind: string): string {
   return "#0a0a0a";
 }
 
-export function NotificationsPanel({ role, onClose }: Props) {
-  const [tab, setTab] = useState<"all" | "unread">("all");
-  const [items, setItems] = useState<RealNotif[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [, startTransition] = useTransition();
-  const toast = useToast();
+export function NotificationsPanel({
+  role,
+  items,
+  onClose,
+  onMarkOne,
+  onMarkAll,
+}: Props) {
   const router = useRouter();
-
-  const refresh = useCallback(async () => {
-    const res = await listMyNotifications({ role, limit: 30 });
-    if (res.ok) {
-      setItems(
-        (res.data as RealNotif[]).map((n) => ({
-          id: n.id,
-          kind: n.kind,
-          title: n.title,
-          body: n.body ?? null,
-          payload: n.payload ?? {},
-          readAt: n.readAt ?? null,
-          createdAt: n.createdAt,
-        })),
-      );
-    }
-    setLoading(false);
-  }, [role]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Realtime sobre notifications del usuario actual.
-  useEffect(() => {
-    let cancelled = false;
-    let cleanup: (() => void) | null = null;
-    (async () => {
-      const supabase = getBrowserClient();
-      const { data } = await supabase.auth.getUser();
-      const uid = data.user?.id;
-      if (!uid || cancelled) return;
-      const channel = supabase
-        .channel(`mp-notif-${uid}-${Math.random().toString(36).slice(2, 8)}`)
-        .on(
-          "postgres_changes" as never,
-          { event: "*", schema: "public", table: "notifications", filter: `recipient_user_id=eq.${uid}` },
-          () => refresh(),
-        )
-        .subscribe();
-      cleanup = () => {
-        supabase.removeChannel(channel);
-      };
-    })();
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, [refresh]);
-
-  // Mantener consistencia con otras pantallas — refresca al haber cambios.
-  useRealtimeRefresh([], { enabled: false });
-
   const isUnread = (n: RealNotif) => !n.readAt;
-  const list = tab === "unread" ? items.filter(isUnread) : items;
   const unreadCount = items.filter(isUnread).length;
-  const groups = list.reduce<Record<string, RealNotif[]>>((acc, n) => {
+  const groups = items.reduce<Record<string, RealNotif[]>>((acc, n) => {
     const g = groupKey(n.createdAt);
     (acc[g] = acc[g] || []).push(n);
     return acc;
   }, {});
 
-  const markOne = (id: string) => {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
-    startTransition(async () => {
-      await markNotificationRead({ id });
-    });
-  };
-
-  const markAll = () => {
-    setItems((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
-    startTransition(async () => {
-      const res = await markAllNotificationsRead({ role });
-      if (res.ok) toast({ icon: "check", title: "Notificaciones marcadas como leídas" });
-    });
-  };
-
-  const dismiss = (id: string) => {
-    setItems((prev) => prev.filter((n) => n.id !== id));
-    startTransition(async () => {
-      await dismissNotification({ id });
-    });
-  };
-
   return (
     <div
+      className="mp-notif-panel"
       style={{
         position: "absolute",
         top: "calc(100% + 10px)",
@@ -229,6 +144,7 @@ export function NotificationsPanel({ role, onClose }: Props) {
         display: "flex",
         flexDirection: "column",
         zIndex: 50,
+        transformOrigin: "top right",
       }}
     >
       <div
@@ -247,7 +163,7 @@ export function NotificationsPanel({ role, onClose }: Props) {
 
       <div
         style={{
-          padding: "14px 16px 6px",
+          padding: "14px 16px 12px",
           borderBottom: "1px solid var(--border)",
           position: "relative",
           background: "#fff",
@@ -270,7 +186,7 @@ export function NotificationsPanel({ role, onClose }: Props) {
             </div>
           </div>
           <button
-            onClick={markAll}
+            onClick={onMarkAll}
             disabled={unreadCount === 0}
             style={{
               background: "transparent",
@@ -287,23 +203,10 @@ export function NotificationsPanel({ role, onClose }: Props) {
             Marcar leídas
           </button>
         </div>
-        <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
-          <TabBtn label={`Todas · ${items.length}`} on={tab === "all"} onClick={() => setTab("all")} />
-          <TabBtn
-            label="Sin leer"
-            badge={unreadCount > 0 ? unreadCount : undefined}
-            on={tab === "unread"}
-            onClick={() => setTab("unread")}
-          />
-        </div>
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
-        {loading ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted-fg)", fontSize: 11 }}>
-            Cargando…
-          </div>
-        ) : list.length === 0 ? (
+        {items.length === 0 ? (
           <div
             style={{
               margin: 16,
@@ -351,7 +254,7 @@ export function NotificationsPanel({ role, onClose }: Props) {
                       cursor: "pointer",
                     }}
                     onClick={() => {
-                      if (unread) markOne(n.id);
+                      if (unread) onMarkOne(n.id);
                       const href = hrefForKind(role, n.kind, n.payload);
                       if (href) {
                         onClose();
@@ -398,23 +301,6 @@ export function NotificationsPanel({ role, onClose }: Props) {
                         {timeAgo(n.createdAt)}
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dismiss(n.id);
-                      }}
-                      title="Eliminar"
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        color: "var(--muted-fg)",
-                        cursor: "pointer",
-                        padding: 2,
-                        alignSelf: "flex-start",
-                      }}
-                    >
-                      <Icon name="x" size={13} />
-                    </button>
                   </div>
                 );
               })}
@@ -476,54 +362,5 @@ export function NotificationsPanel({ role, onClose }: Props) {
         </button>
       </div>
     </div>
-  );
-}
-
-function TabBtn({
-  label,
-  on,
-  onClick,
-  badge,
-}: {
-  label: string;
-  on: boolean;
-  onClick: () => void;
-  badge?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "6px 11px",
-        borderRadius: 9999,
-        fontSize: 10.5,
-        fontWeight: 900,
-        fontFamily: "inherit",
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        background: on ? "#0a0a0a" : "transparent",
-        color: on ? "#fff" : "var(--muted-fg)",
-        border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
-      }}
-    >
-      {label}
-      {badge !== undefined && (
-        <span
-          style={{
-            padding: "1px 5px",
-            borderRadius: 9999,
-            background: "var(--primary)",
-            color: "#fff",
-            fontSize: 9,
-          }}
-        >
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }

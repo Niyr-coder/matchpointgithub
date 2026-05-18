@@ -31,9 +31,9 @@ function kindLabel(kind: string): string {
   }
 }
 
-function dateLabel(startsAt: string, endsAt: string): { d: string; m: string; full: string } {
+function dateLabel(startsAt: string, endsAt: string | null): { d: string; m: string; full: string } {
   const s = new Date(startsAt);
-  const e = new Date(endsAt);
+  const e = endsAt ? new Date(endsAt) : s;
   const sd = s.getUTCDate();
   const ed = e.getUTCDate();
   const sameMonth = s.getUTCMonth() === e.getUTCMonth();

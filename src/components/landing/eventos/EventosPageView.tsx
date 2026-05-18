@@ -29,9 +29,9 @@ function sportLabel(sport: string): string {
   return "Pickleball";
 }
 
-function dateLabel(startsAt: string, endsAt: string): { d: string; m: string } {
+function dateLabel(startsAt: string, endsAt: string | null): { d: string; m: string } {
   const s = new Date(startsAt);
-  const e = new Date(endsAt);
+  const e = endsAt ? new Date(endsAt) : s;
   const sd = s.getUTCDate();
   const ed = e.getUTCDate();
   const sameMonth = s.getUTCMonth() === e.getUTCMonth();
@@ -74,8 +74,12 @@ export function EventosPageView({
 
   const upcoming = tournaments.filter((t) => t.status !== "live" && t.status !== "finished");
   const live = tournaments.filter((t) => t.status === "live");
-  const featured = upcoming[0];
-  const rest = upcoming.slice(1);
+  // El banner grande "Estelar" solo se llena con un torneo marcado
+  // explícitamente is_featured=true por el equipo MatchPoint. Si no hay
+  // ninguno, el banner queda como placeholder y todos los próximos van
+  // al grid debajo.
+  const featured = upcoming.find((t) => t.isFeatured) ?? null;
+  const rest = featured ? upcoming.filter((t) => t.id !== featured.id) : upcoming;
 
   const tabs = [
     { k: "proximos", l: "Próximos", n: upcoming.length },
@@ -530,7 +534,6 @@ function EventPlaceholderCard() {
       }}
     >
       <div
-        className="mp-card-image"
         style={{
           height: 160,
           background: "linear-gradient(135deg, #e5e5e5, #d4d4d4)",
@@ -614,7 +617,6 @@ function EventGridCard({ t, index }: { t: TournamentFeatured; index: number }) {
       }}
     >
       <div
-        className="mp-card-image"
         style={{
           height: 160,
           background: color,

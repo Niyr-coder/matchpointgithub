@@ -71,7 +71,7 @@ const UpdateTournamentAdminSchema = z.object({
       name: z.string().min(2).max(120).optional(),
       description: z.string().max(2000).nullable().optional(),
       startsAt: z.string().datetime({ offset: true }).optional(),
-      endsAt: z.string().datetime({ offset: true }).optional(),
+      endsAt: z.string().datetime({ offset: true }).nullable().optional(),
       registrationOpensAt: z.string().datetime({ offset: true }).nullable().optional(),
       registrationClosesAt: z.string().datetime({ offset: true }).nullable().optional(),
       maxParticipants: z.number().int().positive().nullable().optional(),
@@ -133,9 +133,12 @@ export async function updateTournamentAdmin(
 
       const newStart =
         (update.starts_at as string | undefined) ?? (existing.starts_at as string);
-      const newEnd =
-        (update.ends_at as string | undefined) ?? (existing.ends_at as string);
-      if (new Date(newStart) >= new Date(newEnd)) {
+      const rawNewEnd =
+        "ends_at" in update
+          ? (update.ends_at as string | null | undefined)
+          : (existing.ends_at as string | null);
+      const newEnd: string | null = rawNewEnd ?? null;
+      if (newEnd && new Date(newStart) >= new Date(newEnd)) {
         throw new MpError(
           "TOURNAMENTS.BAD_RANGE",
           "La fecha de inicio debe ser anterior a la de fin",

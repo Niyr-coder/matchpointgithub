@@ -444,7 +444,7 @@ DOWNSTREAM:
 
 ## 14. Reglas de oro al agregar nuevas mutaciones
 
-1. **Antes de migrar:** verificar si la tabla/función ya existe (ver `feedback_check_schema_before_migrate.md` en memoria). Usar `alter table add column if not exists` en vez de `create table if not exists` cuando solo agregás columnas — el segundo es silencioso ante divergencias.
+1. **Antes de migrar:** verificar si la tabla/función ya existe (ver `feedback_check_schema_before_migrate.md` en memoria). Usar `alter table add column if not exists` en vez de `create table if not exists` cuando solo agregas columnas — el segundo es silencioso ante divergencias.
 
 2. **Antes de cablear:** identificar TODAS las pantallas downstream que leen las tablas que tu mutación toca (`grep "table.*X" src/components/dashboard/**/*Screen*.tsx`). Para cada una verificar que `useRealtimeRefresh` la incluye o que el patrón `router.refresh()` post-mutación es suficiente.
 
@@ -452,4 +452,4 @@ DOWNSTREAM:
 
 4. **Errores tipados:** en RPC usá `raise exception 'DOMAIN.CODE' using errcode='22023'`. En el server action mapeá esos códigos a `MpError` con HTTP status apropiado.
 
-5. **Documentar acá:** después de agregar mutación nueva, agregar entrada a la sección del dominio correspondiente.
+5. **Documentar aquí:** después de agregar mutación nueva, agregar entrada a la sección del dominio correspondiente.

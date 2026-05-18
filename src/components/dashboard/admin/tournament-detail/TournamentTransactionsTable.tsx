@@ -13,6 +13,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import type { AdminTournamentDetail } from "@/server/actions/tournaments";
+import { txStatusMeta } from "@/lib/ui/transaction-status";
 import { markTransactionRefundedAdmin } from "@/server/actions/admin-refunds";
 import { useToast } from "../../ToastProvider";
 import { SectionTitle, fmtDate, fmtMoney } from "../event-detail/primitives";
@@ -49,16 +50,28 @@ export function TournamentTransactionsTable({
               <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>{fmtDate(t.createdAt)}</div>
             </div>
             <span style={{ textTransform: "uppercase", letterSpacing: "0.1em", fontSize: 10.5, fontWeight: 800 }}>{t.method}</span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                color: t.status === "captured" ? "var(--primary)" : t.status === "refunded" ? "#b91c1c" : "var(--muted-fg)",
-                textTransform: "uppercase",
-              }}
-            >
-              {t.status}
-            </span>
+            {(() => {
+              const m = txStatusMeta(t.status);
+              return (
+                <span
+                  title={m.tooltip}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    color: m.color,
+                    background: m.background,
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    whiteSpace: "nowrap",
+                    justifySelf: "start",
+                  }}
+                >
+                  {m.label}
+                </span>
+              );
+            })()}
             <span style={{ fontWeight: 900, textAlign: "right" }}>{fmtMoney(t.amountCents, t.currency)}</span>
             <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--muted-fg)", textAlign: "right" }}>
               {t.id.slice(0, 8)}

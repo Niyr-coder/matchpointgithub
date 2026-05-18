@@ -337,6 +337,47 @@ Cuando hay reconnect, Supabase reenvía cambios pero **no garantiza** los que oc
 
 ---
 
-## 15. Próximo: `60-openapi.md`
+## 15. `supabase_realtime` publication — tablas inscritas
+
+El hook genérico `useRealtimeRefresh([{ table, filter }])` se suscribe vía
+`postgres_changes` y dispara `router.refresh()` al recibir eventos. Para que
+funcione, la tabla debe estar en el publication `supabase_realtime`.
+
+**Inventario actual** (migs 061, 078):
+
+| Tabla | Usada por | Mig |
+|---|---|---|
+| `notifications` | TopBar bell, todas las pantallas con badge | 050 |
+| `reservations` | ClubReservas, UserHome (mis reservas) | 022 |
+| `ranking_snapshots` | UserHome rating widget, Ranking | 028 |
+| `player_stats` | UserHome rating widget | 028 |
+| `tournaments` | UserHome mis-torneos, panel partner, listings | 061 |
+| `registrations` | PartnerInscritos, gestión torneo, UserHome | 061 |
+| `club_followers` | ClubSocial | 062 |
+| `tournament_categories` | Panel gestión torneo (edits concurrentes) | 078 |
+| `tournament_schedule_blocks` | Panel gestión torneo | 078 |
+| `tournament_prizes` | Panel gestión torneo | 078 |
+
+**Para sumar una tabla nueva**:
+
+```sql
+alter publication supabase_realtime add table public.<tabla>;
+```
+
+Y luego del lado cliente:
+
+```tsx
+useRealtimeRefresh([
+  { table: "tu_tabla", filter: `tournament_id=eq.${id}` },
+]);
+```
+
+**Filtros válidos**: solo igualdad simple (`columna=eq.valor`). Sin `in`, sin
+joins. Para queries más complejas, suscribirse a la tabla cruda y filtrar
+client-side.
+
+---
+
+## 16. Próximo: `60-openapi.md`
 
 Cierra Fase 1 documentando cómo se autogenera la spec desde Zod y cómo se sirve la UI de Scalar en `/docs`.

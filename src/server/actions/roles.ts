@@ -65,7 +65,7 @@ export async function searchUsers(input: unknown): Promise<ActionResult<{ id: st
     // Cualquier usuario autenticado puede buscar (caso de uso: PlayerPicker
     // de matches/retos). La RLS de profiles ya restringe lo visible por fila.
     // El gate "premium" se aplica más arriba (ej: si el match cuenta para
-    // ranking solo cuando el creador es Premium), no acá.
+    // ranking solo cuando el creador es Premium), no aquí.
     await requireUser();
     const supabase = await getServerClient();
     const term = q.replace(/^@/, "").trim();

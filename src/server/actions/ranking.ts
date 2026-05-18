@@ -43,9 +43,10 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
     const { data: stats, error } = await supabase
       .from("player_stats")
       .select(
-        "user_id,sport,current_rating,wins,losses,matches_total,profiles!inner(display_name,avatar_url,city)",
+        "user_id,sport,mode,current_rating,wins,losses,matches_total,profiles!inner(display_name,avatar_url,city)",
       )
       .eq("sport", params.sport)
+      .eq("mode", params.mode)
       .order("current_rating", { ascending: false })
       .range(from, to);
     if (error) throw new MpError("RANKING.DB_ERROR", error.message, 500);
@@ -67,6 +68,7 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
         avatarUrl: (profile?.avatar_url as string | null | undefined) ?? null,
         city: (profile?.city as string | null | undefined) ?? null,
         sport: r.sport,
+        mode: r.mode ?? "singles",
         rank: from + i + 1,
         currentRating: r.current_rating,
         wins: r.wins,

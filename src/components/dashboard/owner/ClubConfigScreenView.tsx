@@ -9,6 +9,7 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { updateClub } from "@/server/actions/clubs";
+import { ClubMapPicker } from "@/components/dashboard/clubes/ClubMapPicker";
 
 type Item = [string, string] | [string, string, "critical"];
 export type Section = { i: string; t: string; items: Item[] };
@@ -17,6 +18,9 @@ export type ConfigData = {
   sections: Record<string, Section> | null;
   logoUrl: string | null;
   coverUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  version: number | null;
 };
 
 // Sin fallback inventado: si no hay clubId resuelto, secciones con valores `—`.
@@ -122,6 +126,29 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
 
   const [active, setActive] = useState<string>("info");
   const cur = SECTIONS[active] ?? SECTIONS[SECTION_KEYS[0]];
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSaving, setPickerSaving] = useState(false);
+
+  const handleSaveCoords = async (lat: number, lng: number) => {
+    if (!data.clubId) return;
+    setPickerSaving(true);
+    const res = await updateClub({
+      clubId: data.clubId,
+      patch: {
+        latitude: lat,
+        longitude: lng,
+        expectedVersion: data.version ?? 1,
+      } as Record<string, unknown>,
+    });
+    setPickerSaving(false);
+    if (res.ok) {
+      toast({ icon: "check", title: "Ubicación guardada" });
+      setPickerOpen(false);
+      router.refresh();
+    } else {
+      toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+    }
+  };
 
   // Mapeo etiqueta visible → campo de `clubs` editable vía updateClub.
   const EDITABLE_INFO: Record<string, "name" | "address" | "phone" | "email"> = {
@@ -134,6 +161,10 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
   const handleEditRow = async (sectionKey: string, label: string, currentValue: string) => {
     if (!data.clubId) {
       toast({ icon: "alert-triangle", title: "Sin club resuelto" });
+      return;
+    }
+    if (sectionKey === "ubicacion") {
+      setPickerOpen(true);
       return;
     }
     if (sectionKey !== "info" || !EDITABLE_INFO[label]) {
@@ -353,6 +384,16 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
           ))}
         </div>
       </div>
+
+      {pickerOpen && (
+        <ClubMapPicker
+          initialLat={data.latitude}
+          initialLng={data.longitude}
+          onCancel={() => setPickerOpen(false)}
+          onSave={handleSaveCoords}
+          saving={pickerSaving}
+        />
+      )}
     </>
   );
 }

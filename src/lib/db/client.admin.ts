@@ -22,3 +22,31 @@ export function getAdminClient() {
   });
   return cached;
 }
+
+// Setea actor para que el trigger tg_audit registre actor_id/actor_role
+// correcto cuando se usa admin client (donde auth.uid() es null). Llamar
+// ANTES de cualquier UPDATE/INSERT/DELETE en una acción admin. Reset
+// implícito: el setting es por sesión, así que en pgbouncer
+// transaction-mode el siguiente request en la misma conexión arrancaría
+// limpio. Best-effort — no es bulletproof, pero supera al estado anterior
+// donde actor siempre era null.
+//
+// Uso típico:
+//   const adminId = await requireAdminUserId();
+//   const admin = getAdminClient();
+//   await setAuditActor(admin, adminId, "admin");
+//   await admin.from("profiles").update(...);
+export async function setAuditActor(
+  client: ReturnType<typeof getAdminClient>,
+  userId: string,
+  role: "admin" | "system" | "partner" | "owner" = "admin",
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (client as any).rpc("mp_set_audit_actor", {
+    _user_id: userId,
+    _role: role,
+  });
+  if (error) {
+    console.error("[setAuditActor] failed", error);
+  }
+}

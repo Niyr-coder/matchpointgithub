@@ -2,13 +2,21 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { RatingSparkline } from "../widgets/RatingSparkline";
 import type { RankingEntry, RankingSnapshot } from "@/lib/schemas/ranking";
+import type { RankingData } from "./RankingScreen";
+
+type Mode = "singles" | "doubles";
 
 type Props = {
-  entries: RankingEntry[];
+  data: RankingData;
   meUserId: string | null;
-  history: RankingSnapshot[];
   isPremium: boolean;
+};
+
+const MODE_LABEL: Record<Mode, string> = {
+  singles: "Singles",
+  doubles: "Dobles",
 };
 
 const W = 360;
@@ -89,7 +97,7 @@ function ensureChartHistory(
   ];
 }
 
-export function RankingScreenClient({ entries, meUserId, history, isPremium }: Props) {
+export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
   // Realtime: leaderboard cambia cuando alguien sube rating; tu history al confirmar match.
   useRealtimeRefresh(
     [
@@ -99,7 +107,19 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
     { debounceMs: 1500 },
   );
 
-  const me = meUserId ? entries.find((e) => e.userId === meUserId) ?? null : null;
+  const [mode, setMode] = useState<Mode>("singles");
+  const active = data[mode];
+  const entries = active.entries;
+  const history = active.history;
+  const hasMatchesInMode = active.currentRating != null;
+
+  // Para resolver meCity preferimos el modo activo; si el user aún no tiene
+  // matches en este modo, caemos al otro para no perder el dato del perfil.
+  const me =
+    (meUserId ? entries.find((e) => e.userId === meUserId) ?? null : null) ??
+    (meUserId
+      ? data[mode === "singles" ? "doubles" : "singles"].entries.find((e) => e.userId === meUserId) ?? null
+      : null);
   const meCity = me?.city ?? null;
 
   const [scope, setScope] = useState("Nacional");
@@ -131,7 +151,7 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
     [periodDays],
   );
   const realInRange = history.filter((s) => +new Date(s.snapshotAt) >= cutoff);
-  const currentRating = me?.currentRating ?? null;
+  const currentRating = active.currentRating;
   const chartHistory = ensureChartHistory(realInRange, currentRating, periodDays);
   const chart = buildChartPaths(chartHistory);
 
@@ -158,6 +178,8 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
 
   return (
     <>
+      <ModeTabs mode={mode} onChange={setMode} />
+
       <div className="card" style={{ padding: "20px 24px" }}>
         <div
           style={{
@@ -169,7 +191,7 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
           }}
         >
           <div>
-            <div className="label-mp">Leaderboard</div>
+            <div className="label-mp">Leaderboard · {MODE_LABEL[mode]}</div>
             <div
               className="font-heading"
               style={{
@@ -265,10 +287,11 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
         </div>
 
         {isPremium ? (
+          hasMatchesInMode ? (
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div className="label-mp">Tu evolución · {period}</div>
+              <div className="label-mp">Tu evolución · {MODE_LABEL[mode]} · {period}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
                 <div
                   className="font-heading tabular"
@@ -304,32 +327,9 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
               {diff > 0 ? "Subiendo" : diff < 0 ? "Bajando" : "Estable"}
             </span>
           </div>
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="none"
-            style={{ width: "100%", height: 110, marginTop: 18, display: "block" }}
-          >
-            <defs>
-              <linearGradient id="rk-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {chart && (
-              <>
-                <path d={chart.area} fill="url(#rk-fill)" />
-                <path
-                  d={chart.line}
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx={W} cy={chart.lastY} r="5" fill="#10b981" stroke="#fff" strokeWidth="2" />
-              </>
-            )}
-          </svg>
+          <div style={{ marginTop: 18 }}>
+            <RatingSparkline points={chartHistory} width={W} height={110} />
+          </div>
           <div
             style={{
               display: "flex",
@@ -346,8 +346,13 @@ export function RankingScreenClient({ entries, meUserId, history, isPremium }: P
             <span>Hoy</span>
           </div>
         </div>
-        ) : (
+          ) : (
+            <NoMatchesInModeCard mode={mode} />
+          )
+        ) : hasMatchesInMode ? (
           <PremiumEvolutionTeaser currentRating={displayRating} />
+        ) : (
+          <NoMatchesInModeCard mode={mode} />
         )}
       </div>
 
@@ -668,6 +673,68 @@ function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
         >
           Activar Premium →
         </a>
+      </div>
+    </div>
+  );
+}
+
+// Tabs Singles/Dobles. Mismo lenguaje visual que FilterGroup (pill negro
+// activo + grey hover) pero a tamaño más prominente porque es el switch
+// principal de toda la pantalla.
+function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const options: Mode[] = ["singles", "doubles"];
+  return (
+    <div style={{ display: "inline-flex", background: "#f5f5f5", borderRadius: 9999, padding: 4 }}>
+      {options.map((o) => (
+        <button
+          key={o}
+          onClick={() => onChange(o)}
+          style={{
+            border: 0,
+            background: mode === o ? "#0a0a0a" : "transparent",
+            color: mode === o ? "#fff" : "#737373",
+            padding: "8px 18px",
+            borderRadius: 9999,
+            fontSize: 12,
+            fontWeight: 900,
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {MODE_LABEL[o]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Variante del card "Tu evolución" para cuando el user todavía no jugó
+// ningún match en el modo activo. Evita el sparkline plano sintético.
+function NoMatchesInModeCard({ mode }: { mode: Mode }) {
+  return (
+    <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <div className="label-mp">Tu evolución · {MODE_LABEL[mode]}</div>
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "var(--muted)",
+            color: "var(--muted-fg)",
+            padding: "6px 12px",
+            borderRadius: 9999,
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          Sin partidos en {MODE_LABEL[mode]} todavía
+        </span>
+        <div style={{ fontSize: 13, color: "var(--muted-fg)" }}>
+          Reporta tu primer match en este modo para empezar a construir tu MP Rating.
+        </div>
       </div>
     </div>
   );

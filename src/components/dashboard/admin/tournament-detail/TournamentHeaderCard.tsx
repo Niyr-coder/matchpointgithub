@@ -81,7 +81,8 @@ export function TournamentHeaderCard({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 12, fontSize: 12, color: "var(--muted-fg)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
           <Icon name="calendar" size={12} />
-          {fmtDate(data.tournament.startsAt)} – {fmtDate(data.tournament.endsAt)}
+          {fmtDate(data.tournament.startsAt)}
+          {data.tournament.endsAt ? ` – ${fmtDate(data.tournament.endsAt)}` : " · Un solo día"}
         </span>
         {data.clubName && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>

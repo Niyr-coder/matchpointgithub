@@ -20,6 +20,21 @@ export const TournamentPaymentPolicySchema = z
   .enum(["free", "prepay", "onsite", "flexible"])
   .openapi("TournamentPaymentPolicy");
 
+export const TournamentModalitySchema = z
+  .enum(["singles", "doubles", "mixed_doubles"])
+  .openapi("TournamentModality");
+
+export const ScoringConfigSchema = z
+  .object({
+    type: z.enum(["side_out", "rally"]),
+    points: z.number().int().min(7).max(31),
+    winBy: z.number().int().min(1).max(5),
+    bestOf: z.number().int().refine((n) => n === 1 || n === 3 || n === 5, {
+      message: "bestOf debe ser 1, 3 o 5",
+    }),
+  })
+  .openapi("ScoringConfig");
+
 export const EventStatusSchema = z
   .enum(["draft", "published", "registration_open", "registration_closed", "live", "finished", "cancelled"])
   .openapi("EventStatus");
@@ -53,7 +68,7 @@ export const TournamentSchema = z
     sport: MpSportSchema,
     format: TournamentFormatSchema,
     startsAt: IsoDateTimeSchema,
-    endsAt: IsoDateTimeSchema,
+    endsAt: IsoDateTimeSchema.nullable(),
     registrationOpensAt: IsoDateTimeSchema.nullable(),
     registrationClosesAt: IsoDateTimeSchema.nullable(),
     status: EventStatusSchema,
@@ -150,7 +165,7 @@ export const TournamentCreateSchema = z
     sport: MpSportSchema,
     format: TournamentFormatSchema,
     startsAt: IsoDateTimeSchema,
-    endsAt: IsoDateTimeSchema,
+    endsAt: IsoDateTimeSchema.nullable().optional(),
     registrationOpensAt: IsoDateTimeSchema.optional(),
     registrationClosesAt: IsoDateTimeSchema.optional(),
     maxParticipants: z.number().int().positive().optional(),
@@ -158,6 +173,16 @@ export const TournamentCreateSchema = z
     currency: MpCurrencySchema.optional(),
     paymentPolicy: TournamentPaymentPolicySchema.optional(),
     prizePoolCents: z.number().int().min(0).optional(),
+    modality: TournamentModalitySchema.default("doubles"),
+    scoringConfig: ScoringConfigSchema.default({
+      type: "side_out",
+      points: 11,
+      winBy: 2,
+      bestOf: 3,
+    }),
+    termsAccepted: z.literal(true, {
+      message: "Debes aceptar los términos del torneo",
+    }),
   })
   .openapi("TournamentCreate");
 
@@ -186,7 +211,7 @@ export const TournamentFeaturedSchema = z
     slug: SlugSchema,
     name: z.string(),
     startsAt: IsoDateTimeSchema,
-    endsAt: IsoDateTimeSchema,
+    endsAt: IsoDateTimeSchema.nullable(),
     prizePoolCents: z.number().int().nullable(),
     entryFeeCents: z.number().int(),
     currency: MpCurrencySchema.nullable(),
@@ -197,6 +222,9 @@ export const TournamentFeaturedSchema = z
     clubName: z.string().nullable(),
     clubCity: z.string().nullable(),
     registrationsCount: z.number().int(),
+    // true si el equipo MatchPoint marcó el torneo como "Estelar" — se usa
+    // para ubicarlo en el banner grande de portada. Los demás van al grid.
+    isFeatured: z.boolean().default(false),
   })
   .openapi("TournamentFeatured");
 

@@ -2,6 +2,8 @@
 "use client";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader } from "../widgets/RS";
+import { MpBarChart } from "../widgets/MpBarChart";
+import { MpProgressBar } from "../widgets/MpProgressBar";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 export type FinanzasData = {
@@ -50,8 +52,13 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
   ];
 
   // Bars: usar valores reales. Si todos en 0, mostrar grid plano (no inventar).
-  const maxBar = Math.max(...data.bars30, 1);
-  const BARS = data.bars30.map((v) => 40 + (v / maxBar) * 130);
+  const bars30Data = data.bars30.map((v, i) => {
+    const ago = data.bars30.length - 1 - i;
+    return {
+      label: ago === 0 ? "Hoy" : `Hace ${ago}d`,
+      value: v,
+    };
+  });
 
   const totalBreak =
     data.breakdownCents.reservations +
@@ -145,32 +152,13 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
               {deltaLabel}
             </span>
           </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 4,
-              height: 180,
-              paddingTop: 12,
-            }}
-          >
-            {BARS.map((h, i) => {
-              const isToday = i === 29;
-              return (
-                <div
-                  key={i}
-                  style={{
-                    flex: 1,
-                    height: h,
-                    background:
-                      isToday ? "var(--primary)" : i % 7 < 2 ? "#fbbf24" : "#0a0a0a",
-                    borderRadius: "3px 3px 0 0",
-                    opacity: i > 25 ? 1 : 0.7 + (i / 30) * 0.3,
-                  }}
-                />
-              );
-            })}
-          </div>
+          <MpBarChart
+            data={bars30Data}
+            height={180}
+            weekendPattern
+            fmtValue={(v) => `$${Math.round(v / 100).toLocaleString("en-US")}`}
+            ariaLabel="Revenue del club últimos 30 días"
+          />
         </div>
         <div className="card" style={{ padding: 18 }}>
           <h2
@@ -185,7 +173,7 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
           >
             Desglose · mes<span className="dot">.</span>
           </h2>
-          {BREAKDOWN.map(([l, v, p]) => (
+          {BREAKDOWN.map(([l, v, p], i) => (
             <div key={l} style={{ marginBottom: 10 }}>
               <div
                 style={{
@@ -201,16 +189,7 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
                   <span style={{ color: "var(--muted-fg)" }}>· {p}</span>
                 </span>
               </div>
-              <div
-                style={{
-                  height: 5,
-                  background: "var(--muted)",
-                  borderRadius: 9999,
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ height: "100%", width: p, background: "var(--primary)" }} />
-              </div>
+              <MpProgressBar pct={parseFloat(String(p).replace("%", ""))} delayMs={i * 60} />
             </div>
           ))}
         </div>

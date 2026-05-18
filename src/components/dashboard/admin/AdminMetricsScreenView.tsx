@@ -1,6 +1,8 @@
 // Client view de AdminMetricsScreen — layout 1:1 (RoleScreens2.jsx 59-92).
 "use client";
 import { RSHeader } from "../widgets/RS";
+import { MpBarChart } from "../widgets/MpBarChart";
+import { MpProgressBar } from "../widgets/MpProgressBar";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 export type MetricsData = {
@@ -36,8 +38,15 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
     ["Take rate", `${data.kpis.takeRatePct.toFixed(1)}%`, "fija", "#0a0a0a"],
   ];
 
-  const maxBar = Math.max(...data.bars30, 1);
-  const BARS = data.bars30.map((v) => 60 + (v / maxBar) * 140);
+  // Bars30 ahora se renderiza con MpBarChart. Etiquetamos cada día con la
+  // distancia desde hoy ("Hoy", "-1d", "-29d") para el tooltip.
+  const bars30Data = data.bars30.map((v, i) => {
+    const ago = data.bars30.length - 1 - i;
+    return {
+      label: ago === 0 ? "Hoy" : `Hace ${ago}d`,
+      value: v,
+    };
+  });
 
   return (
     <>
@@ -96,29 +105,13 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
           >
             GMV · 30 días<span className="dot">.</span>
           </h2>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 3,
-              height: 200,
-              paddingTop: 10,
-            }}
-          >
-            {BARS.map((h, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  height: h,
-                  background:
-                    i === 29 ? "var(--primary)" : i % 7 < 2 ? "#fbbf24" : "#0a0a0a",
-                  borderRadius: "3px 3px 0 0",
-                  opacity: 0.6 + (i / 30) * 0.4,
-                }}
-              />
-            ))}
-          </div>
+          <MpBarChart
+            data={bars30Data}
+            height={200}
+            weekendPattern
+            fmtValue={(v) => `$${Math.round(v / 100).toLocaleString("en-US")}`}
+            ariaLabel="GMV últimos 30 días"
+          />
         </div>
         <div className="card" style={{ padding: 18 }}>
           <h2
@@ -133,7 +126,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
             Top deportes<span className="dot">.</span>
           </h2>
           {data.topSports.length > 0 ? (
-            data.topSports.map((s) => (
+            data.topSports.map((s, i) => (
               <div key={s.label} style={{ marginBottom: 10 }}>
                 <div
                   style={{
@@ -146,16 +139,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
                   <b>{s.label}</b>
                   <span style={{ color: "var(--muted-fg)" }}>{s.pct}%</span>
                 </div>
-                <div
-                  style={{
-                    height: 5,
-                    background: "var(--muted)",
-                    borderRadius: 9999,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ height: "100%", width: `${s.pct}%`, background: s.color }} />
-                </div>
+                <MpProgressBar pct={s.pct} color={s.color} delayMs={i * 60} />
               </div>
             ))
           ) : (

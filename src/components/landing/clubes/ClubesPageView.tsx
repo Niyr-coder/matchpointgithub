@@ -375,7 +375,6 @@ export function ClubesPageView({
                 style={{ overflow: "hidden", textDecoration: "none", color: "#0a0a0a" }}
               >
                 <div
-                  className="mp-card-image"
                   style={{
                     height: 140,
                     background: CARD_GRADIENTS[i % CARD_GRADIENTS.length],

@@ -144,7 +144,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Mi club",
         items: [
           { k: "home", label: "Overview", icon: "layout-dashboard" },
-          { k: "club-reservas", label: "Reservas", icon: "calendar-days", badge: "24" },
+          { k: "club-reservas", label: "Reservas", icon: "calendar-days" },
           { k: "club-canchas", label: "Canchas", icon: "square" },
           { k: "club-eventos", label: "Eventos del club", icon: "trophy" },
         ],
@@ -153,7 +153,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Negocio",
         items: [
           { k: "club-finanzas", label: "Finanzas", icon: "wallet" },
-          { k: "club-clientes", label: "Clientes", icon: "users", badge: "486" },
+          { k: "club-clientes", label: "Clientes", icon: "users" },
           { k: "club-staff", label: "Personal", icon: "user-cog" },
           { k: "club-marketing", label: "Marketing", icon: "megaphone" },
         ],
@@ -178,9 +178,9 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Operación",
         items: [
           { k: "home", label: "Hoy", icon: "layout-dashboard" },
-          { k: "club-reservas", label: "Reservas", icon: "calendar-days", badge: "24" },
+          { k: "club-reservas", label: "Reservas", icon: "calendar-days" },
           { k: "club-canchas", label: "Canchas", icon: "square" },
-          { k: "club-walkins", label: "Walk-ins", icon: "user-plus", badge: "3" },
+          { k: "club-walkins", label: "Walk-ins", icon: "user-plus" },
         ],
       },
       {

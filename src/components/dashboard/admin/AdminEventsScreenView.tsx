@@ -1,11 +1,15 @@
 // Client view de AdminEventsScreen — layout 1:1 (RoleScreens2.jsx 6-31).
 "use client";
 import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "../ToastProvider";
+import { setTournamentFeatured } from "@/server/actions/tournaments";
 
 export type EvStatus = "EN VIVO" | "EN CURSO" | "ABIERTO" | "LLENO";
+export type EvKind = "event" | "tournament";
 export type EvRow = {
   id: string;
   n: string;
@@ -15,6 +19,9 @@ export type EvRow = {
   insc: string;
   prize: string;
   st: EvStatus;
+  kind: EvKind;
+  // Solo tournaments: true si están marcados como evento estelar de portada.
+  isFeatured?: boolean;
 };
 export type EventsData = {
   rows: EvRow[];
@@ -70,12 +77,38 @@ function EvPlaceholderRow() {
 
 export function AdminEventsScreenView({ data }: { data: EventsData }) {
   const router = useRouter();
+  const toast = useToast();
+  const [, startTransition] = useTransition();
+  // Optimistic state local: si toggleamos, no esperamos al realtime para
+  // mostrar el cambio. El realtime después confirma o revierte.
+  const [featuredOverride, setFeaturedOverride] = useState<Map<string, boolean>>(new Map());
   useRealtimeRefresh([
     { table: "events" },
     { table: "tournaments" },
     { table: "event_registrations" },
     { table: "registrations" },
   ]);
+
+  const toggleFeatured = (row: EvRow) => {
+    if (row.kind !== "tournament") return;
+    const realId = row.id.replace(/^tr-/, "");
+    const current = featuredOverride.get(row.id) ?? row.isFeatured ?? false;
+    const next = !current;
+    setFeaturedOverride((prev) => new Map(prev).set(row.id, next));
+    startTransition(async () => {
+      const res = await setTournamentFeatured({ tournamentId: realId, featured: next });
+      if (!res.ok) {
+        // Revertir si falla.
+        setFeaturedOverride((prev) => new Map(prev).set(row.id, !next));
+        toast({ icon: "alert-triangle", title: "No se pudo actualizar", sub: res.error.message });
+      } else {
+        toast({
+          icon: next ? "star" : "star-off",
+          title: next ? "Marcado como estelar" : "Removido de estelares",
+        });
+      }
+    });
+  };
 
   const hasRows = data.rows.length > 0;
   const goToDetail = (row: EvRow) => {
@@ -119,6 +152,44 @@ export function AdminEventsScreenView({ data }: { data: EventsData }) {
       ),
     },
     { k: "st", l: "Estado", render: (e) => <RSPill bg={ST_COLOR[e.st]}>{e.st}</RSPill> },
+    {
+      k: "isFeatured" as keyof EvRow,
+      l: "Estelar",
+      align: "center",
+      render: (e) => {
+        if (e.kind !== "tournament") {
+          return <span style={{ color: "var(--muted-fg)", fontSize: 11 }}>—</span>;
+        }
+        const isOn = featuredOverride.get(e.id) ?? e.isFeatured ?? false;
+        return (
+          <button
+            onClick={(ev) => {
+              ev.stopPropagation();
+              toggleFeatured(e);
+            }}
+            title={isOn ? "Quitar de portada" : "Marcar para portada"}
+            style={{
+              background: "transparent",
+              border: 0,
+              cursor: "pointer",
+              padding: 4,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: isOn ? "#fbbf24" : "var(--muted-fg)",
+            }}
+          >
+            <Icon
+              name="star"
+              size={16}
+              color={isOn ? "#fbbf24" : "var(--muted-fg)"}
+              style={isOn ? { fill: "#fbbf24" } : undefined}
+            />
+          </button>
+        );
+      },
+    },
   ];
 
   return (

@@ -1,16 +1,18 @@
-// Client view de PartnerTorneosScreen — layout 1:1 (RoleScreens.jsx 462-505).
+// Client view de PartnerTorneosScreen.
 "use client";
-import { useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import { usePromptModal } from "../widgets/PromptModal";
-import { createTournament } from "@/server/actions/tournaments";
+import { setTournamentStatus } from "@/server/actions/tournaments";
+import { CreateTournamentFlow } from "./CreateTournamentFlow";
 
 export type TorneoStatus = "LIVE" | "IN PROGRESS" | "OPEN" | "CLOSED";
 export type TorneoRow = {
   id: string;
+  slug: string;
   n: string;
   sport: string;
   date: string;
@@ -19,6 +21,7 @@ export type TorneoRow = {
   prize: string;
   st: TorneoStatus;
   color: string;
+  dbStatus: string;
 };
 export type TorneosData = { partnerId: string | null; rows: TorneoRow[] };
 
@@ -32,18 +35,77 @@ const ST_STYLES: Record<TorneoStatus, { bg: string; l: string }> = {
 };
 
 function TorneoCard({ t }: { t: TorneoRow }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [, startTx] = useTransition();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Cierre al click fuera.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+
+  const onGestionar = () => router.push(`/dashboard/partner/torneo/${t.id}`);
+
+  const onEditar = () => {
+    setMenuOpen(false);
+    router.push(`/dashboard/partner/torneo/${t.id}`);
+  };
+  const onCerrar = () => {
+    setMenuOpen(false);
+    startTx(async () => {
+      const res = await setTournamentStatus({
+        tournamentId: t.id,
+        status: "registration_closed",
+      });
+      if (res.ok) {
+        toast({ icon: "lock", title: "Inscripciones cerradas" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cerrar", sub: res.error.message });
+      }
+    });
+  };
+  const onCancelar = () => {
+    setMenuOpen(false);
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        `Cancelar "${t.n}"? Esta acción avisa a todos los inscritos y libera los cupos.`,
+      );
+      if (!ok) return;
+    }
+    startTx(async () => {
+      const res = await setTournamentStatus({ tournamentId: t.id, status: "cancelled" });
+      if (res.ok) {
+        toast({ icon: "x", title: "Torneo cancelado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  };
+
   return (
     <div
       className="card"
       style={{
         padding: 0,
-        overflow: "hidden",
         display: "grid",
-        gridTemplateColumns: "4px 1fr 100px 100px 110px 120px",
+        gridTemplateColumns: "4px 1fr 100px 100px 110px 170px",
+        alignItems: "stretch",
+        position: "relative",
       }}
     >
-      <div style={{ background: t.color }} />
-      <div style={{ padding: 16 }}>
+      <div style={{ background: t.color, borderRadius: "var(--radius, 12px) 0 0 var(--radius, 12px)" }} />
+      <div style={{ padding: 16, minWidth: 0 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
           <RSPill bg={ST_STYLES[t.st].bg}>{ST_STYLES[t.st].l}</RSPill>
           <span
@@ -65,6 +127,9 @@ function TorneoCard({ t }: { t: TorneoRow }) {
             fontWeight: 900,
             letterSpacing: "-0.02em",
             textTransform: "uppercase",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {t.n}
@@ -103,24 +168,125 @@ function TorneoCard({ t }: { t: TorneoRow }) {
           </div>
         </div>
       ))}
-      <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 6 }}>
-        <button className="btn btn-primary" style={{ fontSize: 10.5, padding: "6px 12px" }}>
+      <div
+        ref={menuRef}
+        style={{
+          padding: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          justifyContent: "flex-end",
+          position: "relative",
+        }}
+      >
+        <button
+          className="btn btn-primary"
+          onClick={onGestionar}
+          style={{ fontSize: 10.5, padding: "6px 12px" }}
+        >
           Gestionar
         </button>
         <button
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="Más acciones"
           style={{
             width: 28,
             height: 28,
             borderRadius: "50%",
-            background: "var(--muted)",
+            background: menuOpen ? "#0a0a0a" : "var(--muted)",
+            color: menuOpen ? "#fff" : "#0a0a0a",
             border: 0,
             cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <Icon name="more-horizontal" size={12} />
+          <Icon name="more-horizontal" size={12} color={menuOpen ? "#fff" : "#0a0a0a"} />
         </button>
+        {menuOpen && (
+          <div
+            className="mp-modal-panel"
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: 12,
+              marginTop: 6,
+              minWidth: 220,
+              background: "#fff",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: 6,
+              boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+              zIndex: 50,
+            }}
+          >
+            <KebabItem icon="pencil" label="Editar torneo" onClick={onEditar} />
+            <KebabItem
+              icon="lock"
+              label="Cerrar inscripciones"
+              onClick={onCerrar}
+              disabled={t.dbStatus === "registration_closed" || t.dbStatus === "cancelled"}
+            />
+            <KebabItem
+              icon="x"
+              label="Cancelar torneo"
+              onClick={onCancelar}
+              danger
+              disabled={t.dbStatus === "cancelled" || t.dbStatus === "finished"}
+            />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function KebabItem({
+  icon,
+  label,
+  onClick,
+  danger,
+  disabled,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  const color = disabled ? "var(--muted-fg)" : danger ? "#dc2626" : "#0a0a0a";
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        background: "transparent",
+        border: 0,
+        borderRadius: 8,
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: 12.5,
+        fontWeight: 700,
+        color,
+        textAlign: "left",
+        fontFamily: "inherit",
+        transition: "background 160ms var(--ease-out)",
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) e.currentTarget.style.background = "var(--muted)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
+    >
+      <Icon name={icon} size={13} color={color} />
+      {label}
+    </button>
   );
 }
 
@@ -214,69 +380,14 @@ function TorneoPlaceholder() {
 
 export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
   const toast = useToast();
-  const { ask } = usePromptModal();
-  const [isPending, startTransition] = useTransition();
+  const [createOpen, setCreateOpen] = useState(false);
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!data.partnerId) {
       toast({ icon: "alert-triangle", title: "Sin partner activo" });
       return;
     }
-    const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
-    const name = await ask({
-      title: "Nuevo torneo · 1/4",
-      label: "Nombre del torneo",
-      placeholder: "ej. Open Pickleball Quito 2026",
-      required: true,
-      confirmLabel: "Siguiente",
-    });
-    if (name == null) return;
-    const startsAt = await ask({
-      title: "Nuevo torneo · 2/4",
-      label: "Fecha de inicio (ISO)",
-      placeholder: "ej. 2026-06-15T18:00:00Z",
-      required: true,
-      validate: (v) => (ISO_RE.test(v.trim()) ? null : "Formato ISO: 2026-06-15T18:00:00Z"),
-      confirmLabel: "Siguiente",
-    });
-    if (startsAt == null) return;
-    const endsAt = await ask({
-      title: "Nuevo torneo · 3/4",
-      label: "Fecha de fin (ISO)",
-      placeholder: "ej. 2026-06-17T22:00:00Z",
-      required: true,
-      validate: (v) => (ISO_RE.test(v.trim()) ? null : "Formato ISO: 2026-06-17T22:00:00Z"),
-      confirmLabel: "Siguiente",
-    });
-    if (endsAt == null) return;
-    const feeStr = await ask({
-      title: "Nuevo torneo · 4/4",
-      label: "Inscripción (USD)",
-      initialValue: "0",
-      required: true,
-      validate: (v) => (/^\d+(\.\d+)?$/.test(v.trim()) ? null : "Solo números"),
-      confirmLabel: "Crear torneo",
-    });
-    if (feeStr == null) return;
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .slice(0, 40);
-    startTransition(async () => {
-      const res = await createTournament({
-        partnerId: data.partnerId!,
-        name: name.trim(),
-        slug,
-        sport: "pickleball",
-        format: "single_elim",
-        startsAt,
-        endsAt,
-        entryFeeCents: Math.round(Number(feeStr) * 100) || 0,
-        currency: "USD",
-      });
-      if (res.ok) toast({ icon: "check", title: "Torneo creado" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
-    });
+    setCreateOpen(true);
   };
 
   useRealtimeRefresh(
@@ -304,13 +415,20 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
           <button
             className="btn btn-primary"
             onClick={handleCreate}
-            disabled={isPending || !data.partnerId}
+            disabled={!data.partnerId}
           >
             <Icon name="plus" size={13} color="#fff" />
-            {isPending ? "Creando…" : "Crear torneo"}
+            Crear torneo
           </button>
         }
       />
+      {data.partnerId && (
+        <CreateTournamentFlow
+          partnerId={data.partnerId}
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {hasReal
           ? data.rows.map((t) => <TorneoCard key={t.id} t={t} />)

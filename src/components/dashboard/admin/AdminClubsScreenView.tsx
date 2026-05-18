@@ -295,10 +295,80 @@ function PendingAppRow({
 }
 
 
+const APP_PHASE_ORDER: ReadonlyArray<{ k: string; color: string }> = [
+  { k: "submitted", color: "#737373" },
+  { k: "docs_review", color: "#fbbf24" },
+  { k: "field_verification", color: "#0ea5e9" },
+  { k: "final_review", color: "#7c3aed" },
+];
+
+function PhaseChip({
+  k,
+  label,
+  color,
+  n,
+  active,
+  onClick,
+}: {
+  k: string;
+  label: string;
+  color: string;
+  n: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      key={k}
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 10px",
+        borderRadius: 9999,
+        fontSize: 10.5,
+        fontWeight: 800,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        background: active ? color : "#fff",
+        color: active ? "#fff" : color,
+        border: `1px solid ${active ? color : "var(--border)"}`,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        transition: "background 140ms var(--ease-out), color 140ms var(--ease-out)",
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: active ? "#fff" : color,
+        }}
+      />
+      {label}
+      <span
+        className="tabular"
+        style={{
+          fontSize: 10,
+          opacity: 0.85,
+          padding: "1px 6px",
+          borderRadius: 4,
+          background: active ? "rgba(255,255,255,0.18)" : "var(--muted)",
+        }}
+      >
+        {n}
+      </span>
+    </button>
+  );
+}
+
 function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();
+  const [phaseFilter, setPhaseFilter] = useState<string>("all");
 
   const doApprove = async (app: PendingApplication) => {
     const ok = await confirm({
@@ -333,6 +403,9 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
   };
 
   if (apps.length === 0) return null;
+  const countByPhase = new Map<string, number>();
+  for (const a of apps) countByPhase.set(a.status, (countByPhase.get(a.status) ?? 0) + 1);
+  const visible = phaseFilter === "all" ? apps : apps.filter((a) => a.status === phaseFilter);
   return (
     <div className="card" style={{ padding: 18, border: "2px solid #fbbf24" }}>
       <div
@@ -358,16 +431,52 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
           <span style={{ color: "var(--muted-fg)" }}>({apps.length})</span>
         </h2>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {apps.map((a) => (
-          <PendingAppRow
-            key={a.id}
-            app={a}
-            onApprove={() => doApprove(a)}
-            onReject={() => doReject(a)}
-            isPending={isPending}
+      {/* Chips por fase — click filtra el listado. Muestra todas las fases del
+          enum aunque tengan 0 (sirve de mapa visual del pipeline). */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        <PhaseChip
+          k="all"
+          label="Todas"
+          color="#0a0a0a"
+          n={apps.length}
+          active={phaseFilter === "all"}
+          onClick={() => setPhaseFilter("all")}
+        />
+        {APP_PHASE_ORDER.map((p) => (
+          <PhaseChip
+            key={p.k}
+            k={p.k}
+            label={APP_STATUS_LABEL[p.k] ?? p.k}
+            color={p.color}
+            n={countByPhase.get(p.k) ?? 0}
+            active={phaseFilter === p.k}
+            onClick={() => setPhaseFilter(p.k)}
           />
         ))}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {visible.length === 0 ? (
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--muted-fg)",
+              padding: "10px 0",
+              textAlign: "center",
+            }}
+          >
+            Sin solicitudes en esta fase.
+          </div>
+        ) : (
+          visible.map((a) => (
+            <PendingAppRow
+              key={a.id}
+              app={a}
+              onApprove={() => doApprove(a)}
+              onReject={() => doReject(a)}
+              isPending={isPending}
+            />
+          ))
+        )}
       </div>
     </div>
   );

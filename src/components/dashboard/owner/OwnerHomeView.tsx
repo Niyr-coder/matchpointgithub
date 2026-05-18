@@ -242,7 +242,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
             <PanelEmpty
               icon="calendar"
               title="Sin eventos publicados"
-              sub="Cuando publiques un torneo aparecerá acá con cupos en vivo."
+              sub="Cuando publiques un torneo aparecerá aquí con cupos en vivo."
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -359,7 +359,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
             <PanelEmpty
               icon="bar-chart-3"
               title="Sin revenue todavía"
-              sub="Cuando entren las primeras reservas, verás la barra diaria acá."
+              sub="Cuando entren las primeras reservas, verás la barra diaria aquí."
             />
           )}
         </RHPanel>

@@ -88,6 +88,19 @@ async function loadData(): Promise<EventsData> {
     }
   }
 
+  // Fetch separado para is_featured (no está en los types generados aún).
+  const featuredById = new Map<string, boolean>();
+  if (trIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: featRows } = await (supabase as any)
+      .from("tournaments")
+      .select("id,is_featured")
+      .in("id", trIds);
+    for (const r of (featRows ?? []) as Array<{ id: string; is_featured: boolean | null }>) {
+      featuredById.set(r.id, r.is_featured === true);
+    }
+  }
+
   type LocalRow = EvRow & { startsAt: Date };
   const evRows: LocalRow[] = (events ?? []).map((e) => {
     const starts = new Date(e.starts_at as string);
@@ -105,6 +118,7 @@ async function loadData(): Promise<EventsData> {
       insc: `${insc}/${cap ?? "∞"}`,
       prize: "—",
       st: mapStatus(e.status as string, starts, now, full),
+      kind: "event" as const,
       startsAt: starts,
     };
   });
@@ -126,6 +140,8 @@ async function loadData(): Promise<EventsData> {
       insc: `${insc}/${cap ?? "∞"}`,
       prize: prizeCents != null ? `$${Math.round(prizeCents / 100).toLocaleString("en-US")}` : "—",
       st: mapStatus(t.status as string, starts, now, full),
+      kind: "tournament" as const,
+      isFeatured: featuredById.get(t.id as string) ?? false,
       startsAt: starts,
     };
   });

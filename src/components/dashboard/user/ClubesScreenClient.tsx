@@ -1,6 +1,7 @@
 // Client child de ClubesScreen — recibe data real desde el server.
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import type { ClubFeatured } from "@/lib/schemas/clubs";
@@ -73,16 +74,14 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
   };
 
   const toggleSave = (slug: string, name: string) => {
-    setSaved((prev) => {
-      const next = new Set(prev);
-      const had = next.has(slug);
-      if (had) next.delete(slug);
-      else next.add(slug);
-      persist(next);
-      if (had) toast({ icon: "bookmark", title: "Quitado de Mis clubes", sub: name });
-      else toast({ icon: "bookmark-check", title: "Guardado en Mis clubes", sub: name });
-      return next;
-    });
+    const had = saved.has(slug);
+    const next = new Set(saved);
+    if (had) next.delete(slug);
+    else next.add(slug);
+    persist(next);
+    setSaved(next);
+    if (had) toast({ icon: "bookmark", title: "Quitado de Mis clubes", sub: name });
+    else toast({ icon: "bookmark-check", title: "Guardado en Mis clubes", sub: name });
   };
 
   const openReservar = (c: {
@@ -387,7 +386,7 @@ function FeaturedCard({
                     fontWeight: 800,
                   }}
                 >
-                  <Icon name="star" size={11} color="#d97706" />
+                  <Icon name="star" size={11} color="#d97706" style={{ fill: "#d97706" }} />
                   {rating.toFixed(1)}
                 </div>
                 <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
@@ -401,7 +400,11 @@ function FeaturedCard({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
             {[
               { icon: "square", label: "Canchas", val: String(c.courtsCount) },
-              { icon: "clock", label: "Hoy", val: "07:00 — 23:00" },
+              {
+                icon: "clock",
+                label: "Hoy",
+                val: c.isOpenNow ? c.openHoursToday ?? "Cerrado" : "Cerrado",
+              },
               { icon: "wallet", label: "Desde", val: `${compact}/h` },
               { icon: "trophy", label: "Deporte", val: primarySportLabel(c.sports) },
             ].map((s) => (
@@ -452,7 +455,8 @@ function FeaturedCard({
             Reservar cancha
           </button>
           <button
-            className="btn"
+            className="btn mp-save-btn"
+            data-saved={saved ? "true" : "false"}
             onClick={onToggleSave}
             style={{
               background: saved ? "var(--primary)" : "#fff",
@@ -460,7 +464,9 @@ function FeaturedCard({
               border: "1px solid " + (saved ? "var(--primary)" : "var(--border)"),
             }}
           >
-            <Icon name="bookmark" size={13} />
+            <span className="mp-save-icon">
+              <Icon name="bookmark" size={13} />
+            </span>
           </button>
         </div>
       </div>
@@ -498,7 +504,7 @@ function FeaturedPlaceholder() {
           <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, marginTop: 12 }}>
             Aún sin clubes destacados
           </div>
-          <p style={{ fontSize: 12.5, marginTop: 8 }}>Cuando se sumen clubes, el destacado aparece acá.</p>
+          <p style={{ fontSize: 12.5, marginTop: 8 }}>Cuando se sumen clubes, el destacado aparece aquí.</p>
         </div>
       </div>
       <div style={{ padding: 28 }}>
@@ -533,7 +539,10 @@ function ClubCard({
   const { compact } = priceDisplay(c.minPriceCents);
 
   return (
-    <div className="card" style={{ overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div
+      className="card"
+      style={{ overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}
+    >
       <div style={{ height: 120, background: gradient, position: "relative", overflow: "hidden" }}>
         <div
           style={{
@@ -577,10 +586,19 @@ function ClubCard({
             gap: 4,
           }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981" }} />
-          Abierto
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: c.isOpenNow ? "#10b981" : "#ef4444",
+            }}
+          />
+          {c.isOpenNow ? "Abierto" : "Cerrado"}
         </div>
         <button
+          className="mp-save-btn"
+          data-saved={saved ? "true" : "false"}
           onClick={onToggleSave}
           style={{
             position: "absolute",
@@ -600,7 +618,9 @@ function ClubCard({
           }}
           title={saved ? "Guardado" : "Guardar club"}
         >
-          <Icon name="bookmark" size={12} color={saved ? "#fff" : "#0a0a0a"} />
+          <span className="mp-save-icon">
+            <Icon name="bookmark" size={12} color={saved ? "#fff" : "#0a0a0a"} />
+          </span>
         </button>
         <div
           style={{
@@ -613,18 +633,22 @@ function ClubCard({
             color: "#fff",
           }}
         >
-          <div
-            className="font-heading"
+          <Link
+            href={`/dashboard/clubes/${c.slug}`}
+            className="mp-club-name-link font-heading"
             style={{
               fontWeight: 900,
               fontSize: 15,
               textTransform: "uppercase",
               letterSpacing: "-0.01em",
               lineHeight: 1.1,
+              color: "#fff",
+              textDecoration: "none",
+              display: "inline-block",
             }}
           >
             {c.name}
-          </div>
+          </Link>
         </div>
       </div>
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -635,7 +659,7 @@ function ClubCard({
           </span>
           {rating != null ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 800 }}>
-              <Icon name="star" size={11} color="#d97706" />
+              <Icon name="star" size={11} color="#d97706" style={{ fill: "#d97706" }} />
               {rating.toFixed(1)}
             </span>
           ) : (

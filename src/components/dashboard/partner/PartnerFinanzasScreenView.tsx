@@ -3,6 +3,7 @@
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
 import { RSPill } from "../widgets/RS";
+import { MpProgressBar } from "../widgets/MpProgressBar";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 export type RevenueRow = {
@@ -329,22 +330,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
                     {t.p}% del revenue
                   </div>
                 </div>
-                <div
-                  style={{
-                    height: 10,
-                    background: "var(--muted)",
-                    borderRadius: 9999,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: Math.min(100, t.p * 3) + "%",
-                      background: t.c,
-                    }}
-                  />
-                </div>
+                <MpProgressBar pct={Math.min(100, t.p * 3)} color={t.c} height={10} />
                 <div
                   className="font-heading tabular"
                   style={{

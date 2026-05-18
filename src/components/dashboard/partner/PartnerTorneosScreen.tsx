@@ -42,7 +42,7 @@ async function loadData(): Promise<TorneosData> {
 
   const { data: tournaments } = await supabase
     .from("tournaments")
-    .select("id,name,sport,format,starts_at,ends_at,status,max_participants,prize_pool_cents")
+    .select("id,slug,name,sport,format,starts_at,ends_at,status,max_participants,prize_pool_cents")
     .eq("partner_id", partnerId)
     .order("starts_at", { ascending: true });
 
@@ -86,6 +86,7 @@ async function loadData(): Promise<TorneosData> {
     const formatLabel = String(t.format ?? "");
     return {
       id: t.id as string,
+      slug: (t.slug as string) ?? (t.id as string),
       n: (t.name as string) ?? "—",
       sport: `${sportLabel}${formatLabel ? ` · ${formatLabel}` : ""}`,
       date: fmtDateRange(t.starts_at as string, t.ends_at as string),
@@ -94,6 +95,7 @@ async function loadData(): Promise<TorneosData> {
       prize: prize > 0 ? `$${Math.round(prize / 100).toLocaleString("en-US")}` : "$—",
       st: deriveStatus(t.status as string, starts, ends, now),
       color: COLORS[i % COLORS.length],
+      dbStatus: t.status as string,
     };
   });
 

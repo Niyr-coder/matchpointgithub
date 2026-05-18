@@ -137,11 +137,10 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
                   key={it.k}
                   href={it.k}
                   className="mp-nav-link"
+                  data-active={active ? "true" : "false"}
                   style={{
                     padding: "8px 14px",
                     borderRadius: 9999,
-                    background: active ? "var(--muted)" : "transparent",
-                    color: active ? "#0a0a0a" : "var(--muted-fg)",
                     fontWeight: active ? 900 : 700,
                     fontSize: 12.5,
                     textDecoration: "none",

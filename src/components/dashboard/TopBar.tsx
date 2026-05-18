@@ -1,10 +1,14 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
-import { NotificationsPanel } from "./NotificationsPanel";
+import { NotificationsPanel, type RealNotif } from "./NotificationsPanel";
 import { useToast } from "./ToastProvider";
-import { getUnreadCount } from "@/server/actions/notifications";
+import {
+  listMyNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from "@/server/actions/notifications";
 import { getBrowserClient } from "@/lib/db/client.browser";
 
 type CTA = { l: string; i: string; ev: string | null };
@@ -32,22 +36,50 @@ export function TopBar({
   contextLabel?: string | null;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
-  const [unreadN, setUnreadN] = useState(0);
+  // Notifs viven en TopBar para que el panel se renderice instantáneamente
+  // (sin "Cargando…") al abrir. El listener realtime las refresca aquí.
+  const [items, setItems] = useState<RealNotif[]>([]);
+  const [ringing, setRinging] = useState(false);
+  const [badgePulseKey, setBadgePulseKey] = useState(0);
+  const prevUnreadRef = useRef<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const cfg = MP_ROLES[role];
   const cta = CTA_BY_ROLE[role];
   const toast = useToast();
+  const [, startTransition] = useTransition();
 
-  const refreshUnread = useCallback(async () => {
-    const res = await getUnreadCount({ role });
-    if (res.ok) setUnreadN(res.data.count);
+  const unreadN = useMemo(() => items.filter((n) => !n.readAt).length, [items]);
+
+  const triggerRing = useCallback(() => {
+    setRinging(true);
+    setTimeout(() => setRinging(false), 700);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const res = await listMyNotifications({ role, limit: 30 });
+    if (res.ok) {
+      setItems(
+        (res.data as RealNotif[]).map((n) => ({
+          id: n.id,
+          kind: n.kind,
+          title: n.title,
+          body: n.body ?? null,
+          payload: n.payload ?? {},
+          readAt: n.readAt ?? null,
+          createdAt: n.createdAt,
+        })),
+      );
+    }
   }, [role]);
 
+  // Fetch inicial — corre apenas se monta el TopBar, así el panel ya tiene
+  // datos al primer click.
   useEffect(() => {
-    refreshUnread();
-  }, [refreshUnread]);
+    refresh();
+  }, [refresh]);
 
-  // Realtime: actualizar badge cuando llegue/cambie cualquier notificación del usuario.
+  // Realtime — un solo canal para badge + panel. Al llegar cualquier
+  // cambio en notifications del usuario, refetch la lista.
   useEffect(() => {
     let cancelled = false;
     let cleanup: (() => void) | null = null;
@@ -57,11 +89,13 @@ export function TopBar({
       const uid = data.user?.id;
       if (!uid || cancelled) return;
       const channel = supabase
-        .channel(`mp-notif-badge-${uid}`)
+        .channel(`mp-notif-${uid}`)
         .on(
           "postgres_changes" as never,
           { event: "*", schema: "public", table: "notifications", filter: `recipient_user_id=eq.${uid}` },
-          () => refreshUnread(),
+          () => {
+            refresh();
+          },
         )
         .subscribe();
       cleanup = () => {
@@ -72,7 +106,18 @@ export function TopBar({
       cancelled = true;
       cleanup?.();
     };
-  }, [refreshUnread]);
+  }, [refresh]);
+
+  // Dispara bell wiggle + badge pop cuando el unread crece via realtime.
+  // No dispara en el primer set (prev === null) para no sonar al entrar.
+  useEffect(() => {
+    const prev = prevUnreadRef.current;
+    if (prev != null && unreadN > prev) {
+      triggerRing();
+      setBadgePulseKey((k) => k + 1);
+    }
+    prevUnreadRef.current = unreadN;
+  }, [unreadN, triggerRing]);
 
   useEffect(() => {
     if (!notifOpen) return;
@@ -83,10 +128,31 @@ export function TopBar({
     return () => document.removeEventListener("mousedown", onDown);
   }, [notifOpen]);
 
-  // Refresh count when panel closes (user may have marked as read).
-  useEffect(() => {
-    if (!notifOpen) refreshUnread();
-  }, [notifOpen, refreshUnread]);
+  const handleBellClick = () => {
+    const willOpen = !notifOpen;
+    setNotifOpen(willOpen);
+    if (willOpen) triggerRing();
+  };
+
+  const onMarkOne = useCallback((id: string) => {
+    setItems((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)),
+    );
+    startTransition(async () => {
+      await markNotificationRead({ id });
+    });
+  }, []);
+
+  const onMarkAll = useCallback(() => {
+    setItems((prev) =>
+      prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })),
+    );
+    const myRole = role;
+    startTransition(async () => {
+      const res = await markAllNotificationsRead({ role: myRole });
+      if (res.ok) toast({ icon: "check", title: "Notificaciones marcadas como leídas" });
+    });
+  }, [role, toast]);
 
   const handleCta = () => {
     if (cta.ev) window.dispatchEvent(new Event(cta.ev));
@@ -177,14 +243,15 @@ export function TopBar({
         </button>
         <div ref={ref} style={{ position: "relative" }}>
           <button
-            onClick={() => setNotifOpen((o) => !o)}
+            className="mp-bell-btn"
+            onClick={handleBellClick}
             style={{
               width: 36,
               height: 36,
-              border: "1px solid " + (notifOpen ? "#0a0a0a" : "var(--border)"),
+              border: "1px solid " + (ringing ? "red" : notifOpen ? "#0a0a0a" : "var(--border)"),
               borderRadius: 9999,
-              background: notifOpen ? "#0a0a0a" : "#fff",
-              color: notifOpen ? "#fff" : "#0a0a0a",
+              background: ringing ? "red" : notifOpen ? "#0a0a0a" : "#fff",
+              color: ringing || notifOpen ? "#fff" : "#0a0a0a",
               cursor: "pointer",
               position: "relative",
               display: "inline-flex",
@@ -192,9 +259,16 @@ export function TopBar({
               justifyContent: "center",
             }}
           >
-            <Icon name="bell" size={15} />
+            <span
+              className="mp-bell-icon"
+              data-ringing={ringing ? "true" : "false"}
+            >
+              <Icon name="bell" size={15} />
+            </span>
             {unreadN > 0 && (
             <span
+              key={badgePulseKey}
+              className="mp-notif-badge"
               style={{
                 position: "absolute",
                 top: 5,
@@ -215,11 +289,19 @@ export function TopBar({
                 lineHeight: 1,
               }}
             >
-              {unreadN}
+              {unreadN > 99 ? "+99" : unreadN}
             </span>
             )}
           </button>
-          {notifOpen && <NotificationsPanel role={role} onClose={() => setNotifOpen(false)} />}
+          {notifOpen && (
+            <NotificationsPanel
+              role={role}
+              items={items}
+              onClose={() => setNotifOpen(false)}
+              onMarkOne={onMarkOne}
+              onMarkAll={onMarkAll}
+            />
+          )}
         </div>
       </div>
     </div>

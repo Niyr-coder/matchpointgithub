@@ -78,9 +78,9 @@ type Tab = (typeof TABS)[number];
 const MONTHS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MONTHS_LONG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-function dateParts(startsAt: string, endsAt: string) {
+function dateParts(startsAt: string, endsAt: string | null) {
   const s = new Date(startsAt);
-  const e = new Date(endsAt);
+  const e = endsAt ? new Date(endsAt) : s;
   const sd = s.getUTCDate();
   const ed = e.getUTCDate();
   const sameMonth = s.getUTCMonth() === e.getUTCMonth();
@@ -135,7 +135,8 @@ function feeLabel(cents: number): string {
 function categorize(t: TournamentFeatured): "proximos" | "curso" | "pasados" {
   const now = Date.now();
   const start = +new Date(t.startsAt);
-  const end = +new Date(t.endsAt);
+  // Sin endsAt: usamos starts_at + 1 día como ventana aproximada para "en curso".
+  const end = t.endsAt ? +new Date(t.endsAt) : start + 24 * 60 * 60 * 1000;
   if (t.status === "live" || (start <= now && now <= end)) return "curso";
   if (t.status === "finished" || end < now) return "pasados";
   return "proximos";
@@ -152,11 +153,8 @@ function padRows(arr: TournamentFeatured[]): RowItem[] {
   return out;
 }
 
-export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Props) {
+export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
   const router = useRouter();
-  const toast = useToast();
-  const [, startTransition] = useTransition();
-  const [askPaymentMode, setAskPaymentMode] = useState<string | null>(null);
   // Realtime: nuevos torneos, registraciones (cupos cambian).
   useRealtimeRefresh([
     { table: "tournaments" },
@@ -164,46 +162,11 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
   ]);
 
   const [tab, setTab] = useState<Tab>("Próximos");
-  const [selected, setSelected] = useState<string | null>(null);
   const myIds = new Set(myRegisteredIds);
-
-  // Inscribe al usuario logueado al torneo. Si el torneo requiere paymentMode
-  // (policy=flexible), abre el modal; al elegir lo reintenta. Si la respuesta
-  // trae paidTransactionId redirige a /pagos/[id] (subida de comprobante).
-  const inscribir = (tournamentId: string, paymentMode?: "online" | "onsite") => {
-    if (!userId) {
-      toast({ icon: "alert-triangle", title: "Inicia sesión para inscribirte" });
-      return;
-    }
-    startTransition(async () => {
-      const res = await fetch(`/api/v1/tournaments/${tournamentId}/register`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ playerIds: [userId], paymentMode }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        const code = json?.error?.code as string | undefined;
-        if (code === "TOURNAMENTS.PAYMENT_MODE_REQUIRED") {
-          setAskPaymentMode(tournamentId);
-          return;
-        }
-        toast({
-          icon: "alert-triangle",
-          title: "No se pudo inscribir",
-          sub: json?.error?.message ?? `HTTP ${res.status}`,
-        });
-        return;
-      }
-      const txId = json?.data?.paidTransactionId as string | null | undefined;
-      if (txId) {
-        toast({ icon: "upload", title: "Inscripción creada", sub: "Sube tu comprobante de pago" });
-        router.push(`/pagos/${txId}`);
-      } else {
-        toast({ icon: "check", title: "¡Inscrito!" });
-        router.refresh();
-      }
-    });
+  // El click navega a /dashboard/eventos/[slug] — ruta real con shell del
+  // dashboard. El flow de inscripción + paymentMode vive ahí, no aquí.
+  const openTournament = (slug: string) => {
+    router.push(`/dashboard/eventos/${slug}`);
   };
 
   const partitioned = {
@@ -212,32 +175,6 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
     Pasados: tournaments.filter((t) => categorize(t) === "pasados"),
     "Mis eventos": tournaments.filter((t) => myIds.has(t.id)),
   } satisfies Record<Tab, TournamentFeatured[]>;
-
-  if (selected) {
-    const ev = tournaments.find((t) => t.id === selected);
-    if (ev) {
-      return (
-        <>
-          <EventDetail
-            ev={ev}
-            registered={myIds.has(ev.id)}
-            onBack={() => setSelected(null)}
-            onRegister={() => inscribir(ev.id)}
-          />
-          {askPaymentMode && (
-            <PaymentModeDialog
-              onChoose={(mode) => {
-                const tid = askPaymentMode;
-                setAskPaymentMode(null);
-                inscribir(tid, mode);
-              }}
-              onCancel={() => setAskPaymentMode(null)}
-            />
-          )}
-        </>
-      );
-    }
-  }
 
   const list = partitioned[tab];
   const featured = tab === "Próximos" ? list[0] : null;
@@ -295,7 +232,7 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
         ))}
       </div>
 
-      {featured && <FeaturedCard t={featured} registered={myIds.has(featured.id)} onOpen={() => setSelected(featured.id)} />}
+      {featured && <FeaturedCard t={featured} registered={myIds.has(featured.id)} onOpen={() => openTournament(featured.slug)} />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {padded.map((row) =>
@@ -306,7 +243,7 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
               key={row.id}
               t={row}
               registered={myIds.has(row.id)}
-              onOpen={() => setSelected(row.id)}
+              onOpen={() => openTournament(row.slug)}
             />
           ),
         )}

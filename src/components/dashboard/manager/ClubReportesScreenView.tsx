@@ -2,8 +2,10 @@
 // Datos reales: ocupación, heatmap, distribución por deporte, top socios, no-shows.
 // Datos sin tracking aún: NPS, tiempo prom. de atención → "—" con nota.
 "use client";
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
+import { MpProgressBar } from "../widgets/MpProgressBar";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 const DAYS_HM = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
@@ -286,46 +288,11 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
               </div>
             ))}
           </div>
-          {data.heatmap.map((row, di) => (
-            <div
-              key={di}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "40px repeat(24, 1fr)",
-                gap: 2,
-                marginBottom: 2,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 9,
-                  fontWeight: 900,
-                  color: "var(--muted-fg)",
-                  textAlign: "right",
-                  paddingRight: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                {DAYS_HM[di]}
-              </div>
-              {row.map((v, hi) => (
-                <div
-                  key={hi}
-                  title={DAYS_HM[di] + " " + hi + ":00 · " + v + "%"}
-                  style={{
-                    height: 24,
-                    borderRadius: 2,
-                    background: hasOcupacion ? heatColor(v) : "#fafafa",
-                    border: hasOcupacion ? 0 : "1px dashed var(--border)",
-                    opacity: hasOcupacion ? 1 : 0.5,
-                  }}
-                />
-              ))}
-            </div>
-          ))}
+          <HeatmapGrid
+            data={data.heatmap}
+            hasOcupacion={hasOcupacion}
+            heatColor={heatColor}
+          />
         </div>
         <div
           style={{
@@ -437,7 +404,7 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
             <span style={{ fontSize: 14, color: "var(--muted-fg)" }}>matches / día</span>
           </div>
           {data.sports.length > 0 ? (
-            data.sports.map((s) => (
+            data.sports.map((s, i) => (
               <div key={s.key} style={{ marginBottom: 12 }}>
                 <div
                   style={{
@@ -455,22 +422,12 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
                     </span>
                   </span>
                 </div>
-                <div
-                  style={{
-                    height: 6,
-                    background: "var(--muted)",
-                    borderRadius: 9999,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: s.pct + "%",
-                      background: SPORT_COLORS[s.label] ?? "#737373",
-                    }}
-                  />
-                </div>
+                <MpProgressBar
+                  pct={s.pct}
+                  color={SPORT_COLORS[s.label] ?? "#737373"}
+                  height={6}
+                  delayMs={i * 70}
+                />
               </div>
             ))
           ) : (
@@ -677,6 +634,120 @@ function SectionEmpty({ title, sub }: { title: string; sub: string }) {
     >
       <div style={{ fontSize: 12, fontWeight: 800, color: "#0a0a0a" }}>{title}</div>
       <div style={{ fontSize: 10.5, marginTop: 4, lineHeight: 1.5 }}>{sub}</div>
+    </div>
+  );
+}
+
+// HeatmapGrid: render del heatmap 7d × 24h con hover sobre celdas + tooltip
+// flotante, y fade-in stagger por fila al montar. Sustituye al `title` HTML
+// nativo (UX feo) por un overlay on-brand.
+function HeatmapGrid({
+  data,
+  hasOcupacion,
+  heatColor,
+}: {
+  data: number[][];
+  hasOcupacion: boolean;
+  heatColor: (v: number) => string;
+}) {
+  const [hover, setHover] = useState<{ day: number; hour: number; value: number } | null>(null);
+  return (
+    <div style={{ position: "relative" }}>
+      {data.map((row, di) => (
+        <div
+          key={di}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "40px repeat(24, 1fr)",
+            gap: 2,
+            marginBottom: 2,
+            opacity: 0,
+            animation: `mpHeatRowIn 320ms cubic-bezier(0.23, 1, 0.32, 1) ${di * 50}ms forwards`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 900,
+              color: "var(--muted-fg)",
+              textAlign: "right",
+              paddingRight: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              letterSpacing: "0.1em",
+            }}
+          >
+            {DAYS_HM[di]}
+          </div>
+          {row.map((v, hi) => {
+            const isHover = hover && hover.day === di && hover.hour === hi;
+            return (
+              <div
+                key={hi}
+                onMouseEnter={() => hasOcupacion && setHover({ day: di, hour: hi, value: v })}
+                onMouseLeave={() => setHover((cur) => (cur && cur.day === di && cur.hour === hi ? null : cur))}
+                style={{
+                  height: 24,
+                  borderRadius: 2,
+                  background: hasOcupacion ? heatColor(v) : "#fafafa",
+                  border: hasOcupacion
+                    ? isHover
+                      ? "1.5px solid #0a0a0a"
+                      : 0
+                    : "1px dashed var(--border)",
+                  opacity: hasOcupacion ? 1 : 0.5,
+                  cursor: hasOcupacion ? "pointer" : "default",
+                  transition: "border-color 120ms cubic-bezier(0.23, 1, 0.32, 1), transform 120ms cubic-bezier(0.23, 1, 0.32, 1)",
+                  transform: isHover ? "scale(1.18)" : "scale(1)",
+                  zIndex: isHover ? 5 : 1,
+                  position: "relative",
+                }}
+              />
+            );
+          })}
+        </div>
+      ))}
+      {hover && (
+        <div
+          style={{
+            position: "absolute",
+            top: -36,
+            left: `calc(40px + ${((hover.hour + 0.5) / 24) * 100}% * (100% - 40px) / 100%)`,
+            transform: "translateX(-50%)",
+            background: "#0a0a0a",
+            color: "#fff",
+            padding: "6px 10px",
+            borderRadius: 8,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            zIndex: 20,
+          }}
+        >
+          <span style={{ color: "rgba(255,255,255,0.6)", letterSpacing: "0.1em" }}>
+            {DAYS_HM[hover.day]} {String(hover.hour).padStart(2, "0")}:00
+          </span>{" "}
+          ·{" "}
+          <b className="tabular" style={{ color: "var(--primary)" }}>
+            {hover.value}%
+          </b>
+        </div>
+      )}
+      <style jsx>{`
+        @keyframes mpHeatRowIn {
+          from {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { RoleScreenStub } from "@/components/dashboard/RoleScreenStub";
+import { HelpScreen } from "@/components/dashboard/HelpScreen";
 import { AdminClubsScreen } from "@/components/dashboard/admin/AdminClubsScreen";
 import { AdminUsersScreen } from "@/components/dashboard/admin/AdminUsersScreen";
 import { AdminModScreen } from "@/components/dashboard/admin/AdminModScreen";
@@ -27,6 +28,7 @@ import { TeamScreen } from "@/components/dashboard/user/TeamScreen";
 import { AcademiaScreen } from "@/components/dashboard/user/AcademiaScreen";
 import { MisClasesScreen } from "@/components/dashboard/user/MisClasesScreen";
 import { MiPlanScreen } from "@/components/dashboard/user/MiPlanScreen";
+import { MisReservasScreen } from "@/components/dashboard/user/MisReservasScreen";
 import { ClubReservasScreen } from "@/components/dashboard/club/ClubReservasScreen";
 import { ClubCanchasScreen } from "@/components/dashboard/club/ClubCanchasScreen";
 import { ClubClientesScreen } from "@/components/dashboard/club/ClubClientesScreen";
@@ -92,6 +94,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     academia: () => <AcademiaScreen />,
     "mis-clases": () => <MisClasesScreen />,
     "mi-plan": () => <MiPlanScreen />,
+    "mis-reservas": () => <MisReservasScreen />,
   },
   owner: {
     "club-reservas": () => <ClubReservasScreen />,
@@ -148,6 +151,9 @@ export default async function RoleSectionPage({
 }) {
   const { role, section } = await params;
   if (!isValidRole(role)) notFound();
+
+  // Section "ayuda" disponible para todos los roles: render compartido.
+  if (section === "ayuda") return <HelpScreen role={role} />;
 
   const render = SCREENS[role]?.[section];
   if (render) return <>{render(searchParams)}</>;

@@ -54,7 +54,7 @@ function readOnboardedAtCached(userId: string): Promise<OnboardedAtState> {
 // Doble gate del dashboard:
 //   1) Si no hay sesión → /login?next=/dashboard/user (defensa en profundidad;
 //      el proxy.ts ya redirige acceso anónimo a /dashboard/*, pero por
-//      cinturones y tirantes lo replicamos acá en caso de que el matcher
+//      cinturones y tirantes lo replicamos aquí en caso de que el matcher
 //      no aplique o la cookie esté corrupta).
 //   2) Si hay sesión pero el wizard no se completó (profiles.onboarded_at IS
 //      NULL), lo mandamos a /onboarding antes de cualquier pantalla.

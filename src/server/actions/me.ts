@@ -51,7 +51,7 @@ export async function completeOnboarding(
 
 // ── updateMyAvatar ─────────────────────────────────────────────────────
 // Recibe la URL pública del avatar ya subido a storage por el cliente.
-// El cliente sube via @supabase/storage-js (que respeta RLS), acá solo
+// El cliente sube via @supabase/storage-js (que respeta RLS), aquí solo
 // reflejamos la URL en `profiles.avatar_url`.
 const UpdateAvatarSchema = z.object({
   avatarUrl: z.string().url().nullable(),

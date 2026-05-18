@@ -264,6 +264,36 @@ body {
 }
 .mp-card-hover:active { transform: translateY(-2px) scale(0.99); }
 
+/* Nombre del club como link — solo atenúa el texto en hover.
+   Forzamos text-decoration:none también en hover por si algún UA
+   reintroduce el underline. */
+.mp-club-name-link,
+.mp-club-name-link:hover,
+.mp-club-name-link:focus,
+.mp-club-name-link:visited {
+  text-decoration: none !important;
+}
+.mp-club-name-link {
+  transition: opacity 180ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-club-name-link:hover { opacity: 0.55; }
+}
+
+/* Variante quieta: solo sombra + borde, sin mover la card.
+   Útil cuando hay mucho movimiento alrededor o la card es grande. */
+.mp-card-hover-still {
+  transition:
+    box-shadow 220ms var(--ease-out),
+    border-color 220ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-card-hover-still:hover {
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.09);
+    border-color: rgba(10, 10, 10, 0.3);
+  }
+}
+
 /* Stagger: aplica delay incremental a hijos directos del contenedor.
    El delay se mantiene corto (45ms) para no entorpecer la interacción.
    Cubre hasta 12 items, que basta para grids 3x4 / 4x3 del landing. */
@@ -314,9 +344,6 @@ body {
     transform: none !important;
     transition: box-shadow 220ms ease, border-color 220ms ease;
   }
-  .mp-card-hover:hover .mp-card-image {
-    transform: none;
-  }
   .mp-stagger > * {
     opacity: 1;
     transform: none;
@@ -325,7 +352,6 @@ body {
   .mp-reveal {
     transition: opacity 200ms ease;
   }
-  .mp-nav-link::after,
   .mp-shine::after {
     display: none;
   }
@@ -335,41 +361,22 @@ body {
   }
 }
 
-/* Image zoom dentro de una card. El padre debe tener `mp-card-hover` y
-   `overflow: hidden`. El hijo recibe scale(1.05) al pasar el mouse por la card.
-   Solo se aplica en devices con pointer fino. */
-.mp-card-image {
-  transition: transform 400ms var(--ease-out);
-  will-change: transform;
-}
-@media (hover: hover) and (pointer: fine) {
-  .mp-card-hover:hover .mp-card-image {
-    transform: scale(1.06);
-  }
-}
-
-/* Nav link con underline animado de izquierda a derecha en hover.
-   El underline se ubica dentro del padding del link y respeta `color: currentColor`. */
+/* Nav link: background + color controlados desde CSS para que el hover
+   pueda ganar sobre el estado base (los inline styles pisarían cualquier
+   regla CSS sin !important). El activo usa el pill gris ya conocido. */
 .mp-nav-link {
-  position: relative;
+  background: transparent;
+  color: var(--muted-fg);
 }
-.mp-nav-link::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 4px;
-  height: 2px;
-  background: currentColor;
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 220ms var(--ease-out);
-  pointer-events: none;
-  border-radius: 2px;
+.mp-nav-link[data-active="true"] {
+  background: var(--muted);
+  color: #0a0a0a;
 }
 @media (hover: hover) and (pointer: fine) {
-  .mp-nav-link:hover::after {
-    transform: scaleX(1);
+  .mp-nav-link[data-active="false"]:hover,
+  .mp-nav-link[data-active="false"]:focus-visible {
+    background: rgba(10, 10, 10, 0.05);
+    color: #0a0a0a;
   }
 }
 
@@ -403,6 +410,392 @@ body {
 .mp-shine > * {
   position: relative;
   z-index: 2;
+}
+
+/* Save / bookmark button — press feedback + state morph + icon pop.
+   El ícono interno debe estar envuelto en .mp-save-icon para que el pop
+   solo afecte al glyph (sin escalar el botón entero). */
+.mp-save-btn {
+  transition:
+    background 200ms var(--ease-out),
+    color 200ms var(--ease-out),
+    border-color 200ms var(--ease-out),
+    box-shadow 200ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.mp-save-btn:active {
+  transform: scale(0.9);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-save-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  }
+  .mp-save-btn:active:hover {
+    transform: scale(0.9);
+  }
+}
+.mp-save-icon {
+  display: inline-flex;
+  transform-origin: center;
+}
+.mp-save-btn[data-saved="true"] .mp-save-icon {
+  animation: mpSavePop 360ms var(--ease-out);
+}
+@keyframes mpSavePop {
+  0%   { transform: scale(0.5); }
+  55%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-save-btn:active { transform: none; }
+  .mp-save-btn[data-saved="true"] .mp-save-icon { animation: none; }
+}
+
+/* Upgrade banner (dashboard home) — entrada suave, dismiss con salida,
+   CTA y close con feedback. El usuario lo ve seguido, así que nada de
+   loops decorativos: solo motion ligada a acción o aparición. */
+.mp-upgrade-banner {
+  animation: mpBannerIn 480ms var(--ease-out);
+  transform-origin: top center;
+}
+.mp-upgrade-banner[data-closing="true"] {
+  animation: mpBannerOut 240ms var(--ease-out) forwards;
+  pointer-events: none;
+}
+@keyframes mpBannerIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes mpBannerOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+
+.mp-upgrade-crown {
+  animation: mpCrownIn 600ms var(--ease-out) 240ms backwards;
+}
+@keyframes mpCrownIn {
+  0%   { transform: scale(0.45) rotate(-14deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.mp-upgrade-cta {
+  transition:
+    background 180ms var(--ease-out),
+    box-shadow 220ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.mp-upgrade-cta:hover {
+  background: #fde047;
+  box-shadow: 0 8px 22px rgba(250, 204, 21, 0.35);
+}
+.mp-upgrade-cta:active { transform: scale(0.97); }
+
+.mp-upgrade-close {
+  transition:
+    background 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.mp-upgrade-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.mp-upgrade-close:active { transform: scale(0.9); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mp-upgrade-banner,
+  .mp-upgrade-banner[data-closing="true"],
+  .mp-upgrade-crown {
+    animation: none;
+  }
+  .mp-upgrade-cta:active,
+  .mp-upgrade-close:active {
+    transform: none;
+  }
+}
+
+/* Panel de notificaciones — entrada suave al abrir desde el bell.
+   transform-origin top-right hace que escale desde la esquina del trigger. */
+.mp-notif-panel {
+  animation: mpNotifPanelIn 200ms var(--ease-out);
+}
+@keyframes mpNotifPanelIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-notif-panel { animation: none; }
+}
+
+/* Badge de notificaciones — pop al aparecer o al incrementar. La animación
+   se re-dispara cambiando la `key` del span desde React. */
+.mp-notif-badge {
+  animation: mpBadgePop 420ms var(--ease-out);
+  transform-origin: center;
+}
+@keyframes mpBadgePop {
+  0%   { transform: scale(0.4); }
+  55%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-notif-badge { animation: none; }
+}
+
+/* Modal genérico — backdrop fade + panel scale-in. Lo usan PaymentModePicker
+   y CancelConfirmModal (y cualquier futuro modal que monte en overlay). */
+.mp-modal-backdrop {
+  animation: mpModalBackdropIn 220ms var(--ease-out);
+}
+@keyframes mpModalBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.mp-modal-panel {
+  animation: mpModalPanelIn 320ms var(--ease-out);
+  transform-origin: center;
+}
+@keyframes mpModalPanelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-modal-backdrop,
+  .mp-modal-panel { animation: none; }
+}
+
+/* MPR range slider — dos input[type=range] superpuestos, thumbs negros. */
+input[type="range"].mp-mpr,
+.mp-mpr-track input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.mp-mpr-track input[type="range"]::-webkit-slider-runnable-track,
+.mp-mpr-track input[type="range"]::-moz-range-track {
+  background: transparent;
+  border: 0;
+  height: 20px;
+}
+.mp-mpr-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0a0a0a;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  cursor: pointer;
+  margin-top: 1px;
+}
+.mp-mpr-track input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0a0a0a;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+.mp-mpr-track input[type="range"]:disabled::-webkit-slider-thumb,
+.mp-mpr-track input[type="range"]:disabled::-moz-range-thumb {
+  background: #888;
+  cursor: not-allowed;
+}
+
+/* Payment mode picker — opciones con stagger entrance + hover sutil. */
+.mp-pay-option {
+  transition:
+    border-color 180ms var(--ease-out),
+    background 180ms var(--ease-out),
+    transform 140ms var(--ease-out),
+    box-shadow 200ms var(--ease-out);
+  animation: mpPayOptionIn 380ms var(--ease-out) both;
+}
+.mp-pay-option:nth-of-type(1) { animation-delay: 80ms; }
+.mp-pay-option:nth-of-type(2) { animation-delay: 130ms; }
+@keyframes mpPayOptionIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mp-pay-option .mp-pay-option-arrow {
+  transition: transform 220ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-pay-option:hover {
+    border-color: #0a0a0a;
+    background: #fafafa;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  }
+  .mp-pay-option:hover .mp-pay-option-arrow {
+    transform: translateX(4px);
+  }
+}
+.mp-pay-option:active { transform: scale(0.99); }
+@media (prefers-reduced-motion: reduce) {
+  .mp-pay-option { animation: none; }
+  .mp-pay-option:hover { transform: none; box-shadow: none; }
+  .mp-pay-option .mp-pay-option-arrow { transition: none; }
+  .mp-pay-option:active { transform: none; }
+}
+
+/* Bell / notifications button — morph del bg al abrir, press feedback y
+   un wiggle one-shot del ícono solo cuando se abre (no al cerrar). */
+.mp-bell-btn {
+  transition:
+    background 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.mp-bell-btn:active { transform: scale(0.92); }
+.mp-bell-icon {
+  display: inline-flex;
+  transform-origin: 50% 18%;
+}
+.mp-bell-icon[data-ringing="true"] {
+  animation: mpBellRing 1200ms var(--ease-out);
+}
+@keyframes mpBellRing {
+  0%   { transform: rotate(0); }
+  15%  { transform: rotate(-35deg); }
+  30%  { transform: rotate(30deg); }
+  45%  { transform: rotate(-22deg); }
+  60%  { transform: rotate(16deg); }
+  75%  { transform: rotate(-9deg); }
+  100% { transform: rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-bell-btn:active { transform: none; }
+  .mp-bell-icon[data-ringing="true"] { animation: none; }
+}
+
+/* Link de fila en "Mis torneos" — solo fecha+nombre clickeables.
+   Hover (Emil): nombre baja opacidad sutil y la flecha se desliza 3px,
+   sin mover el bloque entero ni cambiar colores agresivos. */
+.mp-tournament-link {
+  transition: opacity 180ms var(--ease-out);
+}
+.mp-tournament-name {
+  color: #0a0a0a;
+  transition: color 180ms var(--ease-out);
+}
+.mp-tournament-arrow {
+  opacity: 0;
+  transform: translateX(-4px);
+  color: var(--primary);
+  font-weight: 900;
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 220ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-tournament-link:hover .mp-tournament-name {
+    color: var(--primary);
+  }
+  .mp-tournament-link:hover .mp-tournament-arrow {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-tournament-arrow { transition: none; opacity: 1; transform: none; }
+}
+
+/* Panel CTA — "Ver todo →" típico de cards del dashboard.
+   Hover: el texto se intensifica y la flecha se desliza a la derecha. */
+.mp-panel-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary) !important;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none !important;
+  transition: color 180ms var(--ease-out);
+}
+.mp-panel-cta:visited,
+.mp-panel-cta:focus {
+  color: var(--primary) !important;
+}
+.mp-panel-cta-arrow {
+  display: inline-block;
+  transition: transform 220ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-panel-cta:hover {
+    color: var(--primary-hover) !important;
+  }
+  .mp-panel-cta:hover .mp-panel-cta-arrow {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-panel-cta-arrow { transition: none; }
+  .mp-panel-cta:hover .mp-panel-cta-arrow { transform: none; }
+}
+
+/* Quick action button — del dashboard inicio. Hover sutil + press feedback +
+   pop del ícono. El ícono debe envolverse en .mp-quick-action-icon. */
+.mp-quick-action {
+  transition:
+    background 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    box-shadow 220ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+.mp-quick-action-icon {
+  display: inline-flex;
+  transition: transform 220ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-quick-action:hover {
+    background: #fafafa;
+    border-color: rgba(10, 10, 10, 0.25);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
+  }
+  .mp-quick-action:hover .mp-quick-action-icon {
+    transform: scale(1.12);
+  }
+}
+.mp-quick-action:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .mp-quick-action,
+  .mp-quick-action:hover,
+  .mp-quick-action:active {
+    transform: none;
+  }
+  .mp-quick-action:hover .mp-quick-action-icon { transform: none; }
+}
+
+/* Follow club button — press feedback + hover sutil cuando aún no sigue.
+   Cuando ya sigue, el bg es semitransparente — hover lo intensifica. */
+.mp-follow-btn {
+  transition:
+    background 180ms var(--ease-out),
+    transform 140ms var(--ease-out),
+    opacity 180ms var(--ease-out);
+}
+.mp-follow-btn:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .mp-follow-btn[data-following="false"]:hover {
+    background: #f5f5f5;
+  }
+  .mp-follow-btn[data-following="true"]:hover {
+    background: rgba(255, 255, 255, 0.28);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-follow-btn:active { transform: none; }
 }
 
 /* Footer link hover — texto a blanco para señalar opción activa. */

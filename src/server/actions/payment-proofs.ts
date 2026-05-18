@@ -2,15 +2,21 @@
 
 // Flujo de comprobantes de pago (transferencia bancaria o DeUna).
 // MatchPoint no usa PSP. El usuario hace la transferencia fuera de la app,
-// sube el comprobante a Storage (bucket `payment_proofs`), y el admin lo
-// valida manualmente. Estados relevantes de `transactions.status`:
+// sube el comprobante a Storage (bucket `payment_proofs`). Estados:
 //
 //   pending_proof     → esperando que el usuario suba comprobante
 //   proof_submitted   → comprobante subido, esperando revisión admin
-//   captured          → admin aprobó → transacción cobrada
+//   captured          → cobrado
 //
-// Rechazo: el admin pasa la transacción de vuelta a `pending_proof` con un
-// motivo en `proof_rejection_reason`, para que el usuario pueda re-subir.
+// IMPORTANTE — política de auto-captura para inscripciones de torneo
+// (kind='tournament'): cuando el jugador sube comprobante, la transacción
+// pasa directo a `captured` y la registration a `accepted`, sin revisión.
+// Decisión del producto para minimizar fricción. Si aparecen comprobantes
+// falsos, queda audit log en `audit_log` y se puede revertir manualmente.
+// Otros kinds (plan, evento, club_featuring) siguen con revisión admin.
+//
+// Rechazo (kinds con revisión): el admin pasa la transacción de vuelta a
+// `pending_proof` con un motivo en `proof_rejection_reason`.
 //
 // Audit log: las tablas críticas (incluida `transactions`) tienen trigger
 // `tg_audit` aplicado en 099_audit_triggers.sql, por lo que cada UPDATE
@@ -20,6 +26,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -90,7 +97,7 @@ export async function submitPaymentProof(
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
-      .select("id,customer_user_id,status")
+      .select("id,customer_user_id,status,kind")
       .eq("id", transactionId)
       .maybeSingle();
     if (readErr) throw new MpError("PAYMENT_PROOF.DB_ERROR", readErr.message, 500);
@@ -106,18 +113,43 @@ export async function submitPaymentProof(
       );
     }
 
-    const { data, error } = await supabase
+    // Inscripciones de torneos: auto-capturamos al subir comprobante (decisión
+    // del producto — sin revisión de admin). Otros kinds (plan, evento,
+    // club_featuring) siguen pasando por revisión manual.
+    const autoCapture = tx.kind === "tournament";
+    const nowIso = new Date().toISOString();
+    const updatePayload: Record<string, unknown> = {
+      proof_url: proofUrl,
+      proof_submitted_at: nowIso,
+      proof_rejection_reason: null,
+      status: autoCapture ? "captured" : "proof_submitted",
+    };
+    if (autoCapture) {
+      updatePayload.proof_reviewed_at = nowIso;
+      updatePayload.proof_reviewed_by = null;
+    }
+
+    // Auth ya validada arriba (customer_user_id === userId). RLS de
+    // transactions no expone UPDATE al customer, así que usamos service role
+    // para esta mutación — la validación de identidad ya pasó.
+    const admin = getAdminClient();
+    const { data, error } = await admin
       .from("transactions")
-      .update({
-        proof_url: proofUrl,
-        proof_submitted_at: new Date().toISOString(),
-        proof_rejection_reason: null,
-        status: "proof_submitted",
-      } as never)
+      .update(updatePayload as never)
       .eq("id", transactionId)
       .select("id,status,proof_url,proof_submitted_at,proof_reviewed_at,proof_rejection_reason")
       .single();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+
+    if (autoCapture) {
+      // Marcar la inscripción del torneo como aceptada. Reusamos el admin
+      // client ya creado arriba.
+      await admin
+        .from("registrations")
+        .update({ status: "accepted" } as never)
+        .eq("paid_transaction_id", transactionId);
+    }
+
     return mapResult(data);
   });
 }
@@ -136,7 +168,10 @@ export async function approvePaymentProofAdmin(
 ): Promise<ActionResult<PaymentProofResult>> {
   return runAction(ApproveSchema, input, async ({ transactionId }) => {
     const reviewerId = await requireAdminUserId();
-    const supabase = await getServerClient();
+    // Admin no tiene policy de UPDATE en transactions (solo staff de club).
+    // Después de validar admin via requireAdminUserId, usamos service role.
+    const supabase = getAdminClient();
+    await setAuditActor(supabase, reviewerId, "admin");
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
@@ -270,11 +305,14 @@ export async function rejectPaymentProofAdmin(
 ): Promise<ActionResult<PaymentProofResult>> {
   return runAction(RejectSchema, input, async ({ transactionId, reason }) => {
     const reviewerId = await requireAdminUserId();
-    const supabase = await getServerClient();
+    // Mismo motivo que approve: admin no tiene policy de UPDATE en
+    // transactions, después de validar admin usamos service role.
+    const supabase = getAdminClient();
+    await setAuditActor(supabase, reviewerId, "admin");
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
-      .select("id,status")
+      .select("id,status,customer_user_id,kind,ref_id")
       .eq("id", transactionId)
       .maybeSingle();
     if (readErr) throw new MpError("PAYMENT_PROOF.DB_ERROR", readErr.message, 500);
@@ -304,6 +342,31 @@ export async function rejectPaymentProofAdmin(
       .single();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
 
+    // Notificar al customer con la razón del rechazo. Best-effort: si falla
+    // la cola, la mutación principal sigue siendo válida.
+    const customerId = tx.customer_user_id as string | null;
+    if (customerId) {
+      const { error: jobErr } = await supabase.from("notification_jobs").insert({
+        user_id: customerId,
+        role: "user",
+        kind: "payment_proof_rejected",
+        channel: "inapp",
+        payload: {
+          transaction_id: transactionId,
+          transaction_kind: tx.kind,
+          ref_id: tx.ref_id,
+          rejection_reason: reason,
+        },
+        status: "pending",
+      } as never);
+      if (jobErr) {
+        console.error(
+          "[rejectPaymentProofAdmin] enqueue rejection notification failed:",
+          jobErr.message,
+        );
+      }
+    }
+
     return mapResult(data);
   });
 }
@@ -332,7 +395,9 @@ export async function listPendingProofsAdmin(): Promise<
 > {
   return runAction(z.object({}).optional(), undefined, async () => {
     await requireAdminUserId();
-    const supabase = await getServerClient();
+    // Admin SELECT en transactions tampoco está cubierto por RLS, requiere
+    // service role tras validar el rol.
+    const supabase = getAdminClient();
 
     const { data: txs, error } = await supabase
       .from("transactions")

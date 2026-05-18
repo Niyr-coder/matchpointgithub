@@ -3,7 +3,9 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { CoachPagosScreenView, type PagosData, type TxRow } from "./CoachPagosScreenView";
 
-const COMMISSION_PCT = 0.2; // 20% comisión club default (sin tabla coach_clubs.commission_pct todavía)
+// Default si no hay row en coach_commissions para el (coach, club) — el
+// coach que recién se asocia a un club hereda 20% hasta que se negocie.
+const DEFAULT_COMMISSION_PCT = 0.2;
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
@@ -30,11 +32,34 @@ async function loadData(): Promise<PagosData> {
   // Sessions + lessons del coach del mes
   const { data: myClasses } = await supabase
     .from("classes")
-    .select("id,name")
+    .select("id,name,club_id")
     .eq("coach_id", coachId);
   const classIds = (myClasses ?? []).map((c) => c.id as string);
   const className = new Map<string, string>();
-  for (const c of myClasses ?? []) className.set(c.id as string, c.name as string);
+  const classClub = new Map<string, string>();
+  const coachClubIds = new Set<string>();
+  for (const c of myClasses ?? []) {
+    className.set(c.id as string, c.name as string);
+    if (c.club_id) {
+      classClub.set(c.id as string, c.club_id as string);
+      coachClubIds.add(c.club_id as string);
+    }
+  }
+
+  // Mapa de comisión por club según coach_commissions. Fallback DEFAULT.
+  type CommissionRow = { club_id: string; commission_pct: number | string };
+  const commissionPctByClub = new Map<string, number>();
+  if (coachClubIds.size > 0) {
+    const { data: commRows } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("coach_commissions" as any)
+      .select("club_id,commission_pct")
+      .eq("coach_id", coachId)
+      .in("club_id", Array.from(coachClubIds));
+    for (const r of ((commRows ?? []) as unknown as CommissionRow[])) {
+      commissionPctByClub.set(r.club_id, Number(r.commission_pct) / 100);
+    }
+  }
 
   const [{ data: sessions }, { data: lessons }] = await Promise.all([
     classIds.length > 0
@@ -93,11 +118,22 @@ async function loadData(): Promise<PagosData> {
   const nameById = new Map<string, string>();
   for (const p of profiles ?? []) nameById.set(p.id as string, (p.display_name as string) ?? "Alumno");
 
+  // Acumuladores: gross y commission per-row para soportar % distinto por club.
   let grossCents = 0;
+  let commissionCentsAccum = 0;
   const rows: TxRow[] = (txns ?? []).map((t) => {
     const refId = t.ref_id as string;
     const amt = (t.amount_cents as number) ?? 0;
-    if (t.status === "captured") grossCents += amt;
+    if (t.status === "captured") {
+      grossCents += amt;
+      // Resolver % comisión por club: refId → class → club → coach_commissions.
+      const clsId = refClass.get(refId);
+      const clubId = clsId ? classClub.get(clsId) : undefined;
+      const pct = clubId && commissionPctByClub.has(clubId)
+        ? commissionPctByClub.get(clubId)!
+        : DEFAULT_COMMISSION_PCT;
+      commissionCentsAccum += Math.round(amt * pct);
+    }
 
     let who = "—";
     let concept = "Clase";
@@ -125,7 +161,7 @@ async function loadData(): Promise<PagosData> {
     };
   });
 
-  const commissionCents = Math.round(grossCents * COMMISSION_PCT);
+  const commissionCents = commissionCentsAccum;
   const netCents = grossCents - commissionCents;
 
   return {

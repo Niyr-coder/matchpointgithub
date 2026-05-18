@@ -12,13 +12,23 @@ function fmtRange(o: { open?: string; close?: string } | undefined): string {
 
 async function loadData(): Promise<ConfigData> {
   const clubId = await resolveActiveClubId();
-  if (!clubId) return { clubId: null, sections: null, logoUrl: null, coverUrl: null };
+  if (!clubId)
+    return {
+      clubId: null,
+      sections: null,
+      logoUrl: null,
+      coverUrl: null,
+      latitude: null,
+      longitude: null,
+      version: null,
+    };
 
   const supabase = await getServerClient();
-  const [{ data: club }, { data: settings }, { data: courts }] = await Promise.all([
+  const [{ data: clubRaw }, { data: settings }, { data: courts }] = await Promise.all([
     supabase
       .from("clubs")
-      .select("name,address,phone,email,slug,city,country,logo_url,cover_url")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("name,address,phone,email,slug,city,country,logo_url,cover_url,latitude,longitude,version" as any)
       .eq("id", clubId)
       .maybeSingle(),
     supabase
@@ -92,6 +102,28 @@ async function loadData(): Promise<ConfigData> {
     tarifasItems.push(["Cargo por no-show", `${settings.charge_no_show_pct}% del valor`]);
   }
 
+  const club = clubRaw as unknown as {
+    name: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    slug: string | null;
+    city: string | null;
+    country: string | null;
+    logo_url: string | null;
+    cover_url: string | null;
+    latitude: number | string | null;
+    longitude: number | string | null;
+    version: number | null;
+  } | null;
+
+  const lat = club?.latitude != null ? Number(club.latitude as unknown as string) : null;
+  const lng = club?.longitude != null ? Number(club.longitude as unknown as string) : null;
+  const ubicacionLabel =
+    lat != null && lng != null
+      ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+      : "Sin definir";
+
   const sections: Record<string, Section> = {
     info: {
       i: "building-2",
@@ -109,6 +141,11 @@ async function loadData(): Promise<ConfigData> {
         ["Email", (club?.email as string) ?? "—"],
         ["Slug público", club?.slug ? `/${club.slug}` : "—"],
       ],
+    },
+    ubicacion: {
+      i: "map-pin",
+      t: "Ubicación",
+      items: [["Pin en mapa", ubicacionLabel]],
     },
     horarios: { i: "clock", t: "Horarios", items: horariosItems },
     tarifas: { i: "wallet", t: "Tarifas", items: tarifasItems },
@@ -129,8 +166,11 @@ async function loadData(): Promise<ConfigData> {
   return {
     clubId,
     sections,
-    logoUrl: (club?.logo_url as string | null | undefined) ?? null,
-    coverUrl: (club?.cover_url as string | null | undefined) ?? null,
+    logoUrl: club?.logo_url ?? null,
+    coverUrl: club?.cover_url ?? null,
+    latitude: lat,
+    longitude: lng,
+    version: club?.version ?? 1,
   };
 }
 

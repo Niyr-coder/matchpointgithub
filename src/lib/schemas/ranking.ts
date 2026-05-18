@@ -1,7 +1,7 @@
 // Ranking schemas: leaderboard rows, match results, snapshots.
 import { z } from "zod";
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
-import { IsoDateTimeSchema, MpSportSchema, UuidSchema } from "./common";
+import { IsoDateTimeSchema, MpMatchModeSchema, MpSportSchema, UuidSchema } from "./common";
 
 extendZodWithOpenApi(z);
 
@@ -16,6 +16,7 @@ export const RankingEntrySchema = z
     avatarUrl: z.string().url().nullable(),
     city: z.string().nullable(),
     sport: MpSportSchema,
+    mode: MpMatchModeSchema.default("singles"),
     rank: z.number().int(),
     currentRating: z.number().int(),
     wins: z.number().int(),
@@ -68,6 +69,7 @@ export const MatchResultSchema = z
 export const RankingListParamsSchema = z
   .object({
     sport: MpSportSchema,
+    mode: MpMatchModeSchema.default("singles"),
     country: z.string().optional(),
     city: z.string().optional(),
     page: z.coerce.number().int().min(1).default(1),

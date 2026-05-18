@@ -18,9 +18,20 @@ create or replace function tg_set_updated_at() returns trigger language plpgsql 
 begin new.updated_at = now(); return new; end $$;
 
 -- audit_log writer reutilizable
+-- mig 086: prefiere current_setting('app.audit_actor_id') sobre auth.uid()
+-- para capturar al admin cuando la acción usa service-role (donde auth.uid()
+-- es null). El admin client debe llamar mp_set_audit_actor(adminId, 'admin')
+-- antes de cada mutación (helper TS: setAuditActor en src/lib/db/client.admin.ts).
 create or replace function tg_audit() returns trigger language plpgsql as $$
-declare _actor uuid := auth.uid();
-        _role text := coalesce(current_setting('app.active_role', true), 'system');
+declare _actor uuid := coalesce(
+          auth.uid(),
+          nullif(current_setting('app.audit_actor_id', true), '')::uuid
+        );
+        _role text := coalesce(
+          nullif(current_setting('app.audit_actor_role', true), ''),
+          nullif(current_setting('app.active_role', true), ''),
+          case when _actor is not null then 'user' else 'system' end
+        );
         _club uuid := nullif(current_setting('app.active_club_id', true), '')::uuid;
         _diff jsonb;
 begin
@@ -34,6 +45,19 @@ begin
   return coalesce(NEW, OLD);
 end $$;
 ```
+
+> **Patrón admin actor (mig 086).** Cuando una server action admin hace
+> mutación vía `getAdminClient()` (service-role), `auth.uid()` retorna
+> null y el trigger registraría `actor_id=null, actor_role='system'`. Eso
+> rompe trazabilidad ("¿quién dio premium a este user?"). Fix: llamar
+> `setAuditActor(admin, adminId, 'admin')` antes de cualquier UPDATE/
+> INSERT/DELETE. Internamente hace `select set_config('app.audit_actor_id',
+> adminId, false)`. Limitación PgBouncer: como el setting es por sesión
+> sin `is_local=true`, la conexión puede reciclarse entre requests; es
+> best-effort, no bulletproof. Ya aplicado en `player-subscriptions.ts`
+> (grant/revoke MatchPoint+) y `payment-proofs.ts` (approve/reject).
+> Acciones admin de torneos no necesitan el helper porque usan
+> `getServerClient()` (cookie-auth, sí captura `auth.uid()`).
 
 ---
 
@@ -1812,6 +1836,206 @@ create or replace view v_unread_notifications as
 **Cross (6):** 21 tablas
 
 **Total ≈ 85 tablas** + 1 vista materializada + 1 vista + funciones helper (incluye `fn_materialize_club_from_application`).
+
+---
+
+## 29. Tablas añadidas después del MVP (migrations 064+)
+
+Cambios incrementales que el resto de la doc todavía no menciona. Cuando
+implementes una feature que toque torneos, comisiones o payouts, **leé esta
+sección antes** — la mayoría de los bugs vienen de no saber que estas
+columnas/tablas ya existen.
+
+### 29.1 · Stats split por modalidad (mig 064)
+
+```sql
+-- player_stats: pkey ahora (user_id, mode) en vez de user_id solo.
+-- mode ∈ ('singles','doubles')
+alter table player_stats add column mode text not null default 'singles';
+alter table player_stats drop constraint player_stats_pkey;
+alter table player_stats add primary key (user_id, mode);
+```
+
+### 29.2 · Tournaments — modalidad + scoring + ends_at nullable
+
+```sql
+-- migs 070, 073, 075-076
+create type mp_tournament_modality as enum ('singles', 'doubles', 'mixed_doubles');
+
+alter table tournaments
+  add column modality mp_tournament_modality not null default 'doubles',
+  add column scoring_config jsonb not null default
+    '{"type":"side_out","points":11,"winBy":2,"bestOf":3}'::jsonb,
+  add column is_featured boolean not null default false;
+-- ends_at deja de ser NOT NULL — torneo de un solo día puede tener solo starts_at.
+alter table tournaments alter column ends_at drop not null;
+```
+
+`scoring_config` shape:
+```ts
+{
+  type: "side_out" | "rally",
+  points: 11 | 15 | 21,
+  winBy: number,    // típico 2
+  bestOf: 1 | 3 | 5
+}
+```
+
+Presets oficiales en `src/components/dashboard/partner/CreateTournamentFlow.tsx`
+(constante `SCORING_PRESETS`): Trad BO3-11, Rally BO3-15, Rally 1-21, Trad
+BO5-11, Popcorn (rally 15 BO1 con rotación de parejas).
+
+### 29.3 · Tournament_categories — rating MPR
+
+```sql
+-- migs 075, 076 (DUPR → MPR rename)
+alter table tournament_categories
+  add column mpr_min numeric(3,2),
+  add column mpr_max numeric(3,2),
+  add constraint tc_mpr_range_chk check (
+    (mpr_min is null or (mpr_min >= 2.0 and mpr_min <= 8.0)) and
+    (mpr_max is null or (mpr_max >= 2.0 and mpr_max <= 8.0)) and
+    (mpr_min is null or mpr_max is null or mpr_min <= mpr_max)
+  );
+```
+
+**MPR = MatchPoint Rating** (escala 2.0-8.0). Rango abierto = open, sin
+mpr_max = "5.5+", ambos null = sin filtro de nivel. Esto NO es DUPR aunque
+la escala coincida — es naming propio de la plataforma.
+
+### 29.4 · Tournament_prizes (mig 077)
+
+```sql
+create table tournament_prizes (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid not null references tournaments(id) on delete cascade,
+  position int not null default 0,            -- orden de display
+  place_label text not null,                  -- "1°", "Mejor remontada", etc
+  prize_label text not null,                  -- "Trofeo + $500 + kit Selkirk"
+  value_cents int,                            -- opcional para sumar prize pool
+  sponsor text,                               -- opcional
+  created_at timestamptz not null default now()
+);
+```
+
+CRUD partner+admin (vía `requireTournamentEditor` en server actions, no RLS
+directa para customer). Render en `PrizesPanel` + preview público.
+
+### 29.5 · Tournament_schedule_blocks (mig 074)
+
+```sql
+create table tournament_schedule_blocks (
+  id uuid primary key default gen_random_uuid(),
+  tournament_id uuid not null references tournaments(id) on delete cascade,
+  category_id uuid references tournament_categories(id) on delete set null,
+  starts_at timestamptz not null,
+  label text not null,                        -- "Cat B fase grupos"
+  notes text,                                 -- "Cancha 3-4"
+  created_at timestamptz not null default now(),
+  created_by uuid references profiles(id)
+);
+```
+
+Cronograma editable por partner. SELECT público (los jugadores ven la agenda),
+mutación admin+partner via service role tras `requireTournamentEditor`.
+
+### 29.6 · Platform_config (mig 080)
+
+```sql
+create table platform_config (
+  key text primary key,
+  value jsonb not null,
+  description text,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references profiles(id)
+);
+```
+
+Keys seedeadas:
+- `take_rate_pct` (default 10) — % comisión MP sobre transacciones de torneo
+- `estelar_price_cents` (default 2000) — costo de marcar torneo como estelar
+- `refund_window_days` (default 7) — plazo de devolución tras cancelar
+
+Helper en `src/server/queries/platform-config.ts` con cache TTL 1 min.
+
+### 29.7 · Payouts (mig 081)
+
+```sql
+create type mp_payout_status as enum
+  ('pending', 'processing', 'paid', 'failed', 'cancelled');
+
+create table payouts (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid references clubs(id) on delete set null,
+  partner_id uuid references partner_orgs(id) on delete set null,
+  amount_cents int not null check (amount_cents >= 0),
+  currency text not null default 'USD',
+  period_start date not null,
+  period_end date not null,
+  status mp_payout_status not null default 'pending',
+  method text,                  -- 'transfer' | 'deuna' | etc
+  reference text,                -- nro de comprobante
+  notes text,
+  created_at timestamptz not null default now(),
+  processed_at timestamptz,
+  processed_by uuid references profiles(id),
+  constraint payouts_recipient_chk check (
+    (club_id is not null and partner_id is null) or
+    (club_id is null and partner_id is not null)
+  )
+);
+```
+
+Hoy se insertan a mano al cerrar período. **Pendiente**: cron que los genere
+automáticamente leyendo transactions `captured` y restando `take_rate_pct`.
+
+### 29.8 · Coach_commissions (mig 082)
+
+```sql
+create table coach_commissions (
+  coach_id uuid not null references coach_profiles(id) on delete cascade,
+  club_id uuid not null references clubs(id) on delete cascade,
+  commission_pct numeric(5,2) not null check (commission_pct between 0 and 100),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (coach_id, club_id)
+);
+```
+
+Si no hay row para (coach, club) → fallback 20% hardcoded en
+`CoachPagosScreen.tsx`. Reemplaza al `COMMISSION_PCT = 0.2` literal viejo.
+
+### 29.9 · Notification_kinds añadidos
+
+Sumados a la tabla `notification_kinds` post-MVP:
+
+| Kind | Migration | Disparador | Recipient |
+|---|---|---|---|
+| `tournament_rescheduled` | 045 | `updateTournamentByOrganizer` al cambiar fechas | inscritos pending+accepted |
+| `tournament_cancelled` | 071 | `setTournamentStatus(cancelled)` y `cancelTournament` | inscritos pending+accepted |
+| `registration_accepted` | 079 | `updateRegistrationStatus(accepted)` | jugadores del registration |
+| `registration_rejected` | 079 | `updateRegistrationStatus(rejected)` | jugadores del registration |
+| `payment_proof_rejected` | 079 | `rejectPaymentProofAdmin` | customer_user_id de la tx |
+
+Branches del dispatcher en migs 050, 072, 079 (recreación incremental de
+`fn_dispatch_inapp_notifications`). Catálogo completo en
+`docs/guides/02-notifications.md` (cuando exista).
+
+### 29.10 · Realtime publication
+
+Tablas en `supabase_realtime` publication (migs 061, 078):
+
+```
+notifications, reservations, ranking_snapshots, player_stats,
+tournaments, registrations, club_followers,
+tournament_categories, tournament_schedule_blocks, tournament_prizes
+```
+
+Si agregas una tabla nueva que el cliente quiera escuchar, sumarla con:
+```sql
+alter publication supabase_realtime add table public.<tabla>;
+```
 
 ---
 

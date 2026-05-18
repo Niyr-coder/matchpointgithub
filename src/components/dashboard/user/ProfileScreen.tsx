@@ -2,7 +2,7 @@
 // preferences quedan mock hasta tener schema dedicado.
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
-import { ProfileScreenView, type ProfileData } from "./ProfileScreenView";
+import { ProfileScreenView, type ProfileData, type ModeRating } from "./ProfileScreenView";
 
 const STARTING_RATING = 2500;
 const SPORT_PRIMARY = "pickleball" as const;
@@ -27,6 +27,8 @@ async function loadProfile(): Promise<ProfileData> {
       matchesTotal: 0,
       wins: 0,
       losses: 0,
+      ratings: { singles: null, doubles: null },
+      matchHistory: [],
     };
   }
 
@@ -34,9 +36,10 @@ async function loadProfile(): Promise<ProfileData> {
 
   const [
     { data: profile },
-    { data: stats },
+    { data: statsRows },
     { data: rankRows },
     { data: roleRows },
+    { data: rawMatches },
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -45,13 +48,12 @@ async function loadProfile(): Promise<ProfileData> {
       .maybeSingle(),
     supabase
       .from("player_stats")
-      .select("matches_total,wins,losses,current_rating")
+      .select("mode,matches_total,wins,losses,current_rating")
       .eq("user_id", userId)
-      .eq("sport", SPORT_PRIMARY)
-      .maybeSingle(),
+      .eq("sport", SPORT_PRIMARY),
     supabase
       .from("mv_user_ranking")
-      .select("rank")
+      .select("rank,mode")
       .eq("user_id", userId)
       .eq("sport", SPORT_PRIMARY),
     supabase
@@ -60,7 +62,114 @@ async function loadProfile(): Promise<ProfileData> {
       .eq("user_id", userId)
       .is("revoked_at", null)
       .not("club_id", "is", null),
+    supabase
+      .from("matches")
+      .select(
+        "id,played_at,sport,mode,club_id,team_a_player_ids,team_b_player_ids,score,rating_deltas,clubs(name)",
+      )
+      .eq("status", "confirmed")
+      .or(
+        `team_a_player_ids.cs.{${userId}},team_b_player_ids.cs.{${userId}}`,
+      )
+      .order("played_at", { ascending: false })
+      .limit(20),
   ]);
+
+  // Cast: matches.rating_deltas (migration 065) aún no está en los types
+  // generados. Lo proyectamos como Record<userId, delta>.
+  type RawMatch = {
+    id: string;
+    played_at: string;
+    sport: string;
+    mode: string;
+    club_id: string | null;
+    team_a_player_ids: string[] | null;
+    team_b_player_ids: string[] | null;
+    score: { winner?: string; sets?: [number, number][] } | null;
+    rating_deltas?: Record<string, number> | null;
+    clubs?: { name?: string } | null;
+  };
+  const matchesTyped = (rawMatches ?? []) as unknown as RawMatch[];
+
+  // Indexar stats y rank por modo. Cast: tipos generados de mv_user_ranking
+  // aún no incluyen `mode` (regenerar después de la migración).
+  const rankByMode = new Map<string, number>();
+  for (const r of (rankRows ?? []) as Array<{ rank?: number; mode?: string }>) {
+    if (r.mode && typeof r.rank === "number") rankByMode.set(r.mode, r.rank);
+  }
+
+  const buildMode = (mode: "singles" | "doubles"): ModeRating | null => {
+    const row = (statsRows ?? []).find((s) => s.mode === mode);
+    if (!row) return null;
+    return {
+      currentRating: (row.current_rating as number | undefined) ?? STARTING_RATING,
+      matchesTotal: (row.matches_total as number | undefined) ?? 0,
+      wins: (row.wins as number | undefined) ?? 0,
+      losses: (row.losses as number | undefined) ?? 0,
+      rank: rankByMode.get(mode) ?? null,
+    };
+  };
+
+  const singles = buildMode("singles");
+  const doubles = buildMode("doubles");
+
+  // Resolver perfiles de oponentes en una sola query.
+  const oppIds = new Set<string>();
+  for (const m of matchesTyped) {
+    const ta = m.team_a_player_ids ?? [];
+    const tb = m.team_b_player_ids ?? [];
+    const opps = ta.includes(userId) ? tb : ta;
+    for (const o of opps) oppIds.add(o);
+  }
+  const oppProfilesArr = oppIds.size > 0
+    ? (
+        await supabase
+          .from("profiles")
+          .select("id,display_name,avatar_url")
+          .in("id", Array.from(oppIds))
+      ).data ?? []
+    : [];
+  const oppById = new Map<string, { name: string; avatarUrl: string | null }>();
+  for (const p of oppProfilesArr) {
+    oppById.set(p.id as string, {
+      name: (p.display_name as string | null) ?? "Sin nombre",
+      avatarUrl: (p.avatar_url as string | null) ?? null,
+    });
+  }
+
+  const matchHistory = matchesTyped.map((m) => {
+    const ta = m.team_a_player_ids ?? [];
+    const tb = m.team_b_player_ids ?? [];
+    const onTeamA = ta.includes(userId);
+    const opps = onTeamA ? tb : ta;
+    const score = m.score ?? {};
+    const winnerSide = score.winner === "a" ? "a" : "b";
+    const won = (onTeamA && winnerSide === "a") || (!onTeamA && winnerSide === "b");
+    const firstOpp = opps[0] ? oppById.get(opps[0]) : null;
+    const oppName =
+      opps.length > 1 && firstOpp
+        ? `${firstOpp.name} +${opps.length - 1}`
+        : firstOpp?.name ?? "Rival";
+    const rawSets = Array.isArray(score.sets) ? score.sets : [];
+    const sets: [number, number][] = rawSets.map((s) =>
+      onTeamA ? ([s[0], s[1]] as [number, number]) : ([s[1], s[0]] as [number, number]),
+    );
+    const clubName = m.clubs?.name ?? null;
+    const deltas = m.rating_deltas ?? {};
+    const myDelta = typeof deltas[userId] === "number" ? deltas[userId] : null;
+    return {
+      id: m.id,
+      playedAt: m.played_at,
+      sport: m.sport,
+      mode: m.mode,
+      clubName,
+      result: (won ? "win" : "loss") as "win" | "loss",
+      sets,
+      oppName,
+      oppAvatarUrl: firstOpp?.avatarUrl ?? null,
+      ratingDelta: myDelta,
+    };
+  });
 
   const clubs = (roleRows ?? []).map((r) => {
     const c = r.clubs as { name?: string; city?: string } | null;
@@ -82,6 +191,9 @@ async function loadProfile(): Promise<ProfileData> {
   });
   const primaryClub = sortedClubs[0] ?? null;
 
+  // Legacy root fields: prefer singles, fallback doubles, fallback starting.
+  const legacy = singles ?? doubles;
+
   return {
     meUserId: userId,
     name: (profile?.display_name as string | undefined) ?? "Jugador",
@@ -94,11 +206,13 @@ async function loadProfile(): Promise<ProfileData> {
       : null,
     clubs: sortedClubs,
     memberSince: (profile?.created_at as string | undefined) ?? new Date().toISOString(),
-    currentRating: (stats?.current_rating as number | undefined) ?? STARTING_RATING,
-    rank: (rankRows?.[0]?.rank as number | undefined) ?? null,
-    matchesTotal: (stats?.matches_total as number | undefined) ?? 0,
-    wins: (stats?.wins as number | undefined) ?? 0,
-    losses: (stats?.losses as number | undefined) ?? 0,
+    currentRating: legacy?.currentRating ?? STARTING_RATING,
+    rank: legacy?.rank ?? null,
+    matchesTotal: legacy?.matchesTotal ?? 0,
+    wins: legacy?.wins ?? 0,
+    losses: legacy?.losses ?? 0,
+    ratings: { singles, doubles },
+    matchHistory,
   };
 }
 

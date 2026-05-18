@@ -47,6 +47,8 @@ export const MpRoleSchema = z
 
 export const MpSportSchema = z.enum(["tennis", "padel", "pickleball"]).openapi("MpSport");
 
+export const MpMatchModeSchema = z.enum(["singles", "doubles"]).openapi("MpMatchMode");
+
 export const MpSkillLevelSchema = z
   .enum(["beginner", "intermediate", "advanced", "pro"])
   .openapi("MpSkillLevel");
@@ -65,5 +67,6 @@ export type PaginationParams = z.infer<typeof PaginationParamsSchema>;
 
 export type MpRole = z.infer<typeof MpRoleSchema>;
 export type MpSport = z.infer<typeof MpSportSchema>;
+export type MpMatchMode = z.infer<typeof MpMatchModeSchema>;
 export type MpSkillLevel = z.infer<typeof MpSkillLevelSchema>;
 export type MpCurrency = z.infer<typeof MpCurrencySchema>;

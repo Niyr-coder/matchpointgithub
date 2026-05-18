@@ -8,6 +8,10 @@ type Props = {
   role: RoleKey;
   userName?: string;
   contextLabel?: string | null;
+  // Counters dinámicos por item key. Si está, override del badge estático.
+  // Ej: { "club-reservas": 12, "club-clientes": 486 }. Si el valor es 0 o
+  // undefined, no se muestra badge.
+  badgeOverrides?: Record<string, number | string | null | undefined>;
 };
 
 // Deriva la sección activa del pathname:
@@ -20,9 +24,17 @@ function activeFromPath(pathname: string, role: RoleKey): string {
   return rest || "home";
 }
 
-export function DashboardSidebar({ role, userName, contextLabel }: Props) {
+export function DashboardSidebar({ role, userName, contextLabel, badgeOverrides }: Props) {
   const cfg = MP_ROLES[role];
-  const groups = cfg.sidebar;
+  // Anexamos un grupo "Soporte" con Ayuda para todos los roles, sin tocar
+  // la config estática de roles.ts. /dashboard/[role]/ayuda es global.
+  const groups = [
+    ...cfg.sidebar,
+    {
+      h: "Soporte",
+      items: [{ k: "ayuda", label: "Ayuda y guías", icon: "info" }],
+    },
+  ];
   const pathname = usePathname() || "";
   const active = activeFromPath(pathname, role);
   const displayName = userName ?? "Tu cuenta";
@@ -104,7 +116,13 @@ export function DashboardSidebar({ role, userName, contextLabel }: Props) {
               {g.h}
             </div>
             {g.items.map((it) => (
-              <SidebarLink key={it.k} role={role} item={it} active={active === it.k} />
+              <SidebarLink
+                key={it.k}
+                role={role}
+                item={it}
+                active={active === it.k}
+                badgeOverride={badgeOverrides?.[it.k]}
+              />
             ))}
           </div>
         ))}
@@ -175,12 +193,21 @@ function SidebarLink({
   role,
   item,
   active,
+  badgeOverride,
 }: {
   role: RoleKey;
   item: SidebarItem;
   active: boolean;
+  badgeOverride?: number | string | null;
 }) {
   const href = item.k === "home" ? `/dashboard/${role}` : `/dashboard/${role}/${item.k}`;
+  // Override gana sobre badge estático. null/undefined/0 → sin badge.
+  const badge =
+    badgeOverride !== undefined
+      ? badgeOverride && badgeOverride !== 0
+        ? String(badgeOverride)
+        : null
+      : (item.badge ?? null);
   return (
     <Link
       href={href}
@@ -218,7 +245,7 @@ function SidebarLink({
     >
       <Icon name={item.icon} size={15} />
       <span style={{ flex: 1 }}>{item.label}</span>
-      {item.badge && (
+      {badge && (
         <span
           style={{
             fontSize: 9,
@@ -229,7 +256,7 @@ function SidebarLink({
             borderRadius: 9999,
           }}
         >
-          {item.badge}
+          {badge}
         </span>
       )}
     </Link>

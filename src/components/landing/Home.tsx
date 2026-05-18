@@ -632,7 +632,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                 flexDirection: "column",
               }}
             >
-              <div className="mp-card-image" style={{ height: 160, background: c.color, position: "relative" }}>
+              <div style={{ height: 160, background: c.color, position: "relative" }}>
                 <div
                   style={{
                     position: "absolute",

@@ -235,7 +235,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
               title={data.hasClub ? "Sin reservas hoy" : "Sin club asignado"}
               sub={
                 data.hasClub
-                  ? "Cuando entren reservas para hoy aparecerán acá ordenadas por hora."
+                  ? "Cuando entren reservas para hoy aparecerán aquí ordenadas por hora."
                   : "Pide a un owner que te invite como manager para ver la operación."
               }
             />
@@ -308,7 +308,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
             ) : (
               <PlaceholderPanel
                 title="Sin walk-ins en cola"
-                sub="Los walk-ins que crees en recepción aparecerán acá."
+                sub="Los walk-ins que crees en recepción aparecerán aquí."
               />
             )}
           </RHPanel>

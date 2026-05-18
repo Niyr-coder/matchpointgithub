@@ -3,9 +3,17 @@ import { getTournament, listFeaturedTournaments } from "@/server/actions/tournam
 import { getEvent } from "@/server/actions/events";
 import { getClub } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
+import { getServerClient } from "@/lib/db/client.server";
 import { PublicChrome } from "@/components/landing/PublicChrome";
-import { EventDetailView } from "@/components/landing/eventos/EventDetailView";
+import {
+  EventDetailView,
+  type MyRegistration,
+} from "@/components/landing/eventos/EventDetailView";
 import { EventKindDetailView } from "@/components/landing/eventos/EventKindDetailView";
+
+// Igual que el listado: detalle público debe reflejar cancelaciones y
+// cambios de status (cuota, fecha, etc) sin esperar revalidate.
+export const dynamic = "force-dynamic";
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -19,12 +27,76 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
   if (detailRes.ok) {
     const summary = summaryRes.ok ? summaryRes.data.find((t) => t.slug === slug) : undefined;
+    const sess = await getSession();
+    const supabase = await getServerClient();
+
+    // Si hay sesión, chequeamos si ya está inscrito a este torneo.
+    let myRegistration: MyRegistration | null = null;
+    if (sess.authenticated) {
+      const { data: regRow } = await supabase
+        .from("registrations")
+        .select("id,status")
+        .eq("tournament_id", detailRes.data.tournament.id)
+        .contains("player_ids", [sess.session.userId])
+        .not("status", "in", "(withdrawn,rejected,cancelled)")
+        .limit(1)
+        .maybeSingle();
+      if (regRow) {
+        myRegistration = {
+          id: regRow.id as string,
+          status: regRow.status as string,
+        };
+      }
+    }
+
+    // Lista de inscritos para mostrar abajo del detalle. Resuelve perfiles
+    // de todos los player_ids en una sola query batch.
+    const { data: regsRaw } = await supabase
+      .from("registrations")
+      .select("id,player_ids,created_at")
+      .eq("tournament_id", detailRes.data.tournament.id)
+      .not("status", "in", "(withdrawn,rejected,cancelled)")
+      .order("created_at", { ascending: true })
+      .limit(64);
+    const allIds = new Set<string>();
+    for (const r of regsRaw ?? []) {
+      for (const p of (r.player_ids as string[] | null) ?? []) allIds.add(p);
+    }
+    const profById = new Map<string, { displayName: string; avatarUrl: string | null; city: string | null }>();
+    if (allIds.size > 0) {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id,display_name,avatar_url,city")
+        .in("id", Array.from(allIds));
+      for (const p of profs ?? []) {
+        profById.set(p.id as string, {
+          displayName: (p.display_name as string | null) ?? "Sin nombre",
+          avatarUrl: (p.avatar_url as string | null) ?? null,
+          city: (p.city as string | null) ?? null,
+        });
+      }
+    }
+    const inscritos = (regsRaw ?? []).flatMap((r) =>
+      ((r.player_ids as string[] | null) ?? []).map((pid) => {
+        const p = profById.get(pid);
+        return {
+          userId: pid,
+          displayName: p?.displayName ?? "Sin nombre",
+          avatarUrl: p?.avatarUrl ?? null,
+          city: p?.city ?? null,
+          registeredAt: r.created_at as string,
+        };
+      }),
+    );
+
     return (
       <PublicChrome>
         <EventDetailView
           detail={detailRes.data}
           clubName={summary?.clubName ?? null}
           clubCity={summary?.clubCity ?? null}
+          myRegistration={myRegistration}
+          inscritos={inscritos}
         />
       </PublicChrome>
     );

@@ -1,7 +1,11 @@
 // Client view of UserHome. Receives data ya fetcheada por el server.
 "use client";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { requestPlanUpgrade } from "@/server/actions/player-subscriptions";
+import { MatchPointPlusModal } from "./MatchPointPlusModal";
+import { RatingSparkline } from "../widgets/RatingSparkline";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -26,9 +30,11 @@ export type UserHomeData = {
   currentRating: number;
   rank: number | null;
   matchesTotal: number;
+  ratingsByMode: { singles: number | null; doubles: number | null };
   reservations: ReservationLite[];
   tournaments: TournamentFeatured[];
   ratingHistory: RatingPoint[];
+  historiesByMode: { singles: RatingPoint[]; doubles: RatingPoint[] };
   planTier: "free" | "premium";
   planExpiresAt: string | null;
 };
@@ -124,7 +130,10 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
       </div>
       <ClubActivityFeed items={buildActivityItems(data)} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-        <MpRatingWidget currentRating={data.currentRating} history={data.ratingHistory} />
+        <MpRatingWidget
+          ratingsByMode={data.ratingsByMode}
+          historiesByMode={data.historiesByMode}
+        />
         <MyBadgesSection />
         <QuickActionsPanel inviteSlug={data.name.toLowerCase().split(" ")[0]} />
       </div>
@@ -136,6 +145,17 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
       )}
     </>
   );
+}
+
+function ClientTodayLabel() {
+  // El label depende del timezone del browser, así que server y client pueden
+  // discrepar (server suele estar en UTC, user en UTC-5). Renderizamos vacío
+  // en SSR y el valor real solo después de mount para evitar el mismatch.
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(todayLabel());
+  }, []);
+  return <>{label}</>;
 }
 
 function WelcomeBanner({ data }: { data: UserHomeData }) {
@@ -172,7 +192,7 @@ function WelcomeBanner({ data }: { data: UserHomeData }) {
         <div>
           <div className="chip-green" style={{ marginBottom: 12 }}>
             <span className="chip-dot" />
-            {todayLabel()}
+            <ClientTodayLabel />
           </div>
           <h1
             className="font-heading"
@@ -213,10 +233,43 @@ function WelcomeBanner({ data }: { data: UserHomeData }) {
 
 function UpgradeBanner({ data }: { data: UserHomeData }) {
   const [dismissed, setDismissed] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+  const router = useRouter();
 
   // Guests no ven el banner — primero deben crear cuenta.
   if (data.meUserId === null) return null;
   if (dismissed) return null;
+
+  const handleDismiss = () => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => setDismissed(true), 240);
+  };
+
+  const doUpgrade = () => {
+    if (pending) return;
+    startTransition(async () => {
+      const r = await requestPlanUpgrade({ tier: "premium", durationMonths: 1 });
+      if (!r.ok) {
+        const msg =
+          r.error.code === "PLAN.PENDING_EXISTS"
+            ? "Ya tienes una solicitud pendiente. Sube el comprobante o espera la aprobación."
+            : r.error.message || "No se pudo crear la solicitud.";
+        toast({ icon: "alert-triangle", title: "No se pudo activar", sub: msg });
+        return;
+      }
+      toast({
+        icon: "check-circle-2",
+        title: "Solicitud creada",
+        sub: "Sube tu comprobante para activar Premium.",
+      });
+      setModalOpen(false);
+      router.push(`/pagos/${r.data.transactionId}`);
+    });
+  };
 
   const remaining = daysUntil(data.planExpiresAt);
   const isFree = data.planTier === "free";
@@ -234,6 +287,8 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
 
   return (
     <div
+      className="mp-upgrade-banner"
+      data-closing={closing ? "true" : "false"}
       style={{
         marginTop: 16,
         background:
@@ -267,6 +322,7 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
           <div
+            className="mp-upgrade-crown"
             style={{
               width: 40,
               height: 40,
@@ -306,8 +362,10 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Link
-            href="/dashboard/user/mi-plan"
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="mp-upgrade-cta"
             style={{
               background: "#facc15",
               color: "#0a0a0a",
@@ -317,15 +375,18 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
               textTransform: "uppercase",
               padding: "10px 16px",
               borderRadius: 10,
-              textDecoration: "none",
+              border: 0,
+              cursor: "pointer",
+              fontFamily: "inherit",
               whiteSpace: "nowrap",
             }}
           >
             {ctaLabel} →
-          </Link>
+          </button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            className="mp-upgrade-close"
+            onClick={handleDismiss}
             aria-label="Cerrar"
             style={{
               background: "transparent",
@@ -347,6 +408,15 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
           </button>
         </div>
       </div>
+
+      {modalOpen && (
+        <MatchPointPlusModal
+          mode={renewing ? "renew" : "activate"}
+          pending={pending}
+          onConfirm={doUpgrade}
+          onCancel={() => setModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -382,7 +452,17 @@ function Stat({ n, l, accent }: { n: string; l: string; accent?: boolean }) {
   );
 }
 
-function PanelShell({ title, cta, children }: { title: string; cta: string; children: ReactNode }) {
+function PanelShell({
+  title,
+  cta,
+  ctaHref,
+  children,
+}: {
+  title: string;
+  cta: string;
+  ctaHref?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="card">
       <div
@@ -405,19 +485,14 @@ function PanelShell({ title, cta, children }: { title: string; cta: string; chil
         >
           {title}
         </div>
-        <a
-          href="#"
-          style={{
-            color: "var(--primary)",
-            fontSize: 11,
-            fontWeight: 900,
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            textDecoration: "none",
-          }}
-        >
-          {cta} →
-        </a>
+        {ctaHref && (
+          <Link href={ctaHref} className="mp-panel-cta">
+            <span>{cta}</span>
+            <span className="mp-panel-cta-arrow" aria-hidden>
+              →
+            </span>
+          </Link>
+        )}
       </div>
       {children}
     </div>
@@ -432,7 +507,7 @@ function ReservasPanel({ reservations }: { reservations: ReservationLite[] }) {
     padded.push({ placeholder: true, key: `ph-${padded.length}` });
   }
   return (
-    <PanelShell title="Próximas reservas" cta="Ver todas">
+    <PanelShell title="Próximas reservas" cta="Ver todas" ctaHref="/dashboard/user/mis-reservas">
       <div style={{ display: "flex", flexDirection: "column" }}>
         {padded.map((it, i) => {
           if ("placeholder" in it) {
@@ -585,7 +660,7 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
     padded.push({ placeholder: true, key: `ph-${padded.length}` });
   }
   return (
-    <PanelShell title="Torneos abiertos" cta="Explorar">
+    <PanelShell title="Mis torneos" cta="Explorar" ctaHref="/dashboard/user/eventos">
       <div style={{ display: "flex", flexDirection: "column" }}>
         {padded.map((it, i) => {
           if ("placeholder" in it) {
@@ -625,7 +700,7 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
                     Próximamente
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, color: "var(--muted-fg)" }}>
-                    Sin torneo abierto
+                    Aún sin inscripción
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>—</div>
                 </div>
@@ -639,24 +714,40 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
             );
           }
           const { day, mon } = tournamentRowDate(it.startsAt);
+          const isCancelled = it.status === "cancelled";
+          const isFinished = it.status === "finished";
           return (
             <div
               key={it.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "44px 1fr 72px",
+                gridTemplateColumns: "1fr 72px",
                 alignItems: "center",
                 columnGap: 14,
                 padding: "14px 20px",
                 borderTop: i === 0 ? 0 : "1px solid var(--border)",
+                opacity: isCancelled ? 0.6 : 1,
               }}
             >
+              <Link
+                href={`/dashboard/eventos/${it.slug}`}
+                className="mp-tournament-link"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "44px 1fr",
+                  alignItems: "center",
+                  columnGap: 14,
+                  textDecoration: "none",
+                  color: "inherit",
+                  minWidth: 0,
+                }}
+              >
               <div
                 style={{
                   width: 44,
                   height: 44,
                   borderRadius: 10,
-                  background: "#0a0a0a",
+                  background: isCancelled ? "#dc2626" : "#0a0a0a",
                   color: "#fff",
                   display: "flex",
                   flexDirection: "column",
@@ -689,12 +780,40 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
                     fontWeight: 900,
                     letterSpacing: "0.15em",
                     textTransform: "uppercase",
-                    color: "var(--primary)",
+                    color: isCancelled
+                      ? "#dc2626"
+                      : isFinished
+                        ? "var(--muted-fg)"
+                        : "var(--primary)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {tagFromFormat(it.format)} · {day} {mon}
+                  {isCancelled ? (
+                    <>
+                      <span
+                        style={{
+                          padding: "2px 6px",
+                          background: "#dc2626",
+                          color: "#fff",
+                          borderRadius: 4,
+                          fontSize: 9,
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        CANCELADO
+                      </span>
+                      {day} {mon}
+                    </>
+                  ) : isFinished ? (
+                    <>FINALIZADO · {day} {mon}</>
+                  ) : (
+                    <>{tagFromFormat(it.format)} · {day} {mon}</>
+                  )}
                 </div>
                 <div
+                  className="mp-tournament-name"
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
@@ -702,9 +821,28 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    maxWidth: "100%",
                   }}
                 >
-                  {it.name}
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      textDecoration: isCancelled ? "line-through" : "none",
+                    }}
+                  >
+                    {it.name}
+                  </span>
+                  <span
+                    className="mp-tournament-arrow"
+                    aria-hidden
+                    style={{ display: "inline-flex", flexShrink: 0 }}
+                  >
+                    →
+                  </span>
                 </div>
                 <div
                   style={{
@@ -719,13 +857,14 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
                   {levelLabel(it)}
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div className="tabular" style={{ fontSize: 12, fontWeight: 900 }}>
-                  {spotsLabel(it)}
-                </div>
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>cupos</div>
+            </Link>
+            <div style={{ textAlign: "right" }}>
+              <div className="tabular" style={{ fontSize: 12, fontWeight: 900 }}>
+                {spotsLabel(it)}
               </div>
+              <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>cupos</div>
             </div>
+          </div>
           );
         })}
       </div>
@@ -735,25 +874,53 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
 
 const STARTING_RATING_VIEW = 2500;
 
-function MpRatingWidget({ currentRating, history }: { currentRating: number; history: RatingPoint[] }) {
-  // Sintetizar baseline 2.5 si <2 puntos.
-  const pts =
+type WidgetMode = "singles" | "doubles";
+
+function MpRatingWidget({
+  ratingsByMode,
+  historiesByMode,
+}: {
+  ratingsByMode: { singles: number | null; doubles: number | null };
+  historiesByMode: { singles: RatingPoint[]; doubles: RatingPoint[] };
+}) {
+  // Default: singles si existe, sino doubles, sino singles igual.
+  const initial: WidgetMode = ratingsByMode.singles != null
+    ? "singles"
+    : ratingsByMode.doubles != null
+      ? "doubles"
+      : "singles";
+  const [mode, setMode] = useState<WidgetMode>(initial);
+
+  const rawRating = ratingsByMode[mode];
+  const hasRating = rawRating != null;
+  const currentRating = rawRating ?? STARTING_RATING_VIEW;
+  const history = historiesByMode[mode] ?? [];
+
+  // Sintetizar baseline si <2 puntos para que el sparkline siempre tenga forma.
+  const sparkPoints =
     history.length >= 2
-      ? history.map((h) => h.rating)
-      : [STARTING_RATING_VIEW, currentRating];
-  const max = Math.max(...pts);
-  const min = Math.min(...pts);
-  const range = max - min || 1;
-  const W = 200;
-  const H = 40;
-  const d = pts
-    .map((v, i) => `${i === 0 ? "M" : "L"}${(i / (pts.length - 1)) * W},${H - ((v - min) / range) * H}`)
-    .join(" ");
-  const diff = currentRating - pts[0];
+      ? history
+      : [
+          { rating: STARTING_RATING_VIEW, snapshotAt: new Date(Date.now() - 30 * 86400_000).toISOString() },
+          { rating: currentRating, snapshotAt: new Date().toISOString() },
+        ];
+  const first = sparkPoints[0].rating;
+  const diff = currentRating - first;
   const trendLabel = diff > 0 ? `↑ ${(diff / 1000).toFixed(2)}` : diff < 0 ? `↓ ${(Math.abs(diff) / 1000).toFixed(2)}` : "= 0.00";
+
+  const modeLabel = mode === "singles" ? "singles" : "dobles";
+  const subText = !hasRating
+    ? `Sin partidos en ${modeLabel} todavía`
+    : history.length >= 2
+      ? "Pasa el mouse para ver fecha y rating"
+      : "Tu nivel inicial · juega para subir";
+
   return (
     <div className="card" style={{ padding: 20 }}>
-      <div className="label-mp">MP Rating</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="label-mp">MP Rating</div>
+        <ModeToggle value={mode} onChange={setMode} />
+      </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
         <div
           className="font-heading tabular"
@@ -762,33 +929,76 @@ function MpRatingWidget({ currentRating, history }: { currentRating: number; his
             letterSpacing: "-0.03em",
             fontSize: 40,
             lineHeight: 1,
+            color: hasRating ? undefined : "var(--muted-fg)",
           }}
         >
-          {(currentRating / 1000).toFixed(2)}
+          {hasRating ? (currentRating / 1000).toFixed(2) : "—"}
         </div>
-        <div
-          style={{
-            color: diff > 0 ? "var(--primary)" : diff < 0 ? "#dc2626" : "var(--muted-fg)",
-            fontSize: 12,
-            fontWeight: 700,
-          }}
-        >
-          {trendLabel}
-        </div>
+        {hasRating && (
+          <div
+            style={{
+              color: diff > 0 ? "var(--primary)" : diff < 0 ? "#dc2626" : "var(--muted-fg)",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            {trendLabel}
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 4 }}>
-        {history.length >= 2 ? "Últimas evaluaciones" : "Tu nivel inicial · juega para subir"}
+      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 4 }}>{subText}</div>
+      <div style={{ marginTop: 14 }}>
+        <RatingSparkline points={sparkPoints} width={200} height={48} withArea={false} strokeWidth={2} />
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 48, marginTop: 14 }}>
-        <path
-          d={d}
-          fill="none"
-          stroke="var(--primary)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+    </div>
+  );
+}
+
+function ModeToggle({
+  value,
+  onChange,
+}: {
+  value: WidgetMode;
+  onChange: (v: WidgetMode) => void;
+}) {
+  const opts: { k: WidgetMode; label: string }[] = [
+    { k: "singles", label: "Singles" },
+    { k: "doubles", label: "Dobles" },
+  ];
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        gap: 2,
+        padding: 2,
+        background: "#f5f5f5",
+        borderRadius: 9999,
+      }}
+    >
+      {opts.map((o) => {
+        const active = value === o.k;
+        return (
+          <button
+            key={o.k}
+            onClick={() => onChange(o.k)}
+            style={{
+              border: 0,
+              background: active ? "#0a0a0a" : "transparent",
+              color: active ? "#fff" : "#737373",
+              padding: "4px 10px",
+              borderRadius: 9999,
+              fontWeight: 800,
+              fontSize: 9.5,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -802,11 +1012,17 @@ const BADGES = [
 ];
 
 function MyBadgesSection() {
+  // Conteo derivado del propio catálogo (no hardcodeado).
+  // TODO: cuando exista tabla player_badges, leer unlocked reales del user.
+  const total = BADGES.length;
+  const unlocked = BADGES.filter((b) => b.on).length;
   return (
     <div className="card" style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="label-mp">Insignias</div>
-        <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>3 / 12</span>
+        <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+          {unlocked} / {total}
+        </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 14 }}>
         {BADGES.map((b) => (
@@ -876,6 +1092,7 @@ function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
         {ACTIONS.map((a) => (
           <button
             key={a.label}
+            className="mp-quick-action"
             onClick={() => handle(a.action)}
             style={{
               padding: 12,
@@ -891,7 +1108,9 @@ function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
               textAlign: "left",
             }}
           >
-            <Icon name={a.icon} size={16} color="var(--primary)" />
+            <span className="mp-quick-action-icon">
+              <Icon name={a.icon} size={16} color="var(--primary)" />
+            </span>
             <span style={{ fontSize: 12, fontWeight: 700 }}>{a.label}</span>
           </button>
         ))}
@@ -944,7 +1163,7 @@ function buildActivityItems(data: UserHomeData): ActivityItem[] {
 function ClubActivityFeed({ items }: { items: ActivityItem[] }) {
   if (items.length === 0) {
     return (
-      <PanelShell title="Actividad del club" cta="Ver todo">
+      <PanelShell title="Actividad del club" cta="Ver todo" ctaHref="/dashboard/user/team">
         <div
           style={{
             padding: "28px 20px",
@@ -953,13 +1172,13 @@ function ClubActivityFeed({ items }: { items: ActivityItem[] }) {
             fontSize: 12,
           }}
         >
-          Sin actividad reciente. Cuando tu club publique torneos o liberen horarios, aparecerá acá.
+          Sin actividad reciente. Cuando tu club publique torneos o liberen horarios, aparecerá aquí.
         </div>
       </PanelShell>
     );
   }
   return (
-    <PanelShell title="Actividad del club" cta="Ver todo">
+    <PanelShell title="Actividad del club" cta="Ver todo" ctaHref="/dashboard/user/team">
       <div>
         {items.map((it, i) => (
           <div

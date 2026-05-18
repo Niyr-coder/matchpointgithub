@@ -28,6 +28,15 @@ export function usePaywall(): PaywallFn {
   return fn;
 }
 
+// Expone la sesión resuelta en el server al árbol del landing para que
+// componentes como EventDetailView puedan skip el paywall cuando ya hay
+// cookie. null = anonimo, NavAuth = autenticado.
+const AuthCtx = createContext<NavAuth | null>(null);
+
+export function useLandingAuth(): NavAuth | null {
+  return useContext(AuthCtx);
+}
+
 function AuthFromQuery() {
   const params = useSearchParams();
   const router = useRouter();
@@ -58,14 +67,16 @@ export function PublicChromeClient({
 }) {
   const [paywall, setPaywall] = useState<PaywallTrigger | null>(null);
   return (
-    <PaywallCtx.Provider value={setPaywall}>
-      <Nav onPaywall={setPaywall} auth={auth} />
-      {children}
-      <Footer />
-      {paywall && <Paywall trigger={paywall} onClose={() => setPaywall(null)} />}
-      <Suspense fallback={null}>
-        <AuthFromQuery />
-      </Suspense>
-    </PaywallCtx.Provider>
+    <AuthCtx.Provider value={auth}>
+      <PaywallCtx.Provider value={setPaywall}>
+        <Nav onPaywall={setPaywall} auth={auth} />
+        {children}
+        <Footer />
+        {paywall && <Paywall trigger={paywall} onClose={() => setPaywall(null)} />}
+        <Suspense fallback={null}>
+          <AuthFromQuery />
+        </Suspense>
+      </PaywallCtx.Provider>
+    </AuthCtx.Provider>
   );
 }
