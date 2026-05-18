@@ -1,10 +1,13 @@
-// Landing wrapper. Recibe data ya fetcheada del server component (page.tsx).
-"use client";
-import { PublicChrome, usePaywall } from "./PublicChrome";
-import { Home } from "./Home";
+// Landing wrapper (server async). Recibe data ya fetcheada del server
+// component page.tsx y la compone con PublicChrome + HomeWithPaywall.
+// HomeWithPaywall vive en su propio archivo client porque usa usePaywall.
 import type { ComponentProps } from "react";
+import { PublicChrome } from "./PublicChrome";
+import { HomeWithPaywall } from "./HomeWithPaywall";
+import type { Home } from "./Home";
 
 type HomeProps = ComponentProps<typeof Home>;
+
 type LandingProps = {
   clubs?: HomeProps["clubs"];
   events?: HomeProps["events"];
@@ -12,20 +15,12 @@ type LandingProps = {
   marqueeClubs?: HomeProps["marqueeClubs"];
 };
 
-function HomeWithPaywall({ clubs, events, stats, marqueeClubs }: LandingProps) {
-  const onPaywall = usePaywall();
-  return (
-    <Home
-      onPaywall={onPaywall}
-      clubs={clubs}
-      events={events}
-      stats={stats}
-      marqueeClubs={marqueeClubs}
-    />
-  );
-}
-
-export function LandingShell({ clubs, events, stats, marqueeClubs }: LandingProps = {}) {
+export async function LandingShell({
+  clubs,
+  events,
+  stats,
+  marqueeClubs,
+}: LandingProps = {}) {
   return (
     <PublicChrome>
       <HomeWithPaywall
