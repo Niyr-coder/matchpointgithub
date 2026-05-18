@@ -1,7 +1,16 @@
 // Server: home del partner con KPIs y listas reales.
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
+import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { PartnerHomeView, type PartnerHomeData, type TorneoCard, type MatchItem } from "./PartnerHomeView";
+
+async function loadUserName(): Promise<string | null> {
+  const s = await getSession();
+  if (!s.authenticated) return null;
+  const p = await getProfileSummary(s.session.userId);
+  return p.displayName ?? p.username ?? null;
+}
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -40,9 +49,11 @@ const COLORS = ["#10b981", "#0a0a0a", "#0c4a6e", "#7c3aed", "#db2777", "#0ea5e9"
 
 async function loadData(): Promise<PartnerHomeData> {
   const partnerId = await resolveActivePartnerId();
+  const userName = await loadUserName();
   if (!partnerId) {
     return {
       partnerId: null,
+      userName,
       kpis: { active: 0, inProgress: 0, upcoming: 0, totalInscritos: 0, deltaInscritos: 0, revenueCents: 0, nextMatchLabel: "—", nextMatchSub: "sin tracking aún" },
       torneos: [],
       matches: [],
@@ -209,6 +220,7 @@ async function loadData(): Promise<PartnerHomeData> {
 
   return {
     partnerId,
+    userName,
     kpis: {
       active,
       inProgress,

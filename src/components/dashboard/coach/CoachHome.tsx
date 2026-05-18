@@ -2,6 +2,7 @@
 // El coach es un user con coach_profile (1:1 con profiles, id = auth.uid()).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { CoachHomeView, type CoachHomeData, type AgendaItem, type TopStudent } from "./CoachHomeView";
 
 type SessionRow = {
@@ -37,6 +38,7 @@ async function loadData(): Promise<CoachHomeData> {
   if (!session.authenticated) {
     return {
       coachId: null,
+      userName: null,
       kpis: {
         classesToday: 0,
         groupToday: 0,
@@ -54,6 +56,8 @@ async function loadData(): Promise<CoachHomeData> {
 
   const coachId = session.session.userId;
   const supabase = await getServerClient();
+  const profile = await getProfileSummary(coachId);
+  const userName = profile.displayName ?? profile.username ?? null;
   const now = new Date();
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayEnd = new Date(dayStart);
@@ -261,6 +265,7 @@ async function loadData(): Promise<CoachHomeData> {
 
   return {
     coachId,
+    userName,
     kpis: {
       classesToday: agenda.length,
       groupToday,

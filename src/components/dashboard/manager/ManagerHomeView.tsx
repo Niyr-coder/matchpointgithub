@@ -28,6 +28,7 @@ export type ManagerHomeData = {
   clubId: string | null;
   clubName: string;
   hasClub: boolean;
+  userName: string | null;
   reservasHoyCount: number;
   confirmadas: number;
   pendientes: number;
@@ -91,7 +92,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
 
   return (
     <>
-      <RHWelcome role="manager" />
+      <RHWelcome role="manager" userName={data.userName} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
         <RHKpi

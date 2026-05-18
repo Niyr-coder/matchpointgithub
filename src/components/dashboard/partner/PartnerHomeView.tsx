@@ -24,6 +24,7 @@ export type MatchItem = {
 
 export type PartnerHomeData = {
   partnerId: string | null;
+  userName: string | null;
   kpis: {
     active: number;
     inProgress: number;
@@ -174,7 +175,7 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
 
   return (
     <>
-      <RHWelcome role="partner" />
+      <RHWelcome role="partner" userName={data.userName} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
         <RHKpi
           label="Torneos activos"

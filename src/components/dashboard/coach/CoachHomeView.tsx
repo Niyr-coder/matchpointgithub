@@ -30,6 +30,7 @@ export type TopStudent = {
 
 export type CoachHomeData = {
   coachId: string | null;
+  userName: string | null;
   kpis: {
     classesToday: number;
     groupToday: number;
@@ -167,7 +168,7 @@ export function CoachHomeView({ data }: { data: CoachHomeData }) {
 
   return (
     <>
-      <RHWelcome role="coach" />
+      <RHWelcome role="coach" userName={data.userName} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
         <RHKpi
           label="Clases hoy"

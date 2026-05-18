@@ -1,7 +1,16 @@
 // Server: fetch club activo del manager + KPIs operativos + reservas hoy + walk-in queue + eventos.
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
+import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { ManagerHomeView, type ManagerHomeData } from "./ManagerHomeView";
+
+async function loadUserName(): Promise<string | null> {
+  const s = await getSession();
+  if (!s.authenticated) return null;
+  const p = await getProfileSummary(s.session.userId);
+  return p.displayName ?? p.username ?? null;
+}
 
 const MONTHS_ES = [
   "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC",
@@ -18,7 +27,8 @@ function parseDuringEnd(during: string): Date {
 
 async function loadData(): Promise<ManagerHomeData> {
   const clubId = await resolveActiveClubId({ staffRoles: ["manager", "owner", "admin"] });
-  if (!clubId) return emptyData();
+  const userName = await loadUserName();
+  if (!clubId) return emptyData(userName);
 
   const supabase = await getServerClient();
 
@@ -183,6 +193,7 @@ async function loadData(): Promise<ManagerHomeData> {
     clubId,
     clubName: (club?.name as string) ?? "Tu club",
     hasClub: true,
+    userName,
     reservasHoyCount,
     confirmadas,
     pendientes,
@@ -195,11 +206,12 @@ async function loadData(): Promise<ManagerHomeData> {
   };
 }
 
-function emptyData(): ManagerHomeData {
+function emptyData(userName: string | null): ManagerHomeData {
   return {
     clubId: null,
     clubName: "Tu club",
     hasClub: false,
+    userName,
     reservasHoyCount: 0,
     confirmadas: 0,
     pendientes: 0,

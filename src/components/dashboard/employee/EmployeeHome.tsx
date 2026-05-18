@@ -2,6 +2,7 @@
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { EmployeeHomeView, type EmployeeHomeData, type CheckinRow, type CashTileData } from "./EmployeeHomeView";
 
 function parseRangeStart(during: string): Date | null {
@@ -28,11 +29,15 @@ async function loadData(): Promise<EmployeeHomeData> {
   const session = await getSession();
   const clubId = await resolveActiveClubId();
   const userId = session.authenticated ? session.session.userId : null;
+  const userName = userId
+    ? await getProfileSummary(userId).then((p) => p.displayName ?? p.username ?? null)
+    : null;
 
   if (!clubId) {
     return {
       clubId: null,
       clubName: "Tu club",
+      userName,
       nextCheckins: [],
       cash: [
         { l: "Efectivo", v: "$—", i: "banknote" },
@@ -156,6 +161,7 @@ async function loadData(): Promise<EmployeeHomeData> {
   return {
     clubId,
     clubName: (club?.name as string) ?? "Tu club",
+    userName,
     nextCheckins,
     cash,
     checkinsAttended,

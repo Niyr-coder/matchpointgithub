@@ -26,6 +26,7 @@ export type CashTileData = {
 export type EmployeeHomeData = {
   clubId: string | null;
   clubName: string;
+  userName: string | null;
   nextCheckins: CheckinRow[];
   cash: CashTileData[];
   checkinsAttended: number;
@@ -123,7 +124,7 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
 
   return (
     <>
-      <RHWelcome role="employee" />
+      <RHWelcome role="employee" userName={data.userName} />
 
       {/* Shift card — sin tracking real de jornada laboral; horas en — */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
