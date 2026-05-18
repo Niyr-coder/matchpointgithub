@@ -51,14 +51,14 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "home", label: "Inicio", icon: "layout-dashboard" },
           { k: "clubes", label: "Clubes", icon: "building-2" },
-          { k: "ranking", label: "Ranking", icon: "bar-chart-3", badge: "12" },
+          { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
           { k: "eventos", label: "Eventos", icon: "trophy" },
         ],
       },
       {
         h: "Comunidad",
         items: [
-          { k: "chat", label: "Mensajes", icon: "message-square", badge: "3" },
+          { k: "chat", label: "Mensajes", icon: "message-square" },
           { k: "amigos", label: "Amigos", icon: "users" },
           { k: "shop", label: "Shop", icon: "shopping-bag" },
         ],
@@ -67,7 +67,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Coaching",
         items: [
           { k: "academia", label: "Academia", icon: "graduation-cap" },
-          { k: "mis-clases", label: "Mis clases", icon: "list-checks", badge: "2" },
+          { k: "mis-clases", label: "Mis clases", icon: "list-checks" },
         ],
       },
       {
@@ -94,8 +94,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Plataforma",
         items: [
           { k: "home", label: "Overview", icon: "layout-dashboard" },
-          { k: "admin-clubs", label: "Clubes", icon: "building-2", badge: "142" },
-          { k: "admin-users", label: "Usuarios", icon: "users", badge: "8.4k" },
+          { k: "admin-clubs", label: "Clubes", icon: "building-2" },
+          { k: "admin-users", label: "Usuarios", icon: "users" },
           { k: "admin-events", label: "Eventos", icon: "trophy" },
         ],
       },
@@ -104,8 +104,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
           { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
-          { k: "admin-mod", label: "Moderación", icon: "shield-alert", badge: "7" },
-          { k: "admin-support", label: "Soporte", icon: "life-buoy", badge: "12" },
+          { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
+          { k: "admin-support", label: "Soporte", icon: "life-buoy" },
           { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
         ],
       },
@@ -113,7 +113,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Control",
         items: [
           { k: "admin-roles", label: "Permisos & Roles", icon: "shield" },
-          { k: "admin-flags", label: "Feature flags", icon: "flag", badge: "4" },
+          { k: "admin-flags", label: "Feature flags", icon: "flag" },
           { k: "admin-broadcast", label: "Comunicaciones", icon: "megaphone" },
         ],
       },

@@ -519,20 +519,42 @@ function PodiumSpot({ entry, center }: { entry: SlotEntry; center: boolean }) {
   const heights = center ? 140 : 110;
   const colors: Record<number, string> = { 1: "#fbbf24", 2: "#a1a1aa", 3: "#d97706" };
   const c = colors[entry.rank] ?? "#a1a1aa";
+  const size = center ? 72 : 56;
+  // Iniciales como fallback cuando no hay avatar (o placeholder vacante).
+  const initials = entry.placeholder
+    ? "—"
+    : (entry.displayName ?? "")
+        .split(" ")
+        .map((n) => n[0] ?? "")
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "·";
+  const showAvatar = !entry.placeholder && entry.avatarUrl;
   return (
     <div style={{ textAlign: "center", position: "relative", opacity: entry.placeholder ? 0.55 : 1 }}>
       <div
         style={{
-          width: center ? 72 : 56,
-          height: center ? 72 : 56,
+          width: size,
+          height: size,
           borderRadius: "50%",
           margin: "0 auto",
           background: entry.placeholder
             ? "linear-gradient(135deg, #3a3a3e, #2a2a2e)"
-            : `linear-gradient(135deg, hsl(${entry.rank * 70}, 55%, 45%), hsl(${entry.rank * 70 + 60}, 60%, 35%))`,
+            : showAvatar
+              ? `center/cover no-repeat url("${entry.avatarUrl}")`
+              : `linear-gradient(135deg, hsl(${entry.rank * 70}, 55%, 45%), hsl(${entry.rank * 70 + 60}, 60%, 35%))`,
           border: `3px solid ${c}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: center ? 22 : 18,
+          letterSpacing: "0.03em",
         }}
-      />
+      >
+        {!showAvatar && initials}
+      </div>
       <div style={{ marginTop: 10, fontSize: center ? 14 : 12, fontWeight: 700 }}>
         {entry.placeholder ? "Vacante" : entry.displayName}
       </div>

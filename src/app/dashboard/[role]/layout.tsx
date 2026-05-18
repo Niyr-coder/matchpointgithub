@@ -83,7 +83,7 @@ export default async function RoleLayout({
   // Counters dinámicos del sidebar (solo owner/manager con club asignado).
   // Reservas activas hoy + total de clientes únicos del club. Si la query
   // falla o el club aún no tiene actividad, los badges no se muestran.
-  let badgeOverrides: Record<string, number> | undefined;
+  let badgeOverrides: Record<string, number | string> | undefined;
   if (clubId && (role === "owner" || role === "manager")) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -178,6 +178,72 @@ export default async function RoleLayout({
     badgeOverrides = {
       "e-checkin": checkins.count ?? 0,
       "e-walkins": walkinsHoy.count ?? 0,
+    };
+  }
+
+  // User: clases activas + mensajes no leídos. Sin badge en ranking porque
+  // un número suelto sin contexto confunde más que aclara.
+  if (role === "user") {
+    const userId = session.session.userId;
+    const [clases, unread] = await Promise.all([
+      supabase
+        .from("class_enrollments")
+        .select("id", { count: "exact", head: true })
+        .eq("student_id", userId)
+        .eq("status", "active"),
+      // Mensajes no leídos: messages en conversaciones del user, no del propio
+      // user, sin entry en message_reads para este user. Aproximación: count
+      // total de messages del user en sus conversaciones, le restamos los leídos.
+      (async () => {
+        const { data: convs } = await supabase
+          .from("conversation_members")
+          .select("conversation_id")
+          .eq("user_id", userId);
+        const convIds = (convs ?? []).map((c) => c.conversation_id as string);
+        if (convIds.length === 0) return { count: 0 };
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("id")
+          .in("conversation_id", convIds)
+          .neq("sender_id", userId);
+        const msgIds = (msgs ?? []).map((m) => m.id as string);
+        if (msgIds.length === 0) return { count: 0 };
+        const { data: reads } = await supabase
+          .from("message_reads")
+          .select("message_id")
+          .eq("user_id", userId)
+          .in("message_id", msgIds);
+        const readIds = new Set((reads ?? []).map((r) => r.message_id as string));
+        return { count: msgIds.filter((id) => !readIds.has(id)).length };
+      })(),
+    ]);
+    badgeOverrides = {
+      "mis-clases": clases.count ?? 0,
+      "chat": unread.count,
+    };
+  }
+
+  // Admin: counts globales de la plataforma. No filtramos por tenant
+  // porque admin ve todo. Formateamos números grandes como "1.2k".
+  if (role === "admin") {
+    const [clubsCount, usersCount, modCount, supportCount, flagsCount] = await Promise.all([
+      supabase.from("clubs").select("id", { count: "exact", head: true }),
+      supabase.from("profiles").select("id", { count: "exact", head: true }),
+      supabase.from("reports").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
+      supabase.from("feature_flags").select("key", { count: "exact", head: true }).eq("enabled_default", true),
+    ]);
+    const fmt = (n: number): string => {
+      if (n >= 10000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+      if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+      return String(n);
+    };
+    badgeOverrides = {
+      "admin-clubs": fmt(clubsCount.count ?? 0),
+      "admin-users": fmt(usersCount.count ?? 0),
+      "admin-mod": modCount.count ?? 0,
+      "admin-support": supportCount.count ?? 0,
+      "admin-flags": flagsCount.count ?? 0,
     };
   }
 
