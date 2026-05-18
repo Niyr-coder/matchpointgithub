@@ -68,7 +68,17 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
     return c.sports.includes(filter as "tennis" | "padel" | "pickleball");
   });
 
-  const padded: ClubCard[] = [...filtered.map((c) => ({ ...c, placeholder: false as const }))];
+  // Destacado: primer club del array filtrado con featured_until activo.
+  const nowMs = Date.now();
+  const featured =
+    filtered.find((c) => {
+      if (!c.featuredUntil) return false;
+      const t = Date.parse(c.featuredUntil);
+      return Number.isFinite(t) && t > nowMs;
+    }) ?? null;
+  const gridSource = featured ? filtered.filter((c) => c.id !== featured.id) : filtered;
+
+  const padded: ClubCard[] = [...gridSource.map((c) => ({ ...c, placeholder: false as const }))];
   while (padded.length < MIN_CLUB_CARDS) {
     padded.push({ placeholder: true, key: `ph-${padded.length}` });
   }
@@ -134,6 +144,144 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
           );
         })}
       </div>
+      {featured && (() => {
+        const { rating, reviews } = mockRating(featured.slug);
+        const price = featured.minPriceCents != null ? Math.round(featured.minPriceCents / 100) : 12;
+        return (
+          <Link
+            href={`/clubes/${featured.slug}`}
+            className="card"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.2fr 1fr",
+              minHeight: 260,
+              overflow: "hidden",
+              padding: 0,
+              marginBottom: 24,
+              textDecoration: "none",
+              color: "#0a0a0a",
+              border: "1px solid #facc15",
+              boxShadow: "0 10px 30px rgba(250,204,21,0.18)",
+            }}
+          >
+            <div
+              style={{
+                background: "linear-gradient(135deg, #064e3b 0%, #047857 60%, #10b981 100%)",
+                position: "relative",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "flex-end",
+                padding: 28,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.18), transparent 50%)",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 16,
+                  right: 16,
+                  padding: "5px 12px",
+                  background: "#facc15",
+                  color: "#0a0a0a",
+                  borderRadius: 9999,
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.18em",
+                }}
+              >
+                ★ Destacado
+              </div>
+              <div style={{ position: "relative", zIndex: 2, color: "#fff" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "rgba(255,255,255,0.75)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.12em",
+                    marginBottom: 6,
+                  }}
+                >
+                  <Icon name="map-pin" size={12} color="#fff" />
+                  {featured.city}
+                </div>
+                <div
+                  className="font-heading"
+                  style={{
+                    fontSize: 36,
+                    fontWeight: 900,
+                    letterSpacing: "-0.02em",
+                    textTransform: "uppercase",
+                    lineHeight: 1,
+                  }}
+                >
+                  {featured.name}
+                  <span style={{ color: "#bbf7d0" }}>.</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "4px 10px",
+                      background: "#fef3c7",
+                      borderRadius: 9999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                    }}
+                  >
+                    <Icon name="star" size={11} color="#d97706" />
+                    {rating}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+                    · {reviews} {reviews === 1 ? "reseña" : "reseñas"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
+                  <div style={{ padding: 12, background: "var(--muted)", borderRadius: 10 }}>
+                    <div style={{ fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>
+                      Canchas
+                    </div>
+                    <div className="font-heading" style={{ fontSize: 16, fontWeight: 900 }}>
+                      {featured.courtsCount}
+                    </div>
+                  </div>
+                  <div style={{ padding: 12, background: "var(--muted)", borderRadius: 10 }}>
+                    <div style={{ fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>
+                      Deporte
+                    </div>
+                    <div className="font-heading" style={{ fontSize: 16, fontWeight: 900 }}>
+                      {primarySport(featured.sports)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Desde</span>
+                <span className="font-heading" style={{ fontSize: 28, fontWeight: 900 }}>
+                  ${price}
+                  <span style={{ fontSize: 12, color: "var(--muted-fg)", fontWeight: 600 }}>/h</span>
+                </span>
+              </div>
+            </div>
+          </Link>
+        );
+      })()}
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
           {padded.map((c, i) => {
@@ -310,7 +458,7 @@ export function ClubesPageView({ clubs }: { clubs: ClubFeatured[] }) {
               <path d="M 220 0 L 260 540" stroke="rgba(255,255,255,0.9)" strokeWidth="14" />
               <circle cx="420" cy="160" r="48" fill="rgba(16,185,129,0.25)" />
             </svg>
-            {filtered.map((c, i) => {
+            {gridSource.map((c, i) => {
               const pos = MAP_POSITIONS[i % MAP_POSITIONS.length];
               const price = c.minPriceCents != null ? Math.round(c.minPriceCents / 100) : 12;
               return (
