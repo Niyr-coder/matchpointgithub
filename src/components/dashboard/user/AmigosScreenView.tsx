@@ -465,7 +465,7 @@ function DiscoverPanel() {
   const onSendRequest = (target: PlayerSearchResult) => {
     if (pending) return;
     startTransition(async () => {
-      const r = await sendFriendRequest({ userId: target.userId });
+      const r = await sendFriendRequest({ toUserId: target.userId });
       if (!r.ok) {
         toast({ icon: "alert-triangle", title: r.error.message });
         return;
