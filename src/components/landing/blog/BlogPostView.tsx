@@ -10,7 +10,7 @@ function fmtDate(iso: string): string {
 
 export function BlogPostView({ post }: { post: BlogPost }) {
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: "60px 32px 80px" }}>
+    <main className="max-w-[760px] mx-auto px-4 md:px-8 pt-22 md:pt-25 pb-15 md:pb-20">
       <Link
         href="/blog"
         style={{

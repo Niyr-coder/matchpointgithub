@@ -89,7 +89,7 @@ function MemberPlaceholder() {
 }
 
 export function AdminTeamScreenView({ data }: { data: TeamData }) {
-  useRealtimeRefresh([{ table: "role_assignments" }, { table: "tickets" }, { table: "reports" }]);
+  useRealtimeRefresh([{ table: "role_assignments" }, { table: "tickets" }, { table: "reports" }], { debounceMs: 4000 });
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();

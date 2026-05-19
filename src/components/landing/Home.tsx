@@ -1,4 +1,7 @@
-// Home (landing) — migrado 1:1 desde MatchPoint Public.html (líneas 187-369)
+// Home (landing) — patrón híbrido v1: layout/breakpoints en Tailwind,
+// design tokens (gradients, colores, transforms, letterSpacing custom) en
+// inline styles. Las filas de cards usan `.mp-cards-row` (grid en desktop,
+// carrousel horizontal con scroll-snap en mobile).
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,7 +22,6 @@ type Props = {
   marqueeClubs?: string[];
 };
 
-// Placeholders del marquee cuando aún no hay clubes registrados.
 const MARQUEE_PLACEHOLDERS = [
   "Tu club aquí",
   "Pronto en MatchPoint",
@@ -47,8 +49,6 @@ const STEPS = [
   { n: "03", t: "Domina", d: "Sube tu nivel oficial con cada partido. Tu ranking, visible para todos.", i: "trending-up" },
 ];
 
-// Sin fallback con clubes/eventos inventados. Si no hay reales, page.tsx
-// rellena con house promos (Tu club aquí / Crea tu torneo / etc).
 const EVENTS_FALLBACK: EventCard[] = [];
 const CLUBS_FEATURED_FALLBACK: ClubCard[] = [];
 
@@ -86,68 +86,36 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
     <>
       {/* HERO */}
       <section
+        className="relative overflow-hidden text-white min-h-[calc(100svh-90px)]"
         style={{
-          position: "relative",
-          minHeight: "calc(100vh - 90px)",
           background: "linear-gradient(180deg, #0a0a0a 0%, #1f1f23 60%, #064e3b 100%)",
-          color: "#fff",
-          overflow: "hidden",
         }}
       >
         <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
           style={{
-            position: "absolute",
-            inset: 0,
             background: "radial-gradient(ellipse at 80% 50%, rgba(16,185,129,0.18), transparent 60%)",
           }}
         />
         <div
+          aria-hidden
+          className="absolute top-0 right-0 pointer-events-none select-none text-[160px] md:text-[360px]"
           style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
             fontFamily: "Plus Jakarta Sans",
             fontWeight: 900,
-            fontSize: 360,
             color: "rgba(255,255,255,0.04)",
             letterSpacing: "-0.06em",
             lineHeight: 0.8,
             transform: "rotate(-6deg) translate(10%, -15%)",
             textTransform: "uppercase",
-            pointerEvents: "none",
           }}
         >
           PLAY
         </div>
-        <div
-          style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "100px 32px 60px",
-          }}
-        >
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "5px 14px",
-              background: "rgba(16,185,129,0.15)",
-              border: "1px solid rgba(16,185,129,0.4)",
-              borderRadius: 9999,
-              fontSize: 10.5,
-              fontWeight: 900,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: "var(--primary)",
-              marginBottom: 24,
-            }}
-          >
-            ● LA COMUNIDAD #1 DE PICKLEBALL EN ECUADOR
-          </div>
+        <div className="relative max-w-[1280px] mx-auto pt-22 pb-10 px-4 md:pt-25 md:pb-15 md:px-8">
           <h1
-            className="font-heading"
+            className="font-heading max-w-[1100px]"
             style={{
               fontSize: "clamp(3.5rem, 9vw, 8.5rem)",
               fontWeight: 900,
@@ -155,7 +123,6 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
               textTransform: "uppercase",
               margin: 0,
               lineHeight: 0.92,
-              maxWidth: 1100,
             }}
           >
             Juega más.
@@ -163,18 +130,17 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
             Juega mejor<span style={{ color: "var(--primary)" }}>.</span>
           </h1>
           <p
+            className="max-w-[540px] mt-7"
             style={{
               fontSize: 17,
               color: "rgba(255,255,255,0.85)",
-              maxWidth: 540,
-              marginTop: 28,
               lineHeight: 1.6,
             }}
           >
             De cero a cancha en 60 segundos. Reserva, encuentra rivales de tu nivel y súbete al
             ranking. Sin llamadas, sin esperas, sin excusas para no jugar.
           </p>
-          <div style={{ display: "flex", gap: 12, marginTop: 36, flexWrap: "wrap" }}>
+          <div className="flex gap-3 mt-9 flex-wrap">
             <button
               className="lp-btn lp-btn-primary mp-shine"
               style={{ padding: "16px 28px", fontSize: 13 }}
@@ -199,16 +165,15 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
               <Icon name="building-2" size={14} />
             </Link>
           </div>
-          <div style={{ display: "flex", gap: 28, marginTop: 64, flexWrap: "wrap" }}>
+          <div className="flex gap-x-6 gap-y-5 mt-10 md:gap-7 md:mt-16 flex-wrap">
             {STAT_LABELS.map(({ key, l }) => {
               const v = STATS[key];
               const empty = v === "—" || v === "0";
               return (
                 <div key={l}>
                   <div
-                    className="font-heading tabular"
+                    className="font-heading tabular text-[32px] md:text-[42px]"
                     style={{
-                      fontSize: 42,
                       fontWeight: 900,
                       letterSpacing: "-0.04em",
                       lineHeight: 1,
@@ -235,11 +200,8 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
           </div>
         </div>
         <div
+          className="absolute left-1/2 -translate-x-1/2 bottom-5"
           style={{
-            position: "absolute",
-            bottom: 20,
-            left: "50%",
-            transform: "translateX(-50%)",
             color: "rgba(255,255,255,0.5)",
             fontSize: 10,
             fontWeight: 800,
@@ -253,22 +215,15 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
 
       {/* MARQUEE */}
       <section
-        style={{
-          padding: "40px 0",
-          borderBottom: "1px solid var(--border)",
-          overflow: "hidden",
-          background: "#fff",
-        }}
+        className="py-10 overflow-hidden bg-white"
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
         <div
+          className="flex whitespace-nowrap text-[22px] md:text-[30px] gap-10 md:gap-15"
           style={{
-            display: "flex",
-            gap: 60,
             animation: "lpMarquee 35s linear infinite",
-            whiteSpace: "nowrap",
             fontFamily: "Plus Jakarta Sans",
             fontWeight: 900,
-            fontSize: 30,
             letterSpacing: "-0.02em",
             color: "rgba(0,0,0,0.4)",
             textTransform: "uppercase",
@@ -283,32 +238,30 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
       </section>
 
       {/* COMO FUNCIONA */}
-      <section style={{ maxWidth: 1280, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[1280px] mx-auto py-15 md:py-25 px-4 md:px-8">
         <div className="label-mp" style={{ color: "var(--primary)" }}>
           ● Cómo funciona
         </div>
         <h2
-          className="font-heading"
+          className="font-heading max-w-[900px] mt-3 mb-10 md:mb-15"
           style={{
             fontSize: "clamp(2.5rem, 6vw, 5rem)",
             fontWeight: 900,
             letterSpacing: "-0.035em",
             textTransform: "uppercase",
-            margin: "12px 0 60px",
             lineHeight: 1,
-            maxWidth: 900,
           }}
         >
           Tres pasos.
           <br />
           Cero excusas<span style={{ color: "var(--primary)" }}>.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
           {STEPS.map((s) => (
             <div
               key={s.n}
+              className="p-6 md:p-7"
               style={{
-                padding: 28,
                 borderRadius: 14.4,
                 border: "1px solid var(--border)",
                 background: "#fff",
@@ -316,9 +269,8 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
               }}
             >
               <div
-                className="font-heading"
+                className="font-heading text-[56px] md:text-[80px]"
                 style={{
-                  fontSize: 80,
                   fontWeight: 900,
                   letterSpacing: "-0.04em",
                   lineHeight: 0.9,
@@ -344,9 +296,8 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                 <Icon name={s.i} size={20} color="#fff" />
               </div>
               <div
-                className="font-heading"
+                className="font-heading text-[20px] md:text-[24px]"
                 style={{
-                  fontSize: 24,
                   fontWeight: 900,
                   letterSpacing: "-0.025em",
                   textTransform: "uppercase",
@@ -372,44 +323,29 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
 
       {/* EVENTOS DESTACADOS */}
       <section
-        style={{
-          background: "#0a0a0a",
-          color: "#fff",
-          padding: "100px 0",
-          position: "relative",
-          overflow: "hidden",
-        }}
+        className="relative overflow-hidden py-15 md:py-25"
+        style={{ background: "#0a0a0a", color: "#fff" }}
       >
         <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
           style={{
-            position: "absolute",
-            inset: 0,
             background: "radial-gradient(ellipse at 30% 50%, rgba(251,191,36,0.08), transparent 60%)",
           }}
         />
-        <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              marginBottom: 48,
-              gap: 20,
-              flexWrap: "wrap",
-            }}
-          >
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="flex justify-between items-end mb-8 md:mb-12 gap-5 flex-wrap">
             <div>
               <div className="label-mp" style={{ color: "#fbbf24" }}>
                 ● Eventos próximos
               </div>
               <h2
-                className="font-heading"
+                className="font-heading mt-3"
                 style={{
                   fontSize: "clamp(2.5rem, 5vw, 4rem)",
                   fontWeight: 900,
                   letterSpacing: "-0.035em",
                   textTransform: "uppercase",
-                  margin: "12px 0 0",
                   lineHeight: 1,
                 }}
               >
@@ -430,7 +366,10 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
               <Icon name="arrow-right" size={13} />
             </Link>
           </div>
-          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div
+            className="mp-stagger mp-cards-row"
+            style={{ "--mp-cols": 3 } as React.CSSProperties}
+          >
             {EVENTS.map((e) => (
               <Link
                 key={e.n}
@@ -457,13 +396,13 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                   }}
                 />
                 <div
+                  className="text-[120px] md:text-[200px]"
                   style={{
                     position: "absolute",
                     top: 0,
                     right: 0,
                     fontFamily: "Plus Jakarta Sans",
                     fontWeight: 900,
-                    fontSize: 200,
                     color: "rgba(255,255,255,0.07)",
                     letterSpacing: "-0.06em",
                     lineHeight: 0.8,
@@ -497,9 +436,8 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                     </span>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 22 }}>
                       <span
-                        className="font-heading"
+                        className="font-heading text-[40px] md:text-[48px]"
                         style={{
-                          fontSize: 48,
                           fontWeight: 900,
                           lineHeight: 0.9,
                           letterSpacing: "-0.04em",
@@ -603,22 +541,24 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
       </section>
 
       {/* CLUBES DESTACADOS */}
-      <section style={{ maxWidth: 1280, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[1280px] mx-auto py-15 md:py-25 px-4 md:px-8">
         <div className="label-mp">● Clubes destacados</div>
         <h2
-          className="font-heading"
+          className="font-heading mt-3 mb-8 md:mb-12"
           style={{
             fontSize: "clamp(2.5rem, 5vw, 4rem)",
             fontWeight: 900,
             letterSpacing: "-0.035em",
             textTransform: "uppercase",
-            margin: "12px 0 48px",
             lineHeight: 1,
           }}
         >
           Las mejores canchas<span className="dot">.</span>
         </h2>
-        <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <div
+          className="mp-stagger mp-cards-row"
+          style={{ "--mp-cols": 4 } as React.CSSProperties}
+        >
           {CLUBS_FEATURED.map((c) => (
             <Link
               key={c.n}
@@ -715,30 +655,29 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
       </section>
 
       {/* TESTIMONIOS */}
-      <section style={{ background: "var(--muted)", padding: "100px 0" }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
+      <section className="py-15 md:py-25" style={{ background: "var(--muted)" }}>
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="label-mp" style={{ color: "var(--primary)" }}>
             ● La voz de la comunidad
           </div>
           <h2
-            className="font-heading"
+            className="font-heading mt-3 mb-8 md:mb-12"
             style={{
               fontSize: "clamp(2.5rem, 5vw, 4rem)",
               fontWeight: 900,
               letterSpacing: "-0.035em",
               textTransform: "uppercase",
-              margin: "12px 0 48px",
               lineHeight: 1,
             }}
           >
             Ellos ya juegan<span className="dot">.</span>
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
+                className="p-6 md:p-7"
                 style={{
-                  padding: 28,
                   background: "#fafafa",
                   borderRadius: 14.4,
                   borderLeft: "2px dashed var(--border)",
@@ -802,42 +741,36 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
 
       {/* DUAL CTA */}
       <section
-        style={{
-          background: "#0a0a0a",
-          color: "#fff",
-          padding: "100px 0",
-          position: "relative",
-          overflow: "hidden",
-        }}
+        className="relative overflow-hidden py-15 md:py-25"
+        style={{ background: "#0a0a0a", color: "#fff" }}
       >
         <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
           style={{
-            position: "absolute",
-            inset: 0,
             background: "radial-gradient(ellipse at 50% 120%, rgba(16,185,129,0.25), transparent 70%)",
           }}
         />
-        <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8">
           <h2
-            className="font-heading"
+            className="font-heading text-center mb-8 md:mb-12"
             style={{
               fontSize: "clamp(2.5rem, 5vw, 4rem)",
               fontWeight: 900,
               letterSpacing: "-0.035em",
               textTransform: "uppercase",
-              textAlign: "center",
-              margin: "0 0 48px",
               lineHeight: 1,
+              margin: "0 0 48px",
             }}
           >
             No te quedes fuera<span style={{ color: "#fbbf24" }}>.</span>
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {DUAL.map((c) => (
               <div
                 key={c.t}
+                className="p-7 md:p-9"
                 style={{
-                  padding: 36,
                   background: "rgba(255,255,255,0.04)",
                   border: "1px solid rgba(255,255,255,0.1)",
                   borderRadius: 14.4,
@@ -862,9 +795,8 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                   ● {c.tag}
                 </div>
                 <div
-                  className="font-heading"
+                  className="font-heading text-[28px] md:text-[36px]"
                   style={{
-                    fontSize: 36,
                     fontWeight: 900,
                     letterSpacing: "-0.03em",
                     textTransform: "uppercase",

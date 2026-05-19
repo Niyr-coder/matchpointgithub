@@ -61,7 +61,7 @@ function TicketPlaceholderRow() {
 }
 
 export function AdminSupportScreenView({ data }: { data: SupportData }) {
-  useRealtimeRefresh([{ table: "tickets" }, { table: "ticket_messages" }]);
+  useRealtimeRefresh([{ table: "tickets" }, { table: "ticket_messages" }], { debounceMs: 4000 });
 
   const hasRows = data.rows.length > 0;
 

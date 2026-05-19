@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
-import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
-import { TopBar } from "@/components/dashboard/TopBar";
+import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
@@ -90,17 +89,17 @@ export default async function RoleLayout({
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-    const [resHoy, clientes, walkinsHoy] = await Promise.all([
+    const [resHoy, clientesRes, walkinsHoy] = await Promise.all([
       supabase
         .from("reservations")
         .select("id", { count: "exact", head: true })
         .eq("club_id", clubId)
         .is("cancelled_at", null)
         .overlaps("during", `[${todayStart.toISOString()},${tomorrowStart.toISOString()})`),
-      supabase
-        .from("reservations")
-        .select("organizer_id", { count: "exact", head: false })
-        .eq("club_id", clubId),
+      // Clientes únicos vía RPC (migration 101): hace count(distinct) en SQL
+      // en lugar de traer todas las filas y deduplicar en memoria.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc("fn_unique_organizers_count", { p_club_id: clubId }),
       role === "manager"
         ? supabase
             .from("walkins")
@@ -111,18 +110,12 @@ export default async function RoleLayout({
         : Promise.resolve({ count: 0 }),
     ]);
 
-    // Clientes únicos = distinct organizer_id. Como Supabase no expone
-    // count(distinct) directo, derivamos en memoria del set retornado.
-    const uniqueOrganizers = new Set(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (((clientes as any)?.data ?? []) as Array<{ organizer_id: string | null }>)
-        .map((r) => r.organizer_id)
-        .filter(Boolean) as string[],
-    );
+    const uniqueOrganizersCount =
+      typeof clientesRes.data === "number" ? (clientesRes.data as number) : 0;
 
     badgeOverrides = {
       "club-reservas": resHoy.count ?? 0,
-      "club-clientes": uniqueOrganizers.size,
+      "club-clientes": uniqueOrganizersCount,
       "club-walkins": walkinsHoy.count ?? 0,
     };
   }
@@ -185,41 +178,23 @@ export default async function RoleLayout({
   // un número suelto sin contexto confunde más que aclara.
   if (role === "user") {
     const userId = session.session.userId;
-    const [clases, unread] = await Promise.all([
+    const [clases, unreadRes] = await Promise.all([
       supabase
         .from("class_enrollments")
         .select("id", { count: "exact", head: true })
         .eq("student_id", userId)
         .eq("status", "active"),
-      // Mensajes no leídos: messages en conversaciones del user, no del propio
-      // user, sin entry en message_reads para este user. Aproximación: count
-      // total de messages del user en sus conversaciones, le restamos los leídos.
-      (async () => {
-        const { data: convs } = await supabase
-          .from("conversation_members")
-          .select("conversation_id")
-          .eq("user_id", userId);
-        const convIds = (convs ?? []).map((c) => c.conversation_id as string);
-        if (convIds.length === 0) return { count: 0 };
-        const { data: msgs } = await supabase
-          .from("messages")
-          .select("id")
-          .in("conversation_id", convIds)
-          .neq("sender_id", userId);
-        const msgIds = (msgs ?? []).map((m) => m.id as string);
-        if (msgIds.length === 0) return { count: 0 };
-        const { data: reads } = await supabase
-          .from("message_reads")
-          .select("message_id")
-          .eq("user_id", userId)
-          .in("message_id", msgIds);
-        const readIds = new Set((reads ?? []).map((r) => r.message_id as string));
-        return { count: msgIds.filter((id) => !readIds.has(id)).length };
-      })(),
+      // Mensajes no leídos: RPC fn_unread_messages_count (migration 100)
+      // devuelve unread por conversación en 1 query. Antes eran 3 queries
+      // secuenciales con traída completa de message ids.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc("fn_unread_messages_count"),
     ]);
+    const unreadRows = (unreadRes.data as Array<{ conversation_id: string; unread_count: number }> | null) ?? [];
+    const totalUnread = unreadRows.reduce((acc, r) => acc + (r.unread_count ?? 0), 0);
     badgeOverrides = {
       "mis-clases": clases.count ?? 0,
-      "chat": unread.count,
+      "chat": totalUnread,
     };
   }
 
@@ -297,35 +272,16 @@ export default async function RoleLayout({
             : null;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-      }}
-    >
-      <DashboardSidebar
+    <>
+      <DashboardChrome
         role={role}
         userName={userName}
         contextLabel={contextLabel}
         badgeOverrides={badgeOverrides}
-      />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <TopBar role={role} contextLabel={contextLabel} />
-        <main
-          style={{
-            padding: 28,
-            display: "flex",
-            flexDirection: "column",
-            gap: 20,
-            flex: 1,
-          }}
-        >
-          {children}
-        </main>
-      </div>
+      >
+        {children}
+      </DashboardChrome>
       {isAdmin && <RoleSwitcher current={role} />}
-    </div>
+    </>
   );
 }

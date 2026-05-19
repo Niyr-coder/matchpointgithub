@@ -43,11 +43,8 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
       <button
         onClick={() => toggle(true)}
         title="Activar dev role switcher"
+        className="fixed top-2 left-1/2 -translate-x-1/2 md:top-auto md:left-auto md:bottom-4 md:right-4 md:translate-x-0 z-[950]"
         style={{
-          position: "fixed",
-          bottom: 16,
-          right: 16,
-          zIndex: 950,
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
@@ -72,13 +69,14 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
   }
 
   return (
-    <div style={{ position: "fixed", bottom: 16, right: 16, zIndex: 950, fontFamily: "inherit" }}>
+    <div
+      className="fixed top-2 left-1/2 -translate-x-1/2 md:top-auto md:left-auto md:bottom-4 md:right-4 md:translate-x-0 z-[950]"
+      style={{ fontFamily: "inherit" }}
+    >
       {open && (
         <div
+          className="absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 md:top-auto md:bottom-[calc(100%+8px)] md:left-auto md:right-0 md:translate-x-0"
           style={{
-            position: "absolute",
-            bottom: "calc(100% + 8px)",
-            right: 0,
             width: 280,
             background: "#0a0a0a",
             color: "#fff",

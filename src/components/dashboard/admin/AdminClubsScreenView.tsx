@@ -483,7 +483,7 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
 }
 
 export function AdminClubsScreenView({ data }: { data: ClubsData }) {
-  useRealtimeRefresh([{ table: "clubs" }, { table: "club_applications" }]);
+  useRealtimeRefresh([{ table: "clubs" }, { table: "club_applications" }], { debounceMs: 4000 });
 
   const [f, setF] = useState<"all" | Status>("all");
   const filtered = f === "all" ? data.rows : data.rows.filter((c) => c.status === f);

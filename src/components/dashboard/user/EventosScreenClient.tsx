@@ -155,11 +155,13 @@ function padRows(arr: TournamentFeatured[]): RowItem[] {
 
 export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
   const router = useRouter();
-  // Realtime: nuevos torneos, registraciones (cupos cambian).
-  useRealtimeRefresh([
-    { table: "tournaments" },
-    { table: "registrations" },
-  ]);
+  // Realtime: solo INSERT de torneos nuevos. Drop registrations y UPDATEs
+  // de tournaments para no refrescar a TODOS los users del país por cada
+  // edit ajeno (ver docs/architecture/50-realtime.md §Carga global).
+  useRealtimeRefresh(
+    [{ table: "tournaments", event: "INSERT" }],
+    { debounceMs: 5000 },
+  );
 
   const [tab, setTab] = useState<Tab>("Próximos");
   const myIds = new Set(myRegisteredIds);
@@ -331,7 +333,7 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
       >
         {registered ? "✓ Inscrito" : "★ Evento " + tagFromFormat(t.format)}
       </div>
-      <div style={{ position: "relative", padding: 32, display: "grid", gridTemplateColumns: "1fr auto", gap: 32, alignItems: "end" }}>
+      <div className="relative p-5 md:p-8 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 md:gap-8 items-end">
         <div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, marginTop: 24 }}>
             <span className="font-heading" style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.04em" }}>{d}</span>
@@ -369,7 +371,7 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
             Ver detalles del evento <Icon name="arrow-right" size={12} color="#10b981" />
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
+        <div className="flex flex-col gap-3 items-start md:items-end">
           <div style={{ display: "flex", gap: 18 }}>
             <Stat label="Premio" value={priceLabel(t.prizePoolCents, "—")} accent="#10b981" />
             <Stat label="Inscripción" value={feeLabel(t.entryFeeCents)} />
@@ -414,7 +416,7 @@ function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered
   const club = [t.clubName, t.clubCity].filter(Boolean).join(" · ") || "Multi-club";
 
   return (
-    <div className="card" style={{ padding: 0, display: "grid", gridTemplateColumns: "88px 1fr auto auto", alignItems: "stretch" }}>
+    <div className="card grid grid-cols-[64px_1fr] md:grid-cols-[88px_1fr_auto_auto] items-stretch" style={{ padding: 0 }}>
       <div style={{ background: "var(--muted)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 14, borderRight: "1px solid var(--border)" }}>
         <div className="font-heading" style={{ fontSize: 30, fontWeight: 900, lineHeight: 0.9, letterSpacing: "-0.03em" }}>{d}</div>
         <div style={{ fontSize: 9.5, fontWeight: 900, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.18em", marginTop: 4 }}>{m}</div>
@@ -449,14 +451,14 @@ function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered
           {club}
         </div>
       </div>
-      <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-end", gap: 4, borderLeft: "1px dashed var(--border)" }}>
+      <div className="hidden md:flex" style={{ padding: "14px 18px", flexDirection: "column", justifyContent: "center", alignItems: "flex-end", gap: 4, borderLeft: "1px dashed var(--border)" }}>
         <div style={{ fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 800 }}>Premio</div>
         <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, color: "var(--primary)" }}>{priceLabel(t.prizePoolCents, "—")}</div>
         <div style={{ fontSize: 10.5, color: full ? "#dc2626" : "var(--muted-fg)", fontWeight: 700 }}>
           Cupos: {slots > 0 ? `${t.registrationsCount}/${slots}` : `${t.registrationsCount}`}
         </div>
       </div>
-      <div style={{ padding: 14, display: "flex", alignItems: "center", paddingRight: 18, gap: 6 }}>
+      <div className="hidden md:flex" style={{ padding: 14, alignItems: "center", paddingRight: 18, gap: 6 }}>
         <button onClick={onOpen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Ver</button>
         {registered ? (
           <button className="btn" style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #10b981" }} disabled>
@@ -481,12 +483,9 @@ function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered
 function RowPlaceholder() {
   return (
     <div
-      className="card"
+      className="card grid grid-cols-[64px_1fr] md:grid-cols-[88px_1fr_auto_auto] items-stretch"
       style={{
         padding: 0,
-        display: "grid",
-        gridTemplateColumns: "88px 1fr auto auto",
-        alignItems: "stretch",
         opacity: 0.5,
         border: "1px dashed var(--border)",
         background: "#fafafa",
@@ -500,11 +499,11 @@ function RowPlaceholder() {
         <div style={{ fontSize: 16, fontWeight: 900, color: "var(--muted-fg)" }} className="font-heading">Próximamente</div>
         <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>—</div>
       </div>
-      <div style={{ padding: "14px 18px", textAlign: "right", color: "var(--muted-fg)" }}>
+      <div className="hidden md:block" style={{ padding: "14px 18px", textAlign: "right", color: "var(--muted-fg)" }}>
         <div style={{ fontSize: 9.5, fontWeight: 800 }}>Premio</div>
         <div className="font-heading" style={{ fontSize: 16, fontWeight: 900 }}>$—</div>
       </div>
-      <div style={{ padding: 14, display: "flex", alignItems: "center", paddingRight: 18 }}>
+      <div className="hidden md:flex" style={{ padding: 14, alignItems: "center", paddingRight: 18 }}>
         <span className="btn" style={{ background: "var(--muted)", color: "var(--muted-fg)", border: "1px dashed var(--border)", cursor: "default" }}>—</span>
       </div>
     </div>
@@ -610,7 +609,7 @@ function EventDetail({
         >
           {tag.slice(0, 4)}
         </div>
-        <div style={{ position: "relative", padding: 32, display: "grid", gridTemplateColumns: "1fr auto", gap: 32, alignItems: "end" }}>
+        <div className="relative p-5 md:p-8 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 md:gap-8 items-end">
           <div>
             <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
               <span style={{ padding: "4px 11px", background: "var(--primary)", borderRadius: 9999, fontSize: 9.5, fontWeight: 900, color: "#fff", textTransform: "uppercase", letterSpacing: "0.18em" }}>{tag}</span>
@@ -630,7 +629,7 @@ function EventDetail({
               </span>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-end", minWidth: 280 }}>
+          <div className="flex flex-col gap-3 items-start md:items-end md:min-w-[280px]">
             <div style={{ display: "flex", gap: 18 }}>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.18em", fontWeight: 800, marginBottom: 2 }}>Premio total</div>
@@ -681,7 +680,7 @@ function EventDetail({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card" style={{ padding: 22 }}>
             <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em", margin: 0, marginBottom: 10 }}>
@@ -735,7 +734,7 @@ function EventDetail({
                 Sé el primero en inscribirte.
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {Array.from({ length: Math.min(filled, 8) }).map((_, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
                     <div style={{ width: 28, height: 28, borderRadius: "50%", background: AVATAR_GRADIENTS[i % AVATAR_GRADIENTS.length], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", flexShrink: 0 }}>

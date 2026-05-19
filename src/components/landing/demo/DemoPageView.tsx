@@ -44,12 +44,10 @@ export function DemoPageView() {
   return (
     <>
       <section
+        className="relative overflow-hidden pt-22 md:pt-25 pb-8 md:pb-10"
         style={{
-          position: "relative",
-          padding: "60px 0 40px",
           background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 200%)",
           color: "#fff",
-          overflow: "hidden",
         }}
       >
         <div
@@ -67,18 +65,7 @@ export function DemoPageView() {
         >
           DEMO
         </div>
-        <div
-          style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "0 32px",
-            display: "flex",
-            gap: 22,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 flex gap-5 items-center flex-wrap">
           <div
             style={{
               width: 64,
@@ -133,16 +120,7 @@ export function DemoPageView() {
         </div>
       </section>
 
-      <main
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "60px 32px",
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
-          gap: 32,
-        }}
-      >
+      <main className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-6 md:gap-8">
         {step === 0 ? (
           <div className="card" style={{ padding: 28 }}>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Paso 1 de 1</div>
@@ -160,7 +138,7 @@ export function DemoPageView() {
             </h2>
 
             <div className="label-mp" style={{ marginBottom: 10 }}>1. ¿Qué día te queda mejor?</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginBottom: 24 }}>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-6">
               {DAYS.map((d, i) => {
                 const on = day === i;
                 const dis = !d.avail;
@@ -204,7 +182,7 @@ export function DemoPageView() {
             </div>
 
             <div className="label-mp" style={{ marginBottom: 10 }}>2. ¿A qué hora?</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginBottom: 24 }}>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-6">
               {SLOTS.map((t) => {
                 const on = time === t;
                 const taken = TAKEN_SLOTS.has(t);

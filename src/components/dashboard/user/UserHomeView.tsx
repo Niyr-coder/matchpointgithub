@@ -23,6 +23,13 @@ type ReservationLite = {
 
 type RatingPoint = { rating: number; snapshotAt: string };
 
+type BadgeLite = {
+  kind: string;
+  label: string;
+  icon: string;
+  on: boolean;
+};
+
 export type UserHomeData = {
   meUserId: string | null;
   name: string;
@@ -37,6 +44,7 @@ export type UserHomeData = {
   historiesByMode: { singles: RatingPoint[]; doubles: RatingPoint[] };
   planTier: "free" | "premium";
   planExpiresAt: string | null;
+  badges: BadgeLite[];
 };
 
 const UPGRADE_WARN_DAYS = 7;
@@ -124,17 +132,17 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
     <>
       <WelcomeBanner data={data} />
       <UpgradeBanner data={data} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
         <ReservasPanel reservations={data.reservations} />
         <TorneosPanel tournaments={data.tournaments} />
       </div>
       <ClubActivityFeed items={buildActivityItems(data)} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
         <MpRatingWidget
           ratingsByMode={data.ratingsByMode}
           historiesByMode={data.historiesByMode}
         />
-        <MyBadgesSection />
+        <MyBadgesSection badges={data.badges} />
         <QuickActionsPanel inviteSlug={data.name.toLowerCase().split(" ")[0]} />
       </div>
       {showWizard && (
@@ -1003,19 +1011,12 @@ function ModeToggle({
   );
 }
 
-const BADGES = [
-  { label: "1° match", icon: "flag", on: true },
-  { label: "Racha 5", icon: "flame", on: true },
-  { label: "Top 50", icon: "trophy", on: true },
-  { label: "Doblete", icon: "award", on: false },
-  { label: "Campeón", icon: "crown", on: false },
-];
-
-function MyBadgesSection() {
-  // Conteo derivado del propio catálogo (no hardcodeado).
-  // TODO: cuando exista tabla player_badges, leer unlocked reales del user.
-  const total = BADGES.length;
-  const unlocked = BADGES.filter((b) => b.on).length;
+function MyBadgesSection({ badges }: { badges: BadgeLite[] }) {
+  // Data viene del catálogo `badges` + `player_badges` del user (mig 108).
+  // Si por alguna razón no hay badges (instancia recién creada), no mostramos
+  // estado vacío explícito — la card simplemente queda con 0/0.
+  const total = badges.length;
+  const unlocked = badges.filter((b) => b.on).length;
   return (
     <div className="card" style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1025,9 +1026,9 @@ function MyBadgesSection() {
         </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 14 }}>
-        {BADGES.map((b) => (
+        {badges.map((b) => (
           <div
-            key={b.label}
+            key={b.kind}
             style={{
               aspectRatio: "1",
               borderRadius: 10,

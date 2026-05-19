@@ -94,7 +94,7 @@ function fmtDate(iso: string): string {
 }
 
 export function AdminRolesScreenView({ data }: { data: RolesData }) {
-  useRealtimeRefresh([{ table: "role_assignments" }, { table: "role_requests" }]);
+  useRealtimeRefresh([{ table: "role_assignments" }, { table: "role_requests" }], { debounceMs: 4000 });
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();

@@ -108,7 +108,7 @@ function CasePlaceholder() {
 }
 
 export function AdminModScreenView({ data }: { data: ModData }) {
-  useRealtimeRefresh([{ table: "reports" }, { table: "moderation_actions" }]);
+  useRealtimeRefresh([{ table: "reports" }, { table: "moderation_actions" }], { debounceMs: 4000 });
   const toast = useToast();
   const { ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();

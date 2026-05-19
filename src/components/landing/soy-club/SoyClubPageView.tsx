@@ -122,18 +122,7 @@ export function SoyClubPageView() {
         >
           CLUB
         </div>
-        <div
-          style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "100px 32px 60px",
-            display: "grid",
-            gridTemplateColumns: "1.4fr 1fr",
-            gap: 60,
-            alignItems: "center",
-          }}
-        >
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 md:pt-25 pb-10 md:pb-15 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-10 md:gap-15 items-center">
           <div>
             <div
               style={{
@@ -360,7 +349,7 @@ export function SoyClubPageView() {
       </section>
 
       {/* Benefits 3-up */}
-      <section style={{ maxWidth: 1280, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-15 md:py-25">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MatchPoint</div>
         <h2
           className="font-heading"
@@ -376,9 +365,9 @@ export function SoyClubPageView() {
           Tres cosas cambian.<br />
           Las tres importan<span className="dot">.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
           {BENEFITS.map((b) => (
-            <div key={b.t} style={{ padding: 28, borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff" }}>
+            <div key={b.t} className="p-6 md:p-7" style={{ borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff" }}>
               <div
                 style={{
                   width: 52,
@@ -429,9 +418,9 @@ export function SoyClubPageView() {
       </section>
 
       {/* Pricing */}
-      <section style={{ background: "var(--muted)", padding: "100px 0" }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
+      <section className="py-15 md:py-25" style={{ background: "var(--muted)" }}>
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12 items-center">
             <div>
               <div className="label-mp" style={{ color: "var(--primary)" }}>● Sin sorpresas</div>
               <h2
@@ -524,7 +513,7 @@ export function SoyClubPageView() {
       </section>
 
       {/* Testimonios */}
-      <section style={{ maxWidth: 1280, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-15 md:py-25">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Lo que dicen owners</div>
         <h2
           className="font-heading"
@@ -539,9 +528,9 @@ export function SoyClubPageView() {
         >
           Casos reales<span className="dot">.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 18 }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {TESTIMONIOS.map((t) => (
-            <div key={t.n} className="card" style={{ padding: 32, borderLeft: "3px solid var(--primary)" }}>
+            <div key={t.n} className="card p-6 md:p-8" style={{ borderLeft: "3px solid var(--primary)" }}>
               <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
                 {[1, 2, 3, 4, 5].map((s) => (
                   <Icon key={s} name="star" size={14} color="#d97706" />
@@ -592,12 +581,10 @@ export function SoyClubPageView() {
       {/* Form / contact */}
       <section
         id="form"
+        className="relative overflow-hidden py-15 md:py-25"
         style={{
           background: "#0a0a0a",
           color: "#fff",
-          padding: "100px 0",
-          position: "relative",
-          overflow: "hidden",
         }}
       >
         <div
@@ -607,7 +594,7 @@ export function SoyClubPageView() {
             background: "radial-gradient(ellipse at 50% 120%, rgba(16,185,129,0.25), transparent 70%)",
           }}
         />
-        <div style={{ position: "relative", maxWidth: 880, margin: "0 auto", padding: "0 32px" }}>
+        <div className="relative max-w-[880px] mx-auto px-4 md:px-8">
           <div className="label-mp" style={{ color: "#fbbf24" }}>● Listo en 48 horas</div>
           <h2
             className="font-heading"
@@ -670,11 +657,8 @@ export function SoyClubPageView() {
           ) : (
             <form
               onSubmit={onSubmit}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-6 md:p-8"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                padding: 32,
                 background: "rgba(255,255,255,0.04)",
                 borderRadius: 14.4,
                 border: "1px solid rgba(255,255,255,0.1)",
@@ -787,7 +771,7 @@ export function SoyClubPageView() {
       </section>
 
       {/* FAQ */}
-      <section style={{ maxWidth: 880, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[880px] mx-auto px-4 md:px-8 py-15 md:py-25">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Preguntas frecuentes</div>
         <h2
           className="font-heading"

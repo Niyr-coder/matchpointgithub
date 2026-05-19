@@ -113,12 +113,15 @@ export function AdminPlansScreenView({
   recentFeaturing: RecentClubFeaturingRow[];
   activeFeaturedCount: number;
 }) {
-  useRealtimeRefresh([
-    { table: "player_subscriptions" },
-    { table: "club_featuring_subscriptions" },
-    { table: "transactions" },
-    { table: "clubs" },
-  ]);
+  useRealtimeRefresh(
+    [
+      { table: "player_subscriptions" },
+      { table: "club_featuring_subscriptions" },
+      { table: "transactions" },
+      { table: "clubs" },
+    ],
+    { debounceMs: 5000 },
+  );
   const router = useRouter();
   const toast = useToast();
   const { confirm, ask } = usePromptModal();

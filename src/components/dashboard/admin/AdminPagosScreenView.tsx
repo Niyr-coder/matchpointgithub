@@ -132,7 +132,10 @@ export function AdminPagosScreenView({
   data: PagosData;
   pendingProofs?: PendingProofView[];
 }) {
-  useRealtimeRefresh([{ table: "transactions" }, { table: "refunds" }, { table: "payouts" }]);
+  useRealtimeRefresh(
+    [{ table: "transactions" }, { table: "refunds" }, { table: "payouts" }],
+    { debounceMs: 5000 },
+  );
   const toast = useToast();
   const { confirm, ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();

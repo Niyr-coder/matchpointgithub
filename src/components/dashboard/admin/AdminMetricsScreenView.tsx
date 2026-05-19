@@ -28,7 +28,12 @@ function fmtCompactUSD(cents: number): string {
 }
 
 export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
-  useRealtimeRefresh([{ table: "transactions" }, { table: "reservations" }, { table: "profiles" }]);
+  // transactions/reservations/profiles son las tablas más calientes de la
+  // plataforma. Debounce alto para evitar refresh por cada acción ajena.
+  useRealtimeRefresh(
+    [{ table: "transactions" }, { table: "reservations" }, { table: "profiles" }],
+    { debounceMs: 5000 },
+  );
 
   const deltaLabel = (n: number | null): string => (n == null ? "—" : `${n >= 0 ? "↑" : "↓"} ${Math.abs(n)}%`);
   const KPIS: [string, string, string, string][] = [

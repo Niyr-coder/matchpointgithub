@@ -1,7 +1,7 @@
 // /eventos — migrado 1:1 desde MatchPoint Public.html (líneas 1090-1231)
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { usePaywall } from "@/components/landing/PublicChromeClient";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
@@ -71,6 +71,28 @@ export function EventosPageView({
 }) {
   const onPaywall = usePaywall();
   const [tab, setTab] = useState<"proximos" | "curso" | "pasados">("proximos");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<{ x: number; w: number; ready: boolean }>({
+    x: 0,
+    w: 0,
+    ready: false,
+  });
+
+  // useLayoutEffect (no useEffect) para evitar el flash de un frame con la
+  // pill en posición vieja después del click. `ready` arranca en false para
+  // que el primer paint NO tenga transition (sino la pill "vuela" desde 0,0
+  // al primer render), y se enciende después del primer cálculo.
+  useLayoutEffect(() => {
+    const container = tabsRef.current;
+    if (!container) return;
+    const active = container.querySelector<HTMLButtonElement>(`[data-tab="${tab}"]`);
+    if (!active) return;
+    setPill({
+      x: active.offsetLeft,
+      w: active.offsetWidth,
+      ready: true,
+    });
+  }, [tab]);
 
   const upcoming = tournaments.filter((t) => t.status !== "live" && t.status !== "finished");
   const live = tournaments.filter((t) => t.status === "live");
@@ -88,7 +110,7 @@ export function EventosPageView({
   ] as const;
 
   return (
-    <main style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px" }}>
+    <main className="max-w-[1280px] mx-auto px-4 md:px-8 pt-22 pb-6 md:pt-25 md:pb-10">
       <div className="label-mp" style={{ color: "#fbbf24" }}>● Eventos · torneos & ligas</div>
       <h1
         className="font-heading"
@@ -109,7 +131,10 @@ export function EventosPageView({
       </p>
 
       <div
+        ref={tabsRef}
+        role="tablist"
         style={{
+          position: "relative",
           display: "flex",
           gap: 4,
           padding: 4,
@@ -120,28 +145,55 @@ export function EventosPageView({
           marginBottom: 28,
         }}
       >
+        {/* Pill que desliza entre tabs. Aria-hidden porque el indicador visual
+            no necesita ser anunciado por screen readers (el role=tab + aria-selected
+            ya comunican el estado). */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 4,
+            bottom: 4,
+            left: 0,
+            width: pill.w,
+            transform: `translateX(${pill.x}px)`,
+            background: "#fff",
+            borderRadius: 9999,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            transition: pill.ready
+              ? "transform 280ms var(--ease-out), width 280ms var(--ease-out)"
+              : "none",
+            pointerEvents: "none",
+          }}
+        />
         {tabs.map((t) => {
           const on = tab === t.k;
           return (
             <button
               key={t.k}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              data-tab={t.k}
               onClick={() => setTab(t.k)}
+              className="mp-press"
               style={{
+                position: "relative",
                 padding: "8px 16px",
                 borderRadius: 9999,
                 border: 0,
-                background: on ? "#fff" : "transparent",
+                background: "transparent",
                 color: on ? "#0a0a0a" : "var(--muted-fg)",
                 fontWeight: on ? 900 : 700,
                 fontSize: 11.5,
                 cursor: "pointer",
                 fontFamily: "inherit",
-                boxShadow: on ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
+                transition: "color 200ms var(--ease-out)",
               }}
             >
               {t.l}
@@ -152,7 +204,9 @@ export function EventosPageView({
                   borderRadius: 9999,
                   background: on ? "#0a0a0a" : "transparent",
                   color: on ? "#fff" : "var(--muted-fg)",
-                  border: on ? 0 : "1px solid var(--border)",
+                  border: on ? "1px solid transparent" : "1px solid var(--border)",
+                  transition:
+                    "background-color 200ms var(--ease-out), color 200ms var(--ease-out), border-color 200ms var(--ease-out)",
                 }}
               >
                 {t.n}
@@ -165,7 +219,7 @@ export function EventosPageView({
       {tab === "proximos" && (
         <>
           {featured ? <FeaturedCard t={featured} /> : <FeaturedPlaceholder />}
-          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+          <div className="mp-stagger mp-cards-row" style={{ "--mp-cols": 3 } as React.CSSProperties}>
             {padTournaments(rest).map((t, i) =>
               t.placeholder ? (
                 <EventPlaceholderCard key={t.key} />
@@ -199,7 +253,7 @@ export function EventosPageView({
               </span>
             </div>
           )}
-          <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+          <div className="mp-stagger mp-cards-row" style={{ "--mp-cols": 3 } as React.CSSProperties}>
             {padTournaments(live).map((t, i) =>
               t.placeholder ? (
                 <EventPlaceholderCard key={t.key} />
@@ -277,13 +331,8 @@ function FeaturedCard({ t }: { t: TournamentFeatured }) {
         ★ EVENTO {tag}
       </div>
       <div
+        className="relative grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 md:gap-8 items-end p-6 md:p-9"
         style={{
-          position: "relative",
-          padding: 36,
-          display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: 32,
-          alignItems: "end",
           minHeight: 280,
         }}
       >
@@ -812,7 +861,7 @@ function PastTournamentsTab({
   return (
     <div>
       <div className="label-mp" style={{ marginBottom: 14 }}>Últimos torneos finalizados</div>
-      <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+      <div className="mp-stagger mp-cards-row mb-6" style={{ "--mp-cols": 3 } as React.CSSProperties}>
         {past.slice(0, 9).map((t) => {
           const { d, m } = dateLabel(t.startsAt, t.endsAt);
           return (

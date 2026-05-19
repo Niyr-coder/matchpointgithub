@@ -161,9 +161,9 @@ export function TopBar({
 
   return (
     <div
+      className="px-4 md:px-7"
       style={{
         height: 60,
-        padding: "0 28px",
         borderBottom: "1px solid var(--border)",
         background: "#fff",
         display: "flex",
@@ -174,7 +174,21 @@ export function TopBar({
         zIndex: 10,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, maxWidth: 640 }}>
+      {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky). */}
+      <div
+        className="md:hidden flex items-center gap-1.5"
+        aria-label="MatchPoint"
+      >
+        <span className="dot" style={{ fontSize: 16 }}>●</span>
+        <span
+          className="font-heading"
+          style={{ fontWeight: 900, letterSpacing: "-0.02em", fontSize: 15 }}
+        >
+          MATCHPOINT
+        </span>
+      </div>
+      {/* Search + admin context: solo desktop. */}
+      <div className="hidden md:flex items-center" style={{ gap: 12, flex: 1, maxWidth: 640 }}>
         <div style={{ flex: 1, position: "relative", maxWidth: 320 }}>
           <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
             <Icon name="search" size={14} />
@@ -237,9 +251,34 @@ export function TopBar({
         )}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button className="btn btn-primary" style={{ padding: "8px 16px" }} onClick={handleCta}>
+        {/* Desktop: CTA con label. Mobile: solo ícono compacto.
+           El !important en hidden/inline-flex es necesario porque .btn de
+           globals.css define display:inline-flex y se carga después de las
+           utilities de Tailwind — sin "!" gana .btn y se ven los dos. */}
+        <button
+          className="btn btn-primary !hidden md:!inline-flex"
+          style={{ padding: "8px 16px" }}
+          onClick={handleCta}
+        >
           <Icon name={cta.i} size={13} />
           {cta.l}
+        </button>
+        <button
+          className="md:hidden inline-flex items-center justify-center"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 9999,
+            background: "var(--primary)",
+            color: "#fff",
+            border: 0,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+          onClick={handleCta}
+          aria-label={cta.l}
+        >
+          <Icon name={cta.i} size={15} />
         </button>
         <div ref={ref} style={{ position: "relative" }}>
           <button

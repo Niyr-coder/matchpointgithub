@@ -12,6 +12,10 @@ type Props = {
   // Ej: { "club-reservas": 12, "club-clientes": 486 }. Si el valor es 0 o
   // undefined, no se muestra badge.
   badgeOverrides?: Record<string, number | string | null | undefined>;
+  // Mobile drawer: el chrome wrapper controla apertura/cierre desde el bottom
+  // pill. En desktop estos props son ignorados (la sidebar es sticky lateral).
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 };
 
 // Deriva la sección activa del pathname:
@@ -24,7 +28,14 @@ function activeFromPath(pathname: string, role: RoleKey): string {
   return rest || "home";
 }
 
-export function DashboardSidebar({ role, userName, contextLabel, badgeOverrides }: Props) {
+export function DashboardSidebar({
+  role,
+  userName,
+  contextLabel,
+  badgeOverrides,
+  mobileOpen = false,
+  onMobileClose,
+}: Props) {
   const cfg = MP_ROLES[role];
   // Anexamos un grupo "Soporte" con Ayuda para todos los roles, sin tocar
   // la config estática de roles.ts. /dashboard/[role]/ayuda es global.
@@ -48,20 +59,26 @@ export function DashboardSidebar({ role, userName, contextLabel, badgeOverrides 
   const contextSub = contextLabel ?? cfg.l;
 
   return (
-    <aside
-      style={{
-        width: 256,
-        background: "var(--sidebar-bg)",
-        color: "var(--sidebar-fg)",
-        display: "flex",
-        flexDirection: "column",
-        borderRight: "1px solid var(--sidebar-border)",
-        position: "sticky",
-        top: 0,
-        height: "100vh",
-        flexShrink: 0,
-      }}
-    >
+    <>
+      {/* Backdrop solo mobile cuando drawer abierto. */}
+      <div
+        className={`md:hidden fixed inset-0 z-40 bg-black/55 transition-opacity ${
+          mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={onMobileClose}
+        aria-hidden
+      />
+      <aside
+        className={`flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-50 w-64 transform transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+        style={{
+          background: "var(--sidebar-bg)",
+          color: "var(--sidebar-fg)",
+          borderRight: "1px solid var(--sidebar-border)",
+          height: "100vh",
+        }}
+      >
       <div
         style={{
           padding: "18px 20px",
@@ -185,7 +202,8 @@ export function DashboardSidebar({ role, userName, contextLabel, badgeOverrides 
           <Icon name="chevrons-up-down" size={14} color="#a1a1aa" />
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

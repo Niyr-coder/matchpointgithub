@@ -77,6 +77,7 @@ body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   background: var(--bg);
   color: var(--fg);
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -244,6 +245,107 @@ body {
 @keyframes lpMpFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes lpMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
+/* ── mp-liquid-cta ────────────────────────────────────────────
+   CTA pill blanco con borde animado tipo "liquid fluid" verde
+   girando alrededor del perímetro. Técnica: un pseudo-elemento
+   ::before contiene un conic-gradient que rota vía transform
+   (GPU-acelerado, universal); un ::after blanco cubre el centro
+   dejando solo 2px de arco verde visible alrededor. */
+.mp-liquid-cta {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: transparent;
+  color: #0a0a0a;
+  border: 0;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-decoration: none;
+  overflow: hidden;
+}
+.mp-liquid-cta:active {
+  transform: scale(0.97);
+}
+.mp-liquid-cta::before {
+  content: "";
+  position: absolute;
+  /* Cuadrado grande centrado para que la rotación cubra toda
+     la pill sin cortes en las esquinas. */
+  top: 50%;
+  left: 50%;
+  width: 300%;
+  aspect-ratio: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 180deg,
+    #10b981 230deg,
+    #6ee7b7 290deg,
+    #34d399 340deg,
+    transparent 360deg
+  );
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: mpLiquidSpin 2.8s linear infinite;
+  z-index: -2;
+  pointer-events: none;
+}
+.mp-liquid-cta::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: #fff;
+  z-index: -1;
+  pointer-events: none;
+}
+@keyframes mpLiquidSpin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-liquid-cta::before { animation: none; }
+}
+
+/* ── mp-cards-row ─────────────────────────────────────────────
+   Layout responsive para filas de cards del landing.
+   Desktop (≥768px): grid de N columnas, control con `style={{ "--mp-cols": N }}`.
+   Mobile (<768px): carrousel horizontal con scroll-snap, una card ~82% de
+   viewport, sin scrollbar visible. Esto reemplaza los inline
+   `gridTemplateColumns: repeat(N, 1fr)` que rompían mobile. */
+.mp-cards-row {
+  display: grid;
+  grid-template-columns: repeat(var(--mp-cols, 3), 1fr);
+  gap: 16px;
+}
+@media (max-width: 767px) {
+  .mp-cards-row {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    /* margin-right negativo + padding-right hace que las cards se puedan
+       scrollear PAST el borde derecho del viewport (peek). El lado izquierdo
+       queda alineado con el padding normal de la sección (sin margin-left
+       negativo) para que la primera card quede a ras del título. */
+    margin-right: -16px;
+    padding-right: 16px;
+    scrollbar-width: none;
+  }
+  .mp-cards-row::-webkit-scrollbar { display: none; }
+  .mp-cards-row > * {
+    flex: 0 0 82%;
+    scroll-snap-align: start;
+  }
+}
+
 /* ── Motion utilities (Emil-style polish) ─────────────────────
    Solo transform + opacity = GPU, off-main-thread, no repaint.
    Hover gated a `hover: hover` para no triggear en touch. */
@@ -377,6 +479,36 @@ body {
   .mp-nav-link[data-active="false"]:focus-visible {
     background: rgba(10, 10, 10, 0.05);
     color: #0a0a0a;
+  }
+}
+
+/* Press feedback universal (Emil: "buttons must feel responsive").
+   Aplicable a cualquier elemento clickeable. Scale subtle, no visible salvo
+   en el momento de press, da sensación táctil de que el UI escuchó al user. */
+.mp-press {
+  transition: transform 120ms var(--ease-out);
+}
+.mp-press:active {
+  transform: scale(0.96);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-press:active { transform: none; }
+}
+
+/* Variante para usar sobre la barra glass oscura del desktop. */
+.mp-nav-link-dark {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+}
+.mp-nav-link-dark[data-active="true"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-nav-link-dark[data-active="false"]:hover,
+  .mp-nav-link-dark[data-active="false"]:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
   }
 }
 
@@ -520,16 +652,45 @@ body {
 }
 
 /* Panel de notificaciones — entrada suave al abrir desde el bell.
-   transform-origin top-right hace que escale desde la esquina del trigger. */
+   Mismo origen (top-right, donde vive el bell) en ambos breakpoints — solo
+   cambia el ancho. La animación crece "desde el bell" en mobile y desktop.
+   Posicionamiento en CSS puro (no Tailwind) para evitar bugs de JIT con
+   arbitrary values + asegurar que mobile NUNCA caiga abajo. */
 .mp-notif-panel {
-  animation: mpNotifPanelIn 200ms var(--ease-out);
+  position: fixed;
+  top: 68px;
+  right: 8px;
+  left: 8px;
+  max-height: 80vh;
+  width: auto;
+  z-index: 50;
+  transform-origin: top right;
+  animation: mpNotifPanelIn 220ms var(--ease-out);
+}
+@media (min-width: 768px) {
+  .mp-notif-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    left: auto;
+    width: 400px;
+    max-height: 560px;
+  }
 }
 @keyframes mpNotifPanelIn {
-  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  from { opacity: 0; transform: translateY(-8px) scale(0.94); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+.mp-notif-backdrop {
+  animation: mpNotifBackdropIn 200ms var(--ease-out);
+}
+@keyframes mpNotifBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .mp-notif-panel { animation: none; }
+  .mp-notif-panel,
+  .mp-notif-backdrop { animation: none; }
 }
 
 /* Badge de notificaciones — pop al aparecer o al incrementar. La animación
@@ -679,6 +840,21 @@ input[type="range"].mp-mpr,
 /* Link de fila en "Mis torneos" — solo fecha+nombre clickeables.
    Hover (Emil): nombre baja opacidad sutil y la flecha se desliza 3px,
    sin mover el bloque entero ni cambiar colores agresivos. */
+/* Link de jugador en /ranking — color shift sutil + underline en hover.
+   Pattern Emil: solo transicionar la propiedad que cambia, ease-out 160ms. */
+.mp-ranking-name {
+  position: relative;
+  transition: color 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-ranking-name:hover {
+    color: var(--primary);
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+}
+
 .mp-tournament-link {
   transition: opacity 180ms var(--ease-out);
 }

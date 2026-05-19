@@ -453,7 +453,7 @@ export function EventDetailView({ detail, clubName, clubCity, myRegistration: in
         >
           {accent}
         </div>
-        <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto", padding: "60px 32px" }}>
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 pb-10 md:pt-25 md:pb-15">
           <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
             <span
               style={{
@@ -664,14 +664,7 @@ export function EventDetailView({ detail, clubName, clubCity, myRegistration: in
         </div>
       </section>
       <main
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "60px 32px",
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr",
-          gap: 32,
-        }}
+        className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-6 md:gap-8"
       >
         <div>
           <div className="label-mp">Sobre el evento</div>
@@ -853,13 +846,7 @@ export function EventDetailView({ detail, clubName, clubCity, myRegistration: in
         </div>
       </main>
 
-      <section
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "0 32px 60px",
-        }}
-      >
+      <section className="max-w-[1280px] mx-auto px-4 md:px-8 pb-10 md:pb-15">
         <InscritosList items={inscritos} maxParticipants={t.maxParticipants ?? null} />
       </section>
 

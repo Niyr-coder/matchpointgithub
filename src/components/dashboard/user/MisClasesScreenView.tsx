@@ -139,7 +139,7 @@ export function MisClasesScreenView({
       />
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-[14px]">
         {kpis.map(([l, v, sub, c]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{l}</div>
@@ -180,7 +180,7 @@ export function MisClasesScreenView({
           sub="Explora Academia para ver coaches y clases abiertas en tu ciudad."
         />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-[14px]">
           {enrolled.map((c, i) => {
             const remaining = Math.max(0, c.sessionsTotal - c.sessionsCompleted);
             return (
@@ -374,13 +374,9 @@ export function MisClasesScreenView({
         past.map((p) => (
           <div
             key={p.id}
-            className="card"
+            className="card grid grid-cols-[40px_1fr_100px] md:grid-cols-[40px_1fr_140px_140px_100px] gap-4 items-center"
             style={{
               padding: 16,
-              display: "grid",
-              gridTemplateColumns: "40px 1fr 140px 140px 100px",
-              gap: 16,
-              alignItems: "center",
             }}
           >
             <div
@@ -411,7 +407,7 @@ export function MisClasesScreenView({
                 {p.completed} / {p.total}
               </div>
             </div>
-            <div>
+            <div className="hidden md:block">
               <div className="label-mp">Progreso</div>
               <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--primary)" }}>
                 {p.total > 0 ? `${Math.round((p.completed / p.total) * 100)}%` : "—"}

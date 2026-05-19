@@ -35,7 +35,7 @@ export function AcercaPageView() {
       </div>
 
       <div className="label-mp" style={{ marginBottom: 18 }}>Nuestros principios</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 40 }}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-10">
         {VALUES.map((v) => (
           <div key={v.title} style={{ padding: 22, border: "1px solid var(--border)", borderRadius: 12 }}>
             <Icon name="check-circle-2" size={20} color="var(--primary)" />
@@ -49,7 +49,7 @@ export function AcercaPageView() {
         ))}
       </div>
 
-      <div style={{ padding: 28, background: "#0a0a0a", color: "#fff", borderRadius: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 p-7" style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16 }}>
         <div>
           <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Contacto</div>
           <h3 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.025em", textTransform: "uppercase", margin: "8px 0 12px" }}>

@@ -65,7 +65,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
   const hasReal = filtered.length > 0;
 
   return (
-    <main style={{ maxWidth: 1440, margin: "0 auto", padding: "40px 32px" }}>
+    <main className="max-w-[1440px] mx-auto px-4 md:px-8 pt-22 pb-6 md:pt-25 md:pb-10">
       <div className="label-mp" style={{ color: "#fbbf24" }}>● Coaches certificados</div>
       <h1
         className="font-heading"
@@ -149,16 +149,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
           </span>
         </div>
       )}
-      <div
-        className="mp-stagger"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 14,
-          alignSelf: "start",
-          alignContent: "start",
-        }}
-      >
+      <div className="mp-stagger grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 self-start content-start">
         {padded.map((c, i) => {
             if (c.placeholder) {
               return (

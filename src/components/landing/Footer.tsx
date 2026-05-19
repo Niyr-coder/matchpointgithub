@@ -60,17 +60,10 @@ const SOCIAL = ["instagram", "message-circle", "youtube", "twitter"] as const;
 
 export function Footer() {
   return (
-    <footer style={{ background: "#0a0a0a", color: "#fff", padding: "60px 0 40px", marginTop: 80 }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr",
-            gap: 40,
-            marginBottom: 40,
-          }}
-        >
-          <div>
+    <footer className="pt-10 md:pt-15 pb-10 mt-20" style={{ background: "#0a0a0a", color: "#fff" }}>
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+        <div className="grid grid-cols-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-8 md:gap-10 mb-10">
+          <div className="col-span-2 md:col-span-1">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
               <span
                 style={{ color: "var(--primary)", fontSize: 22, fontWeight: 900, lineHeight: 1 }}

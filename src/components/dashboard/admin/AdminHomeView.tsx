@@ -129,12 +129,17 @@ function QueuePlaceholder() {
 }
 
 export function AdminHomeView({ data }: { data: AdminHomeData }) {
-  useRealtimeRefresh([
-    { table: "audit_log" },
-    { table: "reports" },
-    { table: "clubs" },
-    { table: "transactions" },
-  ]);
+  // audit_log se escribe en CADA server action de la plataforma; suscribirlo
+  // aquí re-renderiza Home por cada acción de cualquier usuario. Home no
+  // muestra log, así que lo quitamos. Las demás van con debounce alto.
+  useRealtimeRefresh(
+    [
+      { table: "reports" },
+      { table: "clubs" },
+      { table: "transactions" },
+    ],
+    { debounceMs: 5000 },
+  );
 
   const hasActivity = data.activity.length > 0;
   const hasQueue = data.queue.length > 0;

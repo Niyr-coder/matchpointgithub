@@ -71,11 +71,8 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
           {accent}
         </div>
         <div
+          className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 pb-6 md:pt-25 md:pb-10"
           style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "40px 32px",
             height: "100%",
             display: "flex",
             flexDirection: "column",
@@ -140,14 +137,7 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
         </div>
       </section>
       <main
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "60px 32px",
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
-          gap: 40,
-        }}
+        className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-8 md:gap-10"
       >
         <div>
           <div className="label-mp">Sobre el club</div>
@@ -198,7 +188,7 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
             Hoy · {todayLabel()}
             <span className="dot">.</span>
           </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             {DEFAULT_SLOTS.map((s, i) => {
               const taken = i === 2 || i === 5;
               return (
@@ -338,7 +328,7 @@ function ReviewsSection({
   const otherReviews = reviews.filter((r) => r.id !== myReview?.id);
 
   return (
-    <section style={{ padding: "32px 28px 56px", maxWidth: 1240, margin: "0 auto" }}>
+    <section className="max-w-[1240px] mx-auto px-4 md:px-7 pt-6 md:pt-8 pb-10 md:pb-14">
       <h2
         className="font-heading"
         style={{

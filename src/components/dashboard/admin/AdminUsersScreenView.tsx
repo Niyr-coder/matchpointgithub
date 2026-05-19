@@ -48,11 +48,16 @@ function fmtExpiry(iso: string | null): string {
 }
 
 export function AdminUsersScreenView({ data }: { data: UsersData }) {
-  useRealtimeRefresh([
-    { table: "profiles" },
-    { table: "player_stats" },
-    { table: "player_subscriptions" },
-  ]);
+  // profiles + player_stats se escriben miles de veces al día sin scope útil
+  // para admin. Debounce alto evita refresh por cada edit de cualquier user.
+  useRealtimeRefresh(
+    [
+      { table: "profiles" },
+      { table: "player_stats" },
+      { table: "player_subscriptions" },
+    ],
+    { debounceMs: 5000 },
+  );
 
   const [dialog, setDialog] = useState<
     | { kind: "grant"; user: UserRow }

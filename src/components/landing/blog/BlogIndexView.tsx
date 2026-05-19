@@ -25,18 +25,11 @@ export function BlogIndexView({ posts }: { posts: BlogPost[] }) {
       {featured && (
         <Link
           href={`/blog/${featured.slug}`}
-          className="card"
+          className="card grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-7 p-6 md:p-8 mb-7 relative overflow-hidden"
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 28,
-            padding: 32,
-            marginBottom: 28,
             background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)",
             color: "#fff",
             textDecoration: "none",
-            overflow: "hidden",
-            position: "relative",
           }}
         >
           <div>
@@ -81,7 +74,7 @@ export function BlogIndexView({ posts }: { posts: BlogPost[] }) {
         </Link>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
         {rest.map((p) => (
           <Link
             key={p.slug}

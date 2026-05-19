@@ -96,7 +96,7 @@ export function ClubesPageView({
   }
 
   return (
-    <main style={{ maxWidth: 1440, margin: "0 auto", padding: "40px 32px" }}>
+    <main className="max-w-[1440px] mx-auto px-4 md:px-8 pt-22 pb-6 md:pt-25 md:pb-10">
       <div className="label-mp" style={{ color: "var(--primary)" }}>● Encuentra tu cancha</div>
       <h1
         className="font-heading"
@@ -162,10 +162,8 @@ export function ClubesPageView({
         return (
           <Link
             href={`/clubes/${featured.slug}`}
-            className="card"
+            className="card grid grid-cols-1 md:grid-cols-[1.2fr_1fr]"
             style={{
-              display: "grid",
-              gridTemplateColumns: "1.2fr 1fr",
               minHeight: 260,
               overflow: "hidden",
               padding: 0,
@@ -303,8 +301,8 @@ export function ClubesPageView({
           </Link>
         );
       })()}
-      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24 }}>
-        <div className="mp-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, alignSelf: "start", alignContent: "start" }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-6">
+        <div className="mp-stagger grid grid-cols-1 sm:grid-cols-2 gap-3.5 self-start content-start">
           {padded.map((c, i) => {
             if (c.placeholder) {
               return (
@@ -502,7 +500,7 @@ export function ClubesPageView({
             );
           })}
         </div>
-        <div style={{ position: "sticky", top: 100, height: "fit-content" }}>
+        <div className="hidden md:block" style={{ position: "sticky", top: 100, height: "fit-content" }}>
           <div
             style={{
               position: "relative",

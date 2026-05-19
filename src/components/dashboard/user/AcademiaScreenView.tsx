@@ -199,16 +199,14 @@ export function AcademiaScreenView({
             sub="Pronto sumamos especialistas certificados a la red de Ecuador."
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {coaches.map((c, i) => (
               <div
                 key={c.id}
-                className="card"
+                className="card grid grid-cols-1 sm:grid-cols-[160px_1fr]"
                 style={{
                   padding: 0,
                   overflow: "hidden",
-                  display: "grid",
-                  gridTemplateColumns: "160px 1fr",
                 }}
               >
                 <div
@@ -371,7 +369,7 @@ export function AcademiaScreenView({
             sub="Cuando los coaches publiquen sus clases recurrentes, aparecerán aquí."
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {classes.map((c, i) => (
               <div
                 key={c.id}

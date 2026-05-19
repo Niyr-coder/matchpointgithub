@@ -52,6 +52,7 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("reservation")) return "calendar-clock";
   if (kind.startsWith("ticket")) return "life-buoy";
   if (kind.startsWith("friend_request")) return "user-plus";
+  if (kind.startsWith("team_")) return "users";
   return "bell";
 }
 
@@ -97,6 +98,9 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   if (kind === "welcome_owner") {
     return "/dashboard/owner";
   }
+  if (kind === "team_roster_cap_reached") {
+    return "/dashboard/user/team";
+  }
   return null;
 }
 
@@ -108,6 +112,8 @@ function colorForKind(kind: string): string {
   if (kind.startsWith("ticket")) return "#fbbf24";
   if (kind.startsWith("friend")) return "#7c3aed";
   if (kind.startsWith("club_application")) return "#0ea5e9";
+  if (kind === "team_roster_cap_reached") return "#facc15";
+  if (kind.startsWith("team_")) return "#7c3aed";
   return "#0a0a0a";
 }
 
@@ -128,38 +134,42 @@ export function NotificationsPanel({
   }, {});
 
   return (
-    <div
-      className="mp-notif-panel"
-      style={{
-        position: "absolute",
-        top: "calc(100% + 10px)",
-        right: 0,
-        width: 400,
-        maxHeight: 560,
-        background: "#fff",
-        border: "1px solid var(--border)",
-        borderRadius: 14,
-        boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        zIndex: 50,
-        transformOrigin: "top right",
-      }}
-    >
+    <>
+      {/* Backdrop solo mobile: tap fuera del sheet para cerrar. */}
       <div
-        style={{
-          position: "absolute",
-          top: -7,
-          right: 14,
-          width: 14,
-          height: 14,
-          background: "#fff",
-          borderTop: "1px solid var(--border)",
-          borderLeft: "1px solid var(--border)",
-          transform: "rotate(45deg)",
-        }}
+        className="mp-notif-backdrop md:hidden fixed inset-0 z-40 bg-black/40"
+        onClick={onClose}
+        aria-hidden
       />
+      <div
+        className="mp-notif-panel"
+        style={{
+          background: "#fff",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        role="dialog"
+        aria-label="Notificaciones"
+      >
+        {/* Arrow solo desktop — apunta al bell trigger. */}
+        <div
+          className="hidden md:block"
+          style={{
+            position: "absolute",
+            top: -7,
+            right: 14,
+            width: 14,
+            height: 14,
+            background: "#fff",
+            borderTop: "1px solid var(--border)",
+            borderLeft: "1px solid var(--border)",
+            transform: "rotate(45deg)",
+          }}
+        />
 
       <div
         style={{
@@ -361,6 +371,7 @@ export function NotificationsPanel({
           <Icon name="arrow-right" size={12} />
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

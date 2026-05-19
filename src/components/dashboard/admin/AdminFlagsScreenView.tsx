@@ -140,7 +140,7 @@ function FlagPlaceholder() {
 }
 
 export function AdminFlagsScreenView({ data }: { data: FlagsData }) {
-  useRealtimeRefresh([{ table: "feature_flags" }, { table: "feature_flag_assignments" }]);
+  useRealtimeRefresh([{ table: "feature_flags" }, { table: "feature_flag_assignments" }], { debounceMs: 4000 });
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();

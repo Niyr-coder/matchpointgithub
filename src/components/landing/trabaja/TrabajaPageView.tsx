@@ -23,12 +23,8 @@ export function TrabajaPageView() {
         {OPENINGS.map((o) => (
           <div
             key={o.role}
+            className="grid grid-cols-[80px_1fr] sm:grid-cols-[100px_1fr_auto] gap-3 sm:gap-4 items-center p-4 sm:p-5"
             style={{
-              display: "grid",
-              gridTemplateColumns: "100px 1fr auto",
-              gap: 18,
-              alignItems: "center",
-              padding: 18,
               background: "#fff",
               border: "1px solid var(--border)",
               borderRadius: 12,

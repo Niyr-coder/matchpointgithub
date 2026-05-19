@@ -100,14 +100,7 @@ export function SoyPartnerPageView() {
         >
           TORNEO
         </div>
-        <div
-          style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "100px 32px 60px",
-          }}
-        >
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 md:pt-25 pb-10 md:pb-15">
           <div
             style={{
               display: "inline-flex",
@@ -186,7 +179,7 @@ export function SoyPartnerPageView() {
       </section>
 
       {/* Benefits */}
-      <section style={{ maxWidth: 1280, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-15 md:py-25">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MatchPoint para tu torneo</div>
         <h2
           className="font-heading"
@@ -202,9 +195,9 @@ export function SoyPartnerPageView() {
           Menos logística.<br />
           Más jugadores<span className="dot">.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
           {BENEFITS.map((b) => (
-            <div key={b.t} style={{ padding: 28, borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff" }}>
+            <div key={b.t} className="p-6 md:p-7" style={{ borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff" }}>
               <div
                 style={{
                   width: 52,
@@ -255,9 +248,9 @@ export function SoyPartnerPageView() {
       </section>
 
       {/* Pricing + Included */}
-      <section style={{ background: "var(--muted)", padding: "100px 0" }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
+      <section className="py-15 md:py-25" style={{ background: "var(--muted)" }}>
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12 items-center">
             <div>
               <div className="label-mp" style={{ color: "var(--primary)" }}>● Sin riesgos</div>
               <h2
@@ -352,12 +345,10 @@ export function SoyPartnerPageView() {
       {/* Form */}
       <section
         id="form"
+        className="relative overflow-hidden py-15 md:py-25"
         style={{
           background: "#0a0a0a",
           color: "#fff",
-          padding: "100px 0",
-          position: "relative",
-          overflow: "hidden",
         }}
       >
         <div
@@ -367,7 +358,7 @@ export function SoyPartnerPageView() {
             background: "radial-gradient(ellipse at 50% 120%, rgba(251,146,60,0.22), transparent 70%)",
           }}
         />
-        <div style={{ position: "relative", maxWidth: 880, margin: "0 auto", padding: "0 32px" }}>
+        <div className="relative max-w-[880px] mx-auto px-4 md:px-8">
           <div className="label-mp" style={{ color: "#fb923c" }}>● Aprobación en menos de 24h</div>
           <h2
             className="font-heading"
@@ -430,11 +421,8 @@ export function SoyPartnerPageView() {
           ) : (
             <form
               onSubmit={onSubmit}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-6 md:p-8"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                padding: 32,
                 background: "rgba(255,255,255,0.04)",
                 borderRadius: 14.4,
                 border: "1px solid rgba(255,255,255,0.1)",
@@ -547,7 +535,7 @@ export function SoyPartnerPageView() {
       </section>
 
       {/* FAQ */}
-      <section style={{ maxWidth: 880, margin: "0 auto", padding: "100px 32px" }}>
+      <section className="max-w-[880px] mx-auto px-4 md:px-8 py-15 md:py-25">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Preguntas frecuentes</div>
         <h2
           className="font-heading"

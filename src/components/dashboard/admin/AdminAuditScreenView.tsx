@@ -11,7 +11,7 @@ export type AuditData = { rows: LogEntry[] };
 const PLACEHOLDER_COUNT = 6;
 
 export function AdminAuditScreenView({ data }: { data: AuditData }) {
-  useRealtimeRefresh([{ table: "audit_log" }]);
+  useRealtimeRefresh([{ table: "audit_log", event: "INSERT" }], { debounceMs: 5000 });
 
   const hasRows = data.rows.length > 0;
   const rows = hasRows

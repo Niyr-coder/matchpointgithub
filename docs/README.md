@@ -26,6 +26,7 @@ revisar:
    - Config sin redeploy → `guides/03-platform-config.md`
    - Placeholders / WIP / hardcodes → `guides/04-placeholders.md`
    - Diseño / tokens / componentes compartidos → `guides/05-design-system.md`
+   - Responsive / mobile / breakpoints → `guides/06-responsive.md`
    - Auth / RLS / secrets / audit → `security/` completo
    - Datos personales / sharing / retención → `privacy/` completo
 

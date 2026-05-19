@@ -1,5 +1,6 @@
 // Client child de RankingScreen — recibe data ya fetcheada del server.
 "use client";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { RatingSparkline } from "../widgets/RatingSparkline";
@@ -98,13 +99,12 @@ function ensureChartHistory(
 }
 
 export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
-  // Realtime: leaderboard cambia cuando alguien sube rating; tu history al confirmar match.
+  // Realtime: solo mi propio ranking_snapshots. El leaderboard global se
+  // hidrata fresh en cada navegación; suscribir player_stats sin filtro
+  // refrescaría a todos los visores por cada match de cualquier user.
   useRealtimeRefresh(
-    [
-      { table: "player_stats" },
-      ...(meUserId ? [{ table: "ranking_snapshots", filter: `user_id=eq.${meUserId}` }] : []),
-    ],
-    { debounceMs: 1500 },
+    meUserId ? [{ table: "ranking_snapshots", filter: `user_id=eq.${meUserId}` }] : [],
+    { debounceMs: 2000, enabled: !!meUserId },
   );
 
   const [mode, setMode] = useState<Mode>("singles");
@@ -247,7 +247,7 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-4 md:gap-5">
         <div
           className="card"
           style={{
@@ -358,13 +358,9 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
 
       <div className="card">
         <div
+          className="grid grid-cols-[40px_1fr_70px] md:grid-cols-[60px_1.5fr_1fr_90px_90px] gap-3 md:gap-4 items-center px-4 md:px-6 py-3.5"
           style={{
-            padding: "14px 24px",
             borderBottom: "1px solid var(--border)",
-            display: "grid",
-            gridTemplateColumns: "60px 1.5fr 1fr 90px 90px",
-            gap: 16,
-            alignItems: "center",
             fontSize: 10,
             fontWeight: 900,
             letterSpacing: "0.18em",
@@ -374,21 +370,17 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
         >
           <div>Pos</div>
           <div>Jugador</div>
-          <div>Ciudad</div>
+          <div className="hidden md:block">Ciudad</div>
           <div style={{ textAlign: "right" }}>Rating</div>
-          <div style={{ textAlign: "right" }}>Wins</div>
+          <div className="hidden md:block" style={{ textAlign: "right" }}>Wins</div>
         </div>
         {rows.map((p) => {
           const isMe = !p.placeholder && p.userId === meUserId;
           return (
             <div
               key={p.placeholder ? `ph-${p.rank}` : p.userId}
+              className="grid grid-cols-[40px_1fr_70px] md:grid-cols-[60px_1.5fr_1fr_90px_90px] gap-3 md:gap-4 items-center px-4 md:px-6 py-3.5"
               style={{
-                display: "grid",
-                gridTemplateColumns: "60px 1.5fr 1fr 90px 90px",
-                gap: 16,
-                alignItems: "center",
-                padding: "14px 24px",
                 borderTop: "1px solid var(--border)",
                 background: isMe ? "rgba(16,185,129,0.06)" : "#fff",
                 opacity: p.placeholder ? 0.45 : 1,
@@ -419,7 +411,17 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                 />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: p.placeholder ? "var(--muted-fg)" : "inherit" }}>
-                    {p.placeholder ? "—" : p.displayName}
+                    {p.placeholder ? (
+                      "—"
+                    ) : (
+                      <Link
+                        href={`/dashboard/players/${p.userId}`}
+                        className="mp-ranking-name"
+                        style={{ color: "inherit", textDecoration: "none" }}
+                      >
+                        {p.displayName}
+                      </Link>
+                    )}
                     {isMe && (
                       <span className="chip-green" style={{ marginLeft: 8, fontSize: 9 }}>
                         Tú
@@ -428,7 +430,7 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                   </div>
                 </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+              <div className="hidden md:block" style={{ fontSize: 12, color: "var(--muted-fg)" }}>
                 {p.placeholder ? "—" : p.city ?? "—"}
               </div>
               <div
@@ -443,7 +445,7 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                 {p.placeholder ? "—" : ratingDisplay(p.currentRating)}
               </div>
               <div
-                className="tabular"
+                className="tabular hidden md:block"
                 style={{
                   fontSize: 12,
                   fontWeight: 700,

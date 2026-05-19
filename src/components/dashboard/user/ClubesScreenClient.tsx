@@ -274,12 +274,10 @@ function FeaturedCard({
 
   return (
     <div
-      className="card"
+      className="card grid grid-cols-1 md:grid-cols-[1.2fr_1fr]"
       style={{
         padding: 0,
         overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "1.2fr 1fr",
         minHeight: 280,
       }}
     >
@@ -477,12 +475,10 @@ function FeaturedCard({
 function FeaturedPlaceholder() {
   return (
     <div
-      className="card"
+      className="card grid grid-cols-1 md:grid-cols-[1.2fr_1fr]"
       style={{
         padding: 0,
         overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "1.2fr 1fr",
         minHeight: 280,
         opacity: 0.6,
         border: "1px dashed var(--border)",

@@ -69,16 +69,9 @@ export function CoachDetailView({ detail }: { detail: CoachDetail }) {
           COACH
         </div>
         <div
+          className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 pb-10 md:pt-25 md:pb-15 flex items-center gap-6 md:gap-9 flex-wrap"
           style={{
-            position: "relative",
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "60px 32px",
-            display: "flex",
-            alignItems: "center",
-            gap: 36,
             minHeight: 360,
-            flexWrap: "wrap",
           }}
         >
           <div
@@ -176,14 +169,7 @@ export function CoachDetailView({ detail }: { detail: CoachDetail }) {
         </div>
       </section>
       <main
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "60px 32px",
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
-          gap: 32,
-        }}
+        className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-6 md:gap-8"
       >
         <div>
           <div className="label-mp">Sobre el coach</div>

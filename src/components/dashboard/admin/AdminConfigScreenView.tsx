@@ -13,7 +13,7 @@ export type ConfigData = {
 };
 
 export function AdminConfigScreenView({ data }: { data: ConfigData }) {
-  useRealtimeRefresh([{ table: "role_assignments" }]);
+  useRealtimeRefresh([{ table: "role_assignments" }], { debounceMs: 4000 });
 
   // Constantes del producto + counts derivados. Filas sin modelo backend → `—`.
   const SECTIONS: Record<string, Section> = {

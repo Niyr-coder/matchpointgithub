@@ -246,7 +246,7 @@ export function EventKindDetailView({ event, clubName, clubCity, userId }: Props
         >
           {accent}
         </div>
-        <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto", padding: "60px 32px" }}>
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 pt-22 pb-10 md:pt-25 md:pb-15">
           <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
             <span
               style={{
@@ -374,14 +374,7 @@ export function EventKindDetailView({ event, clubName, clubCity, userId }: Props
       </section>
 
       <main
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "60px 32px",
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr",
-          gap: 32,
-        }}
+        className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-6 md:gap-8"
       >
         <div>
           <div className="label-mp">Sobre el evento</div>

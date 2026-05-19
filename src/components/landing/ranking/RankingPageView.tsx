@@ -72,7 +72,7 @@ export function RankingPageView({
   const podiumOrder: PodiumEntry[] = [podium[1], podium[0], podium[2]];
 
   return (
-    <main style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 32px 80px" }}>
+    <main className="max-w-[1100px] mx-auto px-4 md:px-8 pt-22 md:pt-25 pb-12 md:pb-20">
       <div className="label-mp" style={{ color: "var(--primary)" }}>● Ranking oficial · Ecuador</div>
       <h1
         className="font-heading"
@@ -160,15 +160,7 @@ export function RankingPageView({
       )}
 
       {/* Top 3 podium */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1.1fr 1fr",
-          gap: 14,
-          marginBottom: 40,
-          alignItems: "flex-end",
-        }}
-      >
+      <div className="grid grid-cols-3 gap-2 sm:gap-3.5 mb-10 items-end" style={{ gridTemplateColumns: "1fr 1.1fr 1fr" }}>
         {podiumOrder.map((p) => {
           const isFirst = p.rank === 1;
           const c = PODIUM_COLORS[p.rank - 1] ?? "#0a0a0a";
@@ -277,12 +269,9 @@ export function RankingPageView({
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div
+          className="grid grid-cols-[40px_1fr_70px] md:grid-cols-[50px_1fr_100px_70px_80px] gap-3 md:gap-3.5 px-4 md:px-[18px] py-2.5"
           style={{
-            padding: "10px 18px",
             background: "var(--muted)",
-            display: "grid",
-            gridTemplateColumns: "50px 1fr 100px 70px 80px",
-            gap: 14,
             fontSize: 9.5,
             fontWeight: 900,
             letterSpacing: "0.14em",
@@ -292,8 +281,8 @@ export function RankingPageView({
         >
           <div>#</div>
           <div>Jugador</div>
-          <div>Ciudad</div>
-          <div style={{ textAlign: "center" }}>Matches</div>
+          <div className="hidden md:block">Ciudad</div>
+          <div className="hidden md:block" style={{ textAlign: "center" }}>Matches</div>
           <div style={{ textAlign: "right" }}>Nivel</div>
         </div>
         {rows.map((p) => (
@@ -301,18 +290,12 @@ export function RankingPageView({
             key={p.placeholder ? `ph-row-${p.rank}` : p.userId}
             onClick={() => !p.placeholder && onPaywall("perfil")}
             disabled={p.placeholder}
+            className="w-full grid grid-cols-[40px_1fr_70px] md:grid-cols-[50px_1fr_100px_70px_80px] gap-3 md:gap-3.5 px-4 md:px-[18px] py-3.5 items-center text-left"
             style={{
-              width: "100%",
-              padding: "14px 18px",
-              display: "grid",
-              gridTemplateColumns: "50px 1fr 100px 70px 80px",
-              gap: 14,
-              alignItems: "center",
               background: "#fff",
               border: 0,
               borderTop: "1px solid var(--border)",
               cursor: p.placeholder ? "default" : "pointer",
-              textAlign: "left",
               fontFamily: "inherit",
               opacity: p.placeholder ? 0.45 : 1,
             }}
@@ -348,10 +331,10 @@ export function RankingPageView({
                 {p.placeholder ? "—" : p.displayName}
               </span>
             </div>
-            <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+            <span className="hidden md:inline" style={{ fontSize: 12, color: "var(--muted-fg)" }}>
               {p.placeholder ? "—" : p.city ?? "—"}
             </span>
-            <span style={{ textAlign: "center", fontSize: 12 }}>
+            <span className="hidden md:inline" style={{ textAlign: "center", fontSize: 12 }}>
               {p.placeholder ? (
                 <span style={{ color: "var(--muted-fg)" }}>—</span>
               ) : (

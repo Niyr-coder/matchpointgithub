@@ -887,7 +887,7 @@ function RatingStatsPanel({
           })}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 20 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
         <StatBlock
           label="MP Rating"
           value={isEmpty ? "—" : ratingDisplay(r.currentRating)}
@@ -1030,7 +1030,7 @@ const BADGES_FULL = [
 
 function BadgesGrid() {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {BADGES_FULL.map((b) => (
         <div
           key={b.label}

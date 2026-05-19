@@ -129,7 +129,7 @@ function SentPlaceholderRow() {
 }
 
 export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
-  useRealtimeRefresh([{ table: "broadcasts" }, { table: "broadcast_recipients" }]);
+  useRealtimeRefresh([{ table: "broadcasts" }, { table: "broadcast_recipients" }], { debounceMs: 4000 });
   const toast = useToast();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();

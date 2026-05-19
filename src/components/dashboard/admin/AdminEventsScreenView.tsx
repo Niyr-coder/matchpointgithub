@@ -82,12 +82,15 @@ export function AdminEventsScreenView({ data }: { data: EventsData }) {
   // Optimistic state local: si toggleamos, no esperamos al realtime para
   // mostrar el cambio. El realtime después confirma o revierte.
   const [featuredOverride, setFeaturedOverride] = useState<Map<string, boolean>>(new Map());
-  useRealtimeRefresh([
-    { table: "events" },
-    { table: "tournaments" },
-    { table: "event_registrations" },
-    { table: "registrations" },
-  ]);
+  useRealtimeRefresh(
+    [
+      { table: "events" },
+      { table: "tournaments" },
+      { table: "event_registrations" },
+      { table: "registrations" },
+    ],
+    { debounceMs: 5000 },
+  );
 
   const toggleFeatured = (row: EvRow) => {
     if (row.kind !== "tournament") return;
