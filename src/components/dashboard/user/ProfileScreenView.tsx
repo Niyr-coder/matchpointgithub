@@ -1165,7 +1165,9 @@ function ClubsList({ clubs }: { clubs: ProfileClub[] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {clubs.map((c, i) => (
-        <div key={c.id} className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 16 }}>
+        // Composite key: un user puede tener varios role_assignments en el
+        // mismo club (ej. owner + user), entonces id solo no es único.
+        <div key={`${c.id}-${c.role}`} className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 16 }}>
           <div
             style={{
               width: 52,
