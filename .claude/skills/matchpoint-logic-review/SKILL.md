@@ -338,6 +338,7 @@ Si user dice sí, aplicar uno por uno. Si no, dejar reporte.
 | RLS restrictive bloquea un actor que necesita bypass legítimo | Feature funcional muerta silenciosa |
 | `as never` proliferando en queries | Database types stale, regenerar |
 | Migration aplicada vía MCP sin archivo local committed | Drift entre dev y prod |
+| Ruta movida bajo path static (ej. `dashboard/user/x/`) cuando había layout dinámico `[role]/layout.tsx` esperado | Page renderiza sin el chrome (sidebar/topbar/guard) porque static path salta el layout dinámico. Usar `[role]/x/` para heredar. |
 | Trigger usa `coalesce(plan_tier, 'free')` pero código TS espera siempre un valor explícito | Default desincronizado |
 | Botón visible sin `onClick` (o con `onClick={() => {}}`) | Wire faltante |
 | `useState` o prop declarada pero nunca leída en el body | Code muerto |
