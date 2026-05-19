@@ -187,12 +187,24 @@ export async function updateProfile(input: unknown): Promise<ActionResult<Profil
 
     const payload: Record<string, unknown> = {};
     if (data.displayName !== undefined) payload.display_name = data.displayName;
+    if (data.firstName !== undefined) payload.first_name = data.firstName;
+    if (data.lastName !== undefined) payload.last_name = data.lastName;
     if (data.avatarUrl !== undefined) payload.avatar_url = data.avatarUrl;
     if (data.bio !== undefined) payload.bio = data.bio;
     if (data.country !== undefined) payload.country = data.country;
     if (data.city !== undefined) payload.city = data.city;
+    if (data.birthdate !== undefined) payload.birthdate = data.birthdate;
+    if (data.phone !== undefined) payload.phone = data.phone;
+    if (data.dominantHand !== undefined) payload.dominant_hand = data.dominantHand;
     if (data.preferredSport !== undefined) payload.preferred_sport = data.preferredSport;
     if (data.skillLevel !== undefined) payload.skill_level = data.skillLevel;
+    // Customización: updateProfile genérico permite editar accent/banner/card
+    // (path admin/legacy). El path normal del user pasa por
+    // setProfileCustomization() en src/server/actions/profile-customization.ts,
+    // que gatea MP+ antes de mutar.
+    if (data.accentColor !== undefined) payload.accent_color = data.accentColor;
+    if (data.bannerPreset !== undefined) payload.banner_preset = data.bannerPreset;
+    if (data.cardStyle !== undefined) payload.card_style = data.cardStyle;
     if (data.locale !== undefined) payload.locale = data.locale;
 
     const { data: updated, error } = await supabase
@@ -230,7 +242,11 @@ async function buildSession(): Promise<SessionResponse> {
 
   const c = await cookies();
   const activeRole = (c.get(ACTIVE_ROLE_COOKIE)?.value as RoleAssignment["role"] | undefined) ?? null;
-  const activeClubId = c.get(ACTIVE_CLUB_COOKIE)?.value ?? null;
+  // Cookie value puede traer string vacío o stale no-UUID — normalizamos a
+  // null para que UuidSchema.nullable() no truene en SessionResponseSchema.parse.
+  const rawClubId = c.get(ACTIVE_CLUB_COOKIE)?.value;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const activeClubId = rawClubId && UUID_RE.test(rawClubId) ? rawClubId : null;
 
   const response: SessionResponse = {
     user: mapProfile(profile),
@@ -248,20 +264,41 @@ async function buildSession(): Promise<SessionResponse> {
   return SessionResponseSchema.parse(response);
 }
 
+function toIso(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string") {
+    // Postgres timestamptz puede venir como "2026-05-19 14:24:33+00" (espacio,
+    // sin .ms, offset corto). Zod .datetime({offset:true}) exige ISO estricto
+    // con "T". Normalizamos vía Date para no fallar la validación.
+    const d = new Date(v.includes("T") ? v : v.replace(" ", "T"));
+    return isNaN(d.getTime()) ? v : d.toISOString();
+  }
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+}
+
 function mapProfile(row: Record<string, unknown>): Profile {
   return ProfileSchema.parse({
     id: row.id,
     username: row.username,
     displayName: row.display_name,
+    firstName: row.first_name ?? null,
+    lastName: row.last_name ?? null,
     avatarUrl: row.avatar_url ?? null,
     bio: row.bio ?? null,
     country: row.country ?? null,
     city: row.city ?? null,
+    birthdate: row.birthdate ?? null,
+    phone: row.phone ?? null,
+    dominantHand: row.dominant_hand ?? null,
     preferredSport: row.preferred_sport ?? null,
     skillLevel: row.skill_level ?? null,
+    accentColor: row.accent_color ?? null,
+    bannerPreset: row.banner_preset ?? null,
+    cardStyle: row.card_style ?? null,
     locale: row.locale ?? "es",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
   });
 }
 

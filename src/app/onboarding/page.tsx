@@ -42,18 +42,47 @@ export default async function OnboardingPage({
   const supabase = await getServerClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("onboarded_at,preferred_sport,skill_level,favorite_club_id")
+    .select(
+      "onboarded_at,first_name,last_name,username,display_name,birthdate,phone,country,city,dominant_hand" as never,
+    )
     .eq("id", session.session.userId)
     .maybeSingle();
 
-  if (profile?.onboarded_at != null) {
+  const p = (profile ?? {}) as {
+    onboarded_at: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    username: string | null;
+    display_name: string | null;
+    birthdate: string | null;
+    phone: string | null;
+    country: string | null;
+    city: string | null;
+    dominant_hand: "left" | "right" | null;
+  };
+
+  if (p.onboarded_at != null) {
     redirect(nextUrl ?? "/dashboard/user");
   }
 
-  // Calcular currentStep desde los campos completados.
+  // currentStep = primer paso pendiente. Personal = birthdate + country + city.
+  const identityDone = !!(p.first_name && p.last_name && p.username);
+  const personalDone = !!(p.birthdate && p.country && p.city);
+  const handDone = !!p.dominant_hand;
   let currentStep: 0 | 1 | 2 | 3 = 0;
-  if (profile?.preferred_sport) currentStep = 1;
-  if (profile?.skill_level) currentStep = 2;
+  if (identityDone) currentStep = 1;
+  if (identityDone && personalDone) currentStep = 2;
+  if (identityDone && personalDone && handDone) currentStep = 3;
+
+  // Si el wizard arranca en step 0 y first_name está vacío pero display_name
+  // existe (viene del signup), partimos el display_name como sugerencia.
+  let suggestedFirst = p.first_name;
+  let suggestedLast = p.last_name;
+  if (!identityDone && p.display_name) {
+    const parts = p.display_name.trim().split(/\s+/);
+    if (!suggestedFirst) suggestedFirst = parts[0] ?? null;
+    if (!suggestedLast && parts.length > 1) suggestedLast = parts.slice(1).join(" ");
+  }
 
   return (
     <OnboardingWizard
@@ -61,9 +90,14 @@ export default async function OnboardingPage({
       initialStatus={{
         completed: false,
         currentStep,
-        primarySport: (profile?.preferred_sport as never) ?? null,
-        skillLevel: (profile?.skill_level as never) ?? null,
-        favoriteClubId: (profile?.favorite_club_id as string | null) ?? null,
+        firstName: suggestedFirst,
+        lastName: suggestedLast,
+        username: p.username,
+        birthdate: p.birthdate,
+        phone: p.phone,
+        country: p.country,
+        city: p.city,
+        dominantHand: p.dominant_hand,
       }}
       nextOnFinish={nextUrl}
     />

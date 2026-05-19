@@ -1,15 +1,18 @@
 // Wizard de onboarding post-signup (4 pasos).
 //
 // Dos modos:
-//  · mode='page' (default actual del flujo): renderiza fullscreen sin overlay
-//    cerrable, sin X ni "Saltar". Completar es obligatorio. Se usa en
-//    /onboarding/page.tsx, que es a donde el layout del dashboard redirige
-//    cuando profiles.onboarded_at es null.
-//  · mode='modal' (legacy/back-compat): renderiza como modal cerrable con X
-//    y botón "Saltar onboarding". No se gatilla automáticamente desde
-//    DashboardModals — quedó disponible para casos puntuales.
+//  · mode='page' (default): renderiza fullscreen sin overlay cerrable, sin X
+//    ni "Saltar". Completar es obligatorio. Lo usa /onboarding/page.tsx.
+//  · mode='modal' (legacy): renderiza como modal cerrable, con botón Saltar.
+//    Disponible para casos puntuales pero no se monta hoy automáticamente.
 //
-// Cada paso persiste su campo con `saveOnboardingStep()` y avanza.
+// Steps:
+//  0. Identidad: nombre, apellido, username (pre-fill desde signup).
+//  1. Datos personales: fecha de nacimiento (requerida), teléfono (opcional).
+//  2. Mano hábil: izquierda / derecha.
+//  3. Cierre: resumen + CTA "Empezar".
+//
+// Cada paso persiste con `saveOnboardingStep()` y avanza.
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,30 +24,18 @@ import {
   skipOnboarding,
   type OnboardingStatus,
 } from "@/server/actions/onboarding";
-import { listFeaturedClubs } from "@/server/actions/clubs";
+import { LATAM_COUNTRIES, findCountry, findProvince } from "@/lib/geo/latam";
 
-type Sport = "pickleball" | "padel" | "tennis";
-type Skill = "beginner" | "intermediate" | "advanced" | "pro";
+type Hand = "left" | "right";
 
-type FeaturedClub = {
-  id: string;
-  name: string;
-  city: string;
-  coverUrl: string | null;
-};
-
-const SPORTS: { value: Sport; label: string; icon: string }[] = [
-  { value: "pickleball", label: "Pickleball", icon: "circle-dot" },
-  { value: "padel", label: "Pádel", icon: "square" },
-  { value: "tennis", label: "Tenis", icon: "circle" },
-];
-
-const SKILLS: { value: Skill; label: string; sub: string }[] = [
-  { value: "beginner", label: "Principiante", sub: "Recién empezando, aprendiendo lo básico" },
-  { value: "intermediate", label: "Intermedio", sub: "Juego regular, controlo lo esencial" },
-  { value: "advanced", label: "Avanzado", sub: "Competitivo, técnica sólida" },
-  { value: "pro", label: "Profesional", sub: "Nivel torneo / federado" },
-];
+// Parse "Provincia / Ciudad" → ["Provincia", "Ciudad"]. Si no matchea el
+// separador, devuelve [null, valor] (legacy data sin split).
+function splitCity(raw: string | null): [string | null, string | null] {
+  if (!raw) return [null, null];
+  const idx = raw.indexOf(" / ");
+  if (idx < 0) return [null, raw];
+  return [raw.slice(0, idx), raw.slice(idx + 3)];
+}
 
 export function OnboardingWizard({
   mode = "page",
@@ -53,8 +44,6 @@ export function OnboardingWizard({
 }: {
   mode?: "page" | "modal";
   initialStatus?: OnboardingStatus;
-  // Solo aplica en mode='page': URL relativa a la que redirigir al terminar
-  // el wizard. Si null/undefined cae a /dashboard/user.
   nextOnFinish?: string | null;
 } = {}) {
   const pathname = usePathname();
@@ -62,8 +51,6 @@ export function OnboardingWizard({
   const inDashboard = pathname?.startsWith("/dashboard") ?? false;
   const isPage = mode === "page";
 
-  // En mode='page' arrancamos open=true siempre; el server ya decidió que
-  // toca onboardear (si no, no estaríamos en /onboarding).
   const [open, setOpen] = useState(isPage);
   const [step, setStep] = useState<0 | 1 | 2 | 3>(
     initialStatus ? initialStatus.currentStep : 0,
@@ -71,9 +58,10 @@ export function OnboardingWizard({
   const [status, setStatus] = useState<OnboardingStatus | null>(initialStatus ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const checkedRef = useRef(false);
 
-  // Solo en modal: consulta de status al montar (en page el server ya lo hizo).
+  // Solo en modal: consulta de status al montar.
   useEffect(() => {
     if (isPage) return;
     if (!inDashboard) return;
@@ -99,7 +87,7 @@ export function OnboardingWizard({
   }, [isPage, inDashboard]);
 
   const close = useCallback(() => {
-    if (isPage) return; // en page no se cierra
+    if (isPage) return;
     setOpen(false);
   }, [isPage]);
 
@@ -118,48 +106,93 @@ export function OnboardingWizard({
     }
   }, []);
 
-  const handleSport = useCallback(async (sport: Sport) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await saveOnboardingStep({ step: "sport", primarySport: sport });
-      if (!res.ok) {
-        setError(res.error?.message ?? "No se pudo guardar el deporte");
-        return;
+  const handleIdentity = useCallback(
+    async (firstName: string, lastName: string, username: string) => {
+      setBusy(true);
+      setError(null);
+      setFieldErrors({});
+      try {
+        const res = await saveOnboardingStep({
+          step: "identity",
+          firstName,
+          lastName,
+          username,
+        });
+        if (!res.ok) {
+          const fields = res.error?.fields as Record<string, string[]> | undefined;
+          if (fields) {
+            const flat: Record<string, string> = {};
+            for (const [k, arr] of Object.entries(fields)) {
+              if (arr?.[0]) flat[k] = arr[0];
+            }
+            setFieldErrors(flat);
+          }
+          setError(res.error?.message ?? "Revisa los campos");
+          return;
+        }
+        setStatus((s) => (s ? { ...s, firstName, lastName, username } : s));
+        setStep(1);
+      } finally {
+        setBusy(false);
       }
-      setStatus((s) => (s ? { ...s, primarySport: sport } : s));
-      setStep(1);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const handleSkill = useCallback(async (skill: Skill) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await saveOnboardingStep({ step: "level", skillLevel: skill });
-      if (!res.ok) {
-        setError(res.error?.message ?? "No se pudo guardar el nivel");
-        return;
+  const handlePersonal = useCallback(
+    async (args: {
+      birthdate: string;
+      phone: string;
+      country: string;
+      province: string;
+      cityName: string;
+    }) => {
+      setBusy(true);
+      setError(null);
+      setFieldErrors({});
+      try {
+        const res = await saveOnboardingStep({ step: "personal", ...args });
+        if (!res.ok) {
+          const fields = res.error?.fields as Record<string, string[]> | undefined;
+          if (fields) {
+            const flat: Record<string, string> = {};
+            for (const [k, arr] of Object.entries(fields)) {
+              if (arr?.[0]) flat[k] = arr[0];
+            }
+            setFieldErrors(flat);
+          }
+          setError(res.error?.message ?? "Revisa los campos");
+          return;
+        }
+        setStatus((s) =>
+          s
+            ? {
+                ...s,
+                birthdate: args.birthdate,
+                phone: args.phone || null,
+                country: args.country,
+                city: `${args.province} / ${args.cityName}`,
+              }
+            : s,
+        );
+        setStep(2);
+      } finally {
+        setBusy(false);
       }
-      setStatus((s) => (s ? { ...s, skillLevel: skill } : s));
-      setStep(2);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const handleClub = useCallback(async (clubId: string | null) => {
+  const handleHand = useCallback(async (hand: Hand) => {
     setBusy(true);
     setError(null);
     try {
-      const res = await saveOnboardingStep({ step: "club", favoriteClubId: clubId });
+      const res = await saveOnboardingStep({ step: "hand", dominantHand: hand });
       if (!res.ok) {
-        setError(res.error?.message ?? "No se pudo guardar el club");
+        setError(res.error?.message ?? "No se pudo guardar");
         return;
       }
-      setStatus((s) => (s ? { ...s, favoriteClubId: clubId } : s));
+      setStatus((s) => (s ? { ...s, dominantHand: hand } : s));
       setStep(3);
     } finally {
       setBusy(false);
@@ -176,9 +209,6 @@ export function OnboardingWizard({
         return;
       }
       if (isPage) {
-        // En mode page navegamos al destino que el server pasó (caso típico:
-        // el user venía de /clubes/<slug> y se registró, queremos devolverlo
-        // ahí). Sin destino, fallback al dashboard del user.
         router.replace(nextOnFinish || "/dashboard/user");
       } else {
         setOpen(false);
@@ -191,7 +221,54 @@ export function OnboardingWizard({
 
   if (!open) return null;
 
-  // Layout: en page tomamos toda la pantalla (sin overlay clickable, sin X).
+  const body = (
+    <>
+      <WizardHeader
+        step={step}
+        onBack={step > 0 ? () => setStep((s) => (s > 0 ? ((s - 1) as 0 | 1 | 2 | 3) : s)) : null}
+        onSkip={isPage ? null : handleSkip}
+        onClose={isPage ? null : close}
+        busy={busy}
+      />
+      <div style={{ padding: 24, minHeight: 340 }}>
+        {step === 0 && (
+          <StepIdentity
+            busy={busy}
+            initial={status}
+            errors={fieldErrors}
+            onSubmit={handleIdentity}
+          />
+        )}
+        {step === 1 && (
+          <StepPersonal
+            busy={busy}
+            initial={status}
+            errors={fieldErrors}
+            onSubmit={handlePersonal}
+          />
+        )}
+        {step === 2 && <StepHand busy={busy} initial={status} onPick={handleHand} />}
+        {step === 3 && <StepFinish busy={busy} onFinish={handleFinish} summary={status} />}
+        {error && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: "10px 12px",
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: 8,
+              color: "#991b1b",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   if (isPage) {
     return (
       <div
@@ -213,31 +290,7 @@ export function OnboardingWizard({
           className="card"
           style={{ padding: 0, overflow: "hidden", width: 560, maxWidth: "100%" }}
         >
-          <WizardHeader step={step} onSkip={null} onClose={null} busy={busy} />
-          <div style={{ padding: 24, minHeight: 340 }}>
-            {step === 0 && <StepSport busy={busy} onPick={handleSport} />}
-            {step === 1 && <StepSkill busy={busy} onPick={handleSkill} onSkip={() => setStep(2)} />}
-            {step === 2 && <StepClub busy={busy} onPick={handleClub} />}
-            {step === 3 && (
-              <StepFinish busy={busy} onFinish={handleFinish} summary={status} />
-            )}
-            {error && (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: "10px 12px",
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  color: "#991b1b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                {error}
-              </div>
-            )}
-          </div>
+          {body}
         </div>
       </div>
     );
@@ -266,48 +319,22 @@ export function OnboardingWizard({
         className="card"
         style={{ padding: 0, overflow: "hidden", width: 560, maxWidth: "100%" }}
       >
-        <WizardHeader step={step} onSkip={handleSkip} onClose={close} busy={busy} />
-        <div style={{ padding: 24, minHeight: 340 }}>
-          {step === 0 && <StepSport busy={busy} onPick={handleSport} />}
-          {step === 1 && <StepSkill busy={busy} onPick={handleSkill} onSkip={() => setStep(2)} />}
-          {step === 2 && <StepClub busy={busy} onPick={handleClub} />}
-          {step === 3 && (
-            <StepFinish
-              busy={busy}
-              onFinish={handleFinish}
-              summary={status}
-            />
-          )}
-          {error && (
-            <div
-              style={{
-                marginTop: 14,
-                padding: "10px 12px",
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                borderRadius: 8,
-                color: "#991b1b",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {error}
-            </div>
-          )}
-        </div>
+        {body}
       </div>
     </div>
   );
 }
 
-// ── header con progreso y botón de skip ────────────────────────────────
+// ── header con progreso ────────────────────────────────────────────────
 function WizardHeader({
   step,
+  onBack,
   onSkip,
   onClose,
   busy,
 }: {
   step: 0 | 1 | 2 | 3;
+  onBack: (() => void) | null;
   onSkip: (() => void) | null;
   onClose: (() => void) | null;
   busy: boolean;
@@ -324,15 +351,46 @@ function WizardHeader({
           gap: 12,
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-          Paso {step + 1} de 4
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={busy}
+              aria-label="Paso anterior"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "var(--muted)",
+                border: 0,
+                cursor: busy ? "not-allowed" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              <Icon name="arrow-left" size={13} />
+            </button>
+          )}
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "var(--muted-fg)",
+            }}
+          >
+            Paso {step + 1} de 4
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {onSkip && (
             <button
               onClick={onSkip}
               disabled={busy}
-              className="btn"
               style={{
                 background: "transparent",
                 border: 0,
@@ -342,7 +400,7 @@ function WizardHeader({
                 cursor: busy ? "not-allowed" : "pointer",
               }}
             >
-              Saltar onboarding
+              Saltar
             </button>
           )}
           {onClose && (
@@ -380,257 +438,420 @@ function WizardHeader({
   );
 }
 
-// ── step 0: deporte ─────────────────────────────────────────────────────
-function StepSport({ busy, onPick }: { busy: boolean; onPick: (s: Sport) => void }) {
-  return (
-    <>
-      <h2
-        className="font-heading"
-        style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
-      >
-        Bienvenido a MatchPoint<span className="dot">.</span>
-      </h2>
-      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 22px" }}>
-        Para empezar, dinos cuál es tu deporte principal.
-      </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-        {SPORTS.map((s) => (
-          <button
-            key={s.value}
-            onClick={() => onPick(s.value)}
-            disabled={busy}
-            className="card"
-            style={{
-              padding: "22px 14px",
-              textAlign: "center",
-              cursor: busy ? "not-allowed" : "pointer",
-              border: "1px solid var(--border)",
-              background: "#fff",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 10,
-              transition: "transform 120ms ease, border-color 120ms ease",
-            }}
-          >
-            <Icon name={s.icon} size={32} />
-            <div style={{ fontWeight: 800, fontSize: 14 }}>{s.label}</div>
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
+// ── input styles ───────────────────────────────────────────────────────
+const inp = {
+  padding: "11px 13px",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  fontFamily: "inherit",
+  fontSize: 13,
+  outline: "none",
+  background: "#fff",
+  width: "100%",
+} as const;
 
-// ── step 1: nivel ───────────────────────────────────────────────────────
-function StepSkill({
-  busy,
-  onPick,
-  onSkip,
+function FieldLabel({
+  label,
+  hint,
+  error,
+  children,
 }: {
-  busy: boolean;
-  onPick: (s: Skill) => void;
-  onSkip: () => void;
+  label: string;
+  hint?: string;
+  error?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <>
-      <h2
-        className="font-heading"
-        style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <label
+        style={{
+          fontSize: 10.5,
+          fontWeight: 900,
+          textTransform: "uppercase",
+          letterSpacing: "0.14em",
+          color: "#0a0a0a",
+        }}
       >
-        ¿Cuál es tu nivel<span className="dot">?</span>
-      </h2>
-      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 18px" }}>
-        Esto nos ayuda a sugerirte rivales y torneos parejos. Puedes cambiarlo después.
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {SKILLS.map((s) => (
-          <button
-            key={s.value}
-            onClick={() => onPick(s.value)}
-            disabled={busy}
-            style={{
-              padding: "12px 14px",
-              borderRadius: 10,
-              border: "1px solid var(--border)",
-              background: "#fff",
-              cursor: busy ? "not-allowed" : "pointer",
-              textAlign: "left",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>{s.label}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>{s.sub}</div>
-            </div>
-            <Icon name="arrow-right" size={16} />
-          </button>
-        ))}
-      </div>
-      <div style={{ marginTop: 14, textAlign: "center" }}>
-        <button
-          onClick={onSkip}
-          disabled={busy}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--muted-fg)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Prefiero no decir mi nivel
-        </button>
-      </div>
-    </>
+        {label}
+      </label>
+      {children}
+      {error ? (
+        <span style={{ fontSize: 11, color: "#dc2626", fontWeight: 700 }}>{error}</span>
+      ) : hint ? (
+        <span style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>{hint}</span>
+      ) : null}
+    </div>
   );
 }
 
-// ── step 2: club favorito ───────────────────────────────────────────────
-function StepClub({ busy, onPick }: { busy: boolean; onPick: (id: string | null) => void }) {
-  const [clubs, setClubs] = useState<FeaturedClub[] | null>(null);
-  const [q, setQ] = useState("");
+// ── step 0: identidad ──────────────────────────────────────────────────
+function StepIdentity({
+  busy,
+  initial,
+  errors,
+  onSubmit,
+}: {
+  busy: boolean;
+  initial: OnboardingStatus | null;
+  errors: Record<string, string>;
+  onSubmit: (firstName: string, lastName: string, username: string) => void;
+}) {
+  const [firstName, setFirstName] = useState(initial?.firstName ?? "");
+  const [lastName, setLastName] = useState(initial?.lastName ?? "");
+  const [username, setUsername] = useState(initial?.username ?? "");
 
+  const canSubmit = firstName.trim() && lastName.trim() && username.trim();
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!canSubmit || busy) return;
+        onSubmit(firstName.trim(), lastName.trim(), username.trim().toLowerCase());
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
+    >
+      <div>
+        <h2
+          className="font-heading"
+          style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
+        >
+          Bienvenido a MATCHPOINT<span className="dot">.</span>
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
+          Confirma tu nombre y elige tu usuario en MatchPoint.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <FieldLabel label="Nombre" error={errors.firstName}>
+          <input
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Vicente"
+            autoComplete="given-name"
+            required
+            style={inp}
+          />
+        </FieldLabel>
+        <FieldLabel label="Apellido" error={errors.lastName}>
+          <input
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Maldonado"
+            autoComplete="family-name"
+            required
+            style={inp}
+          />
+        </FieldLabel>
+      </div>
+
+      <FieldLabel
+        label="Usuario"
+        hint="Letras, números, guion bajo y punto. Es tu URL pública."
+        error={errors.username}
+      >
+        {/* autoComplete="off" + name no estándar para evitar que Chrome
+            vuelque el apellido aquí cuando autofillea given/family-name de
+            los inputs de arriba. */}
+        <input
+          name="mp_username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value.toLowerCase())}
+          placeholder="vicente"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          required
+          style={inp}
+        />
+      </FieldLabel>
+
+      <button
+        type="submit"
+        disabled={busy || !canSubmit}
+        style={{
+          background: "#0a0a0a",
+          color: "#fff",
+          border: "1px solid #0a0a0a",
+          padding: "12px 22px",
+          fontWeight: 800,
+          fontSize: 13,
+          cursor: busy || !canSubmit ? "not-allowed" : "pointer",
+          opacity: busy || !canSubmit ? 0.6 : 1,
+          borderRadius: 10,
+          marginTop: 4,
+        }}
+      >
+        {busy ? "Guardando..." : "Continuar"}
+      </button>
+    </form>
+  );
+}
+
+// ── step 1: ubicación + fecha + teléfono ───────────────────────────────
+function StepPersonal({
+  busy,
+  initial,
+  errors,
+  onSubmit,
+}: {
+  busy: boolean;
+  initial: OnboardingStatus | null;
+  errors: Record<string, string>;
+  onSubmit: (args: {
+    birthdate: string;
+    phone: string;
+    country: string;
+    province: string;
+    cityName: string;
+  }) => void;
+}) {
+  // Inicializar país desde nombre guardado (mapeamos a code).
+  const initialCountryCode = useMemo(() => {
+    if (!initial?.country) return "";
+    const match = LATAM_COUNTRIES.find((c) => c.name === initial.country);
+    return match?.code ?? "";
+  }, [initial?.country]);
+
+  const [initialProv, initialCity] = useMemo(() => splitCity(initial?.city ?? null), [initial?.city]);
+
+  const [countryCode, setCountryCode] = useState(initialCountryCode);
+  const [provinceName, setProvinceName] = useState(initialProv ?? "");
+  const [cityName, setCityName] = useState(initialCity ?? "");
+  const [birthdate, setBirthdate] = useState(initial?.birthdate ?? "");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  // Track si el user editó el phone para no pisarle el valor al cambiar país.
+  const phoneTouched = useRef(initial?.phone != null);
+
+  const country = useMemo(() => findCountry(countryCode), [countryCode]);
+  const province = useMemo(
+    () => (countryCode && provinceName ? findProvince(countryCode, provinceName) : null),
+    [countryCode, provinceName],
+  );
+
+  // Cuando cambia el país, sugerir prefijo telefónico si el user no editó.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await listFeaturedClubs({ limit: 12 });
-      if (cancelled) return;
-      if (res.ok) {
-        setClubs(
-          res.data.map((c) => ({
-            id: c.id,
-            name: c.name,
-            city: c.city,
-            coverUrl: c.coverUrl,
-          })),
-        );
-      } else {
-        setClubs([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!country) return;
+    if (phoneTouched.current) return;
+    setPhone(country.phoneCode + " ");
+  }, [country]);
 
-  const filtered = useMemo(() => {
-    if (!clubs) return null;
-    const needle = q.trim().toLowerCase();
-    if (!needle) return clubs;
-    return clubs.filter(
-      (c) => c.name.toLowerCase().includes(needle) || c.city.toLowerCase().includes(needle),
-    );
-  }, [clubs, q]);
+  const canSubmit =
+    birthdate.length === 10 && countryCode && provinceName && cityName;
 
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!canSubmit || busy || !country) return;
+        onSubmit({
+          birthdate,
+          phone: phone.trim(),
+          country: country.name,
+          province: provinceName,
+          cityName: cityName.trim(),
+        });
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
+    >
+      <div>
+        <h2
+          className="font-heading"
+          style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
+        >
+          Ubicación y contacto<span className="dot">.</span>
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
+          Tu ubicación nos ayuda a sugerirte clubes y torneos cerca. El teléfono
+          es opcional, solo visible para clubes y rivales en encuentros confirmados.
+        </p>
+      </div>
+
+      <FieldLabel label="País" error={errors.country}>
+        <select
+          value={countryCode}
+          onChange={(e) => {
+            setCountryCode(e.target.value);
+            setProvinceName("");
+            setCityName("");
+          }}
+          required
+          style={inp}
+        >
+          <option value="">Selecciona un país…</option>
+          {LATAM_COUNTRIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
+
+      <FieldLabel label="Provincia / Estado / Región" error={errors.province}>
+        <select
+          value={provinceName}
+          onChange={(e) => {
+            setProvinceName(e.target.value);
+            setCityName("");
+          }}
+          required
+          disabled={!country}
+          style={{ ...inp, opacity: !country ? 0.55 : 1, cursor: !country ? "not-allowed" : "pointer" }}
+        >
+          <option value="">
+            {country ? "Selecciona una provincia…" : "Elige país primero"}
+          </option>
+          {country?.provinces.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
+
+      <FieldLabel label="Ciudad" error={errors.cityName}>
+        <select
+          value={cityName}
+          onChange={(e) => setCityName(e.target.value)}
+          required
+          disabled={!province}
+          style={{ ...inp, opacity: !province ? 0.55 : 1, cursor: !province ? "not-allowed" : "pointer" }}
+        >
+          <option value="">
+            {province ? "Selecciona una ciudad…" : "Elige provincia primero"}
+          </option>
+          {province?.cities.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <FieldLabel label="Fecha de nacimiento" error={errors.birthdate}>
+          <input
+            type="date"
+            value={birthdate}
+            onChange={(e) => setBirthdate(e.target.value)}
+            required
+            max={new Date().toISOString().slice(0, 10)}
+            style={inp}
+          />
+        </FieldLabel>
+        <FieldLabel
+          label="Teléfono (opcional)"
+          hint="Prefijo del país. Puedes editarlo."
+          error={errors.phone}
+        >
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => {
+              phoneTouched.current = true;
+              setPhone(e.target.value);
+            }}
+            placeholder="+593 99 123 4567"
+            autoComplete="tel"
+            style={inp}
+          />
+        </FieldLabel>
+      </div>
+
+      <button
+        type="submit"
+        disabled={busy || !canSubmit}
+        style={{
+          background: "#0a0a0a",
+          color: "#fff",
+          border: "1px solid #0a0a0a",
+          padding: "12px 22px",
+          fontWeight: 800,
+          fontSize: 13,
+          cursor: busy || !canSubmit ? "not-allowed" : "pointer",
+          opacity: busy || !canSubmit ? 0.6 : 1,
+          borderRadius: 10,
+          marginTop: 4,
+        }}
+      >
+        {busy ? "Guardando..." : "Continuar"}
+      </button>
+    </form>
+  );
+}
+
+// ── step 2: mano hábil ─────────────────────────────────────────────────
+function StepHand({
+  busy,
+  initial,
+  onPick,
+}: {
+  busy: boolean;
+  initial: OnboardingStatus | null;
+  onPick: (hand: Hand) => void;
+}) {
+  const current = initial?.dominantHand ?? null;
+  // Orden visual: izquierda a la izquierda, derecha a la derecha. Lucide solo
+  // tiene un ícono `hand`; para representar la mano izquierda lo espejamos
+  // horizontal con scaleX(-1).
+  const options: { value: Hand; label: string; sub: string; mirror: boolean }[] = [
+    { value: "left", label: "Izquierda", sub: "Soy zurdo", mirror: true },
+    { value: "right", label: "Derecha", sub: "Soy diestro", mirror: false },
+  ];
   return (
     <>
       <h2
         className="font-heading"
         style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
       >
-        Tu club favorito<span className="dot">.</span>
+        ¿Cuál es tu mano hábil<span className="dot">?</span>
       </h2>
-      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 14px" }}>
-        Elige uno para ver primero sus canchas, eventos y torneos. Puedes cambiarlo cuando quieras.
+      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 18px" }}>
+        Lo usamos para emparejarte mejor en dobles y mostrarlo en tu perfil.
       </p>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar por nombre o ciudad…"
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          fontSize: 13,
-          marginBottom: 12,
-        }}
-      />
-      <div
-        style={{
-          maxHeight: 260,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: 6,
-          background: "#fafafa",
-        }}
-      >
-        {filtered === null && (
-          <div style={{ padding: 18, fontSize: 12, color: "var(--muted-fg)", textAlign: "center" }}>
-            Cargando clubes…
-          </div>
-        )}
-        {filtered && filtered.length === 0 && (
-          <div style={{ padding: 18, fontSize: 12, color: "var(--muted-fg)", textAlign: "center" }}>
-            No encontramos clubes para esa búsqueda.
-          </div>
-        )}
-        {filtered?.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onPick(c.id)}
-            disabled={busy}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 12px",
-              background: "#fff",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              cursor: busy ? "not-allowed" : "pointer",
-              textAlign: "left",
-            }}
-          >
-            <div
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {options.map((o) => {
+          const active = current === o.value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => onPick(o.value)}
+              disabled={busy}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: c.coverUrl ? `center/cover url(${c.coverUrl})` : "var(--muted)",
-                flexShrink: 0,
+                padding: "20px 14px",
+                borderRadius: 12,
+                border: active ? "2px solid #0a0a0a" : "1px solid var(--border)",
+                background: "#fff",
+                cursor: busy ? "not-allowed" : "pointer",
+                textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 10,
+                fontFamily: "inherit",
               }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {c.name}
+            >
+              <Icon
+                name="hand"
+                size={28}
+                style={o.mirror ? { transform: "scaleX(-1)" } : undefined}
+              />
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>{o.label}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>
+                  {o.sub}
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>{c.city}</div>
-            </div>
-            <Icon name="arrow-right" size={14} />
-          </button>
-        ))}
-      </div>
-      <div style={{ marginTop: 14, textAlign: "center" }}>
-        <button
-          onClick={() => onPick(null)}
-          disabled={busy}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--muted-fg)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Ninguno por ahora
-        </button>
+            </button>
+          );
+        })}
       </div>
     </>
   );
 }
 
-// ── step 3: cierre ──────────────────────────────────────────────────────
+// ── step 3: resumen y cierre ───────────────────────────────────────────
 function StepFinish({
   busy,
   onFinish,
@@ -640,8 +861,14 @@ function StepFinish({
   onFinish: () => void;
   summary: OnboardingStatus | null;
 }) {
+  const handLabel =
+    summary?.dominantHand === "left"
+      ? "Izquierda"
+      : summary?.dominantHand === "right"
+        ? "Derecha"
+        : "—";
   return (
-    <div style={{ textAlign: "center", padding: "30px 10px" }}>
+    <div style={{ textAlign: "center", padding: "20px 10px" }}>
       <div
         style={{
           width: 64,
@@ -664,50 +891,45 @@ function StepFinish({
         ¡Todo listo<span className="dot">!</span>
       </h2>
       <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "10px 0 22px" }}>
-        Tu perfil quedó configurado. Vamos a mostrarte canchas, eventos y rivales acorde a tus preferencias.
+        Tu perfil quedó configurado. Empiezas con MPR 2.5 en los tres deportes;
+        sube tu nivel jugando partidos oficiales.
       </p>
       {summary && (
         <div
           style={{
             margin: "0 auto 22px",
-            padding: 12,
-            maxWidth: 320,
+            padding: 14,
+            maxWidth: 340,
             background: "#fafafa",
             border: "1px solid var(--border)",
-            borderRadius: 8,
-            fontSize: 12,
+            borderRadius: 10,
+            fontSize: 12.5,
             color: "var(--muted-fg)",
             textAlign: "left",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
           }}
         >
-          {summary.primarySport && (
-            <div>
-              Deporte:{" "}
-              <strong style={{ color: "#0a0a0a" }}>
-                {SPORTS.find((s) => s.value === summary.primarySport)?.label ?? summary.primarySport}
-              </strong>
-            </div>
-          )}
-          {summary.skillLevel && (
-            <div>
-              Nivel:{" "}
-              <strong style={{ color: "#0a0a0a" }}>
-                {SKILLS.find((s) => s.value === summary.skillLevel)?.label ?? summary.skillLevel}
-              </strong>
-            </div>
-          )}
-          <div>
-            Club favorito:{" "}
-            <strong style={{ color: "#0a0a0a" }}>
-              {summary.favoriteClubId ? "Seleccionado" : "Ninguno"}
-            </strong>
-          </div>
+          <SummaryRow
+            label="Nombre"
+            value={
+              summary.firstName || summary.lastName
+                ? `${summary.firstName ?? ""} ${summary.lastName ?? ""}`.trim()
+                : "—"
+            }
+          />
+          <SummaryRow label="Usuario" value={summary.username ? `@${summary.username}` : "—"} />
+          <SummaryRow label="País" value={summary.country ?? "—"} />
+          <SummaryRow label="Ciudad" value={summary.city ?? "—"} />
+          <SummaryRow label="Fecha de nacimiento" value={summary.birthdate ?? "—"} />
+          <SummaryRow label="Teléfono" value={summary.phone ?? "—"} />
+          <SummaryRow label="Mano hábil" value={handLabel} />
         </div>
       )}
       <button
         onClick={onFinish}
         disabled={busy}
-        className="btn"
         style={{
           background: "#0a0a0a",
           color: "#fff",
@@ -716,10 +938,20 @@ function StepFinish({
           fontWeight: 800,
           fontSize: 13,
           cursor: busy ? "not-allowed" : "pointer",
+          borderRadius: 10,
         }}
       >
-        Empezar a jugar
+        {busy ? "Finalizando..." : "Empezar a jugar"}
       </button>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <span>{label}</span>
+      <strong style={{ color: "#0a0a0a", textAlign: "right" }}>{value}</strong>
     </div>
   );
 }

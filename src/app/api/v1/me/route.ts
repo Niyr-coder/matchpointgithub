@@ -35,22 +35,33 @@ export async function GET() {
 
   const c = await cookies();
   const activeRole = (c.get(ACTIVE_ROLE_COOKIE)?.value as RoleAssignment["role"] | undefined) ?? null;
-  const activeClubId = c.get(ACTIVE_CLUB_COOKIE)?.value ?? null;
+  const rawClubId = c.get(ACTIVE_CLUB_COOKIE)?.value;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const activeClubId = rawClubId && UUID_RE.test(rawClubId) ? rawClubId : null;
 
+  const p = profile as Record<string, unknown>;
   const response: SessionResponse = {
     user: ProfileSchema.parse({
-      id: profile.id,
-      username: profile.username,
-      displayName: profile.display_name,
-      avatarUrl: profile.avatar_url ?? null,
-      bio: profile.bio ?? null,
-      country: profile.country ?? null,
-      city: profile.city ?? null,
-      preferredSport: profile.preferred_sport ?? null,
-      skillLevel: profile.skill_level ?? null,
-      locale: profile.locale ?? "es",
-      createdAt: profile.created_at,
-      updatedAt: profile.updated_at,
+      id: p.id,
+      username: p.username,
+      displayName: p.display_name,
+      firstName: p.first_name ?? null,
+      lastName: p.last_name ?? null,
+      avatarUrl: p.avatar_url ?? null,
+      bio: p.bio ?? null,
+      country: p.country ?? null,
+      city: p.city ?? null,
+      birthdate: p.birthdate ?? null,
+      phone: p.phone ?? null,
+      dominantHand: p.dominant_hand ?? null,
+      preferredSport: p.preferred_sport ?? null,
+      skillLevel: p.skill_level ?? null,
+      accentColor: p.accent_color ?? null,
+      bannerPreset: p.banner_preset ?? null,
+      cardStyle: p.card_style ?? null,
+      locale: p.locale ?? "es",
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
     }),
     activeRole,
     activeClubId,

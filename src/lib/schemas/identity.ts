@@ -15,17 +15,31 @@ import {
 
 extendZodWithOpenApi(z);
 
+export const MpDominantHandSchema = z.enum(["left", "right"]).openapi("MpDominantHand");
+
 export const ProfileSchema = z
   .object({
     id: UuidSchema,
     username: UsernameSchema,
     displayName: z.string(),
+    firstName: z.string().nullable(),
+    lastName: z.string().nullable(),
     avatarUrl: z.string().url().nullable(),
     bio: z.string().nullable(),
     country: z.string().nullable(),
     city: z.string().nullable(),
+    birthdate: z.string().nullable(),
+    phone: z.string().nullable(),
+    dominantHand: MpDominantHandSchema.nullable(),
     preferredSport: MpSportSchema.nullable(),
     skillLevel: MpSkillLevelSchema.nullable(),
+    // Customización de perfil (MP+ exclusivo). Keys del catálogo en
+    // src/lib/profile/customization-presets.ts. Validación contra el catálogo
+    // vive en server action, no en schema (para que sumar un preset nuevo no
+    // requiera redeploy del schema OpenAPI).
+    accentColor: z.string().nullable(),
+    bannerPreset: z.string().nullable(),
+    cardStyle: z.string().nullable(),
     locale: z.string().default("es"),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
@@ -34,12 +48,20 @@ export const ProfileSchema = z
 
 export const ProfileUpdateSchema = ProfileSchema.pick({
   displayName: true,
+  firstName: true,
+  lastName: true,
   avatarUrl: true,
   bio: true,
   country: true,
   city: true,
+  birthdate: true,
+  phone: true,
+  dominantHand: true,
   preferredSport: true,
   skillLevel: true,
+  accentColor: true,
+  bannerPreset: true,
+  cardStyle: true,
   locale: true,
 })
   .partial()
