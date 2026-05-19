@@ -222,6 +222,10 @@ export type PlayerSearchResult = {
   username: string | null;
   city: string | null;
   avatarUrl: string | null;
+  // True para perfiles de sistema (MATCHPOINT oficial). UI los muestra con
+  // badge verified + CTA "Ir al chat" en vez de "Enviar solicitud" — no
+  // se puede ser "amigo" de una cuenta oficial.
+  isOfficial: boolean;
   // Relación con el viewer:
   //   none           — nada, puede enviar request
   //   request_sent   — viewer ya envió request pendiente
@@ -238,15 +242,15 @@ export async function searchPlayers(
     const supabase = await getServerClient();
 
     // 1) Profiles que matchean el query (por display_name o username),
-    // excluyendo self + perfiles de sistema (MATCHPOINT no se busca aquí).
+    // excluyendo solo self. Los perfiles de sistema (MATCHPOINT) SÍ aparecen
+    // pero con UI/CTA diferente — ver isOfficial en DiscoverCard.
     // Sanitizamos el query removiendo "@" prefix si el user lo tipea.
     const cleaned = q.trim().replace(/^@+/, "");
     const { data: rows, error } = await supabase
       .from("profiles")
-      .select("id,display_name,username,city,avatar_url" as never)
+      .select("id,display_name,username,city,avatar_url,is_system" as never)
       .or(`display_name.ilike.%${cleaned}%,username.ilike.%${cleaned}%`)
       .neq("id", userId)
-      .eq("is_system" as never, false as never)
       .limit(limit);
     if (error) throw new MpError("FRIENDS.SEARCH_FAILED", error.message, 500);
 
@@ -256,6 +260,7 @@ export async function searchPlayers(
       username: string | null;
       city: string | null;
       avatar_url: string | null;
+      is_system: boolean | null;
     };
     const visible = (rows ?? []) as unknown as ProfileRow[];
     if (visible.length === 0) return [];
@@ -303,6 +308,7 @@ export async function searchPlayers(
         username: p.username,
         city: p.city,
         avatarUrl: p.avatar_url,
+        isOfficial: p.is_system === true,
         relationship,
       };
     });

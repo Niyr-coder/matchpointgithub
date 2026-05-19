@@ -571,6 +571,9 @@ function DiscoverCard({
   let onClick: () => void = onSendRequest;
   let dim = false;
 
+  // MATCHPOINT acepta automáticamente cualquier solicitud (trigger DB
+  // tg_auto_accept_system_fr en mig 111). El flujo de Enviar Solicitud
+  // funciona igual; en milisegundos pasa a "friends".
   if (player.relationship === "request_sent") {
     ctaLabel = "Enviada";
     ctaDisabled = true;
@@ -617,9 +620,40 @@ function DiscoverCard({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              maxWidth: "100%",
             }}
           >
-            {player.displayName}
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {player.displayName}
+            </span>
+            {player.isOfficial && (
+              <span
+                title="Cuenta oficial de la app"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: "var(--primary)",
+                  color: "#fff",
+                  flexShrink: 0,
+                }}
+                aria-label="Cuenta oficial de la app"
+              >
+                <Icon name="check" size={9} color="#fff" />
+              </span>
+            )}
           </div>
           <div
             style={{

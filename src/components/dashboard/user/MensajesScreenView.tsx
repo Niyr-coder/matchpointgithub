@@ -567,6 +567,24 @@ export function MensajesScreenView({
               )}
             </div>
 
+            {activeConv.isOfficial ? (
+              <div
+                style={{
+                  padding: 16,
+                  borderTop: "1px solid var(--border)",
+                  background: "#fafafa",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  color: "var(--muted-fg)",
+                  fontSize: 12,
+                }}
+              >
+                <Icon name="info" size={12} color="var(--muted-fg)" />
+                Esta cuenta solo envía notificaciones oficiales. No puedes responder.
+              </div>
+            ) : (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -622,6 +640,7 @@ export function MensajesScreenView({
                 <Icon name={sending ? "loader" : "send"} size={14} color="#fff" />
               </button>
             </form>
+            )}
           </>
         ) : (
           <div
