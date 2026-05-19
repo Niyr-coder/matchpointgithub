@@ -146,14 +146,60 @@ y `plan_expires_at` puede haber pasado.
 
 **Si toco lógica de premium, verificar**:
 1. `UpgradeBanner` se oculta apenas cambia el tier.
-2. Cualquier feature gated correctamente (futuro: torneos privados,
-   descuentos en clases, etc — hoy nada está realmente gated).
+2. Cualquier feature gated correctamente — ver §7 features actualmente
+   gateadas detrás de `isPlanActive`.
 3. El dispatcher de `plan_expiring_soon` no se dispara para subs canceladas.
 
-## 7. Cosas pendientes / TODO
+## 7. Features gateadas detrás de MP+
+
+### 7.1 · Teams (migration 102)
+
+Primer feature real con caps por plan. Implementación: `src/lib/teams/caps.ts`.
+Caps viven en `platform_config.team_caps` (JSON) para ajustar sin redeploy.
+
+| Capability | Free captain | MP+ captain |
+|---|---|---|
+| Crear team | ✅ | ✅ |
+| Unirse a team (cualquiera) | ✅ | ✅ |
+| **Roster máximo** | **12** | **24** |
+| Discovery público (`?view=join`) | ✅ | ✅ |
+| Cover/logo upload | ⏸ pospuesto hasta verificación | ⏸ |
+| **Invites pendientes simultáneas** | 3 | ∞ |
+| Teams como captain | 1 | 1 |
+| Stats avanzadas (W/L por oponente, MPR avg, attendance) | básicas | completas |
+| **Rename nombre/tag** | 2 veces | 5 veces |
+
+**Validación**: las server actions de `src/server/actions/teams.ts`
+chequean los caps antes de mutar. Errores específicos:
+- `TEAMS.ROSTER_LIMIT_REACHED` — al invitar / aceptar invite / responder
+  request / joinByCode si el team está lleno.
+- `TEAMS.INVITES_LIMIT_REACHED` — al invitar si el team tiene >= 3
+  pending y el captain es free.
+- `TEAMS.ALREADY_CAPTAIN` — al `createTeam` o `transferCaptain` si el
+  user destino ya lidera otro team.
+- `TEAMS.RENAME_LIMIT_REACHED` — al `updateTeam` con `name` cambiado si
+  ya se renombró 2 (free) / 5 (premium) veces.
+
+**Cómo se sienten los gates al user**:
+- Free captain mete miembro #13 → toast "Tu team alcanzó el máximo de
+  12 miembros. Activa MatchPoint+ para subir el límite."
+- Free captain manda 4ta invite → toast "Tienes 3 invitaciones pendientes
+  (máximo 3). Cancela alguna o activa MatchPoint+."
+- Free captain renombra una 3ra vez → toast con CTA a MP+.
+
+**Ajustar caps sin redeploy**:
+```sql
+update public.platform_config
+set value = jsonb_set(value, '{free,rosterMax}', '15'::jsonb)
+where key = 'team_caps';
+```
+
+## 8. Cosas pendientes / TODO
 
 - [ ] Notificación al activarse premium (kind `plan_activated`).
 - [ ] Listado público de beneficios premium (hoy es marketing copy hardcoded).
-- [ ] Bloquear features tras `isPlanActive(profile).tier === 'free'` (hoy
-      ninguna feature está realmente gated).
+- [ ] UI: badge "X/cap" en TeamHome + banner upgrade contextual al
+      chocar el cap (Stage 2 de roadmap teams).
+- [ ] Stats split `TeamStatsBasic` vs `TeamStatsAdvanced` (Stage 2).
+- [ ] Notif `team_roster_cap_reached` (Stage 3).
 - [ ] Tiers superiores (Pro, Elite) — schema lo permite pero no usado.

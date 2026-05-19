@@ -222,6 +222,8 @@ export function MiPlanScreenView({
         </div>
       </div>
 
+      <BenefitsSection isPremium={isPremium} />
+
       <h2
         className="font-heading"
         style={{
@@ -268,19 +270,17 @@ export function MiPlanScreenView({
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div
+            className="grid grid-cols-[1fr_1fr_100px] md:grid-cols-[110px_100px_1fr_1fr_120px] gap-3"
             style={{
-              display: "grid",
-              gridTemplateColumns: "110px 100px 1fr 1fr 120px",
-              gap: 12,
               padding: "12px 16px",
               borderBottom: "1px solid var(--border)",
               background: "var(--muted)",
             }}
           >
             <div className="label-mp">Estado</div>
-            <div className="label-mp">Plan</div>
+            <div className="label-mp hidden md:block">Plan</div>
             <div className="label-mp">Inicio</div>
-            <div className="label-mp">Vence</div>
+            <div className="label-mp hidden md:block">Vence</div>
             <div className="label-mp" style={{ textAlign: "right" }}>
               Comprobante
             </div>
@@ -290,13 +290,10 @@ export function MiPlanScreenView({
             return (
               <div
                 key={row.id}
+                className="grid grid-cols-[1fr_1fr_100px] md:grid-cols-[110px_100px_1fr_1fr_120px] gap-3 items-center"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "110px 100px 1fr 1fr 120px",
-                  gap: 12,
                   padding: "14px 16px",
                   borderBottom: "1px solid var(--border)",
-                  alignItems: "center",
                 }}
               >
                 <div>
@@ -304,11 +301,11 @@ export function MiPlanScreenView({
                     {STATUS_LABEL[row.status] ?? row.status}
                   </RSPill>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 800 }}>
+                <div className="hidden md:block" style={{ fontSize: 12, fontWeight: 800 }}>
                   {TIER_LABEL[row.tier] ?? row.tier}
                 </div>
                 <div style={{ fontSize: 12 }}>{fmtDate(row.startsAt)}</div>
-                <div style={{ fontSize: 12 }}>{fmtDate(row.expiresAt)}</div>
+                <div className="hidden md:block" style={{ fontSize: 12 }}>{fmtDate(row.expiresAt)}</div>
                 <div style={{ textAlign: "right" }}>
                   {row.transactionId ? (
                     <button
@@ -348,5 +345,176 @@ export function MiPlanScreenView({
         />
       )}
     </>
+  );
+}
+
+// ── Beneficios ─────────────────────────────────────────────────────────
+// Lista de features gateadas detrás de MatchPoint+. Teams es la primera
+// con caps reales (migration 102). El resto son placeholders honestos
+// ("Próximamente") hasta que se implementen.
+type BenefitRow = {
+  label: string;
+  free: string;
+  premium: string;
+  highlight?: boolean;
+};
+
+type BenefitCategory = {
+  title: string;
+  hint?: string;
+  rows: BenefitRow[];
+  available: boolean; // false => "Próximamente"
+};
+
+const BENEFITS: BenefitCategory[] = [
+  {
+    title: "Teams",
+    hint: "Crea y lidera un equipo. Crear y unirse es gratis; los caps cambian según tu plan.",
+    available: true,
+    rows: [
+      { label: "Miembros del roster", free: "12", premium: "24", highlight: true },
+      { label: "Invitaciones pendientes", free: "3", premium: "Ilimitadas", highlight: true },
+      { label: "Cambios de nombre", free: "2 veces", premium: "5 veces" },
+      { label: "Estadísticas avanzadas", free: "—", premium: "Incluidas" },
+    ],
+  },
+  {
+    title: "Torneos privados",
+    hint: "Próximamente — torneos solo-invitación entre amigos o tu club.",
+    available: false,
+    rows: [{ label: "Crear torneos privados", free: "—", premium: "Ilimitados" }],
+  },
+  {
+    title: "Descuentos en clases",
+    hint: "Próximamente — % de descuento en clases de coaches afiliados.",
+    available: false,
+    rows: [{ label: "Descuento aplicado", free: "—", premium: "Hasta 15%" }],
+  },
+];
+
+function BenefitsSection({ isPremium }: { isPremium: boolean }) {
+  return (
+    <div>
+      <h2
+        className="font-heading"
+        style={{
+          fontSize: 22,
+          fontWeight: 900,
+          letterSpacing: "-0.025em",
+          textTransform: "uppercase",
+          margin: "4px 0 14px",
+        }}
+      >
+        Qué incluye MatchPoint+<span className="dot">.</span>
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {BENEFITS.map((cat) => (
+          <BenefitCard key={cat.title} category={cat} isPremium={isPremium} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BenefitCard({
+  category,
+  isPremium,
+}: {
+  category: BenefitCategory;
+  isPremium: boolean;
+}) {
+  const dimmed = !category.available;
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 18,
+        opacity: dimmed ? 0.68 : 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div
+          className="font-heading"
+          style={{
+            fontSize: 15,
+            fontWeight: 900,
+            letterSpacing: "-0.02em",
+            textTransform: "uppercase",
+          }}
+        >
+          {category.title}
+        </div>
+        {!category.available && (
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              padding: "3px 8px",
+              borderRadius: 9999,
+              background: "var(--muted)",
+              color: "var(--muted-fg)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Pronto
+          </span>
+        )}
+      </div>
+      {category.hint && (
+        <div style={{ fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.4 }}>
+          {category.hint}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
+        {category.rows.map((row) => (
+          <div
+            key={row.label}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto auto",
+              gap: 10,
+              alignItems: "center",
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: "#fafafa",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#0a0a0a" }}>
+              {row.label}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: isPremium ? "var(--muted-fg)" : "#0a0a0a",
+                textAlign: "right",
+                minWidth: 36,
+              }}
+              title="Free"
+            >
+              {row.free}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 900,
+                color: isPremium ? "var(--primary)" : "#facc15",
+                textAlign: "right",
+                minWidth: 56,
+              }}
+              title="MatchPoint+"
+            >
+              {row.premium}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

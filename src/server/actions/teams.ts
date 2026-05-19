@@ -8,7 +8,8 @@ import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
-import { requirePlan } from "@/lib/auth/plan";
+import { getProfileSummary } from "@/lib/auth/profile";
+import { getTeamCaps, exceedsCap } from "@/lib/teams/caps";
 import {
   InviteToTeamSchema,
   TeamCreateSchema,
@@ -44,6 +45,29 @@ async function requireUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
   return user.id;
+}
+
+// Valida que el team todavía tiene espacio según los caps del captain.
+// Llamar antes de agregar un miembro (joinByCode, acceptInvite, acceptRequest).
+async function assertRosterHasSpace(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  teamId: string,
+  captainId: string,
+): Promise<void> {
+  const captainProfile = await getProfileSummary(captainId);
+  const caps = await getTeamCaps(captainProfile);
+  const { count } = await supabase
+    .from("team_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("team_id", teamId);
+  if (exceedsCap(count ?? 0, caps.rosterMax)) {
+    throw new MpError(
+      "TEAMS.ROSTER_LIMIT_REACHED",
+      `Este team alcanzó su máximo de ${caps.rosterMax} miembros.`,
+      409,
+    );
+  }
 }
 
 // ── listTeams (public) ─────────────────────────────────────────────────
@@ -119,9 +143,22 @@ export async function createTeam(input: unknown): Promise<ActionResult<Team>> {
   return runAction(TeamCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
-    // Gate: solo Premium puede crear team. Free se queda con joinTeamByCode /
-    // requestJoinTeam (puede ser miembro normal, pero no fundador).
-    await requirePlan(supabase, userId, "premium");
+    // Regla: 1 team como captain (free Y MP+). Antes el código gateaba
+    // todo el create detrás de premium; ahora es free pero limitado a
+    // un solo team por captain (decisión de producto).
+    const { data: existingAsCaptain } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("captain_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (existingAsCaptain) {
+      throw new MpError(
+        "TEAMS.ALREADY_CAPTAIN",
+        "Ya eres capitán de un team. Solo puedes ser capitán de uno.",
+        409,
+      );
+    }
     const { data: team, error } = await supabase
       .from("teams")
       .insert({
@@ -146,6 +183,29 @@ export async function createTeam(input: unknown): Promise<ActionResult<Team>> {
       .insert({ team_id: team.id, user_id: userId, role: "captain" } as never, {
         defaultToNull: false,
       });
+
+    // Welcome DM al captain. El trigger fn_create_team_channel ya creó el
+    // chat del team automáticamente; este mensaje es un DM separado del
+    // sistema. Fire-and-forget.
+    try {
+      const { sendSystemMessage, renderTemplate } = await import("@/lib/messages/system");
+      const profile = await getProfileSummary(userId);
+      const firstName = (profile.displayName ?? "capitán").split(" ")[0];
+      const caps = await getTeamCaps(profile);
+      await sendSystemMessage({
+        recipientUserId: userId,
+        kind: "welcome_team_created",
+        body: renderTemplate("welcome_team_created", {
+          firstName,
+          teamName: data.name,
+          rosterMax: caps.rosterMax,
+        }),
+        payload: { teamId: team.id, teamName: data.name },
+      });
+    } catch (e) {
+      console.error("[createTeam] welcome message failed", e);
+    }
+
     return mapTeam(team);
   });
 }
@@ -172,6 +232,34 @@ export async function inviteToTeam(
     if (team.captain_id !== userId) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "Only the team captain can invite");
     }
+
+    // Caps por plan del captain (free: 12 roster / 3 invites, MP+: 24/∞).
+    const captainProfile = await getProfileSummary(userId);
+    const caps = await getTeamCaps(captainProfile);
+
+    const [{ count: memberCount }, { count: pendingInvitesCount }] = await Promise.all([
+      supabase.from("team_members").select("user_id", { count: "exact", head: true }).eq("team_id", teamId),
+      supabase
+        .from("team_invites")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", teamId)
+        .eq("status", "pending"),
+    ]);
+    if (exceedsCap(memberCount ?? 0, caps.rosterMax)) {
+      throw new MpError(
+        "TEAMS.ROSTER_LIMIT_REACHED",
+        `Tu team alcanzó el máximo de ${caps.rosterMax} miembros. Activa MatchPoint+ para subir el límite.`,
+        409,
+      );
+    }
+    if (exceedsCap(pendingInvitesCount ?? 0, caps.pendingInvitesMax)) {
+      throw new MpError(
+        "TEAMS.INVITES_LIMIT_REACHED",
+        `Tienes ${pendingInvitesCount} invitaciones pendientes (máximo ${caps.pendingInvitesMax}). Cancela alguna o activa MatchPoint+.`,
+        409,
+      );
+    }
+
     const { data, error } = await supabase
       .from("team_invites")
       .insert({
@@ -214,6 +302,23 @@ export async function transferCaptain(
   return runAction(TransferCaptainSchema, input, async ({ teamId, newCaptainUserId }) => {
     await requireUserId();
     const supabase = await getServerClient();
+
+    // Validar que el receptor no sea captain de OTRO team (regla 1/1).
+    const { data: receptorTeam } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("captain_id", newCaptainUserId)
+      .neq("id", teamId)
+      .limit(1)
+      .maybeSingle();
+    if (receptorTeam) {
+      throw new MpError(
+        "TEAMS.ALREADY_CAPTAIN",
+        "El nuevo capitán ya lidera otro team. Solo se permite uno.",
+        409,
+      );
+    }
+
     const { error } = await supabase.rpc("transfer_team_captain", {
       p_team_id: teamId,
       p_new_captain_id: newCaptainUserId,
@@ -318,6 +423,12 @@ export async function respondToJoinRequest(
     if (req.status !== "pending") {
       throw new MpError("TEAMS.REQUEST_NOT_PENDING", `Status is '${req.status}'`, 409);
     }
+
+    // Si el captain está aceptando, validar roster ANTES de mutar nada.
+    if (accept) {
+      await assertRosterHasSpace(supabase, req.team_id as string, userId);
+    }
+
     const nowIso = new Date().toISOString();
     const { error: updErr } = await supabase
       .from("team_join_requests")
@@ -402,6 +513,9 @@ export async function joinTeamByCode(input: unknown): Promise<ActionResult<Team>
       throw new MpError("TEAMS.ALREADY_MEMBER", "Ya formas parte de este team", 409);
     }
 
+    // Roster cap del team destino (basado en plan del captain).
+    await assertRosterHasSpace(supabase, team.id as string, team.captain_id as string);
+
     const { error: insErr } = await supabase
       .from("team_members")
       .insert({ team_id: team.id, user_id: userId, role: "player" } as never, {
@@ -448,17 +562,40 @@ export async function updateTeam(input: unknown): Promise<ActionResult<Team>> {
   return runAction(UpdateInputSchema, input, async ({ teamId, patch }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
-    const { data: existing } = await supabase
+    // Cast: los Database types se regeneran aparte; mientras tanto el
+    // selector queda tipado estrechamente vía `as`.
+    const { data: existingRaw } = await supabase
       .from("teams")
-      .select("captain_id")
+      .select("captain_id,name,rename_count" as never)
       .eq("id", teamId)
       .single();
+    const existing = existingRaw as
+      | { captain_id: string; name: string; rename_count: number | null }
+      | null;
     if (!existing) throw new MpError("TEAMS.NOT_FOUND", "Team not found", 404);
     if (existing.captain_id !== userId) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "Only the team captain can edit");
     }
     const update: Record<string, unknown> = {};
-    if (patch.name !== undefined) update.name = patch.name;
+    // Detectar rename para chequear el cap. Solo cuenta si el name cambia.
+    const isRename =
+      patch.name !== undefined && patch.name !== existing.name;
+    if (isRename) {
+      const captainProfile = await getProfileSummary(userId);
+      const caps = await getTeamCaps(captainProfile);
+      const currentRenames = existing.rename_count ?? 0;
+      if (currentRenames >= caps.renamesMax) {
+        throw new MpError(
+          "TEAMS.RENAME_LIMIT_REACHED",
+          `Alcanzaste el máximo de ${caps.renamesMax} cambios de nombre. ${
+            caps.renamesMax < 5 ? "Activa MatchPoint+ para más." : ""
+          }`,
+          409,
+        );
+      }
+      update.name = patch.name;
+      update.rename_count = currentRenames + 1;
+    }
     if (patch.description !== undefined) update.description = patch.description;
     if (patch.sport !== undefined) update.sport = patch.sport;
     if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
@@ -561,7 +698,7 @@ export async function acceptTeamInvite(input: unknown): Promise<ActionResult<{ o
     const supabase = await getServerClient();
     const { data: invite, error } = await supabase
       .from("team_invites")
-      .select("*")
+      .select("*,teams(captain_id)")
       .eq("id", inviteId)
       .single();
     if (error || !invite) throw new MpError("TEAMS.INVITE_NOT_FOUND", "Invite not found", 404);
@@ -570,6 +707,14 @@ export async function acceptTeamInvite(input: unknown): Promise<ActionResult<{ o
     }
     if (invite.status !== "pending") {
       throw new MpError("TEAMS.INVITE_NOT_PENDING", `Status is '${invite.status}'`, 409);
+    }
+
+    // Re-validar roster cap: el team puede haber crecido entre que se mandó
+    // la invitación y este accept (otros aceptaron primero).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const captainId = (invite as any).teams?.captain_id as string | undefined;
+    if (captainId) {
+      await assertRosterHasSpace(supabase, invite.team_id as string, captainId);
     }
 
     await supabase

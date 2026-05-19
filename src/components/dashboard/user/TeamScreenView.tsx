@@ -1,12 +1,14 @@
 // TeamScreen — UI migrado del mock; TeamHome consume data real.
-// Flujo interno mantiene 6 views con localStorage. Create/Join/Settings/Invite
-// son forms que mockean submit con toast (server actions en otra tanda).
+// Flujo interno: 6 vistas controladas por `?view=...` en la URL. El default
+// (sin query) deriva de la data: con team → "team", sin team → "empty".
+// Antes esto vivía en useState+localStorage y causaba flash al hidratar +
+// race conditions cuando el team se borraba desde otra device.
 "use client";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   cancelInvite,
   createTeam,
@@ -32,7 +34,18 @@ function useComingSoon() {
 }
 
 type View = "team" | "empty" | "create" | "join" | "settings" | "invite";
-const VIEW_KEY = "mp-team-view";
+
+// Resuelve la view efectiva a partir del query param + estado real (team).
+// Validaciones: vistas que requieren team caen a empty si no hay team.
+function resolveView(urlView: string | null, hasTeam: boolean): View {
+  if (urlView === "create" || urlView === "join") return urlView;
+  if (urlView === "settings" || urlView === "invite" || urlView === "team") {
+    return hasTeam ? (urlView as View) : "empty";
+  }
+  if (urlView === "empty") return "empty";
+  // Default: deriva de la data.
+  return hasTeam ? "team" : "empty";
+}
 
 export type TeamMemberLite = {
   userId: string;
@@ -42,6 +55,12 @@ export type TeamMemberLite = {
   played: number;
   wr: number;
   online: boolean;
+};
+
+export type TeamCapsLite = {
+  rosterMax: number;
+  pendingInvitesMax: number | null;
+  renamesMax: number;
 };
 
 export type TeamLite = {
@@ -60,6 +79,10 @@ export type TeamLite = {
   league: string;
   members: TeamMemberLite[];
   pendingInvites: PendingInviteLite[];
+  // Caps + plan info: gating de UI (badges, banners, stats split).
+  renameCount: number;
+  captainPlanTier: "free" | "premium";
+  caps: TeamCapsLite;
 };
 
 export type PendingInviteLite = {
@@ -101,27 +124,29 @@ export function TeamScreenView({
     ...(team ? [{ table: "teams", filter: `id=eq.${team.id}` }] : []),
   ]);
 
-  // Si no tenemos team real → arranca en empty; con team → "team".
-  const initial: View = team ? "team" : "empty";
-  const [view, setView] = useState<View>(initial);
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem(VIEW_KEY) as View | null;
-      if (v) {
-        // Si el localStorage dice "team" pero no hay equipo, redirigir a empty.
-        if (v === "team" && !team) setView("empty");
-        else if (v === "settings" && !team) setView("empty");
-        else if (v === "invite" && !team) setView("empty");
-        else setView(v);
+  // Vista derivada de la URL. `?view=create|join|settings|invite|team|empty`.
+  // Sin query → default según team. resolveView valida que la vista pedida
+  // sea coherente con el estado real (no permite "settings" sin team).
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const view = resolveView(searchParams.get("view"), !!team);
+
+  const setView = useCallback(
+    (v: View) => {
+      const params = new URLSearchParams(searchParams.toString());
+      // "team" y "empty" son defaults derivables — limpiamos el query para
+      // que las URLs queden limpias (`/team` en vez de `/team?view=team`).
+      if (v === "team" || v === "empty") {
+        params.delete("view");
+      } else {
+        params.set("view", v);
       }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_KEY, view);
-    } catch {}
-  }, [view]);
+      const qs = params.toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   if (view === "empty")
     return <TeamEmpty onCreate={() => setView("create")} onJoin={() => setView("join")} />;
@@ -211,10 +236,8 @@ function TeamEmpty({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => v
       </p>
 
       <div
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
           width: "100%",
           marginTop: 8,
         }}
@@ -502,8 +525,10 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
         const msg =
           res.error.code === "TEAMS.SLUG_TAKEN"
             ? "Ese nombre ya está tomado. Prueba variando el tag."
-            : res.error.message;
-        toast({ icon: "x", title: "No se pudo crear", sub: msg });
+            : res.error.code === "TEAMS.ALREADY_CAPTAIN"
+              ? "Ya eres capitán de otro team. Sal de ese primero."
+              : res.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudo crear", sub: msg });
       }
     } finally {
       setBusy(false);
@@ -530,7 +555,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
         Arma tu equipo <span className="dot">●</span>
       </h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
           <Field label="Nombre del equipo" required hint="Hasta 32 caracteres">
             <input
@@ -781,8 +806,12 @@ function TeamJoin({
               ? "Este team no acepta solicitudes"
               : res.error.code === "TEAMS.ALREADY_MEMBER"
                 ? "Ya formas parte de este team"
-                : res.error.message;
-        toast({ icon: "x", title: "No se pudo enviar", sub: msg });
+                : res.error.code === "TEAMS.ROSTER_LIMIT_REACHED"
+                  ? "El roster de ese team está lleno."
+                  : res.error.code === "TEAMS.ALREADY_CAPTAIN"
+                    ? "Ya eres capitán de otro team."
+                    : res.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudo enviar", sub: msg });
       }
     } finally {
       setRequesting(null);
@@ -806,8 +835,12 @@ function TeamJoin({
             ? "Ese código no existe"
             : res.error.code === "TEAMS.ALREADY_MEMBER"
               ? "Ya eres miembro de ese team"
-              : res.error.message;
-        toast({ icon: "x", title: "No se pudo unir", sub: msg });
+              : res.error.code === "TEAMS.ROSTER_LIMIT_REACHED"
+                ? "El roster de ese team está lleno."
+                : res.error.code === "TEAMS.ALREADY_CAPTAIN"
+                  ? "Ya eres capitán de otro team."
+                  : res.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudo unir", sub: msg });
       }
     } finally {
       setBusy(false);
@@ -1129,7 +1162,11 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
         toast({ icon: "check", title: "Cambios guardados" });
         onBack();
       } else {
-        toast({ icon: "x", title: "No se pudo guardar", sub: res.error.message });
+        const msg =
+          res.error.code === "TEAMS.RENAME_LIMIT_REACHED"
+            ? "Alcanzaste el máximo de cambios de nombre. Activa MatchPoint+ para más."
+            : res.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: msg });
       }
     } finally {
       setBusy(null);
@@ -1204,14 +1241,25 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
         >
           Información general
         </h2>
-        <Field label="Nombre" required>
-          <input
-            style={inp}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={80}
-          />
-        </Field>
+        {(() => {
+          const renamesMax = team.caps.renamesMax;
+          const renameCount = team.renameCount;
+          const renameExhausted = renameCount >= renamesMax;
+          const renameHint = renameExhausted
+            ? "Alcanzaste el máximo. Activa MatchPoint+ para más cambios."
+            : `${renameCount}/${renamesMax} cambios usados`;
+          return (
+            <Field label="Nombre" required hint={renameHint}>
+              <input
+                style={{ ...inp, opacity: renameExhausted ? 0.6 : 1 }}
+                value={renameExhausted ? team.name : name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+                disabled={renameExhausted}
+              />
+            </Field>
+          );
+        })()}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 12 }}>
           <Field label="Tag" hint="Derivado del slug, no editable">
             <input
@@ -1503,6 +1551,13 @@ function TeamInvite({
   const pendingUserIds = new Set<string>(); // sólo tenemos displayName de pending, no userId
   // (Si quisiéramos filtrar por pending, habría que extender PendingInviteLite con userId.)
   const availableFriends = friends.filter((f) => !memberIds.has(f.userId));
+  // Caps gating (Stage 2): bloquear submits cuando roster lleno o invites al máximo.
+  const rosterMax = team.caps.rosterMax;
+  const pendingMax = team.caps.pendingInvitesMax; // null = ∞
+  const rosterFull = team.members.length >= rosterMax;
+  const pendingFull = pendingMax !== null && team.pendingInvites.length >= pendingMax;
+  const inviteBlocked = rosterFull || pendingFull;
+  const blockedReason = rosterFull ? "Roster lleno" : pendingFull ? "Invitaciones al máximo" : null;
   const filtered = friendQuery
     ? availableFriends.filter((f) =>
         f.displayName.toLowerCase().includes(friendQuery.toLowerCase()),
@@ -1524,8 +1579,14 @@ function TeamInvite({
         const msg =
           res.error.code === "TEAMS.ALREADY_INVITED"
             ? "Ya tiene una invitación pendiente"
+            : res.error.code === "TEAMS.ROSTER_LIMIT_REACHED"
+            ? "El roster está lleno. Activa MatchPoint+ para más cupos."
+            : res.error.code === "TEAMS.INVITES_LIMIT_REACHED"
+            ? "Llegaste al máximo de invitaciones pendientes."
+            : res.error.code === "TEAMS.ALREADY_CAPTAIN"
+            ? "Esta persona ya es capitana de otro team."
             : res.error.message;
-        toast({ icon: "x", title: "No se pudo invitar", sub: msg });
+        toast({ icon: "alert-triangle", title: "No se pudo invitar", sub: msg });
       }
     } finally {
       setInviting(null);
@@ -1631,12 +1692,10 @@ function TeamInvite({
           HDN
         </div>
         <div
+          className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5"
           style={{
             padding: 28,
             position: "relative",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 20,
           }}
         >
           <div>
@@ -1735,7 +1794,7 @@ function TeamInvite({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
         <div className="card" style={{ padding: 22 }}>
           <div
             style={{
@@ -1861,19 +1920,28 @@ function TeamInvite({
                     Invitado
                   </span>
                 ) : (
-                  <button
-                    onClick={() => handleInviteFriend(f)}
-                    disabled={inviting === f.userId}
-                    className="btn btn-primary"
-                    style={{
-                      padding: "7px 14px",
-                      fontSize: 10.5,
-                      opacity: inviting === f.userId ? 0.6 : 1,
-                    }}
-                  >
-                    <Icon name="send" size={11} color="#fff" />
-                    {inviting === f.userId ? "Enviando…" : "Invitar"}
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                    <button
+                      onClick={() => handleInviteFriend(f)}
+                      disabled={inviting === f.userId || inviteBlocked}
+                      title={blockedReason ?? undefined}
+                      className="btn btn-primary"
+                      style={{
+                        padding: "7px 14px",
+                        fontSize: 10.5,
+                        opacity: inviting === f.userId || inviteBlocked ? 0.5 : 1,
+                        cursor: inviteBlocked ? "not-allowed" : undefined,
+                      }}
+                    >
+                      <Icon name="send" size={11} color="#fff" />
+                      {inviting === f.userId ? "Enviando…" : "Invitar"}
+                    </button>
+                    {inviteBlocked && (
+                      <span style={{ fontSize: 9.5, color: "#b91c1c", fontWeight: 700 }}>
+                        {blockedReason}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -1882,8 +1950,30 @@ function TeamInvite({
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card" style={{ padding: 20 }}>
-            <div className="label-mp" style={{ marginBottom: 10 }}>
-              Invitaciones pendientes
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+                gap: 8,
+              }}
+            >
+              <div className="label-mp">Invitaciones pendientes</div>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 900,
+                  padding: "3px 9px",
+                  borderRadius: 9999,
+                  background: pendingFull ? "#fef2f2" : "var(--muted)",
+                  color: pendingFull ? "#b91c1c" : "var(--muted-fg)",
+                  border: `1px solid ${pendingFull ? "#fecaca" : "var(--border)"}`,
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {team.pendingInvites.length}/{pendingMax ?? "∞"}
+              </span>
             </div>
             {visiblePending.length === 0 ? (
               <div style={{ fontSize: 11.5, color: "var(--muted-fg)", padding: "4px 0" }}>
@@ -1935,7 +2025,7 @@ function TeamInvite({
               </div>
             </div>
             <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em" }}>
-              6 / 12 miembros
+              {team.members.length} / {rosterMax} miembros
             </div>
             <div
               style={{
@@ -1946,11 +2036,38 @@ function TeamInvite({
                 marginTop: 8,
               }}
             >
-              <div style={{ width: "50%", height: "100%", background: "#92400e" }} />
+              <div
+                style={{
+                  width: `${Math.min(100, Math.round((team.members.length / Math.max(1, rosterMax)) * 100))}%`,
+                  height: "100%",
+                  background: "#92400e",
+                }}
+              />
             </div>
             <div style={{ fontSize: 11, color: "#78350f", marginTop: 8 }}>
-              Te quedan 6 cupos antes de subir al plan Pro Team.
+              {rosterFull
+                ? "Roster lleno. No puedes sumar más miembros."
+                : team.captainPlanTier === "free"
+                ? `Te quedan ${rosterMax - team.members.length} cupos. Activa MatchPoint+ para 24 miembros.`
+                : `Te quedan ${rosterMax - team.members.length} cupos.`}
             </div>
+            {team.captainPlanTier === "free" && (
+              <a
+                href="/dashboard/user/mi-plan"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 10,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#92400e",
+                  textDecoration: "none",
+                }}
+              >
+                Activa MatchPoint+ →
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -2074,6 +2191,16 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
     TEAM.wins + TEAM.losses > 0
       ? Math.round((TEAM.wins / (TEAM.wins + TEAM.losses)) * 100)
       : 0;
+  // Roster cap gating (Stage 2): badge de capacidad + mini-CTA para free.
+  const rosterMax = TEAM.caps.rosterMax;
+  const rosterCount = ROSTER.length;
+  const rosterRatio = rosterMax > 0 ? rosterCount / rosterMax : 0;
+  const rosterFull = rosterCount >= rosterMax;
+  const rosterColor = rosterFull ? "#dc2626" : rosterRatio >= 0.8 ? "#ea580c" : "#10b981";
+  const rosterBg = rosterFull ? "#fef2f2" : rosterRatio >= 0.8 ? "#fff7ed" : "#ecfdf5";
+  const rosterBorder = rosterFull ? "#fecaca" : rosterRatio >= 0.8 ? "#fed7aa" : "#a7f3d0";
+  const isFreeCaptain = TEAM.captainPlanTier === "free";
+  const showUpsellMini = isFreeCaptain && rosterCount >= Math.max(0, rosterMax - 2);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div className="label-mp">Mi Team · Equipo competitivo</div>
@@ -2108,13 +2235,10 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
           {TEAM.tag}
         </div>
         <div
+          className="grid grid-cols-[80px_1fr] md:grid-cols-[120px_1fr_auto] gap-4 md:gap-7 items-center"
           style={{
             padding: 32,
             position: "relative",
-            display: "grid",
-            gridTemplateColumns: "120px 1fr auto",
-            gap: 28,
-            alignItems: "center",
           }}
         >
           <div
@@ -2223,7 +2347,7 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4">
         {/* Roster table */}
         <div className="card" style={{ padding: 22 }}>
           <div
@@ -2246,8 +2370,48 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
             >
               Roster<span className="dot">.</span>
             </h2>
-            <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{ROSTER.length} jugadores</span>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 900,
+                padding: "4px 10px",
+                borderRadius: 9999,
+                background: rosterBg,
+                color: rosterColor,
+                border: `1px solid ${rosterBorder}`,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+              }}
+            >
+              {rosterCount}/{rosterMax} miembros
+            </span>
           </div>
+          {showUpsellMini && (
+            <a
+              href="/dashboard/user/mi-plan"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "10px 14px",
+                marginBottom: 14,
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+                border: "1px solid #fbbf24",
+                color: "#0a0a0a",
+                textDecoration: "none",
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <Icon name="zap" size={13} color="#92400e" />
+                Activa MatchPoint+ para 24 miembros
+              </span>
+              <span style={{ color: "#92400e" }}>→</span>
+            </a>
+          )}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
@@ -2473,14 +2637,113 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
         </div>
       </div>
 
+      {/* Stats avanzadas (Stage 2): gated por captainPlanTier */}
+      <div className="card" style={{ padding: 22 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 14,
+          }}
+        >
+          <h2
+            className="font-heading"
+            style={{
+              fontSize: 18,
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "-0.02em",
+              margin: 0,
+            }}
+          >
+            Estadísticas avanzadas<span className="dot">.</span>
+          </h2>
+          {isFreeCaptain && (
+            <a
+              href="/dashboard/user/mi-plan"
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: "#92400e",
+                background: "#fef3c7",
+                border: "1px solid #fbbf24",
+                padding: "5px 11px",
+                borderRadius: 9999,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Icon name="zap" size={12} color="#92400e" />
+              Activa MatchPoint+
+            </a>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            { t: "W/L por oponente", d: "Récord cabeza a cabeza contra cada team." },
+            { t: "MPR promedio", d: "Ranking competitivo del roster en el tiempo." },
+            { t: "Attendance heatmap", d: "Quién juega y cuándo, mapa de calor del año." },
+          ].map((s) => (
+            <div
+              key={s.t}
+              style={{
+                padding: 16,
+                borderRadius: 12,
+                border: "1px solid var(--border)",
+                background: isFreeCaptain ? "var(--muted)" : "#fff",
+                opacity: isFreeCaptain ? 0.7 : 1,
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isFreeCaptain && <Icon name="lock" size={12} color="var(--muted-fg)" />}
+                <div
+                  className="font-heading"
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 900,
+                    letterSpacing: "-0.01em",
+                    color: isFreeCaptain ? "var(--muted-fg)" : "#0a0a0a",
+                  }}
+                >
+                  {s.t}
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.35 }}>
+                {s.d}
+              </div>
+              {!isFreeCaptain && (
+                <span
+                  style={{
+                    alignSelf: "flex-start",
+                    marginTop: 4,
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                    color: "var(--primary)",
+                    background: "#ecfdf5",
+                    padding: "2px 8px",
+                    borderRadius: 9999,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                  }}
+                >
+                  Pronto
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
         <button
-          onClick={() => {
-            try {
-              localStorage.removeItem(VIEW_KEY);
-            } catch {}
-            setView("empty");
-          }}
+          onClick={() => setView("empty")}
           style={{
             background: "transparent",
             border: 0,

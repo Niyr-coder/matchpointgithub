@@ -1,6 +1,8 @@
-// Server: fetch mi team (primer team donde soy miembro) + roster.
+// Server: fetch mi team (primer team donde soy miembro) + roster + caps por plan.
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
+import { getTeamCaps } from "@/lib/teams/caps";
 import { listMyFriends } from "@/server/actions/friends";
 import {
   TeamScreenView,
@@ -47,7 +49,7 @@ async function loadTeam(): Promise<TeamLite | null> {
 
   const teamId = myMemberships[0].team_id as string;
 
-  const [{ data: team }, { data: allMembers }, { data: pendingRaw }] = await Promise.all([
+  const [{ data: teamRaw }, { data: allMembers }, { data: pendingRaw }] = await Promise.all([
     supabase
       .from("teams")
       .select("id,name,slug,sport,description,invite_code,captain_id,created_at,profiles!teams_captain_id_fkey(display_name)")
@@ -65,7 +67,17 @@ async function loadTeam(): Promise<TeamLite | null> {
       .order("created_at", { ascending: false }),
   ]);
 
-  if (!team) return null;
+  if (!teamRaw) return null;
+  // rename_count se lee en una query lateral mínima para no romper la
+  // inference del select principal. Los Database types se regeneran aparte.
+  const { data: renameCountRaw } = await supabase
+    .from("teams")
+    .select("rename_count" as never)
+    .eq("id", teamId)
+    .maybeSingle();
+  const team = teamRaw;
+  const renameCount =
+    ((renameCountRaw as { rename_count?: number | null } | null)?.rename_count) ?? 0;
 
   const memberIds = (allMembers ?? []).map((m) => m.user_id as string);
   const { data: stats } =
@@ -119,6 +131,12 @@ async function loadTeam(): Promise<TeamLite | null> {
     };
   });
 
+  // Caps efectivos según el plan del captain. El viewer (que puede ser
+  // otro user del team) lee los caps del CAPTAIN, no los suyos, porque
+  // el cap del roster depende del plan del que lidera.
+  const captainSummary = await getProfileSummary(captainId);
+  const caps = await getTeamCaps(captainSummary);
+
   return {
     id: team.id as string,
     name: team.name as string,
@@ -135,6 +153,9 @@ async function loadTeam(): Promise<TeamLite | null> {
     league: "Sin liga asignada",
     members,
     pendingInvites,
+    renameCount,
+    captainPlanTier: captainSummary.planTier,
+    caps,
   };
 }
 
