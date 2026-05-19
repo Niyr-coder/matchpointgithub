@@ -70,6 +70,10 @@ export default async function PublicPlayerProfilePage({
   );
 }
 
+// OfficialAccountView usa el MISMO shell del JSX de ProfileScreen
+// (banner 140px + avatar 112x112 con margin -52 + name + meta + bio + CTA)
+// para mantener consistencia visual. La sustancia es la mínima de un bot:
+// sin stats, sin tabs (no es jugador).
 function OfficialAccountView({
   profile,
 }: {
@@ -79,7 +83,7 @@ function OfficialAccountView({
     bio?: string | null;
   };
 }) {
-  const name = profile.display_name ?? "Cuenta oficial";
+  const name = profile.display_name ?? "MATCHPOINT";
   const handle = profile.username ?? "matchpoint";
   const bio =
     profile.bio ??
@@ -87,146 +91,163 @@ function OfficialAccountView({
 
   return (
     <>
-      <div className="label-mp">Cuenta oficial · MatchPoint EC</div>
-
-      <div
-        className="card"
-        style={{
-          padding: 28,
-          background: "linear-gradient(135deg, #064e3b 0%, #0a0a0a 60%, #000 100%)",
-          color: "#fff",
-          border: 0,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
+      {/* Hero card — mismo shell que ProfileScreenView (140px banner +
+          avatar 112×112 con margin negativo). Avatar usa el símbolo
+          oficial (dot verde en círculo negro) en vez de iniciales.
+          Verified badge inline en lugar del chip-green "Nivel X". */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div
           style={{
-            position: "absolute",
-            inset: 0,
+            height: 140,
             background:
-              "radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.28), transparent 55%)",
-            pointerEvents: "none",
+              "linear-gradient(135deg, #064e3b 0%, #0a0a0a 50%, #000 100%)",
+            position: "relative",
           }}
-        />
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(ellipse at 75% 30%, rgba(16,185,129,0.3), transparent 60%)",
+            }}
+          />
+        </div>
         <div
           style={{
-            position: "relative",
+            padding: "0 28px 24px",
             display: "flex",
-            alignItems: "center",
-            gap: 18,
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 24,
             flexWrap: "wrap",
           }}
         >
-          {/* Símbolo oficial del logo: dot verde sobre fondo negro
-              (misma marca que Nav.tsx / DashboardSidebar.tsx). */}
-          <div
-            style={{
-              width: 88,
-              height: 88,
-              borderRadius: "50%",
-              background: "#0a0a0a",
-              border: "3px solid rgba(255,255,255,0.12)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              className="dot"
-              style={{ fontSize: 42, lineHeight: 1 }}
-              aria-label="Logo MatchPoint"
-            >
-              ●
-            </span>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              className="font-heading"
-              style={{
-                fontSize: 32,
-                fontWeight: 900,
-                letterSpacing: "-0.03em",
-                lineHeight: 1,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              {name}
-              <span
-                title="Cuenta oficial de la app"
-                aria-label="Cuenta oficial de la app"
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 20 }}>
+            <div style={{ position: "relative", marginTop: -52 }}>
+              <div
                 style={{
-                  display: "inline-flex",
+                  width: 112,
+                  height: 112,
+                  borderRadius: "50%",
+                  background: "#0a0a0a",
+                  border: "5px solid #fff",
+                  flexShrink: 0,
+                  display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 22,
-                  height: 22,
-                  borderRadius: "50%",
-                  background: "var(--primary)",
-                  color: "#fff",
                 }}
               >
-                <Icon name="check" size={13} color="#fff" />
-              </span>
+                <span
+                  className="dot"
+                  style={{ fontSize: 52, lineHeight: 1 }}
+                  aria-label="Logo MatchPoint"
+                >
+                  ●
+                </span>
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.65)",
-                marginTop: 6,
-              }}
-            >
-              @{handle} · Cuenta oficial
+            <div style={{ paddingBottom: 8, paddingTop: 14 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  className="font-heading"
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 32,
+                    lineHeight: 1,
+                    letterSpacing: "-0.03em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {name}
+                  <span className="dot">.</span>
+                </div>
+                <span
+                  title="Cuenta oficial de la app"
+                  aria-label="Cuenta oficial de la app"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    background: "var(--primary)",
+                    color: "#fff",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon name="check" size={13} color="#fff" />
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--muted-fg)",
+                  marginTop: 6,
+                  display: "flex",
+                  gap: 14,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Icon name="at-sign" size={12} />
+                  {handle}
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Icon name="shield-check" size={12} />
+                  Cuenta oficial
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Icon name="building-2" size={12} />
+                  MatchPoint EC
+                </span>
+              </div>
+              <p
+                style={{
+                  marginTop: 12,
+                  fontSize: 13.5,
+                  color: "#404040",
+                  maxWidth: 540,
+                  lineHeight: 1.5,
+                }}
+              >
+                {bio}
+              </p>
             </div>
           </div>
-          <Link
-            href="/dashboard/user/chat"
-            className="btn"
-            style={{
-              background: "var(--primary)",
-              color: "#fff",
-              padding: "10px 18px",
-              border: 0,
-            }}
-          >
-            <Icon name="message-circle" size={13} />
-            Ir al chat
-          </Link>
+          <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
+            <Link href="/dashboard/user/chat" className="btn btn-primary">
+              <Icon name="message-square" size={12} />
+              Ir al chat
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="card" style={{ padding: 24 }}>
-        <div className="label-mp">Acerca de</div>
-        <p
-          style={{
-            fontSize: 14,
-            lineHeight: 1.55,
-            color: "var(--fg)",
-            marginTop: 10,
-            marginBottom: 0,
-          }}
-        >
-          {bio}
-        </p>
-        <div
-          style={{
-            marginTop: 18,
-            padding: 14,
-            borderRadius: 10,
-            background: "var(--muted)",
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            fontSize: 12,
-            color: "var(--muted-fg)",
-          }}
-        >
-          <Icon name="info" size={13} color="var(--muted-fg)" />
+      {/* Hint informativo. No stats strip ni tabs porque MATCHPOINT no
+          es jugador (sin partidos, sin insignias, sin clubes propios). */}
+      <div
+        className="card"
+        style={{
+          padding: 16,
+          display: "flex",
+          gap: 12,
+          alignItems: "center",
+        }}
+      >
+        <Icon name="info" size={14} color="var(--muted-fg)" />
+        <div style={{ fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.5 }}>
           Este perfil solo envía notificaciones oficiales. No puedes responder
-          ni jugar contra él — pero podés escribir al equipo desde el chat.
+          ni jugar contra él — pero puedes escribir al equipo desde el chat.
         </div>
       </div>
     </>
