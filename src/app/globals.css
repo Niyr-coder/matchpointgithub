@@ -858,6 +858,15 @@ input[type="range"].mp-mpr,
 .mp-discover-cta:not(:disabled):active {
   transform: scale(0.97);
 }
+/* Nombre clickable a perfil del jugador: hover shift sutil. */
+.mp-discover-name {
+  transition: color 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-discover-card:hover .mp-discover-name {
+    color: var(--primary);
+  }
+}
 
 /* Link de jugador en /ranking — color shift sutil + underline en hover.
    Pattern Emil: solo transicionar la propiedad que cambia, ease-out 160ms. */

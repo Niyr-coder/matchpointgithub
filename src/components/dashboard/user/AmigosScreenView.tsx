@@ -1,5 +1,6 @@
 // Client view de AmigosScreen — recibe friends/requests/suggestions ya fetcheados.
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -591,84 +592,111 @@ function DiscoverCard({
   }
 
   const isBlocked = ctaDisabled || busy;
+  // MATCHPOINT no tiene perfil público de jugador (lo redirigimos a 404
+  // en /players/[username]). Otros usuarios sí, siempre que tengan username.
+  const canVisitProfile = !player.isOfficial && !!player.username;
+
+  // Contenido del bloque avatar+name. Lo renderizamos dentro de un Link
+  // (si canVisitProfile) o un div normal.
+  const profileInner = (
+    <>
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: avatarBg,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          flexShrink: 0,
+        }}
+      >
+        <span className="font-heading" style={{ fontSize: 13, fontWeight: 900 }}>
+          {initials(player.displayName)}
+        </span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          className={canVisitProfile ? "mp-discover-name" : undefined}
+          style={{
+            fontSize: 13,
+            fontWeight: 800,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            maxWidth: "100%",
+          }}
+        >
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {player.displayName}
+          </span>
+          {player.isOfficial && (
+            <span
+              title="Cuenta oficial de la app"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                background: "var(--primary)",
+                color: "#fff",
+                flexShrink: 0,
+              }}
+              aria-label="Cuenta oficial de la app"
+            >
+              <Icon name="check" size={9} color="#fff" />
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--muted-fg)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {player.username ? `@${player.username}` : "Sin alias"}
+          {player.city ? ` · ${player.city}` : ""}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div className="card mp-discover-card" style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
+      {canVisitProfile ? (
+        <Link
+          href={`/dashboard/players/${player.username}`}
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            background: avatarBg,
-            display: "inline-flex",
+            display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-            flexShrink: 0,
+            gap: 12,
+            color: "inherit",
+            textDecoration: "none",
           }}
         >
-          <span className="font-heading" style={{ fontSize: 13, fontWeight: 900 }}>
-            {initials(player.displayName)}
-          </span>
+          {profileInner}
+        </Link>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {profileInner}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              maxWidth: "100%",
-            }}
-          >
-            <span
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {player.displayName}
-            </span>
-            {player.isOfficial && (
-              <span
-                title="Cuenta oficial de la app"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  background: "var(--primary)",
-                  color: "#fff",
-                  flexShrink: 0,
-                }}
-                aria-label="Cuenta oficial de la app"
-              >
-                <Icon name="check" size={9} color="#fff" />
-              </span>
-            )}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--muted-fg)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {player.username ? `@${player.username}` : "Sin alias"}
-            {player.city ? ` · ${player.city}` : ""}
-          </div>
-        </div>
-      </div>
+      )}
       {/* Botón full-width abajo: nunca se aplasta cuando el label crece y
           el row de avatar+name queda con respiración. */}
       <button
