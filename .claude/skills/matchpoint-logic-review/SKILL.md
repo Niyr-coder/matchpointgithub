@@ -29,6 +29,33 @@ NO se dispara para:
 
 ## Cómo aplicarla
 
+### Paso 0 — Apoyarse en otras skills (orquestación)
+
+Esta skill **no opera aislada**. Antes y durante la review, delegar a las
+otras skills del proyecto cuando los hallazgos caigan en su dominio. La
+delegación es activa: invocar la skill correspondiente vía el `Skill` tool.
+
+| Skill | Cuándo invocarla desde esta |
+|---|---|
+| `matchpoint-docs-guide` | Cuando el gap involucra una capa documentada (RLS, realtime, payments, premium, notifs, roles). **Antes de proponer un fix**, releer la sección relevante. |
+| `matchpoint-feature-plan` | Cuando los gaps son tantos que la feature **necesita re-planearse**, o cuando detectás que la matriz de visibilidad rol/permiso/flag está incompleta. |
+| `matchpoint-ui-review` | Cuando un gap de wire/redirect tiene componente visual (botón roto, hover sin gate, label sin truncate). Delegar para que aplique el checklist visual + agent-browser. |
+| `emil-design-eng` | Cuando el gap involucra animación nueva (transición de entrada/salida en modal/drawer/popover, hover/active states, easing). Para principios de motion. |
+
+**Patrón de uso típico** (no rígido):
+
+1. Identificar el gap con esta skill.
+2. Si el gap toca otra capa, invocar la skill especializada con un prompt
+   compacto: *"Vengo de matchpoint-logic-review. Encontré que X. ¿Qué dice
+   la doc/Emil/UI sobre esto?"*.
+3. Aplicar el fix combinando ambas perspectivas.
+4. Verificar con `npx tsc --noEmit` antes de cerrar.
+
+**Anti-patrón a evitar**: hacer todo desde esta skill ignorando que las
+otras tienen conocimiento más profundo del dominio. Ej: encontrar un
+botón sin `:active feedback` → no sugerir el fix de memoria, invocar
+`emil-design-eng` o `matchpoint-ui-review` para el valor exacto y razón.
+
 ### Paso 1 — Listar superficies de la feature
 
 Para la feature recién tocada, listar EXPLÍCITAMENTE:
@@ -100,6 +127,10 @@ Para cada nueva acción server-side que escribe a una tabla con RLS:
 
 Frecuente: acción del sistema (cron, trigger, broadcast) que se ejecuta como rol "system" pero la RLS está pensada para user JWT.
 
+> **Delegar**: si hay duda sobre patrones de RLS o cuándo usar admin client,
+> invocar `matchpoint-docs-guide` → leer `docs/architecture/30-rls.md §9`
+> (helpers `setAuditActor`, patrones post-MVP).
+
 ### Paso 6 — Trigger ↔ Downstream queries
 
 Para cada trigger nuevo que inserta en una tabla:
@@ -143,6 +174,11 @@ Verificar:
   state correspondiente.
 - [ ] Forms con campos requeridos validan ANTES de enviar (no solo en
   server). Sino el user ve un toast "Invalid input" sin contexto.
+
+> **Delegar**: si encontrás botón sin `:active` feedback, sin transición
+> de hover correcta, o con label largo que rompe layout, invocar
+> `matchpoint-ui-review` para el fix exacto. Si la animación de entrada
+> del componente no respeta easing/duración Emil, invocar `emil-design-eng`.
 
 #### 8.2 — Props pasadas pero no consumidas (o vice versa)
 
@@ -215,6 +251,9 @@ Para cada tipo de entidad nueva, recorrer el checklist correspondiente:
 - [ ] Default channels en `notification_kinds` row (inapp/email/push).
 - [ ] Si se requiere preferencia user-tunable, agregar a settings UI.
 
+> **Delegar**: invocar `matchpoint-docs-guide` para releer
+> `docs/guides/02-notifications.md` antes de proponer el dispatcher.
+
 #### Nuevo `kind` en `conversations` (ej. team_channel):
 
 - [ ] `conversations_kind_check` constraint extendido.
@@ -232,6 +271,10 @@ Para cada tipo de entidad nueva, recorrer el checklist correspondiente:
 - [ ] `AdminRolesScreen` lo documenta como permiso operable.
 - [ ] Color + badge label en `MP_ROLES[role]`.
 - [ ] `TopBar` `CTA_BY_ROLE` define el botón principal.
+
+> **Delegar**: invocar `matchpoint-docs-guide` para releer
+> `docs/guides/00-roles.md` antes de cerrar — la matriz operativa de
+> permisos vive ahí.
 
 #### Nuevo status enum (ej. tournament.status, transaction.status):
 

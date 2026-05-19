@@ -9,6 +9,30 @@ action, RLS, realtime publication, audit, notif, OpenAPI, UI, docs).
 Tocar 1 sin las otras = el feature parece funcionar pero la sincronía
 muere en silencio.
 
+## Workflow de skills (orquestación)
+
+5 skills trabajan en cadena. Cada una sabe cuándo delegar a otra:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. matchpoint-docs-guide        leer la doc del área          │
+│    ↓                                                          │
+│ 2. matchpoint-feature-plan      planear con matriz de capas   │
+│    ↓                                                          │
+│    (implementar — invocar emil-design-eng si hay animación)   │
+│    ↓                                                          │
+│ 3. matchpoint-ui-review         QA visual + agent-browser     │
+│    ↓                                                          │
+│ 4. matchpoint-logic-review      coherencia funcional cross-cut│
+│    ↓                                                          │
+│ 5. commit                                                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Las skills se invocan entre sí: `matchpoint-logic-review` puede delegar
+a `matchpoint-docs-guide` para releer la sección RLS antes de proponer
+fix, o a `emil-design-eng` para el valor exacto de easing/duración.
+
 ---
 
 ## 0 · Pre-implementación (siempre)

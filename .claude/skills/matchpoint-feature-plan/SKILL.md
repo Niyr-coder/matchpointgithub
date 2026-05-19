@@ -13,6 +13,19 @@ MatchPoint tiene **N superficies por feature**: server action + RLS + realtime p
 
 `matchpoint-docs-guide` cubre "qué LEER antes". Esta skill cubre "qué CONSTRUIR".
 
+## Orquesta con las otras skills
+
+Esta skill planea. Durante el planning + después de implementar, delegar:
+
+| Momento | Skill a invocar | Para qué |
+|---|---|---|
+| Antes de Paso 2 (mapear capas) | `matchpoint-docs-guide` | Releer los docs aplicables al feature (§29 schema, §9 RLS, §15 realtime, etc) |
+| Paso 14 (animaciones) | `emil-design-eng` | Curvas de easing, duraciones, transform-origin |
+| Post-implementación, si tocó UI | `matchpoint-ui-review` | Visual QA: layout robusto, hover gated, btn :active |
+| Post-implementación con 3+ archivos | `matchpoint-logic-review` | Coherencia funcional: wire/redirect/complementos |
+
+No improvisar fixes en categorías que tienen skill dedicada — invocarla.
+
 ## Cuándo se dispara
 
 Cualquier expresión de intención de cambio que toque más de una capa:

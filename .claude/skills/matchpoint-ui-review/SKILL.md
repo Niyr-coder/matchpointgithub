@@ -218,6 +218,21 @@ Si el user dice sí, aplicar. Si no, dejar el reporte.
 - `emil-design-eng` → fuente de verdad de principios (qué hacer / no hacer).
 - `matchpoint-feature-plan` → al planear feature, sección §2.3.b ya menciona invocar Emil. Esta skill (`matchpoint-ui-review`) hace el closing de loop: post-implementación verifica que se aplicó.
 - `matchpoint-docs-guide` → si los issues afectan algo documentado, actualizar el doc en la misma tanda.
+- `matchpoint-logic-review` → si encontrás botones sin onClick, redirects faltantes
+  post-action, o entidades searchable que dan 404, son gaps de coherencia
+  funcional. Delegar a esa skill para los pasos §8-§10.
+
+## Delegación activa
+
+Durante la review, si caés en categorías fuera del scope visual:
+
+| Hallazgo | Delegar a |
+|---|---|
+| Animación con easing/duración fuera de los rangos Emil | `emil-design-eng` para el valor exacto |
+| Botón visible sin onClick / form sin onSubmit | `matchpoint-logic-review §8.1` |
+| Action call con keys que no matchean el schema Zod | `matchpoint-logic-review §4` |
+| Falta `hrefForKind` para un notification_kind nuevo | `matchpoint-logic-review §10` (complementos) |
+| Doc desactualizada con el patrón aplicado | `matchpoint-docs-guide` para releer + sugerir update |
 
 ## Cuando NO usar esta skill
 
