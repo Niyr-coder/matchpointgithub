@@ -43,7 +43,7 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
     const { data: stats, error } = await supabase
       .from("player_stats")
       .select(
-        "user_id,sport,mode,current_rating,wins,losses,matches_total,profiles!inner(display_name,avatar_url,city)",
+        "user_id,sport,mode,current_rating,wins,losses,matches_total,profiles!inner(display_name,username,avatar_url,city)",
       )
       .eq("sport", params.sport)
       .eq("mode", params.mode)
@@ -58,13 +58,14 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
       // Para una FK to-one declarada en 019, PostgREST devuelve objeto, pero
       // normalizamos por defensa.
       const profileEmbed = (r as Record<string, unknown>).profiles as
-        | { display_name?: string | null; avatar_url?: string | null; city?: string | null }
-        | { display_name?: string | null; avatar_url?: string | null; city?: string | null }[]
+        | { display_name?: string | null; username?: string | null; avatar_url?: string | null; city?: string | null }
+        | { display_name?: string | null; username?: string | null; avatar_url?: string | null; city?: string | null }[]
         | null;
       const profile = Array.isArray(profileEmbed) ? profileEmbed[0] ?? null : profileEmbed;
       return RankingEntrySchema.parse({
         userId: r.user_id,
         displayName: (profile?.display_name as string | undefined) ?? "—",
+        username: (profile?.username as string | null | undefined) ?? null,
         avatarUrl: (profile?.avatar_url as string | null | undefined) ?? null,
         city: (profile?.city as string | null | undefined) ?? null,
         sport: r.sport,

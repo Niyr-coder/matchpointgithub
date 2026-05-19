@@ -7,11 +7,20 @@ import { ProfileScreenView, type ProfileData, type ModeRating } from "./ProfileS
 const STARTING_RATING = 2500;
 const SPORT_PRIMARY = "pickleball" as const;
 
-async function loadProfile(): Promise<ProfileData> {
+// Carga el perfil del userId dado. Si no se pasa, carga el de la sesión
+// actual (caso "Mi perfil"). Cuando se llama desde /dashboard/players/[id]
+// recibimos un userId target y devolvemos su data pública.
+//
+// Importante: `meUserId` en el return es el userId del PERFIL cargado, no
+// del viewer. Lo usa ProfileScreenView para filtros de realtime y otros
+// derivados. El gating "isMine" se controla con prop `viewerMode` aparte.
+export async function loadProfileFor(targetUserId?: string): Promise<ProfileData> {
   const session = await getSession();
   const supabase = await getServerClient();
 
-  if (!session.authenticated) {
+  const userId = targetUserId ?? (session.authenticated ? session.session.userId : null);
+
+  if (!userId) {
     return {
       meUserId: null,
       name: "Invitado",
@@ -31,8 +40,6 @@ async function loadProfile(): Promise<ProfileData> {
       matchHistory: [],
     };
   }
-
-  const userId = session.session.userId;
 
   const [
     { data: profile },
@@ -217,6 +224,6 @@ async function loadProfile(): Promise<ProfileData> {
 }
 
 export async function ProfileScreen() {
-  const data = await loadProfile();
+  const data = await loadProfileFor();
   return <ProfileScreenView data={data} />;
 }

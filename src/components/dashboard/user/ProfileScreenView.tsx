@@ -133,7 +133,17 @@ const editAvatarBtn: CSSProperties = {
   justifyContent: "center",
 };
 
-export function ProfileScreenView({ data }: { data: ProfileData }) {
+export function ProfileScreenView({
+  data,
+  viewerMode,
+}: {
+  data: ProfileData;
+  // Cuando se renderiza desde /dashboard/players/[id] (perfil ajeno),
+  // forzamos "public" y ocultamos el toggle de previewar como propio.
+  // Sin esta prop, el componente se comporta como vista de uno mismo
+  // con el toggle habilitado.
+  viewerMode?: "public";
+}) {
   // Realtime: stats actualizan al confirmar match, role_assignments para clubes.
   useRealtimeRefresh(
     data.meUserId
@@ -146,7 +156,8 @@ export function ProfileScreenView({ data }: { data: ProfileData }) {
     { enabled: !!data.meUserId },
   );
 
-  const [mode, setMode] = useState<Mode>("mine");
+  const [mode, setMode] = useState<Mode>(viewerMode === "public" ? "public" : "mine");
+  const lockedPublic = viewerMode === "public";
   // Modo de juego activo para los stat blocks (singles vs doubles).
   // Default: el modo que tenga rating; si ambos, singles.
   const initialRatingMode: "singles" | "doubles" =
@@ -184,19 +195,21 @@ export function ProfileScreenView({ data }: { data: ProfileData }) {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          padding: 4,
-          background: "#f5f5f5",
-          borderRadius: 9999,
-          alignSelf: "flex-start",
-        }}
-      >
-        <button onClick={() => setMode("mine")} style={modePill(isMine)}>Vista propia</button>
-        <button onClick={() => setMode("public")} style={modePill(!isMine)}>Vista pública</button>
-      </div>
+      {!lockedPublic && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            padding: 4,
+            background: "#f5f5f5",
+            borderRadius: 9999,
+            alignSelf: "flex-start",
+          }}
+        >
+          <button onClick={() => setMode("mine")} style={modePill(isMine)}>Vista propia</button>
+          <button onClick={() => setMode("public")} style={modePill(!isMine)}>Vista pública</button>
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div

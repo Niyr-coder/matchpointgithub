@@ -162,6 +162,9 @@ Antes de marcar un stage completo, verificar el checklist §5 de `07-new-feature
 - Edge cases (empty, max, error, unauth)
 - Migration aplicada al remote
 - Docs actualizadas
+- **Si el stage tocó UI**: invocar `matchpoint-ui-review` para el QA visual
+  (botones que se rompen con labels largos, hover sin gate, `.btn` +
+  inline overrides, text overflow sin ellipsis, animaciones Emil-compliant).
 
 ### Paso 7 — Presentar y confirmar
 

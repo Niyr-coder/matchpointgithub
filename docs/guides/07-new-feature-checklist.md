@@ -418,6 +418,10 @@ que nunca fue feature real.
 
 - [ ] `npx tsc --noEmit` limpio.
 - [ ] `npm run lint` limpio (o `--quiet` si solo warnings preexistentes).
+- [ ] **Si se tocó UI: invocar skill `matchpoint-ui-review`** —
+  revisa botones que se rompen con labels largos, hover sin gate de
+  `pointer:fine`, `.btn` + inline overrides, text overflow sin
+  ellipsis, animaciones Emil-compliant.
 - [ ] `npx agent-browser` smoke test del happy path en mobile y desktop.
 - [ ] Edge cases: empty state, max state, error state, unauthenticated
   state, rol incorrecto.

@@ -13,6 +13,7 @@ export const RankingEntrySchema = z
   .object({
     userId: UuidSchema,
     displayName: z.string(),
+    username: z.string().nullable(),
     avatarUrl: z.string().url().nullable(),
     city: z.string().nullable(),
     sport: MpSportSchema,

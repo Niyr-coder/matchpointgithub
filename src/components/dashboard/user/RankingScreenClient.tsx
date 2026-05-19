@@ -413,14 +413,16 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                   <div style={{ fontSize: 13, fontWeight: 700, color: p.placeholder ? "var(--muted-fg)" : "inherit" }}>
                     {p.placeholder ? (
                       "—"
-                    ) : (
+                    ) : p.username ? (
                       <Link
-                        href={`/dashboard/players/${p.userId}`}
+                        href={`/dashboard/players/${p.username}`}
                         className="mp-ranking-name"
                         style={{ color: "inherit", textDecoration: "none" }}
                       >
                         {p.displayName}
                       </Link>
+                    ) : (
+                      <span>{p.displayName}</span>
                     )}
                     {isMe && (
                       <span className="chip-green" style={{ marginLeft: 8, fontSize: 9 }}>

@@ -840,6 +840,25 @@ input[type="range"].mp-mpr,
 /* Link de fila en "Mis torneos" — solo fecha+nombre clickeables.
    Hover (Emil): nombre baja opacidad sutil y la flecha se desliza 3px,
    sin mover el bloque entero ni cambiar colores agresivos. */
+/* Card de descubrir amigos: hover lift + scale active en CTA.
+   Patrón Emil: solo transform/opacity (GPU), ease-out custom 160ms,
+   media query hover para no falsos positivos en touch. */
+.mp-discover-card {
+  transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-discover-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+  }
+}
+.mp-discover-cta {
+  transition: transform 160ms var(--ease-out), background 160ms var(--ease-out);
+}
+.mp-discover-cta:not(:disabled):active {
+  transform: scale(0.97);
+}
+
 /* Link de jugador en /ranking — color shift sutil + underline en hover.
    Pattern Emil: solo transicionar la propiedad que cambia, ease-out 160ms. */
 .mp-ranking-name {

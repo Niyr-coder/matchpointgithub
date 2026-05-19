@@ -572,7 +572,7 @@ function DiscoverCard({
   let dim = false;
 
   if (player.relationship === "request_sent") {
-    ctaLabel = "Solicitud enviada";
+    ctaLabel = "Enviada";
     ctaDisabled = true;
     ctaIcon = "clock";
     dim = true;
@@ -581,62 +581,89 @@ function DiscoverCard({
     ctaIcon = "check";
     onClick = onAccept;
   } else if (player.relationship === "friends") {
-    ctaLabel = "Ya son amigos";
+    ctaLabel = "Amigos";
     ctaDisabled = true;
     ctaIcon = "users";
     dim = true;
   }
 
+  const isBlocked = ctaDisabled || busy;
+
   return (
-    <div
-      className="card"
-      style={{ padding: 14, display: "flex", alignItems: "center", gap: 12 }}
-    >
-      <div
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: "50%",
-          background: avatarBg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          flexShrink: 0,
-        }}
-      >
-        <span className="font-heading" style={{ fontSize: 13, fontWeight: 900 }}>
-          {initials(player.displayName)}
-        </span>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className="card mp-discover-card" style={{ padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div
           style={{
-            fontSize: 13,
-            fontWeight: 800,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: avatarBg,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            flexShrink: 0,
           }}
         >
-          {player.displayName}
+          <span className="font-heading" style={{ fontSize: 13, fontWeight: 900 }}>
+            {initials(player.displayName)}
+          </span>
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-          {player.username ? `@${player.username}` : "Sin alias"}
-          {player.city ? ` · ${player.city}` : ""}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {player.displayName}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--muted-fg)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {player.username ? `@${player.username}` : "Sin alias"}
+            {player.city ? ` · ${player.city}` : ""}
+          </div>
         </div>
       </div>
+      {/* Botón full-width abajo: nunca se aplasta cuando el label crece y
+          el row de avatar+name queda con respiración. */}
       <button
-        className="btn"
+        type="button"
         onClick={onClick}
-        disabled={ctaDisabled || busy}
+        disabled={isBlocked}
+        className="mp-discover-cta"
+        data-dim={dim ? "true" : "false"}
         style={{
+          marginTop: 12,
+          width: "100%",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          padding: "9px 12px",
+          borderRadius: 10,
+          border: 0,
           background: dim ? "var(--muted)" : "#0a0a0a",
           color: dim ? "var(--muted-fg)" : "#fff",
-          fontSize: 10.5,
-          padding: "8px 12px",
-          cursor: ctaDisabled || busy ? "default" : "pointer",
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          fontFamily: "inherit",
+          cursor: isBlocked ? "default" : "pointer",
+          pointerEvents: isBlocked && !busy ? "none" : "auto",
           opacity: busy ? 0.5 : 1,
+          whiteSpace: "nowrap",
         }}
       >
         <Icon name={ctaIcon} size={11} color={dim ? "var(--muted-fg)" : "#fff"} />
