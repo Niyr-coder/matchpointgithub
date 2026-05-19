@@ -1,8 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { MP_ROLES, type RoleKey, type SidebarItem } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
+import { signOutAndRedirect } from "@/server/actions/auth";
 
 type Props = {
   role: RoleKey;
@@ -57,6 +59,26 @@ export function DashboardSidebar({
       .slice(0, 2)
       .toUpperCase() || "·";
   const contextSub = contextLabel ?? cfg.l;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   return (
     <>
@@ -144,15 +166,95 @@ export function DashboardSidebar({
           </div>
         ))}
       </nav>
-      <div style={{ padding: 12, borderTop: "1px solid var(--sidebar-border)" }}>
-        <div
+      <div
+        ref={menuRef}
+        style={{ padding: 12, borderTop: "1px solid var(--sidebar-border)", position: "relative" }}
+      >
+        {menuOpen && (
+          <div
+            role="menu"
+            style={{
+              position: "absolute",
+              left: 12,
+              right: 12,
+              bottom: "calc(100% - 6px)",
+              background: "var(--sidebar)",
+              border: "1px solid var(--sidebar-border)",
+              borderRadius: 10,
+              padding: 6,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+              zIndex: 60,
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={pending}
+              onClick={() => {
+                setMenuOpen(false);
+                startTransition(() => {
+                  void signOutAndRedirect();
+                });
+              }}
+              style={{
+                display: "flex",
+                width: "100%",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 10px",
+                borderRadius: 8,
+                background: "transparent",
+                color: "var(--sidebar-muted)",
+                border: 0,
+                cursor: pending ? "wait" : "pointer",
+                fontFamily: "inherit",
+                fontSize: 13,
+                fontWeight: 500,
+                textAlign: "left",
+                opacity: pending ? 0.6 : 1,
+                transition: "background 120ms ease, color 120ms ease",
+              }}
+              onMouseEnter={(e) => {
+                if (pending) return;
+                e.currentTarget.style.background = "#27272a";
+                e.currentTarget.style.color = "#fff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--sidebar-muted)";
+              }}
+            >
+              <Icon name="log-out" size={15} />
+              <span style={{ flex: 1 }}>
+                {pending ? "Cerrando..." : "Cerrar sesión"}
+              </span>
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
           style={{
             display: "flex",
+            width: "100%",
             gap: 10,
             alignItems: "center",
             padding: 8,
             borderRadius: 8,
-            background: "var(--sidebar)",
+            background: menuOpen ? "#27272a" : "var(--sidebar)",
+            border: 0,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            textAlign: "left",
+            transition: "background 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            if (!menuOpen) e.currentTarget.style.background = "#27272a";
+          }}
+          onMouseLeave={(e) => {
+            if (!menuOpen) e.currentTarget.style.background = "var(--sidebar)";
           }}
         >
           <div
@@ -200,7 +302,7 @@ export function DashboardSidebar({
             </div>
           </div>
           <Icon name="chevrons-up-down" size={14} color="#a1a1aa" />
-        </div>
+        </button>
       </div>
       </aside>
     </>
