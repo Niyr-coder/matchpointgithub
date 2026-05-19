@@ -126,6 +126,27 @@ npx tsc --noEmit 2>&1 | tail -10
 
 Sin errores. Si hay, fijar antes de seguir.
 
+#### 2.8.b — Después de mover archivos en src/app, reiniciar dev server
+
+Turbopack cachea chunks en `.next/` con paths absolutos. Si movés o
+renombrás un archivo bajo `src/app/` con el dev server corriendo, el
+cliente puede recibir chunk IDs que ya no existen en el server.
+
+Síntoma típico (browser): `Module [project]/... was instantiated because
+it was required from module ..., but the module factory is not available.
+This is often caused by a stale browser cache...`
+
+**No es bug de código** — purgar cache:
+```bash
+# detener dev server (Ctrl+C)
+rm -rf .next   # PowerShell: Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+Y hard refresh en el browser (Ctrl+Shift+R). Antes de reportar bug por
+errores de "module factory not available", **siempre** purgar `.next/`
+primero.
+
 #### 2.9 — Action call ↔ Schema (Zod) keys match
 
 Cuando el componente hace una llamada a server action con un objeto:
