@@ -506,7 +506,7 @@ function DiscoverPanel() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Nombre del jugador…"
+            placeholder="Nombre o @username del jugador…"
             autoFocus
             style={{
               width: "100%",

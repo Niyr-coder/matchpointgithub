@@ -237,11 +237,14 @@ export async function searchPlayers(
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
-    // 1) Profiles que matchean el query, excluyendo self + system.
+    // 1) Profiles que matchean el query (por display_name o username),
+    // excluyendo self + system. Usar PostgREST .or() para OR entre filtros.
+    // Sanitizamos el query removiendo "@" prefix si el user lo tipea.
+    const cleaned = q.trim().replace(/^@+/, "");
     const { data: rows, error } = await supabase
       .from("profiles")
       .select("id,display_name,username,city,avatar_url" as never)
-      .ilike("display_name", `%${q}%`)
+      .or(`display_name.ilike.%${cleaned}%,username.ilike.%${cleaned}%`)
       .neq("id", userId)
       .limit(limit);
     if (error) throw new MpError("FRIENDS.SEARCH_FAILED", error.message, 500);
