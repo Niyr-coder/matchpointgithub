@@ -3,6 +3,9 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getTeamCaps } from "@/lib/teams/caps";
+import { computeTeamMpr } from "@/lib/teams/mpr";
+import { findAccent, findCardStyle } from "@/lib/profile/customization-presets";
+import { canUsePreset } from "@/lib/profile/bundles";
 import { listMyFriends } from "@/server/actions/friends";
 import {
   TeamScreenView,
@@ -13,13 +16,21 @@ import {
 } from "./TeamScreenView";
 
 const FALLBACK_RATING = 2500;
-const SPORT_PRIMARY = "pickleball" as const;
+// Default si el team no tiene sport definido o es 'multi'. El team MPR se
+// computa sobre este sport en mode 'doubles' (típico para teams).
+const DEFAULT_SPORT = "pickleball" as const;
+const TEAM_MODE = "doubles" as const;
 
 const SPORT_LABEL: Record<string, string> = {
   pickleball: "Pickleball",
   padel: "Pádel",
   tennis: "Tenis",
 };
+
+function resolveTeamSport(raw: string | null | undefined): "pickleball" | "padel" | "tennis" {
+  if (raw === "pickleball" || raw === "padel" || raw === "tennis") return raw;
+  return DEFAULT_SPORT;
+}
 
 function levelFromRating(elo: number | null | undefined): number {
   return Math.round(((elo ?? FALLBACK_RATING) / 1000) * 10) / 10;
@@ -57,7 +68,9 @@ async function loadTeam(): Promise<TeamLite | null> {
       .maybeSingle(),
     supabase
       .from("team_members")
-      .select("user_id,role,profiles(display_name)")
+      .select(
+        "user_id,role,profiles(display_name,accent_color,card_style,plan_tier,plan_expires_at)" as never,
+      )
       .eq("team_id", teamId),
     supabase
       .from("team_invites")
@@ -79,6 +92,9 @@ async function loadTeam(): Promise<TeamLite | null> {
   const renameCount =
     ((renameCountRaw as { rename_count?: number | null } | null)?.rename_count) ?? 0;
 
+  // Sport+mode efectivos del team. player_stats pkey = (user_id, sport, mode)
+  // desde mig 064, así que filtramos por ambos para no traer filas duplicadas.
+  const teamSport = resolveTeamSport(team.sport as string | null | undefined);
   const memberIds = (allMembers ?? []).map((m) => m.user_id as string);
   const { data: stats } =
     memberIds.length > 0
@@ -86,26 +102,72 @@ async function loadTeam(): Promise<TeamLite | null> {
           .from("player_stats")
           .select("user_id,current_rating,matches_total,wins")
           .in("user_id", memberIds)
-          .eq("sport", SPORT_PRIMARY)
+          .eq("sport", teamSport)
+          .eq("mode", TEAM_MODE)
       : { data: [] };
 
   const statsMap = new Map((stats ?? []).map((s) => [s.user_id as string, s]));
 
+  // Grants cosméticos de los miembros (mig 115 abrió SELECT público).
+  const { data: grantRows } =
+    memberIds.length > 0
+      ? await supabase
+          .from("profile_cosmetic_grants")
+          .select("user_id,bundle_key" as never)
+          .in("user_id", memberIds)
+      : { data: [] };
+  const grantsByUser = new Map<string, Set<string>>();
+  for (const g of (grantRows ?? []) as Array<{ user_id: string; bundle_key: string }>) {
+    if (!grantsByUser.has(g.user_id)) grantsByUser.set(g.user_id, new Set());
+    grantsByUser.get(g.user_id)!.add(g.bundle_key);
+  }
+  function memberIsPremium(p: { plan_tier?: unknown; plan_expires_at?: unknown }): boolean {
+    if (p.plan_tier !== "premium") return false;
+    const exp = p.plan_expires_at;
+    if (exp == null) return true;
+    return new Date(exp as string).getTime() > Date.now();
+  }
+  function resolveMemberCustomization(
+    userId: string,
+    profile: Record<string, unknown> | null,
+  ): { accentHex: string | null; cardStyleCss: TeamMemberLite["cardStyleCss"] } {
+    if (!profile) return { accentHex: null, cardStyleCss: null };
+    const ownArgs = {
+      isPremium: memberIsPremium({
+        plan_tier: profile.plan_tier,
+        plan_expires_at: profile.plan_expires_at,
+      }),
+      myGrants: grantsByUser.get(userId) ?? new Set<string>(),
+    };
+    const accentRaw = findAccent((profile.accent_color as string | null) ?? null);
+    const cardRaw = findCardStyle((profile.card_style as string | null) ?? null);
+    const accentObj =
+      accentRaw && canUsePreset(accentRaw.bundleKey, ownArgs) ? accentRaw : null;
+    const cardObj = cardRaw && canUsePreset(cardRaw.bundleKey, ownArgs) ? cardRaw : null;
+    return {
+      accentHex: accentObj?.hex ?? null,
+      cardStyleCss: cardObj?.css ?? null,
+    };
+  }
+
   const captainId = team.captain_id as string;
   const members: TeamMemberLite[] = (allMembers ?? []).map((m) => {
-    const profile = m.profiles as { display_name?: string } | null;
+    const profile = m.profiles as Record<string, unknown> | null;
     const s = statsMap.get(m.user_id as string);
     const total = (s?.matches_total as number | undefined) ?? 0;
     const wins = (s?.wins as number | undefined) ?? 0;
     const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+    const customization = resolveMemberCustomization(m.user_id as string, profile);
     return {
       userId: m.user_id as string,
-      name: profile?.display_name ?? "Jugador",
+      name: (profile?.display_name as string | undefined) ?? "Jugador",
       role: roleLabel(m.role as string, (m.user_id as string) === captainId),
       level: levelFromRating(s?.current_rating as number | null | undefined),
       played: total,
       wr,
       online: false,
+      accentHex: customization.accentHex,
+      cardStyleCss: customization.cardStyleCss,
     };
   });
 
@@ -118,6 +180,21 @@ async function loadTeam(): Promise<TeamLite | null> {
   const totalWins = members.reduce((acc, m) => acc + Math.round((m.played * m.wr) / 100), 0);
   const totalPlayed = members.reduce((acc, m) => acc + m.played, 0);
   const totalLosses = Math.max(0, totalPlayed - totalWins);
+
+  // Team MPR computado: weighted avg del current_rating de cada miembro,
+  // ponderado por matches_total + 1. Lee de la misma statsMap del roster.
+  const mprRows = (allMembers ?? [])
+    .map((m) => {
+      const s = statsMap.get(m.user_id as string);
+      if (!s) return null;
+      return {
+        userId: m.user_id as string,
+        currentRating: (s.current_rating as number | undefined) ?? FALLBACK_RATING,
+        matchesTotal: (s.matches_total as number | undefined) ?? 0,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const teamMprResult = computeTeamMpr(mprRows);
 
   const captainProfile = team.profiles as { display_name?: string } | null;
   const created = new Date(team.created_at as string);
@@ -142,6 +219,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     name: team.name as string,
     tag: ((team.slug as string) ?? "TEAM").slice(0, 3).toUpperCase(),
     sport: SPORT_LABEL[(team.sport as string) ?? "pickleball"] ?? "Multi",
+    teamMpr: teamMprResult.rating,
     description: (team.description as string | null | undefined) ?? null,
     inviteCode: (team.invite_code as string | null | undefined) ?? null,
     captainId,

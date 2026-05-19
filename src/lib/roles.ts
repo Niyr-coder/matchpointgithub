@@ -74,6 +74,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Mi cuenta",
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
+          { k: "personalizar", label: "Personalizar", icon: "palette" },
           { k: "team", label: "Mi Team", icon: "users-round" },
           { k: "solicitar-club", label: "Solicitar Club", icon: "building" },
         ],
@@ -104,6 +105,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
           { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
+          { k: "admin-cosmetics", label: "Bundles cosméticos", icon: "palette" },
           { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
           { k: "admin-support", label: "Soporte", icon: "life-buoy" },
           { k: "admin-team", label: "Equipo MP", icon: "user-cog" },

@@ -2,6 +2,7 @@
 "use client";
 import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import { ProfileHeaderCard } from "./ProfileHeaderCard";
 import { Icon } from "@/components/Icon";
 import { ImageUploader } from "@/components/ImageUploader";
 import { updateMyAvatar } from "@/server/actions/me";
@@ -64,6 +65,24 @@ export type ProfileData = {
   matchHistoryCap?: number | null;
   // Insignias del catálogo con flag on/off según si el target las desbloqueó.
   badges?: Array<{ kind: string; label: string; icon: string; description: string | null; on: boolean }>;
+  // Customización MP+ (mig 113) + bundles (mig 114). Server resuelve
+  // ownership y solo pasa valores no-null si el target los puede usar.
+  // - bannerCss: gradient del header.
+  // - bodyPattern: overlay del body del header (definido por el bundle).
+  // - accentHex: color principal (tinta dots, borders, números).
+  // - cardStyleCss: bg/border/shadow del wrapper de stat cards + listings.
+  accentHex?: string | null;
+  bannerCss?: string | null;
+  bodyPattern?: string | null;
+  // Bundle key del banner activo (para activar animación ambient).
+  bundleKey?: string | null;
+  cardStyleCss?: {
+    background: string;
+    border?: string;
+    boxShadow?: string;
+    backdropFilter?: string;
+    color?: string;
+  } | null;
 };
 
 type Mode = "mine" | "public";
@@ -193,135 +212,43 @@ export function ProfileScreenView({
   ];
 
   const level = levelFromRating(data.currentRating);
-  const memberSince = memberLabel(data.memberSince);
-  const wr = winRate(data.wins, data.matchesTotal);
 
   return (
     <>
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div
-          style={{
-            height: 140,
-            background: "linear-gradient(135deg, #064e3b 0%, #0a0a0a 50%, #000 100%)",
-            position: "relative",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "radial-gradient(ellipse at 75% 30%, rgba(16,185,129,0.3), transparent 60%)",
-            }}
-          />
-          {isMine && (
+      <ProfileHeaderCard
+        name={data.name}
+        username={data.username}
+        city={data.city}
+        bio={data.bio}
+        avatarUrl={data.avatarUrl}
+        primaryClub={data.primaryClub ? { name: data.primaryClub.name } : null}
+        memberSince={data.memberSince}
+        accentHex={data.accentHex ?? null}
+        bannerCss={data.bannerCss ?? null}
+        bodyPattern={data.bodyPattern ?? null}
+        bundleKey={data.bundleKey ?? null}
+        coverButton={
+          isMine ? (
             <button style={coverBtn}>
               <Icon name="camera" size={13} />
               Cambiar portada
             </button>
-          )}
-        </div>
-        <div
-          style={{
-            padding: "0 28px 24px",
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 20 }}>
-            <div style={{ position: "relative", marginTop: -52 }}>
-              <div
-                style={{
-                  width: 112,
-                  height: 112,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #10b981, #047857)",
-                  border: "5px solid #fff",
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#fff",
-                  overflow: "hidden",
-                }}
-              >
-                {data.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={data.avatarUrl}
-                    alt={data.name}
-                    width={112}
-                    height={112}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <span className="font-heading" style={{ fontSize: 36, fontWeight: 900 }}>
-                    {data.name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase() || "?"}
-                  </span>
-                )}
-              </div>
-              {isMine && (
-                <button
-                  onClick={() => setAvatarOverlayOpen(true)}
-                  style={editAvatarBtn}
-                  aria-label="Cambiar foto de perfil"
-                >
-                  <Icon name="pencil" size={12} color="#fff" />
-                </button>
-              )}
-            </div>
-            <div style={{ paddingBottom: 8, paddingTop: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <div
-                  className="font-heading"
-                  style={{
-                    fontWeight: 900,
-                    fontSize: 32,
-                    lineHeight: 1,
-                    letterSpacing: "-0.03em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {data.name}<span className="dot">.</span>
-                </div>
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--muted-fg)",
-                  marginTop: 6,
-                  display: "flex",
-                  gap: 14,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                {data.city && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <Icon name="map-pin" size={12} />
-                    {data.city}
-                  </span>
-                )}
-                {data.primaryClub && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <Icon name="building-2" size={12} />
-                    {data.primaryClub.name}
-                  </span>
-                )}
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Icon name="calendar" size={12} />
-                  Miembro desde {memberSince}
-                </span>
-              </div>
-              <p style={{ marginTop: 12, fontSize: 13.5, color: "#404040", maxWidth: 540, lineHeight: 1.5 }}>
-                {data.bio ?? `@${data.username} aún no agregó una bio.`}
-              </p>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
+          ) : null
+        }
+        avatarEditButton={
+          isMine ? (
+            <button
+              onClick={() => setAvatarOverlayOpen(true)}
+              style={editAvatarBtn}
+              aria-label="Cambiar foto de perfil"
+            >
+              <Icon name="pencil" size={12} color="#fff" />
+            </button>
+          ) : null
+        }
+        actions={
+          <>
             {isMine ? (
               <>
                 <button className="btn btn-outline">
@@ -440,14 +367,16 @@ export function ProfileScreenView({
                 </button>
               </>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <RatingStatsPanel
         ratingMode={ratingMode}
         onChange={setRatingMode}
         active={activeRating}
+        accentHex={data.accentHex ?? null}
+        cardStyleCss={data.cardStyleCss ?? null}
       />
 
       <div>
@@ -628,20 +557,51 @@ function StatBlock({
   delta,
   deltaPos,
   sub,
+  accentHex,
+  cardStyleCss,
 }: {
   label: string;
   value: string;
   delta?: string;
   deltaPos?: boolean;
   sub?: string;
+  // Customización: accent tinta border + número principal. cardStyleCss
+  // (si el user MP+ eligió un card_style) reemplaza bg/border del wrapper.
+  accentHex?: string | null;
+  cardStyleCss?: {
+    background: string;
+    border?: string;
+    boxShadow?: string;
+    backdropFilter?: string;
+    color?: string;
+  } | null;
 }) {
+  const customBorder = cardStyleCss?.border ?? (accentHex ? `1px solid ${accentHex}` : undefined);
   return (
-    <div className="card" style={{ padding: 20 }}>
-      <div className="label-mp">{label}</div>
+    <div
+      className="card"
+      style={{
+        padding: 20,
+        background: cardStyleCss?.background,
+        border: customBorder,
+        boxShadow: cardStyleCss?.boxShadow,
+        backdropFilter: cardStyleCss?.backdropFilter,
+        color: cardStyleCss?.color,
+      }}
+    >
+      <div className="label-mp" style={cardStyleCss?.color ? { color: cardStyleCss.color, opacity: 0.7 } : undefined}>
+        {label}
+      </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
         <div
           className="font-heading tabular"
-          style={{ fontWeight: 900, fontSize: 36, lineHeight: 1, letterSpacing: "-0.03em" }}
+          style={{
+            fontWeight: 900,
+            fontSize: 36,
+            lineHeight: 1,
+            letterSpacing: "-0.03em",
+            color: accentHex ?? cardStyleCss?.color,
+          }}
         >
           {value}
         </div>
@@ -657,7 +617,7 @@ function StatBlock({
           </div>
         )}
       </div>
-      {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: cardStyleCss?.color ? `${cardStyleCss.color}99` : "var(--muted-fg)", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -930,10 +890,20 @@ function RatingStatsPanel({
   ratingMode,
   onChange,
   active,
+  accentHex,
+  cardStyleCss,
 }: {
   ratingMode: "singles" | "doubles";
   onChange: (m: "singles" | "doubles") => void;
   active: ModeRating | null;
+  accentHex?: string | null;
+  cardStyleCss?: {
+    background: string;
+    border?: string;
+    boxShadow?: string;
+    backdropFilter?: string;
+    color?: string;
+  } | null;
 }) {
   const r = active ?? { currentRating: 2500, matchesTotal: 0, wins: 0, losses: 0, rank: null };
   const wr = winRate(r.wins, r.matchesTotal);
@@ -992,21 +962,35 @@ function RatingStatsPanel({
           label="MP Rating"
           value={isEmpty ? "—" : ratingDisplay(r.currentRating)}
           sub={isEmpty ? "Sin partidos" : r.rank != null ? "Oficial" : "Punto de partida"}
+          accentHex={accentHex}
+          cardStyleCss={cardStyleCss}
         />
         <StatBlock
           label="Ranking nacional"
           value={r.rank != null ? `#${r.rank}` : "—"}
-          sub={r.rank != null ? "Pickleball" : "Aún sin ranking"}
+          sub={
+            r.rank != null
+              ? "Pickleball"
+              : r.matchesTotal < 3
+                ? `${3 - r.matchesTotal} ${3 - r.matchesTotal === 1 ? "partido" : "partidos"} para clasificar`
+                : "Aún sin ranking"
+          }
+          accentHex={accentHex}
+          cardStyleCss={cardStyleCss}
         />
         <StatBlock
           label="Partidos jugados"
           value={String(r.matchesTotal)}
           sub={r.matchesTotal > 0 ? "Total" : "Empieza a jugar"}
+          accentHex={accentHex}
+          cardStyleCss={cardStyleCss}
         />
         <StatBlock
           label="Win rate"
           value={r.matchesTotal > 0 ? `${wr}%` : "—"}
           sub={r.matchesTotal > 0 ? `${r.wins}W · ${r.losses}L` : "—"}
+          accentHex={accentHex}
+          cardStyleCss={cardStyleCss}
         />
       </div>
     </div>

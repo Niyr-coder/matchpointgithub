@@ -2109,6 +2109,155 @@ Perfil oficial "MatchPoint" + team chats sincronizados + welcome DMs.
 - `saveOnboardingStep` (step='finish') → `welcome_onboarding_completed`.
 - `approvePlanSubscriptionAdmin` → `welcome_premium_activated`.
 
+### 29.15 · Customización de perfil — MP+ exclusivo (mig 113)
+
+3 columnas nuevas en `profiles`:
+
+- `accent_color text` — key del catálogo `ACCENT_COLORS` (ej. `"emerald"`).
+- `banner_preset text` — key del catálogo `BANNER_PRESETS` (ej. `"aurora"`).
+- `card_style text` — key del catálogo `CARD_STYLES` (ej. `"glass"`).
+
+Todas nullable. `null` = el user no eligió preset → render con defaults.
+
+**Catálogo en código** (no DB): `src/lib/profile/customization-presets.ts`
+exporta `ACCENT_COLORS`, `BANNER_PRESETS`, `CARD_STYLES`. Validamos keys
+contra `ACCENT_KEYS`/`BANNER_KEYS`/`CARD_STYLE_KEYS` (Sets) en server action.
+Si quieres sumar/quitar un preset, edita el catálogo y redeploy — no
+requiere migration.
+
+**Gating MP+**: `setProfileCustomization()` en
+`src/server/actions/profile-customization.ts` llama `getPlanForUser()` y
+throwea `PROFILE.PREMIUM_REQUIRED` (HTTP 402) si el user es free.
+
+**Render**: al pintar el perfil propio o ajeno, el server component lee los
+3 fields y los pasa a la view, que llama `findAccent/findBanner/findCardStyle`
+para resolver el CSS. Si el plan del user expira y queda free, el render
+chequea `isPlanActive` y **reverteia a defaults** (los presets persisten en
+DB para no perder elección si vuelve a comprar premium).
+
+**Feature flag**: `feature_flags.profile_customization` (default `true`,
+rollout 100). Killswitch — si está off, server action rechaza y el panel UI
+queda oculto.
+
+**Pantallas**:
+- `/dashboard/user/perfil/personalizar` (Stage 2) — panel picker MP+ only.
+- `ProfileScreen` propio + `/players/[username]` ajeno aplican accent + banner.
+- Stage 3 (opcional) expande card_style a friend/team cards.
+
+### 29.16 · Bundles cosméticos (mig 114)
+
+Extiende la customización (§29.15) con tiers de ownership. Cada preset en el
+catálogo (`src/lib/profile/customization-presets.ts`) tiene un `bundleKey`:
+
+- `'mp_plus'` → desbloqueado mientras `plan_tier='premium'`. No requiere fila.
+- `'<bundle_key>'` → requiere fila en `profile_cosmetic_grants` (ownership permanente).
+
+**Tablas**:
+
+```sql
+cosmetic_bundles (
+  key text primary key,
+  label text not null,
+  description text,
+  price_cents int not null default 0,
+  active boolean not null default true,
+  sort_order int not null default 100,
+  created_at timestamptz, updated_at timestamptz
+)
+
+profile_cosmetic_grants (
+  user_id uuid references profiles on delete cascade,
+  bundle_key text references cosmetic_bundles on delete cascade,
+  granted_by uuid references profiles on delete set null,
+  granted_at timestamptz default now(),
+  note text,
+  primary key (user_id, bundle_key)
+)
+```
+
+**RLS**:
+- `cosmetic_bundles`: public-select (active=true), admin-write.
+- `profile_cosmetic_grants`: self-select del dueño, admin all (path real via
+  service-role + `setAuditActor`).
+
+**Seed**: 4 bundles iniciales (`pack_neon`, `pack_gold`, `pack_carbon`,
+`pack_sakura`). Precios editables sin redeploy via SQL update a
+`cosmetic_bundles`.
+
+**Server actions**:
+- `setProfileCustomization` (`src/server/actions/profile-customization.ts`)
+  valida ownership por preset antes de aceptar: lee `profile_cosmetic_grants`
+  del user + chequea plan, retorna `PROFILE.PREMIUM_REQUIRED` (402) si todos
+  los presets intentados requieren MP+ y el user no lo tiene, o
+  `PROFILE.PRESET_LOCKED` (403) si requiere bundle no comprado.
+- `grantBundleToUser` / `revokeBundleFromUser` / `listGrantsForUser` /
+  `searchUsersForCosmetics` en `src/server/actions/admin/cosmetics.ts` —
+  admin-only, usan `setAuditActor`. Grant dispara DM al user
+  (`cosmetic_bundle_granted` template).
+
+**Pantallas**:
+- `/dashboard/admin/admin-cosmetics` (`AdminCosmeticsScreen`): admin busca
+  user, otorga bundle con nota (memo del pago), revoca si aplica.
+- `/dashboard/user/personalizar`: presets locked muestran badge "MP+" o
+  "Pack X" + toast informativo al click. Sección "Bundles disponibles"
+  lista catálogo + CTA "Pídelo a soporte".
+
+**Notif**: `cosmetic_bundle_granted` template en
+`src/lib/messages/system.ts` (kind extendido). DM del perfil oficial
+MATCHPOINT al user cuando admin otorga.
+
+**Sin self-service de compra**: fase 1 = admin grant manual tras pago por
+transferencia/DeUna. Self-service (user sube comprobante → admin aprueba
+en mismo panel) queda como Stage 4 placeholder.
+
+**Stage 4 (mig 115)**: `card_style` ahora renderiza en listados.
+- Mig 115 abre `SELECT` público a `profile_cosmetic_grants` (la ownership ya
+  era implícitamente observable vía el render del perfil, no agrega leak).
+- `AmigosScreen` + `TeamScreen` (servers) resuelven ownership por user y
+  pasan `accentHex` + `cardStyleCss` per row.
+- `FriendCard` (header bg tinta accent, wrapper bg/border/shadow = cardStyleCss).
+- Team `<tr>` roster row (avatar tinta accent, row bg = cardStyleCss).
+- Stat cards de `ProfileScreenView` (MPR/Ranking/Partidos/Winrate) tintan
+  número con accent + wrapper bg con cardStyleCss.
+- `bodyPattern` por bundle (en `src/lib/profile/bundles.ts`) aplica overlay
+  al body del header del perfil cuando el user tiene un banner del bundle.
+
+### 29.14 · Team MPR computado on-the-fly (sin tabla nueva)
+
+El team NO tiene rating propio en DB todavía. Mientras no exista la mecánica
+de matches team-vs-team (Arena / retos / juegos intra-team — fases
+siguientes), el "Team MPR" se computa sobre la marcha desde `player_stats`
+de los miembros del roster.
+
+**Helper**: `src/lib/teams/mpr.ts` → `computeTeamMpr(rows)`.
+
+**Fórmula**: `weighted_avg(current_rating, weight = matches_total + 1)`.
+- El +1 evita que miembros con 0 matches queden sin voz.
+- Miembros con más experiencia pesan más en el rating del team.
+
+**Sport/mode**:
+- Sport: `teams.sport` (fallback `pickleball` si `null` o `multi`).
+- Mode: `'doubles'` (típico para teams; player_stats está particionado por
+  mode desde mig 064).
+
+**Exclusiones**:
+- `profiles.is_system = true` no tiene `player_stats` (mig 107), así que
+  queda fuera natural. No requiere filtro extra.
+
+**Display**:
+- Escala interna 1500-base. Render dividiendo `/1000` con 2 decimales → `"4.20"`.
+- `null` = team sin miembros con stats (recién creado, o sin matches en el
+  sport+mode pedido). UI muestra `"—"`.
+
+**Caller actual**: `src/components/dashboard/user/TeamScreen.tsx` (server
+component) → pasa `teamMpr` al `TeamScreenView` que lo renderiza en el
+header al lado de victorias/derrotas/winrate.
+
+**Migración futura** a tabla `team_stats` cuando se agregue Arena:
+mantener la fórmula como fallback inicial; una vez que el team tenga
+matches propios, `team_stats.current_rating` se actualiza vía trigger
+(análogo a `tg_update_player_stats` que ya existe para player matches).
+
 ---
 
 ## Próximo: `30-rls.md`

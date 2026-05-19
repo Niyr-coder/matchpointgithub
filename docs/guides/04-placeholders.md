@@ -233,3 +233,16 @@ server action correspondiente + wire onClick + toast de resultado.
 - [ ] Match result reporting + bracket progression
 - [ ] Email channel real
 - [ ] Cubrir items sin pantalla de employee/coach/manager
+- [x] ~~Customización de perfil — `card_style` no renderiza en listados~~.
+  ✅ Resuelto en Stage 4 (mig 115 abrió SELECT a `profile_cosmetic_grants`,
+  AmigosScreen + TeamScreen resuelven ownership por user, FriendCard +
+  roster filas aplican `cardStyleCss` y `accentHex`). Falta `/players/[username]`
+  card aparte si quieres tematizar más allá del header — el header ya
+  consume `ProfileHeaderCard` con todo.
+- [ ] **Cosmetics: self-service purchase flow** (Stage 4 de customización).
+  Hoy fase 1 es admin grant manual tras pago manual. Falta UI en
+  `/dashboard/user/personalizar` para que el user clickee "Comprar pack
+  X", suba comprobante, y admin apruebe en `/dashboard/admin/admin-cosmetics`
+  (mismo panel hoy ya hace grant, faltaría estado `pending` en
+  `profile_cosmetic_grants` + integrar con flow de comprobantes existentes
+  de MP+).

@@ -1,6 +1,7 @@
 // Client view de AmigosScreen — recibe friends/requests/suggestions ya fetcheados.
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -11,6 +12,7 @@ import {
   sendFriendRequest,
   type PlayerSearchResult,
 } from "@/server/actions/friends";
+import { startConversation } from "@/server/actions/messaging";
 
 export type FriendLite = {
   id: string;
@@ -25,6 +27,16 @@ export type FriendLite = {
   // True si el user tiene MatchPoint+ activo. Muestra badge dorado en
   // la card. Derivado server-side via isPlanActive (cron-safe).
   isPremium: boolean;
+  // Customización propia del amigo (mig 113/114). Server resuelve ownership
+  // antes de pasar — si no aplica, viene null y la card usa defaults.
+  accentHex?: string | null;
+  cardStyleCss?: {
+    background: string;
+    border?: string;
+    boxShadow?: string;
+    backdropFilter?: string;
+    color?: string;
+  } | null;
 };
 
 export type RequestLite = FriendLite & {
@@ -311,6 +323,10 @@ function FriendCard({
     return <OfficialFriendCard f={f} />;
   }
 
+  const router = useRouter();
+  const toast = useToast();
+  const [msgPending, startMsg] = useTransition();
+
   // Card normal de jugador. Nombre clickable a /players/[username] si existe.
   const profileHref = f.username ? `/dashboard/user/players/${f.username}` : null;
   const nameEl = (
@@ -340,13 +356,34 @@ function FriendCard({
     </div>
   );
 
+  // Customización del amigo. cardStyleCss (si tiene card_style activo)
+  // overridea el bg+border+shadow del wrapper. accentHex tinta el header
+  // gradient + el avatar border.
+  const cardCss = f.cardStyleCss;
+  const accent = f.accentHex;
+  const headerBg = accent
+    ? `linear-gradient(135deg, ${accent}cc, ${accent})`
+    : "linear-gradient(135deg, #064e3b, #10b981)";
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <div
+      className="card"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        background: cardCss?.background,
+        border: cardCss?.border,
+        boxShadow: cardCss?.boxShadow,
+        backdropFilter: cardCss?.backdropFilter,
+        color: cardCss?.color,
+      }}
+    >
       <div
         style={{
           position: "relative",
           height: 76,
-          background: "linear-gradient(135deg, #064e3b, #10b981)",
+          background: headerBg,
           overflow: "hidden",
         }}
       >
@@ -441,17 +478,34 @@ function FriendCard({
           ) : (
             <>
               <button
+                type="button"
                 className="btn"
+                disabled={msgPending}
+                onClick={() => {
+                  startMsg(async () => {
+                    const r = await startConversation({
+                      kind: "dm",
+                      memberIds: [f.id],
+                    });
+                    if (!r.ok) {
+                      toast({ icon: "alert-triangle", title: r.error.message });
+                      return;
+                    }
+                    router.push(`/dashboard/user/chat?conv=${r.data.id}`);
+                  });
+                }}
                 style={{
                   flex: 1,
                   fontSize: 10.5,
                   padding: "8px 10px",
                   background: "#fff",
                   border: "1px solid var(--border)",
+                  opacity: msgPending ? 0.6 : 1,
+                  cursor: msgPending ? "wait" : "pointer",
                 }}
               >
                 <Icon name="message-square" size={12} />
-                Mensaje
+                {msgPending ? "Abriendo..." : "Mensaje"}
               </button>
               <button
                 className="btn btn-primary"

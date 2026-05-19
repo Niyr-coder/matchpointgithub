@@ -16,8 +16,10 @@ import { AdminRolesScreen } from "@/components/dashboard/admin/AdminRolesScreen"
 import { AdminTeamScreen } from "@/components/dashboard/admin/AdminTeamScreen";
 import { AdminFlagsScreen } from "@/components/dashboard/admin/AdminFlagsScreen";
 import { AdminBroadcastScreen } from "@/components/dashboard/admin/AdminBroadcastScreen";
+import { AdminCosmeticsScreen } from "@/components/dashboard/admin/AdminCosmeticsScreen";
 import { RankingScreen } from "@/components/dashboard/user/RankingScreen";
 import { ProfileScreen } from "@/components/dashboard/user/ProfileScreen";
+import { PersonalizacionScreen } from "@/components/dashboard/user/PersonalizacionScreen";
 import { ClubesScreen } from "@/components/dashboard/user/ClubesScreen";
 import { EventosScreen } from "@/components/dashboard/user/EventosScreen";
 import { MensajesScreen } from "@/components/dashboard/user/MensajesScreen";
@@ -80,10 +82,12 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-team": () => <AdminTeamScreen />,
     "admin-flags": () => <AdminFlagsScreen />,
     "admin-broadcast": () => <AdminBroadcastScreen />,
+    "admin-cosmetics": () => <AdminCosmeticsScreen />,
   },
   user: {
     ranking: () => <RankingScreen />,
     perfil: () => <ProfileScreen />,
+    personalizar: () => <PersonalizacionScreen />,
     clubes: () => <ClubesScreen />,
     eventos: () => <EventosScreen />,
     chat: (sp) => <MensajesScreen searchParams={sp} />,

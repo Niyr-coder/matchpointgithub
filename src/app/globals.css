@@ -314,6 +314,50 @@ body {
   .mp-liquid-cta::before { animation: none; }
 }
 
+/* ── Body patterns animados por bundle cosmético ───────────────
+   Animación ambient/decorativa del body del header del perfil cuando
+   el user tiene un banner de un bundle pago activo. Solo se aplica
+   con prefers-reduced-motion: no-preference (opt-in progressive).
+
+   Cada bundle anima `background-position` del PRIMER layer (la
+   SVG pattern), dejando los radial-gradients estáticos como base
+   tonal. Multi-layer background-position syntax: comma-separated
+   por layer, mismo orden que en el `background` shorthand de
+   src/lib/profile/bundles.ts.
+
+   Performance: animar background-position causa paint en cada
+   frame del layer SVG. El área del header es chica (~140-220px
+   alto) y la duración es larga (35-60s) → no necesita will-change.
+   pack_carbon NO anima (identity minimalista; ver bundles.ts). */
+
+@media (prefers-reduced-motion: no-preference) {
+  .mp-body-pack_sakura {
+    animation: mp-body-pattern-sakura 20s linear infinite;
+  }
+  .mp-body-pack_gold {
+    animation: mp-body-pattern-gold 28s linear infinite;
+  }
+  .mp-body-pack_neon {
+    animation: mp-body-pattern-neon 40s linear infinite;
+  }
+}
+
+@keyframes mp-body-pattern-sakura {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to   { background-position: 200px 200px, 0 0, 0 0; }
+}
+@keyframes mp-body-pattern-gold {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to   { background-position: 180px 180px, 0 0, 0 0; }
+}
+@keyframes mp-body-pattern-neon {
+  /* 3 layers: 2 radials + 1 repeating-linear grid. Solo movemos el
+     grid (último), gradient pulses quedan estáticos. El grid repite
+     cada 24-25px, así que mover 24px da loop seamless. */
+  from { background-position: 0 0, 0 0, 0 0; }
+  to   { background-position: 0 0, 0 0, 24px 24px; }
+}
+
 /* ── mp-cards-row ─────────────────────────────────────────────
    Layout responsive para filas de cards del landing.
    Desktop (≥768px): grid de N columnas, control con `style={{ "--mp-cols": N }}`.

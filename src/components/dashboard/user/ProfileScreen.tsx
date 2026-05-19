@@ -2,6 +2,9 @@
 // preferences quedan mock hasta tener schema dedicado.
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getPlanForUser } from "@/lib/auth/plan";
+import { findAccent, findBanner, findCardStyle } from "@/lib/profile/customization-presets";
+import { canUsePreset, bodyPatternForBundle } from "@/lib/profile/bundles";
 import { ProfileScreenView, type ProfileData, type ModeRating } from "./ProfileScreenView";
 
 const STARTING_RATING = 2500;
@@ -59,7 +62,9 @@ export async function loadProfileFor(
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name,username,city,bio,avatar_url,created_at")
+      .select(
+        "display_name,username,city,bio,avatar_url,created_at,accent_color,banner_preset,card_style" as never,
+      )
       .eq("id", userId)
       .maybeSingle(),
     supabase
@@ -211,6 +216,39 @@ export async function loadProfileFor(
   // Legacy root fields: prefer singles, fallback doubles, fallback starting.
   const legacy = singles ?? doubles;
 
+  // Customización: cada preset tiene su propio gate (MP+ activo O ownership
+  // del bundle). Bundles son compra única — persisten incluso si el user
+  // pierde MP+. Por eso NO basta con `plan_tier === 'premium'`; chequeamos
+  // ownership preset-por-preset con `canUsePreset`, igual que el server
+  // action `setProfileCustomization`. Sincronía garantizada porque ambos
+  // consumen el mismo helper `canUsePreset` del bundles.ts.
+  const profileExt = (profile ?? {}) as {
+    accent_color?: string | null;
+    banner_preset?: string | null;
+    card_style?: string | null;
+  };
+  const [targetPlan, grantsRes] = await Promise.all([
+    getPlanForUser(supabase, userId),
+    supabase
+      .from("profile_cosmetic_grants")
+      .select("bundle_key" as never)
+      .eq("user_id", userId),
+  ]);
+  const isPremium = targetPlan.tier === "premium";
+  const myGrants = new Set(
+    ((grantsRes.data ?? []) as Array<{ bundle_key: string }>).map((g) => g.bundle_key),
+  );
+  const ownArgs = { isPremium, myGrants };
+  const accentRaw = findAccent(profileExt.accent_color ?? null);
+  const bannerRaw = findBanner(profileExt.banner_preset ?? null);
+  const cardStyleRaw = findCardStyle(profileExt.card_style ?? null);
+  const accentObj = accentRaw && canUsePreset(accentRaw.bundleKey, ownArgs) ? accentRaw : null;
+  const bannerObj = bannerRaw && canUsePreset(bannerRaw.bundleKey, ownArgs) ? bannerRaw : null;
+  const cardStyleObj = cardStyleRaw && canUsePreset(cardStyleRaw.bundleKey, ownArgs) ? cardStyleRaw : null;
+  // Body pattern viene del bundle del banner activo. Si el banner es de
+  // 'mp_plus' (no bundle pago), no hay pattern temático.
+  const bodyPattern = bannerObj ? bodyPatternForBundle(bannerObj.bundleKey) : null;
+
   return {
     meUserId: userId,
     name: (profile?.display_name as string | undefined) ?? "Jugador",
@@ -232,6 +270,11 @@ export async function loadProfileFor(
     matchHistory,
     matchHistoryCap: opts?.matchHistoryCap ?? null,
     badges: await loadBadgesFor(supabase, userId),
+    accentHex: accentObj?.hex ?? null,
+    bannerCss: bannerObj?.background ?? null,
+    bodyPattern,
+    bundleKey: bannerObj?.bundleKey ?? null,
+    cardStyleCss: cardStyleObj?.css ?? null,
   };
 }
 

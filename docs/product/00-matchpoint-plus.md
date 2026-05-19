@@ -194,6 +194,39 @@ set value = jsonb_set(value, '{free,rosterMax}', '15'::jsonb)
 where key = 'team_caps';
 ```
 
+### 7.2 · Customización de perfil (migrations 113, 114)
+
+Accent color, banner del header y card style del perfil tienen dos tiers de
+gating: **MP+** (subscription) y **bundles cosméticos** (compra única).
+
+**Lo que el plan gatea**:
+- Free: solo puede ver el panel `Personalizar`. Los presets aparecen locked
+  con badge. Toast informativo al click — bundles indican "Pídelo a soporte",
+  MP+ items dirige a `/mi-plan`.
+- Premium: 14 accent colors + 18 banners + 6 card styles (~60% del catálogo,
+  los marcados `bundleKey: 'mp_plus'` en `src/lib/profile/customization-presets.ts`).
+- Premium + bundles: los presets de bundles propios (otorgados por admin)
+  se suman automáticamente — son permanentes y no expiran si MP+ se vence.
+
+**Bundles seed (mig 114)**:
+- `pack_neon` ($5) — accents/banners/card style con glow neón.
+- `pack_gold` ($5) — accent dorado, banners cálidos, card holográfica.
+- `pack_carbon` ($4) — minimalismo oscuro (onyx, graphite, carbon).
+- `pack_sakura` ($4) — rosados, pastel mesh y sakura glass.
+
+Precios editables sin redeploy via `update public.cosmetic_bundles set price_cents=... where key=...`.
+
+**Comportamiento al perder MP+**: los presets elegidos quedan persistidos en
+`profiles.{accent_color, banner_preset, card_style}`. Al render, el server
+component chequea `isPlanActive` y **reverteia a defaults** si el plan
+expiró. Si el user vuelve a comprar MP+, recupera su configuración previa
+automáticamente.
+
+**Killswitch**: `feature_flags.profile_customization`. Si se desactiva, el
+panel UI queda oculto y el server action rechaza mutaciones — los presets
+existentes siguen renderizando hasta que el cron de cleanup los limpie (no
+implementado todavía; ver §29.15 de `docs/architecture/20-database.md`).
+
 ## 8. Cosas pendientes / TODO
 
 - [ ] Notificación al activarse premium (kind `plan_activated`).

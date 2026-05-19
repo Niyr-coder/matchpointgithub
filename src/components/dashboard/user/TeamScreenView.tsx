@@ -55,6 +55,15 @@ export type TeamMemberLite = {
   played: number;
   wr: number;
   online: boolean;
+  // Customización del miembro (mig 113/114). Server resuelve ownership.
+  accentHex?: string | null;
+  cardStyleCss?: {
+    background: string;
+    border?: string;
+    boxShadow?: string;
+    backdropFilter?: string;
+    color?: string;
+  } | null;
 };
 
 export type TeamCapsLite = {
@@ -77,6 +86,10 @@ export type TeamLite = {
   losses: number;
   rank: number | null;
   league: string;
+  // Team MPR computado (weighted avg de los current_rating del roster en el
+  // sport del team + mode='doubles'). null = sin miembros con stats. Escala
+  // interna 1500-base; el render divide por 1000 → "4.20".
+  teamMpr: number | null;
   members: TeamMemberLite[];
   pendingInvites: PendingInviteLite[];
   // Caps + plan info: gating de UI (badges, banners, stats split).
@@ -461,7 +474,34 @@ function TeamEmpty({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => v
 // ══════════════════════════════════════════════════════════════════════
 // CREATE — form crear equipo + preview en vivo
 // ══════════════════════════════════════════════════════════════════════
-const COLORS = ["#10b981", "#fbbf24", "#dc2626", "#7c3aed", "#0ea5e9", "#f97316", "#ec4899", "#0a0a0a"];
+// Paleta del team. Cubrimos verdes (emerald, lime), azules (sky, blue,
+// indigo, cyan), morados/rosas (purple, fuchsia, pink), rojos/naranjas
+// (red, orange, amber, yellow), grises (slate, zinc) y negro. 20 opciones.
+const COLORS = [
+  "#10b981", // emerald
+  "#22c55e", // green
+  "#84cc16", // lime
+  "#fbbf24", // amber
+  "#f59e0b", // amber-500
+  "#f97316", // orange
+  "#dc2626", // red
+  "#e11d48", // rose
+  "#ec4899", // pink
+  "#d946ef", // fuchsia
+  "#a855f7", // purple
+  "#7c3aed", // violet
+  "#6366f1", // indigo
+  "#3b82f6", // blue
+  "#0ea5e9", // sky
+  "#06b6d4", // cyan
+  "#14b8a6", // teal
+  "#64748b", // slate
+  "#71717a", // zinc
+  "#0a0a0a", // black
+];
+
+// Colores claros donde el texto blanco no contrasta — usar texto negro.
+const LIGHT_TEXT_COLORS = new Set(["#fbbf24", "#10b981", "#0ea5e9", "#22c55e", "#84cc16", "#f59e0b", "#06b6d4", "#14b8a6"]);
 
 function slugify(input: string): string {
   return input
@@ -2320,6 +2360,12 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
               <Stat n={TEAM.losses} l="Derrotas" />
               <div style={{ width: 1, background: "rgba(255,255,255,0.2)" }} />
               <Stat n={winRate + "%"} l="Win rate" color="#fbbf24" />
+              <div style={{ width: 1, background: "rgba(255,255,255,0.2)" }} />
+              <Stat
+                n={TEAM.teamMpr != null ? (TEAM.teamMpr / 1000).toFixed(2) : "—"}
+                l="Team MPR"
+                color="#10b981"
+              />
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
               <button
@@ -2434,8 +2480,24 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
               </tr>
             </thead>
             <tbody>
-              {ROSTER.map((p, i) => (
-                <tr key={p.name} style={{ borderBottom: "1px solid var(--border)" }}>
+              {ROSTER.map((p, i) => {
+                // ROSTER === TEAM.members (línea 2229), así que p es un
+                // TeamMemberLite completo con su propia customización.
+                // Acceso directo — sin lookup extra.
+                const memberAccent = p.accentHex ?? null;
+                const memberCard = p.cardStyleCss ?? null;
+                const avatarBg = memberAccent
+                  ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
+                  : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                return (
+                <tr
+                  key={p.name}
+                  style={{
+                    borderBottom: "1px solid var(--border)",
+                    background: memberCard?.background,
+                    color: memberCard?.color,
+                  }}
+                >
                   <td style={{ padding: "12px 6px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ position: "relative" }}>
@@ -2444,7 +2506,7 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
                             width: 30,
                             height: 30,
                             borderRadius: "50%",
-                            background: ROSTER_AVATARS[i % ROSTER_AVATARS.length],
+                            background: avatarBg,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -2539,7 +2601,8 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

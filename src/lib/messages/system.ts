@@ -19,7 +19,8 @@ export type SystemMessageKind =
   | "welcome_signup"
   | "welcome_team_created"
   | "welcome_premium_activated"
-  | "welcome_onboarding_completed";
+  | "welcome_onboarding_completed"
+  | "cosmetic_bundle_granted";
 // Futuros: team_roster_full_reminder, plan_expiring_soon_reminder.
 
 type Params = {
@@ -73,6 +74,8 @@ export const WELCOME_TEMPLATES = {
     "¡{firstName}, tu MatchPoint+ está activo hasta {expiresAt}! Disfrutá reservas ilimitadas, roster ampliado en teams y estadísticas avanzadas.",
   welcome_onboarding_completed:
     "Ya completaste tu perfil, {firstName}. Te recomendamos empezar explorando los clubes cerca de {city}. ¡Buen juego!",
+  cosmetic_bundle_granted:
+    "¡{firstName}! Acabamos de desbloquear el {bundleLabel} en tu cuenta. Ya puedes elegir sus presets desde Mi cuenta → Personalizar.",
 } as const satisfies Record<SystemMessageKind, string>;
 
 export function renderTemplate(kind: SystemMessageKind, vars: TemplateVars): string {
