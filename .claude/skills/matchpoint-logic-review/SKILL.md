@@ -1,6 +1,6 @@
 ---
 name: matchpoint-logic-review
-description: Revisa consistencia lógica cross-cutting de una feature recién implementada en MatchPoint v2 — entidades que se pueden buscar pero no visitar, acciones disponibles en un contexto pero rotas en otro, casos especiales (system users, archived, soft-deleted) manejados en una superficie pero olvidados en otra, schema keys que no matchean entre caller y action, RLS restrictions sin SECURITY DEFINER bypass donde se necesita, triggers que crean rows que downstream queries no esperan. Úsala DESPUÉS de implementar (o cuando aparece un bug funcional que parece "estructural") y ANTES del commit final. Complementa `matchpoint-ui-review` (visual) y `emil-design-eng` (animación) — esta cubre la coherencia funcional del sistema. Produce una lista de gaps de consistencia con archivo:línea + fix sugerido.
+description: Revisa coherencia lógica cross-cutting de una feature recién implementada en MatchPoint v2. Cubre 6 dimensiones — (1) entidades searchable/visitable/editable, (2) casos especiales (is_system, archived, soft-deleted) en todas las superficies, (3) action key ↔ Zod schema match, (4) RLS ↔ SECURITY DEFINER bypass, (5) trigger ↔ downstream queries, (6) **wire integrity** (eventos sin handler, props pasadas y no consumidas, data fetcheada y no renderizada), (7) **lógica de redirección** (post-creación, post-edit, auth gate, permission gate, notif click → href), (8) **complementos** (notification_kind nuevo necesita iconForKind/hrefForKind; conversations.kind nuevo necesita ConvoLite + query filters; RoleKey nuevo necesita MP_ROLES + RoleSwitcher; nuevo status necesita helper map; feature MP+ gated necesita banner + isPlanActive + error code específico). Úsala DESPUÉS de implementar y ANTES del commit final, o cuando aparece un bug funcional "estructural". Complementa `matchpoint-ui-review` (visual) y `emil-design-eng` (animación) — esta cubre la coherencia funcional del sistema. Output: lista de gaps con archivo:línea + fix sugerido.
 ---
 
 # MatchPoint Logic Review
@@ -119,7 +119,146 @@ Para cada migration aplicada:
 3. ¿La doc `architecture/20-database.md §29` refleja la migration?
 4. ¿La migration tiene archivo local committed? (común olvidar: aplicado vía MCP pero sin file en `supabase/migrations/`).
 
-### Paso 8 — Reportar gaps con fix sugerido
+### Paso 8 — Wire integrity (lo que renderiza realmente hace algo)
+
+Cada elemento interactivo debe tener un consumer real. Tres sub-checks
+que atrapan "se ve bonito pero no hace nada":
+
+#### 8.1 — Eventos sin handler / handlers que no hacen nada
+
+Para cada `<button>`, `<form>`, `<Link>`, `<input>` en el archivo bajo
+review:
+
+```bash
+grep -nE '<button[^>]*>|<form[^>]*>|onClick=|onSubmit=' <archivo>
+```
+
+Verificar:
+- [ ] Cada `<button>` tiene `onClick` o está dentro de un `<form>` con
+  `onSubmit`. Botones sin handler son anti-patrón visible.
+- [ ] Cada `onClick`/`onSubmit` invoca algo real (server action, navegación,
+  state update). Si es `onClick={() => {}}` o `onClick={() => toast(...)}`
+  sin lógica de negocio, marcarlo como placeholder explícito o quitarlo.
+- [ ] Inputs con `value` controlado tienen `onChange` que actualiza el
+  state correspondiente.
+- [ ] Forms con campos requeridos validan ANTES de enviar (no solo en
+  server). Sino el user ve un toast "Invalid input" sin contexto.
+
+#### 8.2 — Props pasadas pero no consumidas (o vice versa)
+
+Para componentes nuevos o modificados con props nuevas:
+
+1. Listar props del component signature.
+2. Buscar cada prop en el body del componente.
+3. Si una prop no se usa → eliminarla o documentar por qué se pasa.
+4. Inversamente: si el component lee `data.X` pero el caller no pasa `X`,
+   es un undefined runtime.
+
+```bash
+# props declaradas
+grep -nE 'function \w+\({[^}]*}|: \{[^}]+\}' <archivo>
+# props consumidas en el body
+grep -n '<prop>' <archivo>
+```
+
+#### 8.3 — Data fetched pero no renderizada
+
+Si una server action / page.tsx fetchea data pero ninguna parte del view
+la muestra, es código muerto + query desperdiciada.
+
+Para cada `await supabase.from(...)` en server components:
+- ¿Algún descendant renderiza la data?
+- ¿Algún consumer hace algo con ese campo?
+- Si la fetcheas "por las dudas", quitarla (`.limit()` defensivo cuenta
+  como uso legítimo).
+
+### Paso 9 — Lógica de redirección
+
+Cada flujo que termina con success/cancel debe ir a algún lado correcto:
+
+- [ ] **Post-creación**: después de crear X exitoso, ¿el user va al
+  detalle de X, o queda en el form con estado "creado"? Convención
+  MatchPoint: redirect a detalle (`/dashboard/<role>/<section>/<id>`).
+- [ ] **Post-edit**: igual — redirect a la lista o al detalle actualizado.
+- [ ] **Cancel/Back**: ¿vuelve a donde el user estaba antes? (No `router.back()`
+  ciego — si llegó por deep link, `back()` lo saca de la app).
+- [ ] **Auth gate**: rutas protegidas redirigen a `/?auth=signin&next=<url>`
+  para que después del login el user regrese.
+- [ ] **Permission gate**: si rol equivocado, redirect al dashboard del
+  rol que SÍ tiene (priority fallback). No 403 sin salida.
+- [ ] **Self-redirect en perfiles**: `/dashboard/players/[username]` para el
+  propio user redirige a `/dashboard/user/perfil` (versión editable). El
+  caso simétrico también: si admin abre su propio perfil desde
+  `AdminUsersScreen`, ¿va a edit o a view? Decidir y consistente.
+- [ ] **Notif click**: cada `kind` de notificación tiene un `hrefForKind`
+  mapeado en `NotificationsPanel.tsx`. Sin eso, click en notif no hace
+  nada → user frustrado.
+
+Anti-patrón típico: server action retorna `{ ok: true, data: { id } }` pero
+el caller no hace nada con `id` → el user se queda viendo el form vacío
+preguntándose si funcionó.
+
+### Paso 10 — Complementos (nuevo X requiere actualizar Y, Z, W)
+
+Cuando se agrega una **entidad nueva** (kind, role, status, tabla, feature),
+hay un set de surfaces "complementarias" que normalmente deben actualizarse.
+Esta es la fuente N°1 de bugs invisibles porque cada surface es opcional
+en aislamiento pero esperado en agregado.
+
+Para cada tipo de entidad nueva, recorrer el checklist correspondiente:
+
+#### Nueva `notification_kind`:
+
+- [ ] `iconForKind` en `NotificationsPanel.tsx` mapea el kind a icon.
+- [ ] `colorForKind` mapea a color.
+- [ ] `hrefForKind` mapea a URL clickable.
+- [ ] Default channels en `notification_kinds` row (inapp/email/push).
+- [ ] Si se requiere preferencia user-tunable, agregar a settings UI.
+
+#### Nuevo `kind` en `conversations` (ej. team_channel):
+
+- [ ] `conversations_kind_check` constraint extendido.
+- [ ] `MensajesScreen` queries no filtran el kind sin querer.
+- [ ] `ConvoLite` type incluye el kind nuevo.
+- [ ] Avatar/icon distintivo en MensajesScreenView para el kind.
+- [ ] Hint/copy específico si el kind tiene reglas (read-only, broadcast, etc).
+
+#### Nuevo `RoleKey`:
+
+- [ ] `MP_ROLES` en `src/lib/roles.ts` con sidebar config.
+- [ ] Layout `/dashboard/[role]/layout.tsx` reconoce el rol y valida
+  `role_assignments`.
+- [ ] `RoleSwitcher` muestra el rol nuevo.
+- [ ] `AdminRolesScreen` lo documenta como permiso operable.
+- [ ] Color + badge label en `MP_ROLES[role]`.
+- [ ] `TopBar` `CTA_BY_ROLE` define el botón principal.
+
+#### Nuevo status enum (ej. tournament.status, transaction.status):
+
+- [ ] Todos los `txStatusMeta` / `tournamentStatusLabel` / helpers tienen
+  el caso. Audit pasado pescó 2 casos donde solo 2 de 8 estados se mapeaban.
+- [ ] Realtime publication incluye la tabla si cambia el status.
+- [ ] Action que transiciona al status nuevo: emite notif si aplica.
+
+#### Nueva tabla con RLS:
+
+- [ ] Realtime publication si el cliente la escucha.
+- [ ] Audit trigger `tg_audit_<table>` si admin la muta.
+- [ ] Index para queries frecuentes.
+- [ ] Admin governance: pantalla para listar/inspeccionar (regla del
+  checklist 07 §1.9).
+- [ ] Doc en `architecture/20-database.md §29`.
+
+#### Nuevo feature gated por MP+:
+
+- [ ] Helper `isPlanActive(profile).tier === 'premium'` usado en lugar
+  de chequear `plan_tier` directo (cron puede no haber expirado).
+- [ ] UI muestra badge/banner cuando free está al cap.
+- [ ] Server action retorna error específico (no genérico) para que UI
+  muestre CTA al upgrade.
+- [ ] Sección "Qué incluye MP+" en `/dashboard/user/mi-plan` actualizada.
+
+### Paso 11 — Reportar gaps con fix sugerido
 
 Output formato:
 
@@ -157,6 +296,15 @@ Si user dice sí, aplicar uno por uno. Si no, dejar reporte.
 | `as never` proliferando en queries | Database types stale, regenerar |
 | Migration aplicada vía MCP sin archivo local committed | Drift entre dev y prod |
 | Trigger usa `coalesce(plan_tier, 'free')` pero código TS espera siempre un valor explícito | Default desincronizado |
+| Botón visible sin `onClick` (o con `onClick={() => {}}`) | Wire faltante |
+| `useState` o prop declarada pero nunca leída en el body | Code muerto |
+| Server action retorna `{ id }` pero caller no navega ni muestra | Redirect olvidado |
+| Nuevo `notification_kind` sin mapping en `iconForKind`/`hrefForKind` | Notif aparece sin icono ni click navigation |
+| Nuevo `conversations.kind` sin entrada en `ConvoLite` type / query filter | Conv invisible aunque existe en DB |
+| Nuevo `RoleKey` sin sidebar config / RoleSwitcher entry | Rol existe en DB pero no en UI |
+| Nuevo status enum sin actualizar el helper que mapea a label/color | Status renderiza como string crudo |
+| Form que valida en server pero no en cliente | UX "Invalid input" sin contexto |
+| Permission gate redirige a 403 sin fallback role | Dead end |
 
 ## Cómo se conecta con las otras skills
 
