@@ -1,16 +1,19 @@
-// Vista pública del perfil de un jugador o cuenta oficial.
-// URL canónica: /dashboard/players/<username>.
-// - Jugadores normales → reusa ProfileScreenView con viewerMode="public"
-//   (mismo componente que la "VISTA PÚBLICA" de Mi Perfil).
-// - Cuentas oficiales (is_system) → OfficialAccountView compacta, sin
-//   stats ni clubes (no son jugadores).
+// Vista del perfil de un jugador. Routing por rol del viewer:
+// - user (default, social) → ProfileScreenView con viewerMode="public"
+//   (la "VISTA PÚBLICA" que se previewa en Mi Perfil).
+// - admin / owner / manager / partner / coach / employee →
+//   OperationalPlayerProfile (data-dense, sin badge social, acciones
+//   específicas del rol).
+// - is_system (MATCHPOINT) → OfficialAccountView compacta (no es jugador).
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { ProfileScreenView } from "@/components/dashboard/user/ProfileScreenView";
 import { loadProfileFor } from "@/components/dashboard/user/ProfileScreen";
+import { OperationalPlayerProfile } from "@/components/dashboard/players/OperationalPlayerProfile";
 
 export default async function PublicPlayerProfilePage({
   params,
@@ -47,7 +50,15 @@ export default async function PublicPlayerProfilePage({
   }
 
   const data = await loadProfileFor(profile.id);
-  return <ProfileScreenView data={data} viewerMode="public" />;
+
+  // Active role del viewer decide la vista. user = social, otros = operacional.
+  // Si no hay activeRole (guest o cookie ausente), tratar como user.
+  const activeRole: RoleKey =
+    (session.authenticated && session.session.activeRole) || "user";
+  if (activeRole === "user") {
+    return <ProfileScreenView data={data} viewerMode="public" />;
+  }
+  return <OperationalPlayerProfile data={data} viewerRole={activeRole} />;
 }
 
 function OfficialAccountView({
