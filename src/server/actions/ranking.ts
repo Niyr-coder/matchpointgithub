@@ -37,9 +37,16 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
     const from = (params.page - 1) * params.pageSize;
     const to = from + params.pageSize - 1;
 
+    // Threshold de partidos para aparecer en el ranking (mig 116). Default 3.
+    // Editable via update platform_config sin redeploy.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: minMatches } = await (supabase as any).rpc("fn_get_ranking_min_matches");
+    const threshold = typeof minMatches === "number" ? minMatches : 3;
+
     // Una sola query: PostgREST resuelve el embedded join via la FK
     // player_stats.user_id → profiles(id) declarada en 019_ranking.sql.
-    // Antes hacíamos un select extra a profiles con `in("id", userIds)` (N+1).
+    // Filtramos matches_total >= threshold para que jugadores con < N partidos
+    // no contaminen el leaderboard (placement period).
     const { data: stats, error } = await supabase
       .from("player_stats")
       .select(
@@ -47,6 +54,7 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
       )
       .eq("sport", params.sport)
       .eq("mode", params.mode)
+      .gte("matches_total", threshold)
       .order("current_rating", { ascending: false })
       .range(from, to);
     if (error) throw new MpError("RANKING.DB_ERROR", error.message, 500);

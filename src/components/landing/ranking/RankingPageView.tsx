@@ -11,6 +11,11 @@ const SPORTS = [
   { k: "tennis", l: "Tenis" },
 ] as const;
 
+const MODES = [
+  { k: "singles", l: "Singles" },
+  { k: "doubles", l: "Dobles" },
+] as const;
+
 const PODIUM_AV_BG = [
   "linear-gradient(135deg,#ca8a04,#facc15)",
   "linear-gradient(135deg,#0a0a0a,#374151)",
@@ -58,13 +63,16 @@ function padRows(entries: RankingEntry[]): RowEntry[] {
 
 export function RankingPageView({
   sport,
+  mode,
   entries,
 }: {
   sport: "pickleball" | "padel" | "tennis";
+  mode: "singles" | "doubles";
   entries: RankingEntry[];
 }) {
   const onPaywall = usePaywall();
   const sportLabel = SPORTS.find((s) => s.k === sport)?.l ?? "Pickleball";
+  const modeLabel = MODES.find((m) => m.k === mode)?.l ?? "Singles";
   const podium = padPodium(entries);
   const rows = padRows(entries);
   const hasRealData = entries.length > 0;
@@ -85,7 +93,7 @@ export function RankingPageView({
           lineHeight: 0.95,
         }}
       >
-        Top 100 {sportLabel}
+        Top 100 {sportLabel} · {modeLabel}
         <span className="dot">.</span>
       </h1>
       <p
@@ -100,42 +108,78 @@ export function RankingPageView({
         Ranking nacional basado en partidos oficiales registrados en MatchPoint. Actualizado cada lunes.
       </p>
 
-      {/* Sport tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          padding: 4,
-          background: "var(--muted)",
-          borderRadius: 9999,
-          width: "fit-content",
-          marginBottom: 32,
-        }}
-      >
-        {SPORTS.map((s) => {
-          const on = s.k === sport;
-          return (
-            <Link
-              key={s.k}
-              href={`/ranking?sport=${s.k}`}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 9999,
-                background: on ? "#fff" : "transparent",
-                color: on ? "#0a0a0a" : "var(--muted-fg)",
-                fontWeight: on ? 900 : 700,
-                fontSize: 11.5,
-                fontFamily: "inherit",
-                textDecoration: "none",
-                boxShadow: on ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              {s.l}
-            </Link>
-          );
-        })}
+      {/* Sport + mode tabs */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 32 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            padding: 4,
+            background: "var(--muted)",
+            borderRadius: 9999,
+            width: "fit-content",
+          }}
+        >
+          {SPORTS.map((s) => {
+            const on = s.k === sport;
+            return (
+              <Link
+                key={s.k}
+                href={`/ranking?sport=${s.k}&mode=${mode}`}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 9999,
+                  background: on ? "#fff" : "transparent",
+                  color: on ? "#0a0a0a" : "var(--muted-fg)",
+                  fontWeight: on ? 900 : 700,
+                  fontSize: 11.5,
+                  fontFamily: "inherit",
+                  textDecoration: "none",
+                  boxShadow: on ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {s.l}
+              </Link>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            padding: 4,
+            background: "var(--muted)",
+            borderRadius: 9999,
+            width: "fit-content",
+          }}
+        >
+          {MODES.map((m) => {
+            const on = m.k === mode;
+            return (
+              <Link
+                key={m.k}
+                href={`/ranking?sport=${sport}&mode=${m.k}`}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 9999,
+                  background: on ? "#fff" : "transparent",
+                  color: on ? "#0a0a0a" : "var(--muted-fg)",
+                  fontWeight: on ? 900 : 700,
+                  fontSize: 11.5,
+                  fontFamily: "inherit",
+                  textDecoration: "none",
+                  boxShadow: on ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {m.l}
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {!hasRealData && (
@@ -154,7 +198,9 @@ export function RankingPageView({
         >
           <Icon name="info" size={16} color="var(--primary)" />
           <span>
-            Aún no hay partidos oficiales de <b style={{ color: "#0a0a0a" }}>{sportLabel.toLowerCase()}</b> registrados. Sé el primero en aparecer.
+            Aún no hay jugadores con 3+ partidos oficiales de{" "}
+            <b style={{ color: "#0a0a0a" }}>{sportLabel.toLowerCase()} · {modeLabel.toLowerCase()}</b>.
+            Necesitas 3 partidos oficiales para clasificar al ranking.
           </span>
         </div>
       )}
