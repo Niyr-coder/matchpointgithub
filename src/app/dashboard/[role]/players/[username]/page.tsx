@@ -59,9 +59,33 @@ export default async function PublicPlayerProfilePage({
   // Cap del match history según plan del viewer. Free: últimos 10.
   // Premium: ilimitado. Guest sin sesión: cap conservador de 10.
   let viewerIsPremium = false;
+  let initialFriendship: "none" | "pending" | "friends" = "none";
   if (session.authenticated) {
     const viewerSummary = await getProfileSummary(session.session.userId);
     viewerIsPremium = isPlanActive(viewerSummary).tier === "premium";
+
+    // Estado inicial de amistad viewer ↔ target, leído del server para
+    // que la UI arranque con el CTA correcto (no flash optimista).
+    const viewerId = session.session.userId;
+    const [a, b] = viewerId < profile.id ? [viewerId, profile.id] : [profile.id, viewerId];
+    const { data: friendship } = await supabase
+      .from("friendships")
+      .select("user_a")
+      .eq("user_a", a)
+      .eq("user_b", b)
+      .maybeSingle();
+    if (friendship) {
+      initialFriendship = "friends";
+    } else {
+      const { data: pending } = await supabase
+        .from("friend_requests")
+        .select("id")
+        .eq("from_user_id", viewerId)
+        .eq("to_user_id", profile.id)
+        .eq("status", "pending")
+        .maybeSingle();
+      if (pending) initialFriendship = "pending";
+    }
   }
   const matchHistoryCap = viewerIsPremium ? null : 10;
 
@@ -72,6 +96,7 @@ export default async function PublicPlayerProfilePage({
       data={data}
       viewerMode="public"
       viewerIsPremium={viewerIsPremium}
+      initialFriendship={initialFriendship}
     />
   );
 }

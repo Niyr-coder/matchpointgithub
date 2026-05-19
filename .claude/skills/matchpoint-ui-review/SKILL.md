@@ -74,6 +74,36 @@ grep -n 'className="[^"]*hidden[^"]*btn' <archivo>
 
 Si match: usar `!hidden md:!inline-flex` (Tailwind important) porque `.btn { display: inline-flex }` se carga después y gana.
 
+#### 2.2.b — React keys únicas (assumption de uniqueness en data)
+
+Para cada `.map(...)` en componentes que rendean listas:
+
+```bash
+grep -nE '\.map\([^)]*=>' <archivo>
+```
+
+Verificar:
+- [ ] Cada `<Element key={X}>` usa una key **garantizada única en el array**.
+- [ ] Si la fuente puede tener duplicados (ej. `role_assignments` con
+  múltiples roles por `club_id`), usar **composite key**:
+  `key={\`${item.id}-${item.role}\`}`.
+- [ ] No usar `key={index}` si la lista cambia (movimientos, filtros,
+  ordenamiento) — confunde el reconciler.
+
+**Casos comunes en MatchPoint donde id solo NO es único**:
+- `role_assignments + clubs` → user con role owner+user en el mismo club
+  produce 2 rows con mismo `club_id`. Composite: `${club_id}-${role}`.
+- `matches` con misma `played_at` (dobles) → usar `match_id`, no fecha.
+- Listas derivadas de joins → desconfiar si la join cardinalidad puede ser N:M.
+
+**Síntoma típico** (browser console):
+```
+Encountered two children with the same key, `<uuid>`. Keys should be unique...
+```
+
+No es bug visual obvio (la página renderiza); pero React puede omitir o
+duplicar rows silenciosamente al re-render. Treatlo como bloqueante.
+
 #### 2.3 — Text overflow sin truncation
 
 ```bash

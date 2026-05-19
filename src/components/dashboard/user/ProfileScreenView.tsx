@@ -1,10 +1,12 @@
 // Client view de ProfileScreen — recibe data ya fetcheada del server.
 "use client";
-import { useState, type CSSProperties } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ImageUploader } from "@/components/ImageUploader";
 import { updateMyAvatar } from "@/server/actions/me";
+import { sendFriendRequest } from "@/server/actions/friends";
+import { startConversation } from "@/server/actions/messaging";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
@@ -60,6 +62,8 @@ export type ProfileData = {
   // Cap aplicado al match history. null = sin cap (Mi Perfil o viewer MP+).
   // Cuando hay cap, el view muestra hint "MP+ desbloquea historial completo".
   matchHistoryCap?: number | null;
+  // Insignias del catálogo con flag on/off según si el target las desbloqueó.
+  badges?: Array<{ kind: string; label: string; icon: string; description: string | null; on: boolean }>;
 };
 
 type Mode = "mine" | "public";
@@ -125,6 +129,7 @@ export function ProfileScreenView({
   data,
   viewerMode,
   viewerIsPremium = false,
+  initialFriendship = "none",
 }: {
   data: ProfileData;
   // Cuando se renderiza desde /dashboard/user/players/[username] (perfil ajeno),
@@ -134,6 +139,9 @@ export function ProfileScreenView({
   // True si el viewer es MP+ activo. Cuando viewerMode="public" y hay cap
   // en matchHistory, oculta el hint CTA (premium ya tiene historial completo).
   viewerIsPremium?: boolean;
+  // Estado inicial de amistad viewer↔target leído del server (evita flash
+  // optimista). Solo aplica cuando viewerMode === "public".
+  initialFriendship?: "none" | "pending" | "friends";
 }) {
   // Realtime: stats actualizan al confirmar match, role_assignments para clubes.
   useRealtimeRefresh(
@@ -159,8 +167,9 @@ export function ProfileScreenView({
   const [ratingMode, setRatingMode] = useState<"singles" | "doubles">(initialRatingMode);
   const activeRating = data.ratings[ratingMode];
   const [tab, setTab] = useState<Tab>("historial");
-  const [friend, setFriend] = useState<FriendState>("none");
+  const [friend, setFriend] = useState<FriendState>(initialFriendship);
   const [avatarOverlayOpen, setAvatarOverlayOpen] = useState(false);
+  const [actionPending, startActionTransition] = useTransition();
   const toast = useToast();
   const router = useRouter();
   const isMine = mode === "mine";
@@ -326,15 +335,28 @@ export function ProfileScreenView({
               </>
             ) : (
               <>
-                {friend === "none" && (
+                {friend === "none" && data.meUserId && (
                   <button
+                    type="button"
                     className="btn btn-outline"
+                    disabled={actionPending}
                     onClick={() => {
-                      setFriend("pending");
-                      toast({
-                        icon: "user-plus",
-                        title: `Solicitud enviada a ${data.name}`,
-                        sub: "Le avisaremos para que acepte",
+                      if (!data.meUserId) return;
+                      startActionTransition(async () => {
+                        const r = await sendFriendRequest({ toUserId: data.meUserId });
+                        if (!r.ok) {
+                          toast({ icon: "alert-triangle", title: r.error.message });
+                          return;
+                        }
+                        // El trigger DB auto-acepta si target es is_system —
+                        // en ese caso pasa directo a friends. Para targets
+                        // normales, queda en pending.
+                        setFriend("pending");
+                        toast({
+                          icon: "user-plus",
+                          title: `Solicitud enviada a ${data.name}`,
+                          sub: "Le avisaremos para que acepte",
+                        });
                       });
                     }}
                   >
@@ -344,22 +366,55 @@ export function ProfileScreenView({
                 )}
                 {friend === "pending" && (
                   <button
+                    type="button"
                     className="btn"
+                    disabled
                     style={{
                       background: "var(--muted)",
                       border: "1px solid var(--border)",
                       color: "var(--muted-fg)",
-                    }}
-                    onClick={() => {
-                      setFriend("none");
-                      toast({ icon: "x", title: "Solicitud cancelada" });
+                      cursor: "default",
                     }}
                   >
                     <Icon name="clock" size={12} />
                     Solicitud enviada
                   </button>
                 )}
-                <button className="btn btn-outline">
+                {friend === "friends" && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled
+                    style={{
+                      background: "rgba(16,185,129,0.12)",
+                      color: "var(--primary)",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      cursor: "default",
+                    }}
+                  >
+                    <Icon name="user-check" size={12} color="var(--primary)" />
+                    Amigos
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={actionPending || !data.meUserId}
+                  onClick={() => {
+                    if (!data.meUserId) return;
+                    startActionTransition(async () => {
+                      const r = await startConversation({
+                        kind: "dm",
+                        memberIds: [data.meUserId],
+                      });
+                      if (!r.ok) {
+                        toast({ icon: "alert-triangle", title: r.error.message });
+                        return;
+                      }
+                      router.push(`/dashboard/user/chat?conv=${r.data.id}`);
+                    });
+                  }}
+                >
                   <Icon name="message-square" size={12} />
                   Mensaje
                 </button>
@@ -486,7 +541,7 @@ export function ProfileScreenView({
                 )}
             </>
           )}
-          {tab === "insignias" && <BadgesGrid />}
+          {tab === "insignias" && <BadgesGrid badges={data.badges ?? []} />}
           {tab === "clubes" && <ClubsList clubs={data.clubs} />}
           {tab === "preferencias" && <PreferencesPanel />}
         </div>
@@ -1062,23 +1117,40 @@ function ModeFilterPills({
   );
 }
 
-const BADGES_FULL = [
-  { label: "1° match", icon: "flag", on: true, when: "Mar 2025" },
-  { label: "Racha 5", icon: "flame", on: true, when: "Abr 2025" },
-  { label: "Top 50", icon: "trophy", on: true, when: "Abr 2025" },
-  { label: "Doblete", icon: "award", on: false, hint: "Gana 2 torneos" },
-  { label: "Campeón", icon: "crown", on: false, hint: "Gana un torneo Open" },
-  { label: "10 wins", icon: "medal", on: true, when: "Abr 2025" },
-  { label: "Madrugón", icon: "sunrise", on: true, when: "Mar 2025" },
-  { label: "Maratón", icon: "zap", on: false, hint: "Juega 30 partidos en un mes" },
-];
-
-function BadgesGrid() {
+function BadgesGrid({
+  badges,
+}: {
+  badges: NonNullable<ProfileData["badges"]>;
+}) {
+  if (badges.length === 0) {
+    return (
+      <div
+        className="card"
+        style={{
+          padding: 40,
+          textAlign: "center",
+          color: "var(--muted-fg)",
+        }}
+      >
+        <Icon name="award" size={32} color="var(--muted-fg)" />
+        <div
+          className="font-heading"
+          style={{ fontSize: 18, fontWeight: 900, marginTop: 12, color: "#0a0a0a" }}
+        >
+          Sin insignias todavía<span className="dot">.</span>
+        </div>
+        <p style={{ fontSize: 13, marginTop: 8, maxWidth: 360, margin: "8px auto 0" }}>
+          Las insignias se desbloquean jugando partidos, ganando torneos y
+          haciendo amigos en la app.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {BADGES_FULL.map((b) => (
+      {badges.map((b) => (
         <div
-          key={b.label}
+          key={b.kind}
           className="card"
           style={{ padding: 18, textAlign: "center", opacity: b.on ? 1 : 0.55 }}
         >
@@ -1120,7 +1192,7 @@ function BadgesGrid() {
               textTransform: "uppercase",
             }}
           >
-            {b.on ? `Conseguida · ${b.when}` : b.hint}
+            {b.on ? "Conseguida" : b.description ?? "Por desbloquear"}
           </div>
         </div>
       ))}

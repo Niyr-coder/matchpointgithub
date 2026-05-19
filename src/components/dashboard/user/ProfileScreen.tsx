@@ -46,6 +46,7 @@ export async function loadProfileFor(
       losses: 0,
       ratings: { singles: null, doubles: null },
       matchHistory: [],
+      badges: [],
     };
   }
 
@@ -230,7 +231,45 @@ export async function loadProfileFor(
     ratings: { singles, doubles },
     matchHistory,
     matchHistoryCap: opts?.matchHistoryCap ?? null,
+    badges: await loadBadgesFor(supabase, userId),
   };
+}
+
+// Insignias del target: catálogo completo + flag on según si las desbloqueó.
+// Las que NO ha desbloqueado se muestran en gris con la descripción del
+// criterio (para que el viewer sepa qué falta).
+async function loadBadgesFor(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  userId: string,
+): Promise<ProfileData["badges"]> {
+  const [{ data: catalogRaw }, { data: unlocksRaw }] = await Promise.all([
+    supabase
+      .from("badges")
+      .select("kind,label,icon,description,sort_order")
+      .eq("active", true)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("player_badges")
+      .select("badge_kind")
+      .eq("user_id", userId),
+  ]);
+  const catalog = (catalogRaw ?? []) as Array<{
+    kind: string;
+    label: string;
+    icon: string;
+    description: string | null;
+  }>;
+  const unlocked = new Set(
+    ((unlocksRaw ?? []) as Array<{ badge_kind: string }>).map((r) => r.badge_kind),
+  );
+  return catalog.map((b) => ({
+    kind: b.kind,
+    label: b.label,
+    icon: b.icon,
+    description: b.description,
+    on: unlocked.has(b.kind),
+  }));
 }
 
 export async function ProfileScreen() {

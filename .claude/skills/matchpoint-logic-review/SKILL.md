@@ -339,6 +339,8 @@ Si user dice sí, aplicar uno por uno. Si no, dejar reporte.
 | `as never` proliferando en queries | Database types stale, regenerar |
 | Migration aplicada vía MCP sin archivo local committed | Drift entre dev y prod |
 | Ruta movida bajo path static (ej. `dashboard/user/x/`) cuando había layout dinámico `[role]/layout.tsx` esperado | Page renderiza sin el chrome (sidebar/topbar/guard) porque static path salta el layout dinámico. Usar `[role]/x/` para heredar. |
+| `key={x.id}` en `.map()` cuando la query puede devolver duplicados (`role_assignments` join con `clubs`, `friendships` mal joinedas, etc) | React warning "two children with same key" + skip/duplicate silencioso. Usar composite key (`${id}-${role}`) o dedup en server. |
+| Componente con state local + toast que "fakea" una acción (ej. setFriend('pending') + toast pero sin llamar `sendFriendRequest`) | Mentira a usuarios: la solicitud no se envía pero el UI dice que sí. Detectable buscando `setX(...)` + `toast({...title: 'enviada'...})` sin llamada server. |
 | Trigger usa `coalesce(plan_tier, 'free')` pero código TS espera siempre un valor explícito | Default desincronizado |
 | Botón visible sin `onClick` (o con `onClick={() => {}}`) | Wire faltante |
 | `useState` o prop declarada pero nunca leída en el body | Code muerto |
