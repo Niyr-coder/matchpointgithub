@@ -109,22 +109,28 @@ function OfficialAccountView({
             flexWrap: "wrap",
           }}
         >
+          {/* Símbolo oficial del logo: dot verde sobre fondo negro
+              (misma marca que Nav.tsx / DashboardSidebar.tsx). */}
           <div
             style={{
               width: 88,
               height: 88,
               borderRadius: "50%",
-              background: "linear-gradient(135deg,#10b981,#047857)",
+              background: "#0a0a0a",
+              border: "3px solid rgba(255,255,255,0.12)",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
-              fontFamily: "Plus Jakarta Sans",
-              fontWeight: 900,
-              fontSize: 36,
             }}
           >
-            M
+            <span
+              className="dot"
+              style={{ fontSize: 42, lineHeight: 1 }}
+              aria-label="Logo MatchPoint"
+            >
+              ●
+            </span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div

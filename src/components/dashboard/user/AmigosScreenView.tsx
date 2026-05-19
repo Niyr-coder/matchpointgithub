@@ -512,9 +512,10 @@ function MpPlusBadge() {
 }
 
 // ── OfficialFriendCard: variante para MATCHPOINT ────────────────────────
-// Banner+logo MP, descripción corta, sin acciones Mensaje/Retar (no se
-// puede mensajear ni retar al perfil oficial). Nombre clickable a su
-// página oficial (/dashboard/players/[username]).
+// Banner con el wordmark oficial "● MATCHPOINT" (mismo lockup que Nav y
+// Sidebar). Avatar circular con el símbolo "●" (la marca del logo) sobre
+// fondo negro. Descripción corta. Sin acciones Mensaje/Retar (no se puede
+// mensajear ni retar al perfil oficial). Card clickable al perfil oficial.
 function OfficialFriendCard({ f }: { f: FriendLite }) {
   const href = f.username ? `/dashboard/players/${f.username}` : null;
   const inner = (
@@ -523,9 +524,11 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
         style={{
           position: "relative",
           height: 76,
-          background:
-            "linear-gradient(135deg, #064e3b 0%, #10b981 60%, #047857 100%)",
+          background: "#0a0a0a",
           overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <div
@@ -533,22 +536,36 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(ellipse at 80% 20%, rgba(255,255,255,0.22), transparent 55%)",
+              "radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.32), transparent 55%), radial-gradient(ellipse at 15% 85%, rgba(16,185,129,0.18), transparent 60%)",
+            pointerEvents: "none",
           }}
         />
+        {/* Wordmark oficial: misma lockup que Nav.tsx / DashboardSidebar.tsx */}
         <div
           style={{
-            position: "absolute",
-            top: 10,
-            right: 12,
-            fontSize: 8.5,
-            fontWeight: 900,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.85)",
+            position: "relative",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            color: "#fff",
           }}
         >
-          ● OFICIAL
+          <span
+            className="dot"
+            style={{ fontSize: 22, lineHeight: 1 }}
+          >
+            ●
+          </span>
+          <span
+            className="font-heading"
+            style={{
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
+              fontSize: 16,
+            }}
+          >
+            MATCHPOINT
+          </span>
         </div>
       </div>
       <div style={{ padding: "0 16px 16px", position: "relative" }}>
@@ -566,18 +583,19 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
               width: 64,
               height: 64,
               borderRadius: "50%",
-              background: "linear-gradient(135deg,#10b981,#047857)",
+              background: "#0a0a0a",
               border: "4px solid #fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
-              fontFamily: "Plus Jakarta Sans",
-              fontWeight: 900,
-              fontSize: 22,
             }}
           >
-            M
+            <span
+              className="dot"
+              style={{ fontSize: 28, lineHeight: 1 }}
+            >
+              ●
+            </span>
           </div>
         </div>
         <div

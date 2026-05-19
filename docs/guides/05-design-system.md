@@ -248,3 +248,43 @@ Ver `audit de gráficos` en logs previos. Resumen:
 3. **MPR ≠ DUPR**. Si ves DUPR en algún copy: bug. Renombrar.
 4. **Animaciones consistentes**: si dudas, usar `--ease-out` 200ms.
 5. **No uses emojis decorativos** salvo que el user pida explícitamente.
+
+## 10. Logo oficial · "● MATCHPOINT"
+
+El logo oficial son **dos elementos** que aparecen juntos:
+
+```tsx
+<span className="dot">●</span>
+<span className="font-heading" style={{ fontWeight: 900, letterSpacing: "-0.02em" }}>
+  MATCHPOINT
+</span>
+```
+
+- **`●` con `className="dot"`** → color `var(--primary)` (#10b981).
+- **wordmark `MATCHPOINT`** → font-heading (Plus Jakarta Sans), weight 900,
+  letterSpacing `-0.02em`, mayúsculas.
+
+Lugares canónicos donde vive el logo (referencia visual):
+
+| Lugar | Tamaño dot | Tamaño wordmark | Contexto |
+|---|---|---|---|
+| `landing/Nav.tsx` | 22px | 20px | nav landing |
+| `landing/Footer.tsx` | 22px | 22px | footer landing |
+| `dashboard/DashboardSidebar.tsx` | 20px | 18px | sidebar dashboard |
+| `dashboard/TopBar.tsx` (mobile) | 16px | 15px | topbar mobile compact |
+
+**Como avatar/símbolo standalone** (cuando solo cabe el símbolo, no el
+wordmark — ej. avatar circular del bot oficial en `/amigos` o `/chat`):
+
+```tsx
+<div style={{ background: "#0a0a0a", borderRadius: "50%", width: 64, height: 64,
+              display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <span className="dot" style={{ fontSize: 28, lineHeight: 1 }}>●</span>
+</div>
+```
+
+Fondo negro `#0a0a0a` + dot verde grande. **No usar "M"** ni inicial — eso
+es para usuarios normales con `initials(name)`.
+
+**Anti-patrón**: avatares del bot MATCHPOINT con `<span>M</span>` o
+iniciales sobre gradiente verde. El dot verde es la marca, no la "M".

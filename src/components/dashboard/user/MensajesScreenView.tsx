@@ -258,7 +258,7 @@ export function MensajesScreenView({
                       height: 40,
                       borderRadius: "50%",
                       background: c.isOfficial
-                        ? "linear-gradient(135deg,#10b981,#047857)"
+                        ? "#0a0a0a"
                         : c.isGroup
                         ? "linear-gradient(135deg,#3730a3,#6366f1)"
                         : c.isSystem
@@ -271,7 +271,8 @@ export function MensajesScreenView({
                     }}
                   >
                     {c.isOfficial ? (
-                      <span className="font-heading" style={{ fontSize: 14, fontWeight: 900 }}>M</span>
+                      // Símbolo oficial del logo MatchPoint: dot verde sobre negro.
+                      <span className="dot" style={{ fontSize: 18, lineHeight: 1 }}>●</span>
                     ) : c.isGroup ? (
                       <Icon name="users" size={16} color="#fff" />
                     ) : c.isSystem ? (
@@ -407,10 +408,10 @@ export function MensajesScreenView({
                     width: 38,
                     height: 38,
                     borderRadius: "50%",
-                    background: activeConv.isGroup
-                      ? "linear-gradient(135deg,#3730a3,#6366f1)"
-                      : activeConv.isSystem
+                    background: activeConv.isOfficial || activeConv.isSystem
                       ? "#0a0a0a"
+                      : activeConv.isGroup
+                      ? "linear-gradient(135deg,#3730a3,#6366f1)"
                       : "linear-gradient(135deg,#10b981,#047857)",
                     display: "flex",
                     alignItems: "center",
@@ -418,7 +419,9 @@ export function MensajesScreenView({
                     color: "#fff",
                   }}
                 >
-                  {activeConv.isGroup ? (
+                  {activeConv.isOfficial ? (
+                    <span className="dot" style={{ fontSize: 18, lineHeight: 1 }}>●</span>
+                  ) : activeConv.isGroup ? (
                     <Icon name="users" size={14} color="#fff" />
                   ) : activeConv.isSystem ? (
                     <Icon name="building-2" size={14} color="#fff" />
