@@ -29,6 +29,7 @@ async function loadData(): Promise<UserHomeData> {
       historiesByMode: { singles: [], doubles: [] },
       planTier: "free",
       planExpiresAt: null,
+      badges: [],
     };
   }
 
@@ -162,6 +163,34 @@ async function loadData(): Promise<UserHomeData> {
 
   const { tier: effectiveTier } = isPlanActive(profile);
 
+  // Badges: catálogo (top 5 por sort_order) + unlocks del user.
+  // Los casteamos a unknown[] porque los Database types están stale
+  // (badges/player_badges agregadas en mig 108).
+  const [{ data: badgeCatalogRaw }, { data: myUnlocksRaw }] = await Promise.all([
+    supabase
+      .from("badges" as never)
+      .select("kind,label,icon,sort_order" as never)
+      .eq("active" as never, true as never)
+      .order("sort_order" as never, { ascending: true })
+      .limit(5),
+    supabase
+      .from("player_badges" as never)
+      .select("badge_kind" as never)
+      .eq("user_id" as never, userId as never),
+  ]);
+  const catalog = (badgeCatalogRaw ?? []) as unknown as Array<{
+    kind: string; label: string; icon: string; sort_order: number;
+  }>;
+  const unlockedKinds = new Set(
+    ((myUnlocksRaw ?? []) as unknown as Array<{ badge_kind: string }>).map((r) => r.badge_kind),
+  );
+  const badges = catalog.map((b) => ({
+    kind: b.kind,
+    label: b.label,
+    icon: b.icon,
+    on: unlockedKinds.has(b.kind),
+  }));
+
   return {
     meUserId: userId,
     name: profile.displayName ?? "Jugador",
@@ -176,6 +205,7 @@ async function loadData(): Promise<UserHomeData> {
     historiesByMode,
     planTier: effectiveTier,
     planExpiresAt: profile.planExpiresAt,
+    badges,
   };
 }
 

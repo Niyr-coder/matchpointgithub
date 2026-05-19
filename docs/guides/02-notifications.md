@@ -169,7 +169,47 @@ Si necesitas email para alguna notif crítica (ej. `tournament_cancelled`):
 2. Implementar branch en `dispatchEmailFor(kind, payload)` (no existe hoy).
 3. Encolar también `channel='email'` en notification_jobs aparte del inapp.
 
-## 8. TODOs
+## 8. System messages (DMs del perfil oficial "MatchPoint")
+
+Distinto del catálogo de notifs: estos son **mensajes reales** en la tabla
+`messages`, enviados desde el perfil `is_system=true` que vive en
+`profiles`. Aparecen en `/dashboard/user/chat` con badge verified y pin
+top en la lista de conversaciones.
+
+**Cuándo se disparan** (4 momentos hoy):
+- `welcome_signup` — al `signUp` server action.
+- `welcome_team_created` — al `createTeam`.
+- `welcome_onboarding_completed` — al `saveOnboardingStep(step='finish')`.
+- `welcome_premium_activated` — al `approvePlanSubscriptionAdmin`.
+
+**Cómo funciona**:
+- RPC `fn_send_system_message(recipient_user_id, body, payload)` (mig 105).
+- Helper TS `sendSystemMessage()` en `src/lib/messages/system.ts`.
+- Templates hardcoded en `WELCOME_TEMPLATES` (placeholder pendiente — ver
+  `04-placeholders.md`).
+- Killswitch `platform_config.system_messages_enabled` (default `true`).
+
+**Diferencia con notification_kinds**:
+- Notification = entry en tabla `notifications` + bell badge en TopBar.
+- System message = entry en tabla `messages` + aparece en /chat como DM.
+- El insertarse un message del system user, el realtime de TopBar bell
+  NO se dispara (el bell escucha `notifications`, no `messages`). El
+  unread del chat sí se incrementa vía el RPC `fn_unread_messages_count`
+  (mig 100).
+
+**Para agregar un kind nuevo** (ej. `welcome_first_reservation`):
+1. Agregar el kind a `SystemMessageKind` en `src/lib/messages/system.ts`.
+2. Agregar template a `WELCOME_TEMPLATES`.
+3. Llamar `sendSystemMessage({ kind, ... })` desde la server action
+   relevante.
+4. (NO toca `notification_kinds` — system messages no pasan por ahí).
+
+**Cuándo usar system message vs notification**:
+- System message: comunicación rica, conversacional, mantiene historial,
+  permite respuesta futura del user (cuando habilitemos respuestas).
+- Notification: alerta puntual, ephemeral, badge en bell, click → URL.
+
+## 9. TODOs
 
 - [ ] Notif `tournament_published` (al pasar de draft → registration_open)
 - [ ] Notif `tournament_finished`

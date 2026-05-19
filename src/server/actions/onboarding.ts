@@ -131,6 +131,27 @@ export async function saveOnboardingStep(
       // de unstable_cache atado al tag (ver dashboard/layout.tsx) con semántica
       // read-your-own-writes para el próximo render del dashboard.
       updateTag(`onboarding:${userId}`);
+
+      // Welcome DM post-onboarding. Fire-and-forget.
+      try {
+        const [{ getProfileSummary }, { sendSystemMessage, renderTemplate }] = await Promise.all([
+          import("@/lib/auth/profile"),
+          import("@/lib/messages/system"),
+        ]);
+        const profile = await getProfileSummary(userId);
+        const firstName = (profile.displayName ?? "jugador").split(" ")[0];
+        await sendSystemMessage({
+          recipientUserId: userId,
+          kind: "welcome_onboarding_completed",
+          body: renderTemplate("welcome_onboarding_completed", {
+            firstName,
+            city: profile.city ?? "tu ciudad",
+          }),
+        });
+      } catch (e) {
+        console.error("[onboarding.finish] welcome message failed", e);
+      }
+
       return { ok: true as const };
     }
 

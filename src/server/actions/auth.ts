@@ -79,6 +79,20 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     c.set(ACTIVE_ROLE_COOKIE, "user", COOKIE_OPTS);
     c.delete(ACTIVE_CLUB_COOKIE);
 
+    // Welcome DM del perfil MatchPoint. Fire-and-forget; si falla NO rompe
+    // el signup. El killswitch system_messages_enabled lo apaga global.
+    try {
+      const { sendSystemMessage, renderTemplate } = await import("@/lib/messages/system");
+      const firstName = data.displayName.split(" ")[0] || "jugador";
+      await sendSystemMessage({
+        recipientUserId: signUpData.user.id,
+        kind: "welcome_signup",
+        body: renderTemplate("welcome_signup", { firstName }),
+      });
+    } catch (e) {
+      console.error("[auth.signUp] welcome message failed", e);
+    }
+
     return await buildSession();
   });
 }

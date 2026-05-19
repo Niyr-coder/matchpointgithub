@@ -200,3 +200,123 @@ export async function removeFriend(input: unknown): Promise<ActionResult<{ ok: t
     return { ok: true as const };
   });
 }
+
+// ── searchPlayers ──────────────────────────────────────────────────────
+// Búsqueda global de jugadores por display_name. Excluye:
+//   - el propio user
+//   - perfiles is_system (MatchPoint oficial)
+//   - friendships ya activas
+//   - friend_requests pendientes bidireccional (no spam de invites)
+//
+// Devuelve preview liviano con la relationship status para que el UI
+// sepa qué CTA mostrar: "Enviar solicitud" / "Solicitud enviada" /
+// "Acepta tu solicitud" / "Ya son amigos".
+const SearchPlayersSchema = z.object({
+  q: z.string().min(2).max(64),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+export type PlayerSearchResult = {
+  userId: string;
+  displayName: string;
+  username: string | null;
+  city: string | null;
+  avatarUrl: string | null;
+  // Relación con el viewer:
+  //   none           — nada, puede enviar request
+  //   request_sent   — viewer ya envió request pendiente
+  //   request_received — viewer recibió request del other (puede aceptar)
+  //   friends        — ya son amigos
+  relationship: "none" | "request_sent" | "request_received" | "friends";
+};
+
+export async function searchPlayers(
+  input: unknown,
+): Promise<ActionResult<PlayerSearchResult[]>> {
+  return runAction(SearchPlayersSchema, input, async ({ q, limit }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+
+    // 1) Profiles que matchean el query, excluyendo self + system.
+    const { data: rows, error } = await supabase
+      .from("profiles")
+      .select("id,display_name,username,city,avatar_url" as never)
+      .ilike("display_name", `%${q}%`)
+      .neq("id", userId)
+      .limit(limit);
+    if (error) throw new MpError("FRIENDS.SEARCH_FAILED", error.message, 500);
+
+    type ProfileRow = {
+      id: string;
+      display_name: string | null;
+      username: string | null;
+      city: string | null;
+      avatar_url: string | null;
+      is_system?: boolean;
+    };
+    const profiles = (rows ?? []) as unknown as ProfileRow[];
+    // Filtramos is_system en memoria (la query no lo trae para evitar cast hell;
+    // hacemos 1 query lateral filtrando ids):
+    const candidateIds = profiles.map((p) => p.id);
+    if (candidateIds.length === 0) return [];
+
+    const { data: sysRows } = await supabase
+      .from("profiles")
+      .select("id,is_system" as never)
+      .in("id", candidateIds);
+    const systemIds = new Set(
+      ((sysRows ?? []) as unknown as Array<{ id: string; is_system: boolean | null }>)
+        .filter((r) => r.is_system === true)
+        .map((r) => r.id),
+    );
+    const visible = profiles.filter((p) => !systemIds.has(p.id));
+    if (visible.length === 0) return [];
+
+    const visibleIds = visible.map((p) => p.id);
+
+    // 2) Friendships del user con los candidates.
+    const { data: friendshipsRaw } = await supabase
+      .from("friendships")
+      .select("user_a,user_b")
+      .or(
+        `and(user_a.eq.${userId},user_b.in.(${visibleIds.join(",")})),` +
+        `and(user_b.eq.${userId},user_a.in.(${visibleIds.join(",")}))`,
+      );
+    const friendIds = new Set(
+      ((friendshipsRaw ?? []) as Array<{ user_a: string; user_b: string }>).map((f) =>
+        f.user_a === userId ? f.user_b : f.user_a,
+      ),
+    );
+
+    // 3) Requests pendientes en ambas direcciones.
+    const { data: reqsRaw } = await supabase
+      .from("friend_requests")
+      .select("from_user_id,to_user_id,status")
+      .eq("status", "pending")
+      .or(
+        `and(from_user_id.eq.${userId},to_user_id.in.(${visibleIds.join(",")})),` +
+        `and(to_user_id.eq.${userId},from_user_id.in.(${visibleIds.join(",")}))`,
+      );
+    const sentTo = new Set<string>();
+    const receivedFrom = new Set<string>();
+    for (const r of (reqsRaw ?? []) as Array<{ from_user_id: string; to_user_id: string }>) {
+      if (r.from_user_id === userId) sentTo.add(r.to_user_id);
+      else receivedFrom.add(r.from_user_id);
+    }
+
+    return visible.map<PlayerSearchResult>((p) => {
+      let relationship: PlayerSearchResult["relationship"] = "none";
+      if (friendIds.has(p.id)) relationship = "friends";
+      else if (sentTo.has(p.id)) relationship = "request_sent";
+      else if (receivedFrom.has(p.id)) relationship = "request_received";
+      return {
+        userId: p.id,
+        displayName: p.display_name ?? "Jugador",
+        username: p.username,
+        city: p.city,
+        avatarUrl: p.avatar_url,
+        relationship,
+      };
+    });
+  });
+}

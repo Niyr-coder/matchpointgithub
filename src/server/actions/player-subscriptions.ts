@@ -209,6 +209,32 @@ export async function approvePlanSubscriptionAdmin(
       throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
     }
 
+    // Welcome DM de premium activado. Fire-and-forget.
+    try {
+      const [{ getProfileSummary }, { sendSystemMessage, renderTemplate }] = await Promise.all([
+        import("@/lib/auth/profile"),
+        import("@/lib/messages/system"),
+      ]);
+      const profile = await getProfileSummary(sub.user_id as string);
+      const firstName = (profile.displayName ?? "jugador").split(" ")[0];
+      const expiresLabel = newExpiry.toLocaleDateString("es-EC", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      await sendSystemMessage({
+        recipientUserId: sub.user_id as string,
+        kind: "welcome_premium_activated",
+        body: renderTemplate("welcome_premium_activated", {
+          firstName,
+          expiresAt: expiresLabel,
+        }),
+        payload: { subscriptionId, expiresAt: newExpiry.toISOString() },
+      });
+    } catch (e) {
+      console.error("[approvePlanSubscriptionAdmin] welcome message failed", e);
+    }
+
     return {
       subscriptionId,
       newTier: sub.tier as string,

@@ -2037,6 +2037,78 @@ Si agregas una tabla nueva que el cliente quiera escuchar, sumarla con:
 alter publication supabase_realtime add table public.<tabla>;
 ```
 
+### 29.11 · RPCs de performance (migs 100, 101)
+
+Dos funciones SQL añadidas para eliminar N+1 y queries que traían el set completo solo para contar.
+
+**`fn_unread_messages_count()`** (mig 100) — devuelve unread por conversación para `auth.uid()`.
+
+```sql
+returns table (conversation_id uuid, unread_count int)
+language sql stable security invoker
+```
+
+Reemplaza el N+1 que vivía en:
+- `[role]/layout.tsx` (badge `chat` del rol user) — antes: 3 queries secuenciales con traída completa de message ids.
+- `src/components/dashboard/user/MensajesScreen.tsx` — antes: `Promise.all(convIds.map → count(*))`.
+
+Llamado con `supabase.rpc("fn_unread_messages_count")`. RLS aplica vía `security invoker`.
+
+**`fn_unique_organizers_count(p_club_id uuid)`** (mig 101) — count(distinct organizer_id) de reservations de un club.
+
+```sql
+returns int
+language sql stable security invoker
+```
+
+Reemplaza el patrón `select organizer_id, count: exact, head: false` en `[role]/layout.tsx` para owner/manager que traía TODAS las filas históricas del club solo para hacer distinct en memoria.
+
+### 29.12 · Teams caps por plan (mig 102)
+
+Primer feature con gating real detrás de MP+. Ver `docs/product/00-matchpoint-plus.md §7.1`.
+
+**Cambios**:
+- `teams.rename_count int not null default 0` — contador de renames del nombre. Free cap: 2, MP+ cap: 5.
+- `platform_config` key `team_caps` con JSON `{ free: {...}, premium: {...} }` con los 3 caps (roster, pendingInvites, renames). `pendingInvitesMax: null` significa ilimitado.
+- `fn_get_team_caps()` SECURITY DEFINER → cualquier authenticated puede leer el JSON sin pegar a la tabla directa (RLS de `platform_config` solo permite admin).
+
+**Llamado desde**: `src/lib/teams/caps.ts` (`getTeamCaps(captainProfile)`), reusado en 7 server actions de `teams.ts` (`createTeam`, `inviteToTeam`, `joinTeamByCode`, `acceptTeamInvite`, `respondToJoinRequest`, `updateTeam`, `transferCaptain`).
+
+### 29.13 · Sistema de mensajes (migs 104-106)
+
+Perfil oficial "MatchPoint" + team chats sincronizados + welcome DMs.
+
+**Cambios de schema (mig 104)**:
+- `profiles.is_system bool not null default false` — flag para el perfil oficial. RLS RESTRICTIVE bloquea edit/delete via JWT (service role bypassa).
+- `conversations.kind` extiende check constraint con `'team_channel'`.
+- `conversations.team_id uuid references teams(id) on delete cascade` — solo populado para `kind=team_channel`. Index `idx_conversations_team`.
+- Seed del system user en `auth.users` + `profiles`, UUID guardado en `platform_config.system_user_id`.
+- `platform_config.system_messages_enabled` (default `true`) — killswitch global.
+
+**Exclusiones de rating/leaderboard (mig 107)**:
+- `profiles.display_name` del system user = `'MATCHPOINT'` (uppercase, marca).
+- Trigger `tg_seed_player_stats` skipea `is_system` → no se generan rows de rating.
+- RLS RESTRICTIVE en `player_stats` y `ranking_snapshots` bloquea inserts cuando `is_system = true` → defensa contra otros paths.
+- Rows previas borradas (6 player_stats que se habían auto-seedeado antes del fix).
+- Resultado: el perfil oficial **no aparece** en `/ranking`, podium, top-N, ni feeds derivados.
+
+**Funciones nuevas**:
+- `fn_get_system_user_id()` SECURITY DEFINER → cualquier authenticated lee el UUID (sirve para badge verified en MensajesScreen).
+- `fn_send_system_message(p_recipient_user_id, p_body, p_payload)` (mig 105) SECURITY DEFINER → encuentra/crea DM entre system user y recipient, inserta message con `kind='system'`. Bypassa `messages_member_insert` RLS que requiere `sender_id = auth.uid()`. Respeta killswitch.
+
+**Triggers (mig 106)**:
+- `tg_team_channel_create` AFTER insert teams → crea conversation `team_channel` + agrega captain como admin.
+- `tg_team_member_join_channel` AFTER insert team_members → agrega user a conversation_members (reactiva si había left_at).
+- `tg_team_member_leave_channel` AFTER delete team_members → marca `left_at` en conversation_members (preserva historial).
+- Disband team → cascade FK borra conversation.
+
+**Llamadores TS**:
+- `src/lib/messages/system.ts` — `sendSystemMessage()` helper + `WELCOME_TEMPLATES` hardcoded (placeholder hasta mover a platform_config).
+- `signUp` → `welcome_signup` DM.
+- `createTeam` → `welcome_team_created` DM (además del team_channel auto del trigger).
+- `saveOnboardingStep` (step='finish') → `welcome_onboarding_completed`.
+- `approvePlanSubscriptionAdmin` → `welcome_premium_activated`.
+
 ---
 
 ## Próximo: `30-rls.md`

@@ -1,8 +1,15 @@
 // Client view de AmigosScreen — recibe friends/requests/suggestions ya fetcheados.
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "../ToastProvider";
+import {
+  acceptFriendRequest,
+  searchPlayers,
+  sendFriendRequest,
+  type PlayerSearchResult,
+} from "@/server/actions/friends";
 
 export type FriendLite = {
   id: string;
@@ -16,7 +23,7 @@ export type RequestLite = FriendLite & {
   fromUserId: string;
 };
 
-type TabKey = "amigos" | "requests" | "sugerencias";
+type TabKey = "amigos" | "requests" | "sugerencias" | "descubrir";
 
 const REQ_AVATARS = [
   "linear-gradient(135deg,#7c3aed,#db2777)",
@@ -57,10 +64,11 @@ export function AmigosScreenView({
     { enabled: !!meUserId },
   );
 
-  const tabs: { k: TabKey; l: string; n: number }[] = [
+  const tabs: { k: TabKey; l: string; n: number | null }[] = [
     { k: "amigos", l: "Mis amigos", n: friends.length },
     { k: "requests", l: "Solicitudes", n: requests.length },
     { k: "sugerencias", l: "Sugerencias", n: suggestions.length },
+    { k: "descubrir", l: "Descubrir", n: null },
   ];
 
   const visibleList = useMemo(() => {
@@ -145,24 +153,28 @@ export function AmigosScreenView({
             }}
           >
             {t.l}
-            <span
-              style={{
-                fontSize: 9.5,
-                fontWeight: 900,
-                padding: "1px 6px",
-                borderRadius: 9999,
-                background: tab === t.k ? "#0a0a0a" : "transparent",
-                color: tab === t.k ? "#fff" : "var(--muted-fg)",
-                border: tab === t.k ? 0 : "1px solid var(--border)",
-              }}
-            >
-              {t.n}
-            </span>
+            {t.n !== null && (
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  padding: "1px 6px",
+                  borderRadius: 9999,
+                  background: tab === t.k ? "#0a0a0a" : "transparent",
+                  color: tab === t.k ? "#fff" : "var(--muted-fg)",
+                  border: tab === t.k ? 0 : "1px solid var(--border)",
+                }}
+              >
+                {t.n}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {tab === "requests" ? (
+      {tab === "descubrir" ? (
+        <DiscoverPanel />
+      ) : tab === "requests" ? (
         requests.length === 0 ? (
           <EmptyState
             icon="user-plus"
@@ -418,6 +430,218 @@ function FriendCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Descubrir: search global de jugadores en toda la app ────────────────
+// Llama searchPlayers (debounced 350ms desde 2 chars). Por cada resultado
+// muestra preview + botón cambiante según relationship.
+function DiscoverPanel() {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<PlayerSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+
+  // Debounce 350ms — evita spam de queries al server.
+  useEffect(() => {
+    if (q.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    const handle = setTimeout(() => {
+      searchPlayers({ q: q.trim(), limit: 30 })
+        .then((res) => {
+          if (res.ok) setResults(res.data);
+          else toast({ icon: "alert-triangle", title: res.error.message });
+        })
+        .finally(() => setLoading(false));
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [q, toast]);
+
+  const onSendRequest = (target: PlayerSearchResult) => {
+    if (pending) return;
+    startTransition(async () => {
+      const r = await sendFriendRequest({ userId: target.userId });
+      if (!r.ok) {
+        toast({ icon: "alert-triangle", title: r.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: `Solicitud enviada a ${target.displayName}` });
+      setResults((prev) =>
+        prev.map((p) =>
+          p.userId === target.userId ? { ...p, relationship: "request_sent" } : p,
+        ),
+      );
+    });
+  };
+
+  const onAccept = (target: PlayerSearchResult) => {
+    if (pending) return;
+    startTransition(async () => {
+      // Necesitamos el requestId. Por ahora el shape de searchPlayers no lo
+      // devuelve; lo dejamos como TODO honesto: abrir la tab "Solicitudes"
+      // para aceptar desde ahí. Mejora futura: incluir requestId en el shape.
+      toast({
+        icon: "info",
+        title: `${target.displayName} ya te envió solicitud`,
+        sub: "Acéptala desde la pestaña Solicitudes.",
+      });
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="card" style={{ padding: 16 }}>
+        <div className="label-mp" style={{ marginBottom: 8 }}>
+          Buscar en toda la app
+        </div>
+        <div style={{ position: "relative" }}>
+          <span style={{ position: "absolute", left: 12, top: 11, color: "var(--muted-fg)" }}>
+            <Icon name="search" size={14} />
+          </span>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Nombre del jugador…"
+            autoFocus
+            style={{
+              width: "100%",
+              padding: "10px 14px 10px 36px",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              fontSize: 13,
+              outline: "none",
+              fontFamily: "inherit",
+            }}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 8 }}>
+          {q.length < 2
+            ? "Empieza a escribir para buscar (mínimo 2 letras)."
+            : loading
+              ? "Buscando…"
+              : `${results.length} resultado${results.length === 1 ? "" : "s"}`}
+        </div>
+      </div>
+
+      {results.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {results.map((p, i) => (
+            <DiscoverCard
+              key={p.userId}
+              player={p}
+              avatarBg={REQ_AVATARS[i % REQ_AVATARS.length]}
+              busy={pending}
+              onSendRequest={() => onSendRequest(p)}
+              onAccept={() => onAccept(p)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiscoverCard({
+  player,
+  avatarBg,
+  busy,
+  onSendRequest,
+  onAccept,
+}: {
+  player: PlayerSearchResult;
+  avatarBg: string;
+  busy: boolean;
+  onSendRequest: () => void;
+  onAccept: () => void;
+}) {
+  let ctaLabel = "Enviar solicitud";
+  let ctaDisabled = false;
+  let ctaIcon: string = "user-plus";
+  let onClick: () => void = onSendRequest;
+  let dim = false;
+
+  if (player.relationship === "request_sent") {
+    ctaLabel = "Solicitud enviada";
+    ctaDisabled = true;
+    ctaIcon = "clock";
+    dim = true;
+  } else if (player.relationship === "request_received") {
+    ctaLabel = "Aceptar";
+    ctaIcon = "check";
+    onClick = onAccept;
+  } else if (player.relationship === "friends") {
+    ctaLabel = "Ya son amigos";
+    ctaDisabled = true;
+    ctaIcon = "users";
+    dim = true;
+  }
+
+  return (
+    <div
+      className="card"
+      style={{ padding: 14, display: "flex", alignItems: "center", gap: 12 }}
+    >
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: avatarBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          flexShrink: 0,
+        }}
+      >
+        <span className="font-heading" style={{ fontSize: 13, fontWeight: 900 }}>
+          {initials(player.displayName)}
+        </span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 800,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {player.displayName}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+          {player.username ? `@${player.username}` : "Sin alias"}
+          {player.city ? ` · ${player.city}` : ""}
+        </div>
+      </div>
+      <button
+        className="btn"
+        onClick={onClick}
+        disabled={ctaDisabled || busy}
+        style={{
+          background: dim ? "var(--muted)" : "#0a0a0a",
+          color: dim ? "var(--muted-fg)" : "#fff",
+          fontSize: 10.5,
+          padding: "8px 12px",
+          cursor: ctaDisabled || busy ? "default" : "pointer",
+          opacity: busy ? 0.5 : 1,
+        }}
+      >
+        <Icon name={ctaIcon} size={11} color={dim ? "var(--muted-fg)" : "#fff"} />
+        {ctaLabel}
+      </button>
     </div>
   );
 }

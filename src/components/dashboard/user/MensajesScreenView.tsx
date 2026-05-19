@@ -11,9 +11,12 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 export type ConvoLite = {
   id: string;
   name: string;
-  kind: "dm" | "group" | "support" | "club_channel";
+  kind: "dm" | "group" | "support" | "club_channel" | "team_channel";
   isGroup: boolean;
   isSystem: boolean;
+  // True cuando el "otro" del DM es el perfil oficial MatchPoint (is_system).
+  // Habilita badge verified + pin top.
+  isOfficial: boolean;
   memberCount: number;
   lastBody: string | null;
   lastSenderId: string | null;
@@ -134,12 +137,10 @@ export function MensajesScreenView({
 
   return (
     <div
-      className="card"
+      className="card grid grid-cols-1 md:grid-cols-[300px_1fr]"
       style={{
         padding: 0,
         overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "300px 1fr",
         minHeight: 640,
       }}
     >
@@ -256,7 +257,9 @@ export function MensajesScreenView({
                       width: 40,
                       height: 40,
                       borderRadius: "50%",
-                      background: c.isGroup
+                      background: c.isOfficial
+                        ? "linear-gradient(135deg,#10b981,#047857)"
+                        : c.isGroup
                         ? "linear-gradient(135deg,#3730a3,#6366f1)"
                         : c.isSystem
                         ? "#0a0a0a"
@@ -267,7 +270,9 @@ export function MensajesScreenView({
                       color: "#fff",
                     }}
                   >
-                    {c.isGroup ? (
+                    {c.isOfficial ? (
+                      <span className="font-heading" style={{ fontSize: 14, fontWeight: 900 }}>M</span>
+                    ) : c.isGroup ? (
                       <Icon name="users" size={16} color="#fff" />
                     ) : c.isSystem ? (
                       <Icon name="building-2" size={16} color="#fff" />
@@ -294,9 +299,31 @@ export function MensajesScreenView({
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
                       }}
                     >
                       {c.name}
+                      {c.isOfficial && (
+                        <span
+                          title="Cuenta oficial de la app"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 14,
+                            height: 14,
+                            borderRadius: "50%",
+                            background: "var(--primary)",
+                            color: "#fff",
+                            flexShrink: 0,
+                          }}
+                          aria-label="Cuenta oficial de la app"
+                        >
+                          <Icon name="check" size={9} color="#fff" />
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{
@@ -402,7 +429,36 @@ export function MensajesScreenView({
                   )}
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>{activeConv.name}</div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    {activeConv.name}
+                    {activeConv.isOfficial && (
+                      <span
+                        title="Cuenta oficial de la app"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: "var(--primary)",
+                          color: "#fff",
+                          flexShrink: 0,
+                        }}
+                        aria-label="Cuenta oficial de la app"
+                      >
+                        <Icon name="check" size={9} color="#fff" />
+                      </span>
+                    )}
+                  </div>
                   <div
                     style={{
                       fontSize: 10.5,
