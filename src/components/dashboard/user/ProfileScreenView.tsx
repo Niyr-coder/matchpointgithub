@@ -83,21 +83,6 @@ function levelFromRating(elo: number): string {
   return (elo / 1000).toFixed(1);
 }
 
-const modePill = (a: boolean): CSSProperties => ({
-  border: 0,
-  padding: "8px 18px",
-  borderRadius: 9999,
-  background: a ? "#0a0a0a" : "transparent",
-  color: a ? "#fff" : "#737373",
-  fontWeight: 900,
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.1em",
-  cursor: "pointer",
-  fontFamily: "inherit",
-  whiteSpace: "nowrap",
-});
-
 const coverBtn: CSSProperties = {
   position: "absolute",
   top: 14,
@@ -156,8 +141,11 @@ export function ProfileScreenView({
     { enabled: !!data.meUserId },
   );
 
-  const [mode, setMode] = useState<Mode>(viewerMode === "public" ? "public" : "mine");
-  const lockedPublic = viewerMode === "public";
+  // mode: "mine" (vista editable propia) o "public" (vista pública, sólo lectura).
+  // El toggle UI fue removido — el user que quiera ver su perfil público va a
+  // /dashboard/user/players/<username>. Acá solo respetamos viewerMode si
+  // viene forzado desde el page de /players (vista de otro user).
+  const mode: Mode = viewerMode === "public" ? "public" : "mine";
   // Modo de juego activo para los stat blocks (singles vs doubles).
   // Default: el modo que tenga rating; si ambos, singles.
   const initialRatingMode: "singles" | "doubles" =
@@ -195,21 +183,6 @@ export function ProfileScreenView({
 
   return (
     <>
-      {!lockedPublic && (
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            padding: 4,
-            background: "#f5f5f5",
-            borderRadius: 9999,
-            alignSelf: "flex-start",
-          }}
-        >
-          <button onClick={() => setMode("mine")} style={modePill(isMine)}>Vista propia</button>
-          <button onClick={() => setMode("public")} style={modePill(!isMine)}>Vista pública</button>
-        </div>
-      )}
 
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div
