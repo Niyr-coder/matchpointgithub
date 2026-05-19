@@ -238,7 +238,7 @@ export async function searchPlayers(
     const supabase = await getServerClient();
 
     // 1) Profiles que matchean el query (por display_name o username),
-    // excluyendo self + system. Usar PostgREST .or() para OR entre filtros.
+    // excluyendo self + perfiles de sistema (MATCHPOINT no se busca aquí).
     // Sanitizamos el query removiendo "@" prefix si el user lo tipea.
     const cleaned = q.trim().replace(/^@+/, "");
     const { data: rows, error } = await supabase
@@ -246,6 +246,7 @@ export async function searchPlayers(
       .select("id,display_name,username,city,avatar_url" as never)
       .or(`display_name.ilike.%${cleaned}%,username.ilike.%${cleaned}%`)
       .neq("id", userId)
+      .eq("is_system" as never, false as never)
       .limit(limit);
     if (error) throw new MpError("FRIENDS.SEARCH_FAILED", error.message, 500);
 
@@ -255,24 +256,8 @@ export async function searchPlayers(
       username: string | null;
       city: string | null;
       avatar_url: string | null;
-      is_system?: boolean;
     };
-    const profiles = (rows ?? []) as unknown as ProfileRow[];
-    // Filtramos is_system en memoria (la query no lo trae para evitar cast hell;
-    // hacemos 1 query lateral filtrando ids):
-    const candidateIds = profiles.map((p) => p.id);
-    if (candidateIds.length === 0) return [];
-
-    const { data: sysRows } = await supabase
-      .from("profiles")
-      .select("id,is_system" as never)
-      .in("id", candidateIds);
-    const systemIds = new Set(
-      ((sysRows ?? []) as unknown as Array<{ id: string; is_system: boolean | null }>)
-        .filter((r) => r.is_system === true)
-        .map((r) => r.id),
-    );
-    const visible = profiles.filter((p) => !systemIds.has(p.id));
+    const visible = (rows ?? []) as unknown as ProfileRow[];
     if (visible.length === 0) return [];
 
     const visibleIds = visible.map((p) => p.id);
