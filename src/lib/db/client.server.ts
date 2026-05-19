@@ -2,12 +2,16 @@
 // Reads + writes auth cookies via Next.js cookies() API.
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "./types";
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from "./env";
 
-export async function getServerClient() {
+// React.cache memoiza por request: layouts + páginas + server actions del
+// mismo render reusan UNA sola instancia del cliente en lugar de reparsear
+// cookies y reconstruirlo en cada call. No comparte estado entre requests.
+export const getServerClient = cache(async () => {
   const cookieStore = await cookies();
   return createServerClient<Database>(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
@@ -27,4 +31,4 @@ export async function getServerClient() {
       },
     },
   });
-}
+});

@@ -39,11 +39,13 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
   useRealtimeRefresh(
     data.partnerId
       ? [
-          { table: "transactions" },
+          // transactions no tiene partner_id; filtrar por kind=tournament
+          // descarta pagos de reservas/clases/proshop ajenos al partner.
+          { table: "transactions", filter: "kind=eq.tournament" },
           { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` },
         ]
       : [],
-    { enabled: !!data.partnerId },
+    { enabled: !!data.partnerId, debounceMs: 2000 },
   );
 
   const hasRev = data.revenueByTournament.length > 0;

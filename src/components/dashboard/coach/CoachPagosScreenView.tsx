@@ -42,8 +42,8 @@ const PLACEHOLDER_ROWS: TxRow[] = Array.from({ length: PLACEHOLDER_COUNT }).map(
 
 export function CoachPagosScreenView({ data }: { data: PagosData }) {
   useRealtimeRefresh(
-    data.coachId ? [{ table: "transactions" }] : [],
-    { enabled: !!data.coachId },
+    data.coachId ? [{ table: "transactions", filter: "kind=eq.class" }] : [],
+    { enabled: !!data.coachId, debounceMs: 2000 },
   );
 
   const hasReal = data.txs.length > 0;

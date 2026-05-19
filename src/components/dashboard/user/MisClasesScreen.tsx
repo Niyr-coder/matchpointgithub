@@ -17,7 +17,9 @@ async function loadData() {
   const userId = session.session.userId;
   const supabase = await getServerClient();
 
-  // Mis enrollments con la clase + coach + club.
+  // Mis enrollments con la clase + coach + club. Limit defensivo: usuarios
+  // antiguos con años de historial podrían acumular cientos de rows; cortamos
+  // a 100 (UI muestra activas + 24 pasadas máximo, suficiente).
   const { data: rows } = await supabase
     .from("class_enrollments")
     .select(
@@ -25,7 +27,8 @@ async function loadData() {
     )
     .eq("student_id", userId)
     .in("status", ["enrolled", "completed"])
-    .order("enrolled_at", { ascending: false });
+    .order("enrolled_at", { ascending: false })
+    .limit(100);
 
   const enrolledRows = (rows ?? []).filter((r) => r.status === "enrolled");
   const completedRows = (rows ?? []).filter((r) => r.status === "completed");

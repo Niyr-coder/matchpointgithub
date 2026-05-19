@@ -156,10 +156,12 @@ export function CoachHomeView({ data }: { data: CoachHomeData }) {
           { table: "class_sessions" },
           { table: "lessons_1on1", filter: `coach_id=eq.${data.coachId}` },
           { table: "class_enrollments" },
-          { table: "transactions" },
+          // transactions no tiene coach_id; filtramos por kind=class para
+          // ignorar pagos de torneos/reservas/proshop ajenos al coach.
+          { table: "transactions", filter: "kind=eq.class" },
         ]
       : [],
-    { enabled: !!data.coachId },
+    { enabled: !!data.coachId, debounceMs: 2000 },
   );
 
   const hasAgenda = data.agenda.length > 0;

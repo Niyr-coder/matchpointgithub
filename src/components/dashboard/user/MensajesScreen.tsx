@@ -16,21 +16,19 @@ async function loadData(activeConvId: string | null) {
 
   const userId = session.session.userId;
 
-  // Conversations the user is a member of.
+  // Conversations the user is a member of. Limit defensivo a 100 convs
+  // activas: el UI no muestra más y la query downstream multiplica por N.
   const { data: members } = await supabase
     .from("conversation_members")
     .select("conversation_id,last_read_message_id")
     .eq("user_id", userId)
-    .is("left_at", null);
+    .is("left_at", null)
+    .limit(100);
 
   const convIds = (members ?? []).map((m) => m.conversation_id as string);
   if (convIds.length === 0) {
     return { convos: [], messages: [], activeConv: null, meUserId: userId };
   }
-
-  const lastReadMap = new Map(
-    (members ?? []).map((m) => [m.conversation_id as string, m.last_read_message_id as string | null]),
-  );
 
   // Conversations + last message + member count.
   const { data: conversations } = await supabase
@@ -63,10 +61,18 @@ async function loadData(activeConvId: string | null) {
     allOtherIds.size > 0
       ? await supabase
           .from("profiles")
-          .select("id,display_name,city")
+          .select("id,display_name,city,is_system" as never)
           .in("id", [...allOtherIds])
       : { data: [] };
-  const profileMap = new Map((profileRows ?? []).map((p) => [p.id as string, p]));
+  // Cast por stale types (is_system se agregó en migration 104).
+  const profileMap = new Map(
+    ((profileRows ?? []) as unknown as Array<{
+      id: string;
+      display_name: string | null;
+      city: string | null;
+      is_system: boolean | null;
+    }>).map((p) => [p.id, p]),
+  );
 
   // Last message preview per conversation.
   const { data: lastMessages } = await supabase
@@ -90,38 +96,14 @@ async function loadData(activeConvId: string | null) {
     });
   }
 
-  // ── Unread counts: 1 query para timestamps de last_read + N counts en paralelo.
-  // No contamos mensajes propios. Para convs sin last_read, contamos todo.
-  const lastReadIds = [...lastReadMap.values()].filter((x): x is string => !!x);
-  const lastReadTs = new Map<string, string>();
-  if (lastReadIds.length > 0) {
-    const { data: lrRows } = await supabase
-      .from("messages")
-      .select("id,created_at")
-      .in("id", lastReadIds);
-    for (const r of lrRows ?? []) {
-      lastReadTs.set(r.id as string, r.created_at as string);
-    }
-  }
-
-  const unreadEntries = await Promise.all(
-    convIds.map(async (cid) => {
-      const lrId = lastReadMap.get(cid);
-      let q = supabase
-        .from("messages")
-        .select("id", { count: "exact", head: true })
-        .eq("conversation_id", cid)
-        .is("deleted_at", null)
-        .neq("sender_id", userId);
-      if (lrId) {
-        const ts = lastReadTs.get(lrId);
-        if (ts) q = q.gt("created_at", ts);
-      }
-      const { count } = await q;
-      return [cid, count ?? 0] as const;
-    }),
+  // Unread counts: RPC fn_unread_messages_count devuelve unread por
+  // conversación en 1 sola query (ver migration 100). Antes era N+1.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: unreadRows } = await (supabase as any).rpc("fn_unread_messages_count");
+  const unreadByConv = new Map<string, number>(
+    ((unreadRows as Array<{ conversation_id: string; unread_count: number }> | null) ?? [])
+      .map((r) => [r.conversation_id, r.unread_count]),
   );
-  const unreadByConv = new Map(unreadEntries);
 
   const convos: ConvoLite[] = (conversations ?? []).map((c) => {
     const cid = c.id as string;
@@ -136,12 +118,17 @@ async function loadData(activeConvId: string | null) {
     if (!name) name = isGroup ? "Grupo" : "Conversación";
 
     const last = lastByConv.get(cid);
+    // Si el "otro" del DM es el perfil oficial MatchPoint, marcamos isOfficial
+    // para badge verified + pin top en MensajesScreenView.
+    const otherProfile = otherIds[0] ? profileMap.get(otherIds[0]) : undefined;
+    const isOfficial = otherProfile?.is_system === true;
     return {
       id: cid,
       name,
       kind: c.kind as ConvoLite["kind"],
       isGroup,
       isSystem,
+      isOfficial,
       memberCount: (membersByConv.get(cid) ?? []).length,
       lastBody: last?.body ?? null,
       lastSenderId: last?.sender_id ?? null,
@@ -149,6 +136,13 @@ async function loadData(activeConvId: string | null) {
       unreadCount: unreadByConv.get(cid) ?? 0,
       otherUserId: otherIds[0] ?? null,
     };
+  });
+
+  // Pin del DM MatchPoint al top de la lista.
+  convos.sort((a, b) => {
+    if (a.isOfficial && !b.isOfficial) return -1;
+    if (b.isOfficial && !a.isOfficial) return 1;
+    return 0;
   });
 
   const activeId = activeConvId && convIds.includes(activeConvId) ? activeConvId : convos[0]?.id ?? null;

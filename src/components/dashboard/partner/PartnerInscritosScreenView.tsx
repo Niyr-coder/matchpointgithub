@@ -81,10 +81,10 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
       ? [
           { table: "registrations" },
           { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` },
-          { table: "transactions" },
+          { table: "transactions", filter: "kind=eq.tournament" },
         ]
       : [],
-    { enabled: !!data.partnerId },
+    { enabled: !!data.partnerId, debounceMs: 2000 },
   );
 
   const handleMarkPaid = (regId: string) => {

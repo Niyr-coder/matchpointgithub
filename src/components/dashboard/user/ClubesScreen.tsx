@@ -1,19 +1,16 @@
 // Server component: fetch clubs reales + ciudad del usuario, pasa a ClubesScreenClient.
 import { getClubReviewStats, listFeaturedClubs } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
-import { getServerClient } from "@/lib/db/client.server";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { ClubesScreenClient, type RatingInfo } from "./ClubesScreenClient";
 
 async function fetchMyCity(): Promise<string | null> {
+  // El layout del dashboard ya pidió getProfileSummary; reusamos su cache en
+  // lugar de hacer una query separada a profiles.
   const session = await getSession();
   if (!session.authenticated) return null;
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("city")
-    .eq("id", session.session.userId)
-    .maybeSingle();
-  return (data?.city as string | null) ?? null;
+  const profile = await getProfileSummary(session.session.userId);
+  return profile.city;
 }
 
 export async function ClubesScreen() {

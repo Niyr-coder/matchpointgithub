@@ -1,6 +1,7 @@
 // Server: fetch friendships + friend_requests + sugerencias (profiles en misma city).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { AmigosScreenView, type FriendLite, type RequestLite } from "./AmigosScreenView";
 
 const SUGGESTIONS_LIMIT = 12;
@@ -27,24 +28,28 @@ async function loadData() {
 
   const userId = session.session.userId;
 
+  // myCity viene del cache del layout (getProfileSummary). Las otras dos
+  // queries no tienen alternativa cacheada.
   const [
-    { data: myProfile },
+    myProfile,
     { data: friendships },
     { data: requests },
   ] = await Promise.all([
-    supabase.from("profiles").select("city").eq("id", userId).maybeSingle(),
+    getProfileSummary(userId),
     supabase
       .from("friendships")
       .select("user_a,user_b,since")
-      .or(`user_a.eq.${userId},user_b.eq.${userId}`),
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
+      .limit(500),
     supabase
       .from("friend_requests")
       .select("id,from_user_id,created_at")
       .eq("to_user_id", userId)
-      .eq("status", "pending"),
+      .eq("status", "pending")
+      .limit(100),
   ]);
 
-  const myCity = (myProfile?.city as string | null) ?? null;
+  const myCity = myProfile.city;
   const friendIds = (friendships ?? []).map((f) =>
     (f.user_a as string) === userId ? (f.user_b as string) : (f.user_a as string),
   );

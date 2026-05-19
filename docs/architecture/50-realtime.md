@@ -376,6 +376,38 @@ useRealtimeRefresh([
 joins. Para queries más complejas, suscribirse a la tabla cruda y filtrar
 client-side.
 
+### Modo callback (granular)
+
+Por default el hook hace `router.refresh()` debounced, lo cual re-corre TODAS
+las server queries de la pantalla. Si solo necesitas refetchear una sección
+puntual (una lista, un counter, un chart), pasá `onChange` y evitás el
+refresh global:
+
+```tsx
+useRealtimeRefresh(
+  [{ table: "transactions", filter: "kind=eq.tournament" }],
+  {
+    onChange: (table, payload) => {
+      // payload.eventType: "INSERT" | "UPDATE" | "DELETE"
+      // payload.new, payload.old: rows raw de Supabase
+      startTransition(async () => {
+        const r = await refetchMyTxs();
+        if (r.ok) setTxs(r.data);
+      });
+    },
+  },
+);
+```
+
+Cuándo usar callback:
+- La pantalla tiene muchas server queries pesadas y solo una se ve afectada.
+- Querés UX optimista (actualizar contadores sin re-render completo).
+- Necesitás reaccionar al payload (ej. mostrar toast "nuevo torneo").
+
+Cuándo dejar default (`router.refresh()`):
+- La pantalla es chica, refrescar todo no duele.
+- El estado a actualizar viene de varias queries entrelazadas.
+
 ---
 
 ## 16. Próximo: `60-openapi.md`

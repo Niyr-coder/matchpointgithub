@@ -9,7 +9,7 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
+import { requireSession, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import { cookies } from "next/headers";
 import {
   NotificationKindSchema,
@@ -36,12 +36,11 @@ function mapNotif(row: Record<string, unknown>): Notification {
 }
 
 async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
+  // getSession() está envuelto en React.cache: si otra parte del request ya
+  // resolvió la sesión, no hace un nuevo auth.getUser(). requireSession lanza
+  // AuthError si no hay sesión.
+  const session = await requireSession();
+  return session.userId;
 }
 
 async function activeRole(): Promise<string | null> {
@@ -56,7 +55,7 @@ export async function listMyNotifications(input: unknown): Promise<ActionResult<
     const role = params.role ?? (await activeRole());
     let q = supabase
       .from("notifications")
-      .select("*")
+      .select("id, recipient_user_id, recipient_role, kind, title, body, payload, read_at, created_at")
       .eq("recipient_user_id", userId)
       .order("created_at", { ascending: false })
       .limit(params.limit);

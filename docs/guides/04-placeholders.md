@@ -124,6 +124,62 @@ patrón opacity 0.5 + dashed border que ya está estandarizado.
 - **Para activar**: agregar manifest + service worker + opt-in modal +
   almacenar tokens en `user_push_tokens` (tabla por crear).
 
+### Teams · admin governance ausente (gap retroactivo del Stage 1-3)
+- **Estado**: feature teams completo backend + UI player, pero NO hay
+  pantalla admin para listar todos los teams, ver caps por team, forzar
+  override de caps, banear/disolver desde admin, ni audit log filtrado
+  por team. Soporte hoy tendría que abrir Supabase Studio para
+  investigar un team problemático.
+- **Detección**: la skill `matchpoint-feature-plan` (actualizada en
+  esta misma sesión) lo flagearía como antipatrón. Se nos pasó porque
+  el plan original no incluía §1.9 Admin governance.
+- **Para activar** (cuando se decida priorizar):
+  1. Nueva pantalla `AdminTeamsScreen` en
+     `src/components/dashboard/admin/AdminTeamsScreen.tsx`.
+  2. Sidebar item `admin-teams` en `MP_ROLES.admin.sidebar`.
+  3. Capacidades: listar all teams (con filtros sport/captain/clubId),
+     drilldown a roster, override `rename_count`, disolver con motivo
+     (audit log), ver historial de invites.
+  4. Reflejar permiso en `AdminRolesScreen` (catálogo operativo de
+     permisos admin).
+
+### Welcome DM templates hardcoded en `src/lib/messages/system.ts`
+- **Archivo**: `src/lib/messages/system.ts` (constante `WELCOME_TEMPLATES`).
+- **Estado**: 4 templates de bienvenida (signup, team_created, premium_activated, onboarding_completed) viven en código TS, no en DB.
+- **Para activar**:
+  1. Crear key `platform_config.system_message_templates` con JSON de
+     templates por kind.
+  2. `renderTemplate` lee de `platform_config` en runtime (vía RPC
+     `fn_get_system_message_templates` SECURITY DEFINER).
+  3. Admin UI en `AdminBroadcastScreen` o nueva `AdminTemplatesScreen`
+     para editar.
+- **Por qué importa**: hoy editar el copy del welcome requiere PR + deploy.
+  Marketing/producto debería poder iterar copy sin pasar por dev.
+
+### Admin "broadcast as MatchPoint" ausente
+- **Estado**: el perfil oficial MatchPoint existe (mig 104) y manda
+  welcome DMs automáticos. Pero admin NO puede usar MatchPoint para
+  mandar broadcasts manuales (anuncio plataforma, alerta, etc).
+  `AdminBroadcastScreen` actualmente manda como el propio admin user.
+- **Para activar**:
+  1. Toggle en AdminBroadcastScreen: "Enviar como MatchPoint Oficial"
+     (solo visible para admin).
+  2. Server action `sendBroadcastAsSystem(recipientIds, body)` que
+     internamente usa `fn_send_system_message` por cada recipient.
+
+### Teams · feature flag ausente (gap retroactivo)
+- **Estado**: los caps de teams (12/24, 3/∞, 2/5) están "encendidos"
+  para todos los users en producción. No hay killswitch — si los caps
+  generan fricción inesperada (ej. teams legítimos con >12 miembros
+  pre-existentes), no se puede pausar sin redeploy.
+- **Mitigación parcial**: `platform_config.team_caps` permite ajustar
+  los números sin redeploy (subir el cap free a 50 = killswitch suave).
+- **Para activar killswitch real**:
+  1. Seed `feature_flags.teams_caps_enforced` con `enabled_default: true`.
+  2. `getTeamCaps` lee el flag — si está off, devolver caps "infinitos"
+     (Number.MAX_SAFE_INTEGER) para todos.
+  3. UI deja de mostrar badges/banners cuando flag off.
+
 ---
 
 ## 4. UI con datos ilustrativos (estilo demo)
