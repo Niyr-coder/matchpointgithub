@@ -226,6 +226,8 @@ export type PlayerSearchResult = {
   // badge verified + CTA "Ir al chat" en vez de "Enviar solicitud" — no
   // se puede ser "amigo" de una cuenta oficial.
   isOfficial: boolean;
+  // True si tiene MatchPoint+ activo. Muestra badge dorado en la card.
+  isPremium: boolean;
   // Relación con el viewer:
   //   none           — nada, puede enviar request
   //   request_sent   — viewer ya envió request pendiente
@@ -248,7 +250,9 @@ export async function searchPlayers(
     const cleaned = q.trim().replace(/^@+/, "");
     const { data: rows, error } = await supabase
       .from("profiles")
-      .select("id,display_name,username,city,avatar_url,is_system" as never)
+      .select(
+        "id,display_name,username,city,avatar_url,is_system,plan_tier,plan_expires_at" as never,
+      )
       .or(`display_name.ilike.%${cleaned}%,username.ilike.%${cleaned}%`)
       .neq("id", userId)
       .limit(limit);
@@ -261,6 +265,8 @@ export async function searchPlayers(
       city: string | null;
       avatar_url: string | null;
       is_system: boolean | null;
+      plan_tier: string | null;
+      plan_expires_at: string | null;
     };
     const visible = (rows ?? []) as unknown as ProfileRow[];
     if (visible.length === 0) return [];
@@ -302,6 +308,11 @@ export async function searchPlayers(
       if (friendIds.has(p.id)) relationship = "friends";
       else if (sentTo.has(p.id)) relationship = "request_sent";
       else if (receivedFrom.has(p.id)) relationship = "request_received";
+      // isPremium: misma lógica que isPlanActive en lib/auth/profile.
+      const isPremium =
+        p.plan_tier === "premium" &&
+        (p.plan_expires_at === null ||
+          new Date(p.plan_expires_at).getTime() > Date.now());
       return {
         userId: p.id,
         displayName: p.display_name ?? "Jugador",
@@ -309,6 +320,7 @@ export async function searchPlayers(
         city: p.city,
         avatarUrl: p.avatar_url,
         isOfficial: p.is_system === true,
+        isPremium,
         relationship,
       };
     });

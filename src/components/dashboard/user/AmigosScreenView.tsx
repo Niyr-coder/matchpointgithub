@@ -15,9 +15,16 @@ import {
 export type FriendLite = {
   id: string;
   name: string;
+  username: string | null;
   city: string;
   sport: string;
   level: number;
+  // True para el perfil oficial MATCHPOINT. La card lo renderiza con
+  // banner+logo MP, descripción corta y sin acciones Mensaje/Retar.
+  isOfficial: boolean;
+  // True si el user tiene MatchPoint+ activo. Muestra badge dorado en
+  // la card. Derivado server-side via isPlanActive (cron-safe).
+  isPremium: boolean;
 };
 
 export type RequestLite = FriendLite & {
@@ -298,6 +305,41 @@ function FriendCard({
   index: number;
   isSuggestion: boolean;
 }) {
+  // MATCHPOINT (perfil oficial): banner+logo MP, descripción corta,
+  // sin Mensaje/Retar/rating/sport. Nombre clickable a su perfil oficial.
+  if (f.isOfficial) {
+    return <OfficialFriendCard f={f} />;
+  }
+
+  // Card normal de jugador. Nombre clickable a /players/[username] si existe.
+  const profileHref = f.username ? `/dashboard/players/${f.username}` : null;
+  const nameEl = (
+    <div
+      className="font-heading"
+      style={{
+        fontSize: 14,
+        fontWeight: 900,
+        letterSpacing: "-0.01em",
+        lineHeight: 1.15,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        maxWidth: "100%",
+      }}
+    >
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {f.name}
+      </span>
+      {f.isPremium && <MpPlusBadge />}
+    </div>
+  );
+
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div
@@ -363,12 +405,17 @@ function FriendCard({
             {f.level.toFixed(1)}
           </div>
         </div>
-        <div
-          className="font-heading"
-          style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.15 }}
-        >
-          {f.name}
-        </div>
+        {profileHref ? (
+          <Link
+            href={profileHref}
+            className="mp-friend-name-link"
+            style={{ color: "inherit", textDecoration: "none", display: "block" }}
+          >
+            {nameEl}
+          </Link>
+        ) : (
+          nameEl
+        )}
         <div
           style={{
             fontSize: 11,
@@ -431,6 +478,175 @@ function FriendCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Badge MP+ reusable ──────────────────────────────────────────────────
+// Usado en FriendCard, RequestCard, DiscoverCard. Pequeño chip dorado
+// junto al nombre. Tooltip "MatchPoint+".
+function MpPlusBadge() {
+  return (
+    <span
+      title="MatchPoint+ activo"
+      aria-label="MatchPoint+ activo"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "1px 5px",
+        borderRadius: 4,
+        background: "#facc15",
+        color: "#0a0a0a",
+        fontSize: 8.5,
+        fontWeight: 900,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        flexShrink: 0,
+      }}
+    >
+      <Icon name="crown" size={8} color="#0a0a0a" />
+      MP+
+    </span>
+  );
+}
+
+// ── OfficialFriendCard: variante para MATCHPOINT ────────────────────────
+// Banner+logo MP, descripción corta, sin acciones Mensaje/Retar (no se
+// puede mensajear ni retar al perfil oficial). Nombre clickable a su
+// página oficial (/dashboard/players/[username]).
+function OfficialFriendCard({ f }: { f: FriendLite }) {
+  const href = f.username ? `/dashboard/players/${f.username}` : null;
+  const inner = (
+    <>
+      <div
+        style={{
+          position: "relative",
+          height: 76,
+          background:
+            "linear-gradient(135deg, #064e3b 0%, #10b981 60%, #047857 100%)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(ellipse at 80% 20%, rgba(255,255,255,0.22), transparent 55%)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 12,
+            fontSize: 8.5,
+            fontWeight: 900,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.85)",
+          }}
+        >
+          ● OFICIAL
+        </div>
+      </div>
+      <div style={{ padding: "0 16px 16px", position: "relative" }}>
+        <div
+          style={{
+            marginTop: -34,
+            marginBottom: 10,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg,#10b981,#047857)",
+              border: "4px solid #fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              fontFamily: "Plus Jakarta Sans",
+              fontWeight: 900,
+              fontSize: 22,
+            }}
+          >
+            M
+          </div>
+        </div>
+        <div
+          className="font-heading"
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            letterSpacing: "-0.01em",
+            lineHeight: 1.15,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          {f.name}
+          <span
+            title="Cuenta oficial de la app"
+            aria-label="Cuenta oficial de la app"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 14,
+              height: 14,
+              borderRadius: "50%",
+              background: "var(--primary)",
+              color: "#fff",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="check" size={9} color="#fff" />
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--muted-fg)",
+            marginTop: 6,
+            lineHeight: 1.45,
+          }}
+        >
+          Cuenta oficial de MatchPoint EC. Te enviamos novedades, recordatorios
+          y respuestas de soporte.
+        </div>
+      </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="card mp-friend-official-card"
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          color: "inherit",
+          textDecoration: "none",
+        }}
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {inner}
     </div>
   );
 }
@@ -661,6 +877,7 @@ function DiscoverCard({
               <Icon name="check" size={9} color="#fff" />
             </span>
           )}
+          {!player.isOfficial && player.isPremium && <MpPlusBadge />}
         </div>
         <div
           style={{

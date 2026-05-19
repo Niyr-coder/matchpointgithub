@@ -868,6 +868,27 @@ input[type="range"].mp-mpr,
   }
 }
 
+/* Nombre clickable en FriendCard normal. */
+.mp-friend-name-link {
+  transition: color 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-friend-name-link:hover {
+    color: var(--primary);
+  }
+}
+
+/* Card oficial (MATCHPOINT) en /amigos: hover lift sutil. */
+.mp-friend-official-card {
+  transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-friend-official-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(16,185,129,0.18);
+  }
+}
+
 /* Link de jugador en /ranking — color shift sutil + underline en hover.
    Pattern Emil: solo transicionar la propiedad que cambia, ease-out 160ms. */
 .mp-ranking-name {

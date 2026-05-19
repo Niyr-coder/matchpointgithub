@@ -57,13 +57,16 @@ async function loadData() {
 
   const exclude = new Set<string>([userId, ...friendIds, ...requesterIds]);
 
-  // Fetch profiles for friends + requesters in one query.
+  // Fetch profiles for friends + requesters in one query. Incluye is_system
+  // para que la card de MATCHPOINT renderice con banner+logo oficial.
   const idsToFetch = [...friendIds, ...requesterIds];
   const { data: profiles } =
     idsToFetch.length > 0
       ? await supabase
           .from("profiles")
-          .select("id,display_name,city,preferred_sport")
+          .select(
+            "id,display_name,username,city,preferred_sport,is_system,plan_tier,plan_expires_at" as never,
+          )
           .in("id", idsToFetch)
       : { data: [] };
 
@@ -77,36 +80,52 @@ async function loadData() {
           .eq("sport", SPORT_PRIMARY)
       : { data: [] };
 
-  const profileMap = new Map((profiles ?? []).map((p) => [p.id as string, p]));
+  const profilesTyped = (profiles ?? []) as unknown as Array<Record<string, unknown>>;
+  const profileMap = new Map(profilesTyped.map((p) => [p.id as string, p]));
   const ratingMap = new Map(
     (stats ?? []).map((s) => [s.user_id as string, s.current_rating as number]),
   );
 
+  // Premium activo: plan_tier=premium AND (plan_expires_at null OR future).
+  // Mismo criterio que isPlanActive de lib/auth/profile, evaluado per profile.
+  function deriveIsPremium(p: { plan_tier?: unknown; plan_expires_at?: unknown }): boolean {
+    if (p.plan_tier !== "premium") return false;
+    const exp = p.plan_expires_at;
+    if (exp === null || exp === undefined) return true;
+    return new Date(exp as string).getTime() > Date.now();
+  }
+
   const friends: FriendLite[] = friendIds
     .map((id) => {
-      const p = profileMap.get(id);
+      const p = profileMap.get(id) as Record<string, unknown> | undefined;
       if (!p) return null;
       return {
         id,
         name: (p.display_name as string) ?? "Jugador",
+        username: (p.username as string | null | undefined) ?? null,
         city: (p.city as string | null) ?? "—",
         sport: sportLabel(p.preferred_sport as string | null),
         level: levelFromRating(ratingMap.get(id)),
+        isOfficial: p.is_system === true,
+        isPremium: deriveIsPremium(p),
       };
     })
     .filter((f): f is FriendLite => f != null);
 
   const requestsList: RequestLite[] = (requests ?? [])
     .map((r) => {
-      const p = profileMap.get(r.from_user_id as string);
+      const p = profileMap.get(r.from_user_id as string) as Record<string, unknown> | undefined;
       if (!p) return null;
       return {
         id: r.id as string,
         fromUserId: r.from_user_id as string,
         name: (p.display_name as string) ?? "Jugador",
+        username: (p.username as string | null | undefined) ?? null,
         city: (p.city as string | null) ?? "—",
         sport: sportLabel(p.preferred_sport as string | null),
         level: levelFromRating(ratingMap.get(r.from_user_id as string)),
+        isOfficial: p.is_system === true,
+        isPremium: deriveIsPremium(p),
       };
     })
     .filter((r): r is RequestLite => r != null);
@@ -114,12 +133,16 @@ async function loadData() {
   // Sugerencias: profiles en misma city que no estén ya en friends/requests.
   let suggestions: FriendLite[] = [];
   if (myCity) {
-    const { data: candidates } = await supabase
+    const { data: candidatesRaw } = await supabase
       .from("profiles")
-      .select("id,display_name,city,preferred_sport")
+      .select(
+        "id,display_name,username,city,preferred_sport,is_system,plan_tier,plan_expires_at" as never,
+      )
       .eq("city", myCity)
+      .eq("is_system" as never, false as never)
       .limit(SUGGESTIONS_LIMIT * 3);
-    const candidateIds = (candidates ?? [])
+    const candidates = (candidatesRaw ?? []) as unknown as Array<Record<string, unknown>>;
+    const candidateIds = candidates
       .map((c) => c.id as string)
       .filter((id) => !exclude.has(id));
     const { data: candStats } =
@@ -133,15 +156,18 @@ async function loadData() {
     const candRatingMap = new Map(
       (candStats ?? []).map((s) => [s.user_id as string, s.current_rating as number]),
     );
-    suggestions = (candidates ?? [])
+    suggestions = candidates
       .filter((c) => !exclude.has(c.id as string))
       .slice(0, SUGGESTIONS_LIMIT)
       .map((c) => ({
         id: c.id as string,
         name: (c.display_name as string) ?? "Jugador",
+        username: (c.username as string | null | undefined) ?? null,
         city: (c.city as string | null) ?? "—",
         sport: sportLabel(c.preferred_sport as string | null),
         level: levelFromRating(candRatingMap.get(c.id as string)),
+        isOfficial: false,
+        isPremium: deriveIsPremium(c),
       }));
   }
 
