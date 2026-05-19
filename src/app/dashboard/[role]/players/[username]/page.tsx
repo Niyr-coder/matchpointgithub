@@ -1,5 +1,11 @@
 // Vista pública del perfil de un jugador.
-// Todos los viewers (cualquier rol) ven la misma vista pública social —
+// Ruta canónica: /dashboard/[role]/players/[username]. Los links apuntan
+// a /dashboard/user/players/<x> (URL user-centric); el [role] dinámico
+// permite que el page herede el chrome (sidebar + topbar) del
+// [role]/layout.tsx. Sin esto, un path static (ej. /dashboard/user/...)
+// salta el layout dinámico y se renderiza sin sidebar.
+//
+// Todos los viewers ven la misma vista pública social —
 // ProfileScreenView con viewerMode="public", la interfaz "VISTA PÚBLICA".
 // Cuentas oficiales (is_system) tienen OfficialAccountView dedicada.
 //
@@ -19,7 +25,7 @@ import { loadProfileFor } from "@/components/dashboard/user/ProfileScreen";
 export default async function PublicPlayerProfilePage({
   params,
 }: {
-  params: Promise<{ username: string }>;
+  params: Promise<{ role: string; username: string }>;
 }) {
   const { username } = await params;
 
