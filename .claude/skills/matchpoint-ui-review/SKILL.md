@@ -126,6 +126,28 @@ npx tsc --noEmit 2>&1 | tail -10
 
 Sin errores. Si hay, fijar antes de seguir.
 
+#### 2.9 — Action call ↔ Schema (Zod) keys match
+
+Cuando el componente hace una llamada a server action con un objeto:
+
+```ts
+const r = await sendFriendRequest({ userId: target.userId });
+```
+
+Verificar que las keys matchean el schema Zod del action. TS no atrapa
+esto porque las server actions reciben `unknown` y validan en runtime.
+Resultado: el user ve un toast "Invalid input" en producción.
+
+Para cada call a server action en el archivo bajo review:
+
+1. Grep el `Schema` que usa el action correspondiente
+   (ej. `SendFriendRequestSchema` en `src/lib/schemas/social.ts`).
+2. Comparar las keys del schema con las del payload.
+3. Si difieren, fijar el call site.
+
+Si tenés `runAction(SchemaName, input, async ({ key1, key2 }) => ...)`
+en el server, las keys destructuradas son la fuente de verdad.
+
 ### Paso 3 — Verificación visual con agent-browser (opcional)
 
 Para componentes críticos (búsqueda, listas, formularios, modales), correr smoke test visual:
