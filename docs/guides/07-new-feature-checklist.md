@@ -422,6 +422,10 @@ que nunca fue feature real.
   revisa botones que se rompen con labels largos, hover sin gate de
   `pointer:fine`, `.btn` + inline overrides, text overflow sin
   ellipsis, animaciones Emil-compliant.
+- [ ] **Si la feature toca 3+ archivos: invocar skill `matchpoint-logic-review`** —
+  coherencia funcional cross-cutting: entidad searchable → visitable,
+  action key ↔ schema match, RLS sin bypass, triggers vs downstream
+  queries, casos especiales (is_system, archived) en todas las superficies.
 - [ ] `npx agent-browser` smoke test del happy path en mobile y desktop.
 - [ ] Edge cases: empty state, max state, error state, unauthenticated
   state, rol incorrecto.

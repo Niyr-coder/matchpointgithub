@@ -592,9 +592,10 @@ function DiscoverCard({
   }
 
   const isBlocked = ctaDisabled || busy;
-  // MATCHPOINT no tiene perfil público de jugador (lo redirigimos a 404
-  // en /players/[username]). Otros usuarios sí, siempre que tengan username.
-  const canVisitProfile = !player.isOfficial && !!player.username;
+  // Cualquier perfil con username es visitable. MATCHPOINT linkea a su
+  // vista oficial (OfficialAccountView), otros usuarios a la VISTA PÚBLICA
+  // de ProfileScreenView.
+  const canVisitProfile = !!player.username;
 
   // Contenido del bloque avatar+name. Lo renderizamos dentro de un Link
   // (si canVisitProfile) o un div normal.

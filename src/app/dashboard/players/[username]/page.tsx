@@ -1,11 +1,14 @@
-// Vista pública del perfil de un jugador.
-// URL canónica: /dashboard/players/<username> (más linkable y compartible
-// que un UUID). Reusa el mismo ProfileScreenView que /dashboard/user/perfil
-// con viewerMode="public" — exactamente la "VISTA PÚBLICA" que el user
-// puede previewar en su Mi Perfil.
+// Vista pública del perfil de un jugador o cuenta oficial.
+// URL canónica: /dashboard/players/<username>.
+// - Jugadores normales → reusa ProfileScreenView con viewerMode="public"
+//   (mismo componente que la "VISTA PÚBLICA" de Mi Perfil).
+// - Cuentas oficiales (is_system) → OfficialAccountView compacta, sin
+//   stats ni clubes (no son jugadores).
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { Icon } from "@/components/Icon";
 import { ProfileScreenView } from "@/components/dashboard/user/ProfileScreenView";
 import { loadProfileFor } from "@/components/dashboard/user/ProfileScreen";
 
@@ -19,15 +22,17 @@ export default async function PublicPlayerProfilePage({
   const supabase = await getServerClient();
   const { data: meta } = await supabase
     .from("profiles")
-    .select("id,is_system" as never)
-    .eq("username", username)
+    .select("id,display_name,username,bio,is_system" as never)
+    .ilike("username", username)
     .maybeSingle();
-  const profile = meta as { id?: string; is_system?: boolean } | null;
+  const profile = meta as {
+    id?: string;
+    display_name?: string | null;
+    username?: string | null;
+    bio?: string | null;
+    is_system?: boolean;
+  } | null;
   if (!profile?.id) notFound();
-  if (profile.is_system) {
-    // El perfil oficial MATCHPOINT no tiene página pública (no es jugador).
-    notFound();
-  }
 
   // Si el viewer es el dueño del perfil, lo mandamos a la versión editable.
   const session = await getSession();
@@ -35,6 +40,169 @@ export default async function PublicPlayerProfilePage({
     redirect("/dashboard/user/perfil");
   }
 
+  // Cuenta oficial: vista compacta. No reusa ProfileScreenView porque MATCHPOINT
+  // no es un jugador (sin stats, sin clubes, sin ranking).
+  if (profile.is_system) {
+    return <OfficialAccountView profile={profile} />;
+  }
+
   const data = await loadProfileFor(profile.id);
   return <ProfileScreenView data={data} viewerMode="public" />;
+}
+
+function OfficialAccountView({
+  profile,
+}: {
+  profile: {
+    display_name?: string | null;
+    username?: string | null;
+    bio?: string | null;
+  };
+}) {
+  const name = profile.display_name ?? "Cuenta oficial";
+  const handle = profile.username ?? "matchpoint";
+  const bio =
+    profile.bio ??
+    "Cuenta oficial de MatchPoint EC. Te enviamos novedades, recordatorios y respuestas de soporte por aquí. Si tienes dudas, escríbenos por chat — un humano del equipo te responde.";
+
+  return (
+    <>
+      <div className="label-mp">Cuenta oficial · MatchPoint EC</div>
+
+      <div
+        className="card"
+        style={{
+          padding: 28,
+          background: "linear-gradient(135deg, #064e3b 0%, #0a0a0a 60%, #000 100%)",
+          color: "#fff",
+          border: 0,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.28), transparent 55%)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg,#10b981,#047857)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              fontFamily: "Plus Jakarta Sans",
+              fontWeight: 900,
+              fontSize: 36,
+            }}
+          >
+            M
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              className="font-heading"
+              style={{
+                fontSize: 32,
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                lineHeight: 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              {name}
+              <span
+                title="Cuenta oficial de la app"
+                aria-label="Cuenta oficial de la app"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  background: "var(--primary)",
+                  color: "#fff",
+                }}
+              >
+                <Icon name="check" size={13} color="#fff" />
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "rgba(255,255,255,0.65)",
+                marginTop: 6,
+              }}
+            >
+              @{handle} · Cuenta oficial
+            </div>
+          </div>
+          <Link
+            href="/dashboard/user/chat"
+            className="btn"
+            style={{
+              background: "var(--primary)",
+              color: "#fff",
+              padding: "10px 18px",
+              border: 0,
+            }}
+          >
+            <Icon name="message-circle" size={13} />
+            Ir al chat
+          </Link>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 24 }}>
+        <div className="label-mp">Acerca de</div>
+        <p
+          style={{
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: "var(--fg)",
+            marginTop: 10,
+            marginBottom: 0,
+          }}
+        >
+          {bio}
+        </p>
+        <div
+          style={{
+            marginTop: 18,
+            padding: 14,
+            borderRadius: 10,
+            background: "var(--muted)",
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            fontSize: 12,
+            color: "var(--muted-fg)",
+          }}
+        >
+          <Icon name="info" size={13} color="var(--muted-fg)" />
+          Este perfil solo envía notificaciones oficiales. No puedes responder
+          ni jugar contra él — pero podés escribir al equipo desde el chat.
+        </div>
+      </div>
+    </>
+  );
 }

@@ -165,6 +165,11 @@ Antes de marcar un stage completo, verificar el checklist §5 de `07-new-feature
 - **Si el stage tocó UI**: invocar `matchpoint-ui-review` para el QA visual
   (botones que se rompen con labels largos, hover sin gate, `.btn` +
   inline overrides, text overflow sin ellipsis, animaciones Emil-compliant).
+- **Para CUALQUIER feature con 3+ archivos tocados**: invocar
+  `matchpoint-logic-review` para coherencia funcional cross-cutting
+  (entidad searchable pero no visitable, action key ↔ schema mismatch,
+  RLS sin bypass, triggers vs downstream queries, casos especiales
+  como is_system manejados en una superficie y olvidados en otra).
 
 ### Paso 7 — Presentar y confirmar
 
