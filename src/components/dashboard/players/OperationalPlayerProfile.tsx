@@ -1,6 +1,6 @@
 // Vista operacional del perfil de un jugador, para roles que NO son user.
 // admin / owner / manager / partner / coach / employee acceden a este detalle
-// cuando visitan /dashboard/players/[username] desde sus propios contextos.
+// cuando visitan /dashboard/user/players/[username] desde sus propios contextos.
 //
 // Difiere de ProfileScreenView (social) en:
 // - Sin toggle "Vista propia/pública", sin tabs sociales.

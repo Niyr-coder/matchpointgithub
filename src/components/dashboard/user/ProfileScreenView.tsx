@@ -138,7 +138,7 @@ export function ProfileScreenView({
   viewerMode,
 }: {
   data: ProfileData;
-  // Cuando se renderiza desde /dashboard/players/[id] (perfil ajeno),
+  // Cuando se renderiza desde /dashboard/user/players/[id] (perfil ajeno),
   // forzamos "public" y ocultamos el toggle de previewar como propio.
   // Sin esta prop, el componente se comporta como vista de uno mismo
   // con el toggle habilitado.

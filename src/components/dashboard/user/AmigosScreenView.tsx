@@ -312,7 +312,7 @@ function FriendCard({
   }
 
   // Card normal de jugador. Nombre clickable a /players/[username] si existe.
-  const profileHref = f.username ? `/dashboard/players/${f.username}` : null;
+  const profileHref = f.username ? `/dashboard/user/players/${f.username}` : null;
   const nameEl = (
     <div
       className="font-heading"
@@ -517,7 +517,7 @@ function MpPlusBadge() {
 // fondo negro. Descripción corta. Sin acciones Mensaje/Retar (no se puede
 // mensajear ni retar al perfil oficial). Card clickable al perfil oficial.
 function OfficialFriendCard({ f }: { f: FriendLite }) {
-  const href = f.username ? `/dashboard/players/${f.username}` : null;
+  const href = f.username ? `/dashboard/user/players/${f.username}` : null;
   const inner = (
     <>
       <div
@@ -904,7 +904,7 @@ function DiscoverCard({
     <div className="card mp-discover-card" style={{ padding: 14 }}>
       {canVisitProfile ? (
         <Link
-          href={`/dashboard/players/${player.username}`}
+          href={`/dashboard/user/players/${player.username}`}
           style={{
             display: "flex",
             alignItems: "center",

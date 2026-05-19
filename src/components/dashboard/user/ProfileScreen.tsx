@@ -8,7 +8,7 @@ const STARTING_RATING = 2500;
 const SPORT_PRIMARY = "pickleball" as const;
 
 // Carga el perfil del userId dado. Si no se pasa, carga el de la sesión
-// actual (caso "Mi perfil"). Cuando se llama desde /dashboard/players/[id]
+// actual (caso "Mi perfil"). Cuando se llama desde /dashboard/user/players/[id]
 // recibimos un userId target y devolvemos su data pública.
 //
 // Importante: `meUserId` en el return es el userId del PERFIL cargado, no

@@ -415,7 +415,7 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                       "—"
                     ) : p.username ? (
                       <Link
-                        href={`/dashboard/players/${p.username}`}
+                        href={`/dashboard/user/players/${p.username}`}
                         className="mp-ranking-name"
                         style={{ color: "inherit", textDecoration: "none" }}
                       >
