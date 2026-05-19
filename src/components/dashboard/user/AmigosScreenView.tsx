@@ -540,33 +540,20 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
             pointerEvents: "none",
           }}
         />
-        {/* Wordmark oficial: misma lockup que Nav.tsx / DashboardSidebar.tsx */}
-        <div
+        {/* Wordmark sin dot — el dot vive en el avatar circular debajo,
+            ponerlo también acá lo hace redundante visual. */}
+        <span
+          className="font-heading"
           style={{
             position: "relative",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
+            fontWeight: 900,
+            letterSpacing: "-0.02em",
+            fontSize: 16,
             color: "#fff",
           }}
         >
-          <span
-            className="dot"
-            style={{ fontSize: 22, lineHeight: 1 }}
-          >
-            ●
-          </span>
-          <span
-            className="font-heading"
-            style={{
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              fontSize: 16,
-            }}
-          >
-            MATCHPOINT
-          </span>
-        </div>
+          MATCHPOINT
+        </span>
       </div>
       <div style={{ padding: "0 16px 16px", position: "relative" }}>
         <div
