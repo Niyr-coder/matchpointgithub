@@ -1,19 +1,20 @@
-// Vista del perfil de un jugador. Routing por rol del viewer:
-// - user (default, social) → ProfileScreenView con viewerMode="public"
-//   (la "VISTA PÚBLICA" que se previewa en Mi Perfil).
-// - admin / owner / manager / partner / coach / employee →
-//   OperationalPlayerProfile (data-dense, sin badge social, acciones
-//   específicas del rol).
-// - is_system (MATCHPOINT) → OfficialAccountView compacta (no es jugador).
+// Vista pública del perfil de un jugador.
+// Todos los viewers (cualquier rol) ven la misma vista pública social —
+// ProfileScreenView con viewerMode="public", la interfaz "VISTA PÚBLICA".
+// Cuentas oficiales (is_system) tienen OfficialAccountView dedicada.
+//
+// Match history cap por plan del VIEWER (regla MP+):
+//   - self (viewer === target)  → unlimited
+//   - viewer.premium activo     → unlimited (beneficio MP+)
+//   - viewer.free               → últimos 10 partidos
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
-import type { RoleKey } from "@/lib/roles";
+import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import { Icon } from "@/components/Icon";
 import { ProfileScreenView } from "@/components/dashboard/user/ProfileScreenView";
 import { loadProfileFor } from "@/components/dashboard/user/ProfileScreen";
-import { OperationalPlayerProfile } from "@/components/dashboard/players/OperationalPlayerProfile";
 
 export default async function PublicPlayerProfilePage({
   params,
@@ -49,16 +50,24 @@ export default async function PublicPlayerProfilePage({
     return <OfficialAccountView profile={profile} />;
   }
 
-  const data = await loadProfileFor(profile.id);
-
-  // Active role del viewer decide la vista. user = social, otros = operacional.
-  // Si no hay activeRole (guest o cookie ausente), tratar como user.
-  const activeRole: RoleKey =
-    (session.authenticated && session.session.activeRole) || "user";
-  if (activeRole === "user") {
-    return <ProfileScreenView data={data} viewerMode="public" />;
+  // Cap del match history según plan del viewer. Free: últimos 10.
+  // Premium: ilimitado. Guest sin sesión: cap conservador de 10.
+  let viewerIsPremium = false;
+  if (session.authenticated) {
+    const viewerSummary = await getProfileSummary(session.session.userId);
+    viewerIsPremium = isPlanActive(viewerSummary).tier === "premium";
   }
-  return <OperationalPlayerProfile data={data} viewerRole={activeRole} />;
+  const matchHistoryCap = viewerIsPremium ? null : 10;
+
+  const data = await loadProfileFor(profile.id, { matchHistoryCap });
+
+  return (
+    <ProfileScreenView
+      data={data}
+      viewerMode="public"
+      viewerIsPremium={viewerIsPremium}
+    />
+  );
 }
 
 function OfficialAccountView({

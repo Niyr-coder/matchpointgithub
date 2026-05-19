@@ -14,7 +14,15 @@ const SPORT_PRIMARY = "pickleball" as const;
 // Importante: `meUserId` en el return es el userId del PERFIL cargado, no
 // del viewer. Lo usa ProfileScreenView para filtros de realtime y otros
 // derivados. El gating "isMine" se controla con prop `viewerMode` aparte.
-export async function loadProfileFor(targetUserId?: string): Promise<ProfileData> {
+//
+// `opts.matchHistoryCap`: tope de partidos a devolver. null = ilimitado
+// (max 200 defensivo). Mi Perfil → null. Vista pública free viewer → 10.
+// Vista pública premium viewer → null. Ver /dashboard/user/players/[username]/page.tsx
+// para la lógica del cap.
+export async function loadProfileFor(
+  targetUserId?: string,
+  opts?: { matchHistoryCap?: number | null },
+): Promise<ProfileData> {
   const session = await getSession();
   const supabase = await getServerClient();
 
@@ -79,7 +87,8 @@ export async function loadProfileFor(targetUserId?: string): Promise<ProfileData
         `team_a_player_ids.cs.{${userId}},team_b_player_ids.cs.{${userId}}`,
       )
       .order("played_at", { ascending: false })
-      .limit(20),
+      // Cap del viewer (free=10, premium/self=null). Max defensivo 200.
+      .limit(opts?.matchHistoryCap ?? 200),
   ]);
 
   // Cast: matches.rating_deltas (migration 065) aún no está en los types
@@ -220,6 +229,7 @@ export async function loadProfileFor(targetUserId?: string): Promise<ProfileData
     losses: legacy?.losses ?? 0,
     ratings: { singles, doubles },
     matchHistory,
+    matchHistoryCap: opts?.matchHistoryCap ?? null,
   };
 }
 

@@ -57,6 +57,9 @@ export type ProfileData = {
     doubles: ModeRating | null;
   };
   matchHistory: ProfileMatch[];
+  // Cap aplicado al match history. null = sin cap (Mi Perfil o viewer MP+).
+  // Cuando hay cap, el view muestra hint "MP+ desbloquea historial completo".
+  matchHistoryCap?: number | null;
 };
 
 type Mode = "mine" | "public";
@@ -121,13 +124,16 @@ const editAvatarBtn: CSSProperties = {
 export function ProfileScreenView({
   data,
   viewerMode,
+  viewerIsPremium = false,
 }: {
   data: ProfileData;
-  // Cuando se renderiza desde /dashboard/user/players/[id] (perfil ajeno),
-  // forzamos "public" y ocultamos el toggle de previewar como propio.
-  // Sin esta prop, el componente se comporta como vista de uno mismo
-  // con el toggle habilitado.
+  // Cuando se renderiza desde /dashboard/user/players/[username] (perfil ajeno),
+  // forzamos "public". Sin esta prop, el componente se comporta como vista
+  // de uno mismo.
   viewerMode?: "public";
+  // True si el viewer es MP+ activo. Cuando viewerMode="public" y hay cap
+  // en matchHistory, oculta el hint CTA (premium ya tiene historial completo).
+  viewerIsPremium?: boolean;
 }) {
   // Realtime: stats actualizan al confirmar match, role_assignments para clubes.
   useRealtimeRefresh(
@@ -420,12 +426,65 @@ export function ProfileScreenView({
         </div>
         <div style={{ paddingTop: 20 }}>
           {tab === "historial" && (
-            <MatchHistory
-              matchesTotal={data.matchesTotal}
-              wins={data.wins}
-              losses={data.losses}
-              matches={data.matchHistory}
-            />
+            <>
+              <MatchHistory
+                matchesTotal={data.matchesTotal}
+                wins={data.wins}
+                losses={data.losses}
+                matches={data.matchHistory}
+              />
+              {/* CTA upgrade cuando el viewer free está viendo el perfil
+                  de otro y el historial llegó al cap. Si el target tiene
+                  más partidos jugados que los devueltos, hay más por ver. */}
+              {!isMine &&
+                !viewerIsPremium &&
+                data.matchHistoryCap != null &&
+                data.matchesTotal > data.matchHistory.length && (
+                  <div
+                    className="card"
+                    style={{
+                      padding: 16,
+                      marginTop: 12,
+                      background: "rgba(250,204,21,0.06)",
+                      border: "1px solid rgba(250,204,21,0.3)",
+                      display: "flex",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Icon name="crown" size={16} color="#facc15" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>
+                        Mostrando últimos {data.matchHistoryCap} partidos
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                        Activa MatchPoint+ para ver el historial completo
+                        de cualquier jugador.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/dashboard/user/mi-plan?upgrade=premium")}
+                      style={{
+                        background: "#facc15",
+                        color: "#0a0a0a",
+                        border: 0,
+                        padding: "8px 14px",
+                        borderRadius: 9999,
+                        fontSize: 10.5,
+                        fontWeight: 900,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Activar MP+
+                    </button>
+                  </div>
+                )}
+            </>
           )}
           {tab === "insignias" && <BadgesGrid />}
           {tab === "clubes" && <ClubsList clubs={data.clubs} />}
