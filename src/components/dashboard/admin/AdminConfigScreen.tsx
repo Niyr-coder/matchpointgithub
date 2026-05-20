@@ -13,7 +13,11 @@ async function loadData(): Promise<ConfigData> {
     .eq("role", "admin")
     .is("revoked_at", null);
 
-  return { adminCount: adminCount ?? 0 };
+  // Switch multideporte (platform_config vía RPC público, ver mig 123).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: multisport } = await (supabase as any).rpc("fn_multisport_enabled");
+
+  return { adminCount: adminCount ?? 0, multisportEnabled: multisport === true };
 }
 
 export async function AdminConfigScreen() {

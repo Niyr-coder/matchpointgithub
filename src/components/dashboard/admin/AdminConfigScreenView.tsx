@@ -1,15 +1,19 @@
 // Client view de AdminConfigScreen — layout 1:1 (RoleScreensPolish.jsx 467-558).
 "use client";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "../ToastProvider";
+import { setMultisportEnabled } from "@/server/actions/platform-config";
 
 type Item = [string, string] | [string, string, "critical"];
 type Section = { i: string; t: string; items: Item[] };
 
 export type ConfigData = {
   adminCount: number;
+  multisportEnabled: boolean;
 };
 
 export function AdminConfigScreenView({ data }: { data: ConfigData }) {
@@ -28,6 +32,11 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
         ["Zona horaria", "America/Guayaquil (UTC-5)"],
         ["Dominio", "matchpoint.app"],
       ],
+    },
+    deportes: {
+      i: "trophy",
+      t: "Deportes",
+      items: [], // render custom (toggle multideporte)
     },
     pagos: {
       i: "wallet",
@@ -81,6 +90,26 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
 
   const [active, setActive] = useState<string>("general");
   const cur = SECTIONS[active];
+
+  const router = useRouter();
+  const toast = useToast();
+  const [savingMultisport, startMultisport] = useTransition();
+  const toggleMultisport = () => {
+    const next = !data.multisportEnabled;
+    startMultisport(async () => {
+      const res = await setMultisportEnabled({ enabled: next });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+        return;
+      }
+      toast({
+        icon: "check-circle-2",
+        title: next ? "Multideporte activado" : "Solo Pickleball",
+        sub: next ? "Pádel y Tenis disponibles en toda la app." : "Pádel y Tenis ocultos.",
+      });
+      router.refresh();
+    });
+  };
 
   return (
     <>
@@ -206,7 +235,58 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
               </h2>
             </div>
           </div>
-          {cur.items.map(([k, v, critical], i) => (
+          {active === "deportes" ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: "16px 0",
+              }}
+            >
+              <div style={{ maxWidth: 460 }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>Multideporte</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.5 }}>
+                  Si está apagado, solo <b>Pickleball</b> aparece en toda la plataforma
+                  (selectores, formularios, filtros). Al activarlo se habilitan
+                  <b> Pádel</b> y <b>Tenis</b>.
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={data.multisportEnabled}
+                onClick={toggleMultisport}
+                disabled={savingMultisport}
+                style={{
+                  width: 48,
+                  height: 28,
+                  borderRadius: 9999,
+                  background: data.multisportEnabled ? "var(--primary)" : "#d4d4d8",
+                  position: "relative",
+                  border: 0,
+                  cursor: savingMultisport ? "not-allowed" : "pointer",
+                  flexShrink: 0,
+                  transition: "background 180ms var(--ease-out, ease)",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    left: data.multisportEnabled ? 23 : 3,
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transition: "left 180ms var(--ease-out, ease)",
+                  }}
+                />
+              </button>
+            </div>
+          ) : (
+          cur.items.map(([k, v, critical], i) => (
             <div
               key={k}
               style={{
@@ -261,7 +341,8 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
                 </button>
               </div>
             </div>
-          ))}
+          ))
+          )}
         </div>
       </div>
     </>

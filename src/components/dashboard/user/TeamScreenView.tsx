@@ -562,8 +562,12 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
       });
       if (res.ok) {
         toast({ icon: "check", title: "Team creado", sub: res.data.name });
-        router.refresh();
+        // Navegar PRIMERO a /team (limpio), luego refrescar — así el refresh
+        // aplica a la URL destino y loadTeam encuentra la membresía recién
+        // creada. Al revés, el refresh corría sobre ?view=create y la nueva
+        // URL quedaba con team=null → resolveView caía a "empty".
         onSubmit();
+        router.refresh();
       } else {
         const msg =
           res.error.code === "TEAMS.SLUG_TAKEN"
@@ -828,6 +832,7 @@ function TeamJoin({
   publicTeams: PublicTeamLite[];
 }) {
   const toast = useToast();
+  const router = useRouter();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [requesting, setRequesting] = useState<string | null>(null);
@@ -872,6 +877,7 @@ function TeamJoin({
       if (res.ok) {
         toast({ icon: "check", title: "¡Te uniste!", sub: res.data.name });
         onJoined();
+        router.refresh();
       } else {
         const msg =
           res.error.code === "TEAMS.CODE_INVALID"
@@ -2461,9 +2467,9 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               <span style={{ color: "#92400e" }}>→</span>
             </a>
           )}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontSize: 12.5 }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <tr>
                 {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
                   <th
                     key={i}
@@ -2497,12 +2503,12 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                 <tr
                   key={p.name}
                   style={{
-                    borderBottom: "1px solid var(--border)",
-                    background: memberCard?.background,
+                    background: memberCard?.background ?? "#fafafa",
                     color: memberCard?.color,
+                    boxShadow: isMe ? "inset 0 0 0 1.5px var(--primary)" : "inset 0 0 0 1px var(--border)",
                   }}
                 >
-                  <td style={{ padding: "12px 6px" }}>
+                  <td style={{ padding: "12px 6px 12px 12px", borderRadius: "12px 0 0 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ position: "relative" }}>
                         <div
@@ -2591,7 +2597,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                       </span>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 6px", textAlign: "right" }}>
+                  <td style={{ padding: "12px 12px 12px 6px", textAlign: "right", borderRadius: "0 12px 12px 0" }}>
                     <button
                       style={{
                         width: 26,
