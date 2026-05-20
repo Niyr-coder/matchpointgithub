@@ -436,9 +436,9 @@ function PreviewCard({
           >
             Cómo te ven en amigos, ranking y roster
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
             <FriendCardPreview cardObj={cardObj} accentHex={accentHex} />
-            <RosterRowPreview cardObj={cardObj} accentHex={accentHex} />
+            <StatsPreview cardObj={cardObj} />
           </div>
         </div>
       </div>
@@ -446,7 +446,9 @@ function PreviewCard({
   );
 }
 
-// Mock de la friend card (AmigosScreen) con la card-style del tema.
+// Mock fiel de la friend card (AmigosScreenView): wrapper con card-style del
+// tema + banner con gradiente del accent + avatar montado + badge de nivel +
+// ubicación + botón Agregar.
 function FriendCardPreview({
   cardObj,
   accentHex,
@@ -455,123 +457,124 @@ function FriendCardPreview({
   accentHex: string;
 }) {
   const css = cardObj?.css;
-  const fg = css?.color ?? "#0a0a0a";
   return (
     <div
       style={{
-        width: 200,
-        padding: 14,
+        width: 220,
         borderRadius: 14,
+        overflow: "hidden",
         background: css?.background ?? "#fff",
         border: css?.border ?? "1px solid var(--border)",
-        boxShadow: css?.boxShadow ?? "none",
+        boxShadow: css?.boxShadow ?? "0 1px 3px rgba(0,0,0,0.06)",
         backdropFilter: css?.backdropFilter,
-        color: fg,
+        color: css?.color ?? "#0a0a0a",
         display: "flex",
         flexDirection: "column",
-        gap: 10,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {/* Banner con el gradiente del accent del tema. */}
+      <div
+        style={{
+          position: "relative",
+          height: 64,
+          background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 900,
-            fontSize: 14,
-            flexShrink: 0,
+            position: "absolute",
+            inset: 0,
+            background: "radial-gradient(circle at 70% 40%, rgba(255,255,255,0.15), transparent 60%)",
           }}
-        >
-          TN
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 800 }}>Tu nombre</div>
-          <div style={{ fontSize: 11, opacity: 0.7 }}>Quito · Pickleball</div>
-        </div>
+        />
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, opacity: 0.75 }}>MP Rating</span>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            padding: "2px 8px",
-            borderRadius: 9999,
-            background: accentHex,
-            color: "#fff",
-          }}
+      <div style={{ padding: "0 14px 14px" }}>
+        <div style={{ marginTop: -28, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg,#7c3aed,#db2777)",
+              border: "4px solid #fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: 16,
+            }}
+          >
+            TN
+          </div>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              background: "#0a0a0a",
+              color: "#fff",
+              borderRadius: 9999,
+              fontSize: 10,
+              fontWeight: 800,
+              marginBottom: 6,
+            }}
+          >
+            <Icon name="zap" size={10} color="#fbbf24" />
+            4.2
+          </span>
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>Tu nombre</div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <Icon name="map-pin" size={10} />
+          Manabí / Portoviejo · Pickleball
+        </div>
+        <button
+          className="btn btn-primary"
+          type="button"
+          style={{ width: "100%", marginTop: 12, fontSize: 11, padding: "9px 10px", justifyContent: "center", pointerEvents: "none" }}
         >
-          4.20
-        </span>
+          <Icon name="user-plus" size={12} color="#fff" />
+          Agregar
+        </button>
       </div>
     </div>
   );
 }
 
-// Mock de una fila del roster del team con la card-style del tema.
-function RosterRowPreview({
-  cardObj,
-  accentHex,
-}: {
-  cardObj: ReturnType<typeof findCardStyle>;
-  accentHex: string;
-}) {
+// Mock de las stat cards del perfil (ProfileScreen). El card-style del tema
+// aplica al wrapper de cada stat.
+function StatsPreview({ cardObj }: { cardObj: ReturnType<typeof findCardStyle> }) {
   const css = cardObj?.css;
-  const fg = css?.color ?? "#0a0a0a";
-  return (
+  const stat = (label: string, value: string, sub: string) => (
     <div
       style={{
-        width: 240,
-        padding: "10px 14px",
+        flex: 1,
+        minWidth: 120,
+        padding: "12px 14px",
         borderRadius: 12,
-        background: css?.background ?? "#fafafa",
+        background: css?.background ?? "#fff",
         border: css?.border ?? "1px solid var(--border)",
+        boxShadow: css?.boxShadow ?? "none",
         backdropFilter: css?.backdropFilter,
-        color: fg,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
+        color: css?.color ?? "#0a0a0a",
       }}
     >
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: "50%",
-          background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 900,
-          fontSize: 11,
-          flexShrink: 0,
-        }}
-      >
-        TN
+      <div style={{ fontSize: 8.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", opacity: 0.6 }}>
+        {label}
       </div>
-      <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>Tu nombre</span>
-      <span
-        style={{
-          fontSize: 9,
-          fontWeight: 800,
-          padding: "2px 8px",
-          borderRadius: 9999,
-          background: "rgba(16,185,129,0.15)",
-          color: "#10b981",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-        }}
-      >
-        Titular
-      </span>
-      <span style={{ fontSize: 12, fontWeight: 800 }}>4.2</span>
+      <div className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, marginTop: 4 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10, opacity: 0.65, marginTop: 2 }}>{sub}</div>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 250 }}>
+      {stat("MP Rating", "4.20", "Oficial")}
+      {stat("Win rate", "78%", "Singles")}
     </div>
   );
 }
