@@ -451,19 +451,25 @@ export function QuedadaManagePanel({
       )}
 
       {!loading && data && data.canManage && (
-        <>
+        <div key={activeTab} className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} />}
-          {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} onTogglePaid={togglePaid} />}
+          {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
           {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
           {activeTab === "config" && data.isCreator && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
-              <CategoriesSection data={data} onChanged={afterMutation} />
-              <LogisticsSection data={data} onSaved={afterMutation} />
-              <BankPrizesSection data={data} onSaved={afterMutation} />
-              <CohostsSection data={data} onChanged={afterMutation} />
+              {[
+                <CategoriesSection key="cat" data={data} onChanged={afterMutation} />,
+                <LogisticsSection key="log" data={data} onSaved={afterMutation} />,
+                <BankPrizesSection key="bank" data={data} onSaved={afterMutation} />,
+                <CohostsSection key="co" data={data} onChanged={afterMutation} />,
+              ].map((node, i) => (
+                <div key={i} className="card mp-rise" style={{ padding: 16, animationDelay: `${i * 50}ms` }}>
+                  {node}
+                </div>
+              ))}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -534,8 +540,10 @@ export function QuedadaManagePanel({
 }
 
 // ── Bloque visual reutilizable ───────────────────────────────────────────────
+// Header tipográfico (micro-label + título UPPERCASE, sin íconos decorativos,
+// fiel al kit). Colapso animado con grid-template-rows (solo si collapsible).
 function Section({
-  icon,
+  label,
   title,
   sub,
   children,
@@ -543,7 +551,7 @@ function Section({
   defaultOpen = true,
   badge,
 }: {
-  icon: string;
+  label?: string;
   title: string;
   sub?: string;
   children: React.ReactNode;
@@ -552,12 +560,11 @@ function Section({
   badge?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const expanded = !collapsible || open;
 
   const head = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
-      <Icon name={icon} size={16} color="var(--primary)" strokeWidth={2.25} />
       <div style={{ minWidth: 0, flex: 1 }}>
+        {label && <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 3 }}>{label}</div>}
         <div
           className="font-heading"
           style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.01em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}
@@ -569,12 +576,16 @@ function Section({
         </div>
         {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{sub}</div>}
       </div>
-      {collapsible && <Icon name={open ? "chevron-up" : "chevron-down"} size={18} color="var(--muted-fg)" />}
+      {collapsible && (
+        <span style={{ transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)" }}>
+          <Icon name="chevron-down" size={18} color="var(--muted-fg)" />
+        </span>
+      )}
     </div>
   );
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <section style={{ display: "flex", flexDirection: "column" }}>
       {collapsible ? (
         <button
           type="button"
@@ -587,7 +598,15 @@ function Section({
       ) : (
         head
       )}
-      {expanded && children}
+      {collapsible ? (
+        <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 240ms var(--ease-out)" }}>
+          <div style={{ overflow: "hidden", minHeight: 0 }}>
+            <div style={{ paddingTop: 12 }}>{children}</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ paddingTop: 12 }}>{children}</div>
+      )}
     </section>
   );
 }
@@ -615,11 +634,11 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
   return (
     <>
       <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 12 }}>
-          <InfoRow icon="calendar-days" label="Cuándo" value={when} />
-          <InfoRow icon="map-pin" label="Lugar" value={q.location_text || "Sin definir"} />
-          <InfoRow icon="trophy" label="Formato" value={`${FORMAT_LABEL[q.format] ?? q.format} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
-          <InfoRow icon="ticket" label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: "14px 18px" }}>
+          <InfoRow label="Cuándo" value={when} />
+          <InfoRow label="Lugar" value={q.location_text || "Sin definir"} />
+          <InfoRow label="Formato" value={`${FORMAT_LABEL[q.format] ?? q.format} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
+          <InfoRow label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
         </div>
         {q.description && (
           <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.description}</p>
@@ -636,7 +655,7 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
         <InviteLinkSection inviteCode={q.invite_code} toast={toast} />
 
         {q.prizes && q.prizes.length > 0 && (
-          <Section icon="award" title="Premios">
+          <Section title="Premios">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {q.prizes.map((p, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: "var(--muted)", border: "1px solid var(--border)" }}>
@@ -653,16 +672,11 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-      <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Icon name={icon} size={14} color="var(--muted-fg)" />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
-        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>{value}</div>
-      </div>
+    <div style={{ minWidth: 0, borderLeft: "2px solid var(--border)", paddingLeft: 10 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 3 }}>{value}</div>
     </div>
   );
 }
@@ -681,11 +695,14 @@ function PagosTab({
   const joined = data.participants.filter((p) => p.status === "joined");
   const paidN = joined.filter((p) => p.paid).length;
   const allPaid = joined.length > 0 && paidN === joined.length;
+  const fee = data.quedada.fee_cents;
+  const collected = paidN * fee;
+  const pct = joined.length ? Math.round((paidN / joined.length) * 100) : 0;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: acct ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
       {acct && (
-        <Section icon="banknote" title="Datos del organizador" sub="Lo que ven los inscritos para transferir.">
+        <Section label="Cobro" title="Datos del organizador" sub="Lo que ven los inscritos para transferir.">
           <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
             <div style={{ fontWeight: 900 }}>{acct.bank}</div>
             <div style={{ color: "var(--muted-fg)" }}>
@@ -697,11 +714,28 @@ function PagosTab({
         </Section>
       )}
 
-      <Section icon="users" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${paidN}/${joined.length}`}>
+      <Section label="Control" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${paidN}/${joined.length}`}>
         {joined.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay inscritos.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                <span className="font-heading tabular" style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em" }}>
+                  {paidN}
+                  <span style={{ color: "var(--muted-fg)", fontSize: 15 }}>/{joined.length}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted-fg)", marginLeft: 8, letterSpacing: "0.04em" }}>PAGADOS</span>
+                </span>
+                {fee > 0 && (
+                  <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+                    ≈ <b style={{ color: "var(--fg)" }}>{money(collected)}</b> recaudado
+                  </span>
+                )}
+              </div>
+              <div style={{ height: 6, borderRadius: 9999, background: "var(--muted)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: "var(--success-fg)", borderRadius: 9999, transition: "width 320ms var(--ease-out)" }} />
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => onSetAllPaid(!allPaid)}
@@ -757,7 +791,7 @@ function InviteLinkSection({
   };
 
   return (
-    <Section icon="link" title="Link de inscripción" sub="Compártelo para que se unan a la quedada.">
+    <Section label="Compartir" title="Link de inscripción" sub="Compártelo para que se unan a la quedada.">
       {link ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div
@@ -830,7 +864,7 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
   };
 
   return (
-    <Section icon="building-2" title="Logística de canchas" sub="Define cuántas canchas, horas y el precio por hora.">
+    <Section label="Costos" title="Logística de canchas" sub="Define cuántas canchas, horas y el precio por hora.">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
         <Field label="Canchas (#)">
           <input type="number" min={1} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="2" style={fieldInput} />
@@ -912,7 +946,7 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
   };
 
   return (
-    <Section icon="banknote" title="Datos del organizador y premios" sub="Para que los jugadores te transfieran y vean qué se juega.">
+    <Section label="Cobro" title="Datos del organizador y premios" sub="Para que los jugadores te transfieran y vean qué se juega.">
       <Field label="Datos del organizador (para el pago)">
         <BankAccountFields value={bank} onChange={setBank} />
       </Field>
@@ -980,7 +1014,7 @@ function CohostsSection({ data, onChanged }: { data: ManageData; onChanged: () =
   };
 
   return (
-    <Section icon="users" title="Co-hosts" sub="Pueden gestionar parejas, cupos y pagos.">
+    <Section label="Equipo" title="Co-hosts" sub="Pueden gestionar parejas, cupos y pagos.">
       {data.cohosts.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {data.cohosts.map((c) => (
@@ -1062,7 +1096,7 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
   };
 
   return (
-    <Section icon="layers" title="Categorías" sub="Cada categoría tiene su hora y cupos.">
+    <Section label="Setup" title="Categorías" sub="Cada categoría tiene su hora y cupos.">
       {data.categories.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {data.categories.map((c) =>
@@ -1266,17 +1300,19 @@ function CategoryForm({
 }
 
 // ── 5. Slots / Parejas por categoría ─────────────────────────────────────────
-function SlotsSection({ data, onChanged, onTogglePaid }: { data: ManageData; onChanged: () => Promise<void>; onTogglePaid: (userId: string) => void }) {
+function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
   return (
-    <Section icon="grid-3x3" title="Parejas por categoría" sub="Asigna parejas a cada cupo y marca quién pagó.">
+    <Section label="Roster" title="Parejas por categoría" sub="Asigna parejas a cada cupo.">
       {data.categories.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-          Crea al menos una categoría para poder asignar parejas.
+          Crea al menos una categoría (en Configurar) para asignar parejas.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12, alignItems: "start" }}>
-          {data.categories.map((c) => (
-            <CategorySlots key={c.id} data={data} category={c} onChanged={onChanged} onTogglePaid={onTogglePaid} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {data.categories.map((c, i) => (
+            <div key={c.id} className="mp-rise" style={{ animationDelay: `${i * 50}ms` }}>
+              <CategorySlots data={data} category={c} onChanged={onChanged} />
+            </div>
           ))}
         </div>
       )}
@@ -1288,97 +1324,27 @@ function CategorySlots({
   data,
   category,
   onChanged,
-  onTogglePaid,
 }: {
   data: ManageData;
   category: ManageCategory;
   onChanged: () => Promise<void>;
-  onTogglePaid: (userId: string) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const slotCount = category.max_slots ?? 0;
-  const pairsBySlot = new Map<number, ManagePair>();
-  for (const p of data.pairs) {
-    if (p.category_id === category.id) pairsBySlot.set(p.slot_no, p);
-  }
-  const slots = slotCount > 0 ? Array.from({ length: slotCount }, (_, i) => i + 1) : [];
-  const filled = pairsBySlot.size;
-
-  return (
-    <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: open ? 10 : 0 }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8, width: "100%" }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-            <span className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>{category.name}</span>
-            <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-              {category.starts_at ? `${hourLabel(category.starts_at)} · ` : ""}
-              {slotCount} cupos
-            </span>
-          </div>
-        </div>
-        <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: filled > 0 ? "var(--color-mp-primary-light)" : "var(--muted)", color: filled > 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)", flexShrink: 0 }}>
-          {filled}/{slotCount || "?"}
-        </span>
-        <Icon name={open ? "chevron-up" : "chevron-down"} size={16} color="var(--muted-fg)" />
-      </button>
-
-      {open &&
-        (slots.length === 0 ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define cuántos cupos tiene esta categoría (en Configurar).</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {slots.map((slotNo) => (
-              <SlotRow
-                key={slotNo}
-                data={data}
-                category={category}
-                slotNo={slotNo}
-                pair={pairsBySlot.get(slotNo) ?? null}
-                onChanged={onChanged}
-                onTogglePaid={onTogglePaid}
-              />
-            ))}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-function SlotRow({
-  data,
-  category,
-  slotNo,
-  pair,
-  onChanged,
-  onTogglePaid,
-}: {
-  data: ManageData;
-  category: ManageCategory;
-  slotNo: number;
-  pair: ManagePair | null;
-  onChanged: () => Promise<void>;
-  onTogglePaid: (userId: string) => void;
 }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
-  const [pending, start] = useTransition();
-  const [assigning, setAssigning] = useState(false);
+  const [, startTx] = useTransition();
+  const [open, setOpen] = useState(true);
+  const [assigningSlot, setAssigningSlot] = useState<number | null>(null);
   const isDoubles = data.quedada.match_mode === "doubles";
 
+  const slotCount = category.max_slots ?? 0;
+  const pairsBySlot = new Map<number, ManagePair>();
+  for (const p of data.pairs) if (p.category_id === category.id) pairsBySlot.set(p.slot_no, p);
+  const slots = slotCount > 0 ? Array.from({ length: slotCount }, (_, i) => i + 1) : [];
+  const filled = pairsBySlot.size;
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const playerA = pair ? partById.get(pair.player_a_id) ?? null : null;
-  const playerB = pair?.player_b_id ? partById.get(pair.player_b_id) ?? null : null;
+  const nameFor = (id: string | null): string | null => (id ? nameOf(partById.get(id)?.profiles ?? null) : null);
 
-  const aName = playerA ? nameOf(playerA.profiles) : pair ? "Jugador" : null;
-  const bName = playerB ? nameOf(playerB.profiles) : pair?.player_b_id ? "Jugador" : null;
-
-  const remove = async () => {
-    if (!pair) return;
+  const removePairById = async (pairId: string, slotNo: number) => {
     const ok = await confirm({
       title: "Quitar pareja",
       body: `¿Quitar la pareja del cupo ${slotNo} de “${category.name}”?`,
@@ -1387,8 +1353,8 @@ function SlotRow({
       destructive: true,
     });
     if (!ok) return;
-    start(async () => {
-      const res = await removePair({ pairId: pair.id });
+    startTx(async () => {
+      const res = await removePair({ pairId });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo quitar", sub: res.error.message });
         return;
@@ -1399,120 +1365,152 @@ function SlotRow({
   };
 
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: pair ? "#fff" : "var(--muted)", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px" }}>
-        <div
-          className="font-heading tabular"
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            background: pair ? "var(--primary)" : "transparent",
-            border: pair ? "0" : "1px dashed var(--border)",
-            color: pair ? "#fff" : "var(--muted-fg)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 12,
-            fontWeight: 900,
-            flexShrink: 0,
-          }}
-        >
-          {slotNo}
-        </div>
+    <div className="card" style={{ padding: 14 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8, width: "100%" }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
-          {pair ? (
-            <PaidPlayers
-              playerA={{ id: pair.player_a_id, name: aName ?? "Jugador", paid: playerA?.paid ?? false }}
-              playerB={
-                pair.player_b_id
-                  ? { id: pair.player_b_id, name: bName ?? "Jugador", paid: playerB?.paid ?? false }
-                  : null
-              }
-              onTogglePaid={onTogglePaid}
-            />
-          ) : (
-            <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cupo libre</span>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em" }}>{category.name}</span>
+            {category.starts_at && (
+              <span style={{ fontSize: 11, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Icon name="clock" size={11} color="var(--muted-fg)" /> {hourLabel(category.starts_at)}
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-          {pair ? (
-            <button
-              className="btn"
-              onClick={remove}
-              disabled={pending}
-              aria-label="Quitar pareja"
-              style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "6px 9px" }}
-            >
-              <Icon name="x" size={12} color="var(--destructive-fg)" />
-            </button>
-          ) : (
-            <button
-              className="btn"
-              onClick={() => setAssigning((v) => !v)}
-              disabled={pending}
-              style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 10px" }}
-            >
-              <Icon name="user-plus" size={12} />
-              Asignar
-            </button>
-          )}
+        <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: filled > 0 ? "var(--color-mp-primary-light)" : "var(--muted)", color: filled > 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)", flexShrink: 0 }}>
+          {filled}/{slotCount || "?"}
+        </span>
+        <span style={{ transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)", flexShrink: 0 }}>
+          <Icon name="chevron-down" size={16} color="var(--muted-fg)" />
+        </span>
+      </button>
+
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 240ms var(--ease-out)" }}>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <div style={{ paddingTop: 12 }}>
+            {slots.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define cuántos cupos tiene esta categoría (en Configurar).</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 8 }}>
+                  {slots.map((n) => {
+                    const pair = pairsBySlot.get(n) ?? null;
+                    return (
+                      <SlotCell
+                        key={n}
+                        slotNo={n}
+                        filled={!!pair}
+                        nameA={pair ? nameFor(pair.player_a_id) : null}
+                        nameB={pair ? nameFor(pair.player_b_id) : null}
+                        active={assigningSlot === n}
+                        onAssign={() => setAssigningSlot(n)}
+                        onRemove={pair ? () => removePairById(pair.id, n) : undefined}
+                      />
+                    );
+                  })}
+                </div>
+                {assigningSlot != null && (
+                  <div style={{ marginTop: 10 }} className="mp-tab-in">
+                    <AssignPairForm
+                      data={data}
+                      category={category}
+                      slotNo={assigningSlot}
+                      isDoubles={isDoubles}
+                      onDone={async () => {
+                        setAssigningSlot(null);
+                        await onChanged();
+                      }}
+                      onCancel={() => setAssigningSlot(null)}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
-
-      {assigning && !pair && (
-        <AssignPairForm
-          data={data}
-          category={category}
-          slotNo={slotNo}
-          isDoubles={isDoubles}
-          onDone={async () => {
-            setAssigning(false);
-            await onChanged();
-          }}
-          onCancel={() => setAssigning(false)}
-        />
-      )}
     </div>
   );
 }
 
-function PaidPlayers({
-  playerA,
-  playerB,
-  onTogglePaid,
+function SlotCell({
+  slotNo,
+  filled,
+  nameA,
+  nameB,
+  active,
+  onAssign,
+  onRemove,
 }: {
-  playerA: { id: string; name: string; paid: boolean };
-  playerB: { id: string; name: string; paid: boolean } | null;
-  onTogglePaid: (userId: string) => void;
+  slotNo: number;
+  filled: boolean;
+  nameA: string | null;
+  nameB: string | null;
+  active: boolean;
+  onAssign: () => void;
+  onRemove?: () => void;
 }) {
-  const renderItem = (p: { id: string; name: string; paid: boolean }) => (
-    <label
-      key={p.id}
+  return (
+    <div
       style={{
-        display: "inline-flex",
+        display: "flex",
         alignItems: "center",
-        gap: 6,
-        fontSize: 12,
-        fontWeight: 700,
-        cursor: "pointer",
-        minWidth: 0,
+        gap: 8,
+        padding: "8px 10px",
+        borderRadius: 10,
+        border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+        background: filled ? "#fff" : "var(--muted)",
+        transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out)",
       }}
     >
-      <input
-        type="checkbox"
-        checked={p.paid}
-        onChange={() => onTogglePaid(p.id)}
-        style={{ accentColor: "var(--success-fg)", cursor: "pointer" }}
-        aria-label={`Marcar pago de ${p.name}`}
-      />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: p.paid ? "var(--success-fg)" : "var(--fg)" }}>{p.name}</span>
-    </label>
-  );
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
-      {renderItem(playerA)}
-      {playerB && renderItem(playerB)}
+      <span
+        className="font-heading tabular"
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 6,
+          flexShrink: 0,
+          fontSize: 11.5,
+          fontWeight: 900,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: filled ? "var(--primary)" : "transparent",
+          border: filled ? "0" : "1px dashed var(--border)",
+          color: filled ? "#fff" : "var(--muted-fg)",
+        }}
+      >
+        {slotNo}
+      </span>
+      {filled ? (
+        <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {nameA}
+          {nameB ? <span style={{ color: "var(--muted-fg)" }}> · {nameB}</span> : null}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onAssign}
+          style={{ flex: 1, textAlign: "left", background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: 0 }}
+        >
+          <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
+        </button>
+      )}
+      {filled && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Quitar pareja"
+          style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
+        >
+          <Icon name="x" size={13} color="var(--muted-fg)" />
+        </button>
+      )}
     </div>
   );
 }

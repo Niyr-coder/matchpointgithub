@@ -236,6 +236,15 @@ body {
 @keyframes mpToastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes mpSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* Entradas reutilizables (Emil: ease-out, <300ms, solo opacity+transform) */
+@keyframes mpTabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes mpRise  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.mp-tab-in { animation: mpTabIn 200ms var(--ease-out) both; }
+.mp-rise { animation: mpRise 280ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .mp-tab-in, .mp-rise { animation: none !important; }
+}
+
 /* ── Landing (MATCHPOINT Public.html) classes ─────────────────
    Prefix `lp-` para no chocar con .btn del dashboard.
    Fiel 1:1 a MATCHPOINT Public.html (líneas 21-27). */
