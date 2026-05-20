@@ -15,12 +15,6 @@ const SPORTS: Array<{ v: EditableProfile["preferredSport"]; l: string }> = [
   { v: "padel", l: "Pádel" },
   { v: "tennis", l: "Tenis" },
 ];
-const LEVELS: Array<{ v: EditableProfile["skillLevel"]; l: string }> = [
-  { v: "beginner", l: "Principiante" },
-  { v: "intermediate", l: "Intermedio" },
-  { v: "advanced", l: "Avanzado" },
-  { v: "pro", l: "Pro" },
-];
 const HANDS: Array<{ v: EditableProfile["dominantHand"]; l: string }> = [
   { v: "right", l: "Derecha" },
   { v: "left", l: "Izquierda" },
@@ -75,14 +69,11 @@ export function EditProfilePanel({ initial }: { initial: EditableProfile }) {
         firstName: orNull(v(form.firstName)),
         lastName: orNull(v(form.lastName)),
         ...(displayName ? { displayName } : {}),
-        bio: orNull(v(form.bio)),
         city: orNull(v(form.city)),
         country: orNull(v(form.country)),
-        birthdate: form.birthdate || null,
         phone: orNull(v(form.phone)),
         dominantHand: form.dominantHand,
         preferredSport: form.preferredSport,
-        skillLevel: form.skillLevel,
         locale: form.locale ?? "es",
       });
       if (!res.ok) {
@@ -115,9 +106,6 @@ export function EditProfilePanel({ initial }: { initial: EditableProfile }) {
         <Field label="País">
           <input style={inputStyle} value={v(form.country)} maxLength={80} onChange={(e) => set("country", e.target.value)} />
         </Field>
-        <Field label="Fecha de nacimiento">
-          <input type="date" style={inputStyle} value={v(form.birthdate)} onChange={(e) => set("birthdate", e.target.value)} />
-        </Field>
         <Field label="Teléfono">
           <input type="tel" style={inputStyle} value={v(form.phone)} maxLength={30} onChange={(e) => set("phone", e.target.value)} />
         </Field>
@@ -137,14 +125,6 @@ export function EditProfilePanel({ initial }: { initial: EditableProfile }) {
             ))}
           </select>
         </Field>
-        <Field label="Nivel">
-          <select style={inputStyle} value={v(form.skillLevel)} onChange={(e) => set("skillLevel", (e.target.value || null) as EditableProfile["skillLevel"])}>
-            <option value="">—</option>
-            {LEVELS.map((l) => (
-              <option key={l.v} value={l.v ?? ""}>{l.l}</option>
-            ))}
-          </select>
-        </Field>
         <Field label="Idioma">
           <select style={inputStyle} value={form.locale ?? "es"} onChange={(e) => set("locale", e.target.value as EditableProfile["locale"])}>
             {LOCALES.map((l) => (
@@ -152,17 +132,6 @@ export function EditProfilePanel({ initial }: { initial: EditableProfile }) {
             ))}
           </select>
         </Field>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <label style={labelStyle}>Bio</label>
-        <textarea
-          style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
-          value={v(form.bio)}
-          maxLength={280}
-          placeholder="Cuéntale a la comunidad sobre tu juego…"
-          onChange={(e) => set("bio", e.target.value)}
-        />
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>

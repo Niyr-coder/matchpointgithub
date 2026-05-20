@@ -12,6 +12,7 @@ import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { readableTextOn } from "@/lib/profile/customization-presets";
 import { EditProfilePanel } from "./EditProfilePanel";
+import { EditBioModal } from "./EditBioModal";
 
 export type ProfileClub = {
   id: string;
@@ -208,6 +209,7 @@ export function ProfileScreenView({
   const [tab, setTab] = useState<Tab>("historial");
   const [friend, setFriend] = useState<FriendState>(initialFriendship);
   const [avatarOverlayOpen, setAvatarOverlayOpen] = useState(false);
+  const [editingBio, setEditingBio] = useState(false);
   const [actionPending, startActionTransition] = useTransition();
   const toast = useToast();
   const router = useRouter();
@@ -271,9 +273,9 @@ export function ProfileScreenView({
           <>
             {isMine ? (
               <>
-                <button className="btn btn-outline" onClick={() => setTab("preferencias")}>
+                <button className="btn btn-outline" onClick={() => setEditingBio(true)}>
                   <Icon name="pencil" size={12} />
-                  Editar
+                  Editar bio
                 </button>
                 <button
                   className={`btn btn-primary${data.accentHex ? " btn-accent" : ""}`}
@@ -535,6 +537,10 @@ export function ProfileScreenView({
           onClose={() => setAvatarOverlayOpen(false)}
           onUploaded={handleAvatarUploaded}
         />
+      )}
+
+      {isMine && editingBio && (
+        <EditBioModal initialBio={data.bio} onClose={() => setEditingBio(false)} />
       )}
     </>
   );
