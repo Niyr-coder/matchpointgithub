@@ -2234,6 +2234,15 @@ const UPCOMING = [
   { vs: "Smash Brothers", date: "Sáb 25 Ene · 16:00", club: "Padel LC", round: "Semifinal · Copa Verano" },
 ];
 
+// Color de la barra de win rate en 4 tramos (50% = parejo, no rojo).
+//  ≥70 fuerte · ≥55 récord ganador · ≥45 parejo · <45 récord perdedor.
+function wrColor(wr: number): string {
+  if (wr >= 70) return "#10b981"; // emerald
+  if (wr >= 55) return "#84cc16"; // lima
+  if (wr >= 45) return "#f59e0b"; // ámbar
+  return "#dc2626"; // rojo
+}
+
 function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => void; team: TeamLite; meUserId: string | null }) {
   const ROSTER = TEAM.members;
   const winRate =
@@ -2616,7 +2625,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                             style={{
                               width: p.wr + "%",
                               height: "100%",
-                              background: p.wr >= 75 ? "#10b981" : p.wr >= 60 ? "#fbbf24" : "#dc2626",
+                              background: wrColor(p.wr),
                             }}
                           />
                         </div>
