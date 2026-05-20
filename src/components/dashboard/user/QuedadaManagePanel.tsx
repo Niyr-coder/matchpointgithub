@@ -43,6 +43,7 @@ import {
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizesToDrafts, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
 import { SUMA_MIN, SUMA_MAX, parseSuma, sumaLabel } from "@/lib/quedadas/level";
+import { Skeleton as SkBar } from "@/components/ui/Skeleton";
 
 // ── Tipos del payload (la action devuelve `unknown`) ─────────────────────────
 type ManageQuedada = {
@@ -131,23 +132,6 @@ function quedadaStatusMeta(status: string): { label: string; bg: string; fg: str
     default:
       return { label: status, bg: "rgba(255,255,255,0.16)", fg: "#fff" };
   }
-}
-
-// Barra de skeleton (pulse). Keyframe propio `qmpSk` para no chocar con el
-// `mpSkeleton` global. `dark` = sobre el header con gradiente.
-function SkBar({ w = "100%", h, r = 8, dark = false }: { w?: number | string; h: number; r?: number; dark?: boolean }) {
-  return (
-    <span
-      style={{
-        display: "block",
-        width: w,
-        height: h,
-        borderRadius: r,
-        background: dark ? "rgba(255,255,255,0.18)" : "var(--muted)",
-        animation: "qmpSk 1.4s ease-in-out infinite",
-      }}
-    />
-  );
 }
 
 function StatChip({ label, value }: { label: string; value: string }) {
@@ -313,7 +297,6 @@ export function QuedadaManagePanel({
         <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
         {isPage ? "Volver" : null}
       </button>
-      <style>{`@keyframes qmpSk{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       <div className="label-mp" style={{ color: "var(--primary)" }}>
         ● Gestión · Quedada
       </div>

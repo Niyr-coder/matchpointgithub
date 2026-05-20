@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { getEventAuditLog, type AuditEntry } from "@/server/actions/admin-audit";
 import { SectionTitle, EmptyState } from "./primitives";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 
 function fmtWhen(iso: string): string {
   const then = new Date(iso).getTime();
@@ -148,7 +149,7 @@ export function EventAuditLog({ eventId }: { eventId: string }) {
       {errorMsg ? (
         <EmptyState label={`No se pudo cargar el historial (${errorMsg}).`} />
       ) : entries === null ? (
-        <EmptyState label="Cargando historial…" />
+        <SkeletonRows rows={4} />
       ) : entries.length === 0 ? (
         <EmptyState label="Aún no hay registros de auditoría para este evento." />
       ) : (

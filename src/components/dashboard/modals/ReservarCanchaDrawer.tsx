@@ -9,6 +9,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 
 type Sport = "pickleball" | "padel" | "tennis" | "futbol";
 
@@ -543,8 +544,8 @@ export function ReservarCanchaDrawer() {
             )}
 
             {filteredPickerClubs == null ? (
-              <div style={{ padding: 20, textAlign: "center", color: "var(--muted-fg)", fontSize: 12 }}>
-                Cargando clubes…
+              <div style={{ padding: "8px 0" }}>
+                <SkeletonRows rows={4} />
               </div>
             ) : filteredPickerClubs.length === 0 ? (
               <div

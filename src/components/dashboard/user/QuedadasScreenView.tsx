@@ -13,6 +13,7 @@ import { CrearQuedadaModal, type QuedadaInitial } from "./CrearQuedadaModal";
 import { accountToBankDraft } from "./quedada-fields/BankAccountFields";
 import { prizesToDrafts } from "./quedada-fields/PrizesEditor";
 import { parseSuma } from "@/lib/quedadas/level";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
 import {
   joinQuedada,
@@ -856,9 +857,7 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
       </p>
 
       {loading && (
-        <div style={{ padding: 16, textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
-          Cargando tu calendario…
-        </div>
+        <SkeletonRows rows={3} height={56} />
       )}
       {!loading && error && (
         <div style={{ padding: 14, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12.5 }}>

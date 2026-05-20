@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 import { RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
@@ -507,9 +508,7 @@ function StaffShiftsOverlay({
 
         <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Próximos turnos</div>
         {loading ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: 16, textAlign: "center" }}>
-            Cargando…
-          </div>
+          <SkeletonRows rows={4} />
         ) : shifts.length === 0 ? (
           <div
             style={{

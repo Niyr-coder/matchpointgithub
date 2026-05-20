@@ -7,6 +7,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 import { useToast } from "../ToastProvider";
 import {
   grantBundleToUser,
@@ -215,7 +216,7 @@ export function AdminCosmeticsScreen() {
               Bundles activos de {selected.displayName}
             </div>
             {grants === null && (
-              <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando...</div>
+              <SkeletonRows rows={3} />
             )}
             {grants !== null && grants.length === 0 && (
               <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin bundles otorgados.</div>
@@ -392,7 +393,7 @@ function BundlesAdminSection() {
         impide otorgarlo a nuevos usuarios (los que ya lo tienen lo conservan).
       </p>
       {bundles === null ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando bundles…</div>
+        <SkeletonRows rows={3} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {bundles.map((b) => (
@@ -598,7 +599,7 @@ function ThemesAdminSection() {
         Desactivar uno lo quita del picker y revierte a Clásico a quien lo tenga aplicado.
       </p>
       {inactive === null ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando temas…</div>
+        <SkeletonRows rows={3} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {themes.map((t) => {

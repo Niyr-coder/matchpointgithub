@@ -20,6 +20,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "../ToastProvider";
 import {
   getClubFeaturingStatus,
@@ -184,8 +185,9 @@ function ShellLoading() {
           flexShrink: 0,
         }}
       />
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-        Cargando estado de destacado…
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+        <Skeleton w="55%" h={12} r={6} dark />
+        <Skeleton w="80%" h={10} r={5} dark />
       </div>
     </div>
   );

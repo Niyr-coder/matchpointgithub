@@ -7,6 +7,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "../ToastProvider";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 import { usePromptModal } from "../widgets/PromptModal";
 import {
   listQuedadasAdmin,
@@ -208,7 +209,7 @@ export function AdminQuedadasScreen() {
           Cola de reportes abiertos. Resuelve (acción tomada) o descarta (sin mérito) cada uno.
         </p>
         {reports === null ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando reportes…</div>
+          <SkeletonRows rows={3} />
         ) : reports.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin reportes abiertos.</div>
         ) : (
@@ -285,7 +286,7 @@ export function AdminQuedadasScreen() {
           problema.
         </p>
         {quedadas === null ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando quedadas…</div>
+          <SkeletonRows rows={4} />
         ) : quedadas.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>No hay quedadas todavía.</div>
         ) : (

@@ -10,6 +10,7 @@ import {
   type AuditEntry,
 } from "@/server/actions/admin-audit";
 import { SectionTitle, EmptyState } from "../event-detail/primitives";
+import { SkeletonRows } from "@/components/ui/Skeleton";
 
 function fmtWhen(iso: string): string {
   const then = new Date(iso).getTime();
@@ -149,7 +150,7 @@ export function TournamentAuditLog({ tournamentId }: { tournamentId: string }) {
       {errorMsg ? (
         <EmptyState label={`No se pudo cargar el historial (${errorMsg}).`} />
       ) : entries === null ? (
-        <EmptyState label="Cargando historial…" />
+        <SkeletonRows rows={4} />
       ) : entries.length === 0 ? (
         <EmptyState label="Aún no hay registros de auditoría para este torneo." />
       ) : (
