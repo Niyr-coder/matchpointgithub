@@ -590,7 +590,7 @@ function BundleStore({
                 background: owned ? "linear-gradient(135deg, #064e3b, #052e16)" : "#fff",
                 color: owned ? "#ecfdf5" : "#0a0a0a",
                 border: owned ? "1px solid #10b981" : "1px solid var(--border)",
-                boxShadow: owned ? "0 8px 24px rgba(16,185,129,0.2)" : "none",
+                boxShadow: "none",
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,

@@ -69,7 +69,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
   // ── MatchPoint+ — card tintada con el accent, intensidad por rareza.
   //    Raro (esmeralda/oceano/pizarra): glass con tinte claro del accent + borde
   //    del accent. Épico (crepusculo/coral/medianoche): tinte más saturado +
-  //    sombra de color. Ver THEME_RARITY + la escalera rareza→intensidad.
+  //    borde del accent. Sin boxShadow. Ver THEME_RARITY + escalera rareza→intensidad.
   {
     key: "esmeralda",
     label: "Esmeralda",
@@ -80,7 +80,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "rgba(236,253,245,0.78)",
       border: "1px solid rgba(16,185,129,0.4)",
       backdropFilter: "blur(10px)",
-      boxShadow: "0 4px 18px rgba(16,185,129,0.12)",
     },
   },
   {
@@ -93,7 +92,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "rgba(240,249,255,0.78)",
       border: "1px solid rgba(14,165,233,0.4)",
       backdropFilter: "blur(10px)",
-      boxShadow: "0 4px 18px rgba(14,165,233,0.12)",
     },
   },
   {
@@ -106,7 +104,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "rgba(245,243,255,0.82)",
       border: "1px solid rgba(124,58,237,0.45)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 6px 24px rgba(124,58,237,0.2)",
     },
   },
   {
@@ -118,7 +115,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "rgba(248,250,252,0.85)",
       border: "1px solid rgba(100,116,139,0.4)",
-      boxShadow: "0 4px 16px rgba(71,85,105,0.12)",
     },
   },
 
@@ -135,7 +131,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1e1b4b, #0c0a1f)",
       border: "1px solid #a855f7",
-      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#ede9fe",
     },
   },
@@ -151,7 +146,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #fffbeb, #fef3c7)",
       border: "1px solid #fbbf24",
-      boxShadow: "0 8px 24px rgba(251,191,36,0.22)",
       color: "#78350f",
     },
   },
@@ -164,7 +158,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #18181b, #27272a)",
       border: "1px solid #3f3f46",
-      boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
       color: "#fafafa",
     },
   },
@@ -178,12 +171,11 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "linear-gradient(135deg, rgba(251,207,232,0.6), rgba(244,114,182,0.4))",
       border: "1px solid rgba(255,255,255,0.5)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 8px 24px rgba(236,72,153,0.18)",
       color: "#831843",
     },
   },
 
-  // ── MatchPoint+ extra (2) — épico: tinte saturado + sombra de color.
+  // ── MatchPoint+ extra (2) — épico: tinte saturado + borde del accent.
   {
     key: "coral",
     label: "Coral",
@@ -194,7 +186,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "rgba(255,241,242,0.82)",
       border: "1px solid rgba(244,63,94,0.45)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 6px 24px rgba(244,63,94,0.18)",
     },
   },
   {
@@ -207,7 +198,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       background: "rgba(238,242,255,0.82)",
       border: "1px solid rgba(129,140,248,0.5)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 6px 24px rgba(79,70,229,0.18)",
     },
   },
 
@@ -222,7 +212,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1c0a0a, #0a0a0a)",
       border: "1px solid #ef4444",
-      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#fee2e2",
     },
   },
@@ -236,7 +225,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "#ffffff",
       border: "2.5px solid #0a0a0a",
-      boxShadow: "4px 4px 0 #0a0a0a",
       color: "#0a0a0a",
     },
   },
@@ -250,7 +238,6 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1e1b4b, #3b0764)",
       border: "1px solid #f0abfc",
-      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#f5d0fe",
     },
   },
@@ -289,12 +276,13 @@ export const RARITY_META: Record<Rarity, { label: string; color: string }> = {
 // Escalera rareza → intensidad del card-style (regla de autoría de temas):
 //   comun      → card default (sin tratamiento)
 //   raro       → glass con tinte claro del accent + borde del accent
-//   epico      → tinte más saturado + sombra de color suave
+//   epico      → tinte más saturado del accent + borde del accent
 //   mitico     → card oscura/saturada + borde de color
-//   legendario → card rica + borde marcado + sombra
+//   legendario → card rica + borde marcado
 //   especial   → gradiente oscuro + borde de color
 //   unico      → máximo (outline grueso / gradiente fuerte)
-// Sin glow (boxShadow tipo "0 0 Npx"): usar sombras direccionales normales.
+// NUNCA agregar boxShadow en cardCss: la diferenciación es por background +
+// border (+ backdropFilter). La sombra queda en el default de .card.
 // Mantener la card de cada tema acorde a su rareza para una progresión coherente.
 const THEME_RARITY: Record<string, Rarity> = {
   default: "comun",
