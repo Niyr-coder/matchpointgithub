@@ -19,11 +19,13 @@ import {
   type CosmeticUserSearchRow,
 } from "@/server/actions/admin/cosmetics";
 import { FALLBACK_BUNDLES, priceLabel } from "@/lib/profile/bundles";
+import { usePromptModal } from "../widgets/PromptModal";
 import { PROFILE_THEMES_BY_RARITY, rarityOf, RARITY_META } from "@/lib/profile/customization-presets";
 
 export function AdminCosmeticsScreen() {
   const toast = useToast();
   const router = useRouter();
+  const { confirm } = usePromptModal();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<CosmeticUserSearchRow[]>([]);
@@ -73,9 +75,15 @@ export function AdminCosmeticsScreen() {
     });
   };
 
-  const handleRevoke = (bundleKey: string) => {
+  const handleRevoke = async (bundleKey: string) => {
     if (!selected || pending) return;
-    if (!confirm(`¿Revocar ${bundleKey} de ${selected.displayName}?`)) return;
+    const ok = await confirm({
+      title: "Revocar bundle",
+      body: `¿Revocar ${bundleKey} de ${selected.displayName}?`,
+      confirmLabel: "Revocar",
+      destructive: true,
+    });
+    if (!ok) return;
     startTransition(async () => {
       const r = await revokeBundleFromUser({ userId: selected.userId, bundleKey });
       if (!r.ok) {
@@ -310,6 +318,7 @@ export function AdminCosmeticsScreen() {
 function ThemesAdminSection() {
   const toast = useToast();
   const router = useRouter();
+  const { confirm } = usePromptModal();
   const [pending, startTransition] = useTransition();
   const [inactive, setInactive] = useState<Set<string> | null>(null);
 
@@ -323,9 +332,17 @@ function ThemesAdminSection() {
     };
   }, []);
 
-  const toggle = (key: string, label: string, nextActive: boolean) => {
+  const toggle = async (key: string, label: string, nextActive: boolean) => {
     if (pending || inactive === null) return;
-    if (!nextActive && !confirm(`¿Desactivar "${label}"? Quien lo tenga puesto volverá a Clásico.`)) return;
+    if (!nextActive) {
+      const ok = await confirm({
+        title: `Desactivar "${label}"`,
+        body: "Se quitará del picker y quien lo tenga puesto volverá a Clásico.",
+        confirmLabel: "Desactivar",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     startTransition(async () => {
       const r = await setThemeActive({ key, active: nextActive });
       if (!r.ok) {
