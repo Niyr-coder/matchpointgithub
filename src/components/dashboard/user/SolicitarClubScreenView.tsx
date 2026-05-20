@@ -6,6 +6,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useTra
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { useEnabledSports } from "@/components/SportsProvider";
+import type { Sport } from "@/lib/sports";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -943,7 +945,7 @@ function ClubCardPreview({ highlightStep }: { highlightStep: StepKey }) {
 }
 
 // ── Step 1 — Datos del club ─────────────────────────────────────────────
-const ALL_SPORTS = [
+const ALL_SPORTS: { k: Sport; i: string; l: string }[] = [
   { k: "pickleball", i: "🏓", l: "Pickleball" },
   { k: "padel", i: "🎾", l: "Pádel" },
   { k: "tennis", i: "🎾", l: "Tenis" },
@@ -954,8 +956,10 @@ const ACCENT_COLORS = ["#10b981", "#fbbf24", "#dc2626", "#7c3aed", "#0ea5e9", "#
 function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
   const { draft, set, saveStep1 } = useClubDraft();
   const toast = useToast();
+  const { sports: enabledSports, single: singleSport } = useEnabledSports();
   const coverInput = useRef<HTMLInputElement | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const visibleSports = ALL_SPORTS.filter((s) => enabledSports.includes(s.k));
 
   const handleCoverUpload = async (file: File) => {
     if (!draft.applicationId) return;
@@ -1037,13 +1041,14 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               onChange={(e) => set("name", e.target.value)}
             />
           </Field>
+          {!singleSport && (
           <Field
             label="Deportes habilitados"
             required
             hint="Aparecen como pill en el card. Hoy MATCHPOINT está optimizado para Pickleball."
           >
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {ALL_SPORTS.map((s) => {
+              {visibleSports.map((s) => {
                 const on = draft.sports.includes(s.k);
                 return (
                   <button
@@ -1072,6 +1077,7 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               })}
             </div>
           </Field>
+          )}
           <Field
             label="Descripción corta"
             hint="Máx 160 caracteres. Aparece en el detalle del club."

@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { usePaywall } from "@/components/landing/PublicChromeClient";
+import { useEnabledSports } from "@/components/SportsProvider";
+import type { Sport } from "@/lib/sports";
 import type { ClubFeatured } from "@/lib/schemas/clubs";
 
-const FILTERS: { label: string; key: string }[] = [
+type FilterDef = { label: string; key: string; sport?: Sport };
+
+const FILTERS: FilterDef[] = [
   { label: "Todos", key: "todos" },
-  { label: "Pickleball", key: "pickleball" },
-  { label: "Pádel", key: "padel" },
-  { label: "Tenis", key: "tennis" },
+  { label: "Pickleball", key: "pickleball", sport: "pickleball" },
+  { label: "Pádel", key: "padel", sport: "padel" },
+  { label: "Tenis", key: "tennis", sport: "tennis" },
   { label: "Indoor", key: "indoor" },
   { label: "Outdoor", key: "outdoor" },
 ];
@@ -69,8 +73,13 @@ export function ClubesPageView({
   ratingByClubId?: Record<string, RatingInfo>;
 }) {
   const onPaywall = usePaywall();
+  const { sports: enabledSports } = useEnabledSports();
   const [filter, setFilter] = useState("todos");
   const [q, setQ] = useState("");
+
+  // Oculta los chips de deporte que no estén habilitados por el switch
+  // multideporte. Los filtros sin `sport` (todos/indoor/outdoor) se mantienen.
+  const visibleFilters = FILTERS.filter((f) => !f.sport || enabledSports.includes(f.sport));
 
   const filtered = clubs.filter((c) => {
     if (q && !c.name.toLowerCase().includes(q.toLowerCase()) && !c.city.toLowerCase().includes(q.toLowerCase())) {
@@ -131,7 +140,7 @@ export function ClubesPageView({
             }}
           />
         </div>
-        {FILTERS.map((f) => {
+        {visibleFilters.map((f) => {
           const on = filter === f.key;
           return (
             <button

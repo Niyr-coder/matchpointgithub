@@ -2499,16 +2499,14 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                   ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
                   : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
                 const isMe = !!meUserId && p.userId === meUserId;
+                // Card por fila: fondo + borde van en las CELDAS (no en el <tr>),
+                // porque el box-shadow del <tr> es un rectángulo y sus esquinas
+                // grises asomaban detrás de las celdas redondeadas.
+                const rowBg = memberCard?.background ?? "#fafafa";
+                const cellYBorder = "inset 0 1px 0 var(--border), inset 0 -1px 0 var(--border)";
                 return (
-                <tr
-                  key={p.name}
-                  style={{
-                    background: memberCard?.background ?? "#fafafa",
-                    color: memberCard?.color,
-                    boxShadow: "inset 0 0 0 1px var(--border)",
-                  }}
-                >
-                  <td style={{ padding: "12px 6px 12px 12px", borderRadius: "12px 0 0 12px" }}>
+                <tr key={p.name} style={{ color: memberCard?.color }}>
+                  <td style={{ padding: "12px 6px 12px 12px", borderRadius: "12px 0 0 12px", background: rowBg, boxShadow: `${cellYBorder}, inset 1px 0 0 var(--border)` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ position: "relative" }}>
                         <div
@@ -2552,7 +2550,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                       </span>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 6px" }}>
+                  <td style={{ padding: "12px 6px", background: rowBg, boxShadow: cellYBorder }}>
                     <span
                       style={{
                         fontSize: 10,
@@ -2568,11 +2566,11 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                       {p.role}
                     </span>
                   </td>
-                  <td style={{ padding: "12px 6px", textAlign: "right", fontWeight: 800 }}>
+                  <td style={{ padding: "12px 6px", textAlign: "right", fontWeight: 800, background: rowBg, boxShadow: cellYBorder }}>
                     {p.level}
                   </td>
-                  <td style={{ padding: "12px 6px", textAlign: "right" }}>{p.played}</td>
-                  <td style={{ padding: "12px 6px", textAlign: "right" }}>
+                  <td style={{ padding: "12px 6px", textAlign: "right", background: rowBg, boxShadow: cellYBorder }}>{p.played}</td>
+                  <td style={{ padding: "12px 6px", textAlign: "right", background: rowBg, boxShadow: cellYBorder }}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <div
                         style={{
@@ -2596,7 +2594,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                       </span>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 12px 12px 6px", textAlign: "right", borderRadius: "0 12px 12px 0" }}>
+                  <td style={{ padding: "12px 12px 12px 6px", textAlign: "right", borderRadius: "0 12px 12px 0", background: rowBg, boxShadow: `${cellYBorder}, inset -1px 0 0 var(--border)` }}>
                     <button
                       style={{
                         width: 26,
