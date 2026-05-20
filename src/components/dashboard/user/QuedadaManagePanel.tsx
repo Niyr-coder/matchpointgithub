@@ -1501,30 +1501,38 @@ function SlotCell({
   }
 
   const nameStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg)" };
+  const removeBtn = onRemove ? (
+    <button
+      type="button"
+      onClick={onRemove}
+      aria-label="Quitar pareja"
+      style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
+    >
+      <Icon name="x" size={13} color="var(--muted-fg)" />
+    </button>
+  ) : null;
 
-  // Doble piso: Jugador A arriba, separador horizontal, Jugador B abajo.
-  return (
-    <div style={cellStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+  // Singles: un solo piso.
+  if (nameB == null) {
+    return (
+      <div style={{ ...cellStyle, display: "flex", alignItems: "center", gap: 10 }}>
         {chip}
         <span style={{ ...nameStyle, flex: 1 }}>{nameA}</span>
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Quitar pareja"
-            style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
-          >
-            <Icon name="x" size={13} color="var(--muted-fg)" />
-          </button>
-        )}
+        {removeBtn}
       </div>
-      {nameB != null && (
-        <>
-          <div style={{ borderTop: "1px solid var(--border)", margin: "7px 0" }} />
-          <span style={{ ...nameStyle, display: "block", paddingLeft: 32 }}>{nameB}</span>
-        </>
-      )}
+    );
+  }
+
+  // Dobles: chip centrado a la izquierda; A arriba, raya, B abajo.
+  return (
+    <div style={{ ...cellStyle, display: "flex", alignItems: "stretch", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>{chip}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ ...nameStyle, display: "block" }}>{nameA}</span>
+        <div style={{ borderTop: "1px solid var(--border)", margin: "7px 0" }} />
+        <span style={{ ...nameStyle, display: "block" }}>{nameB}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-start" }}>{removeBtn}</div>
     </div>
   );
 }
