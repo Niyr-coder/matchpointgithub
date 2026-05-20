@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { setTheme } from "@/server/actions/profile-customization";
 import { ProfileHeaderCard } from "./ProfileHeaderCard";
+import { FriendCard, type FriendLite } from "../widgets/FriendCard";
 import {
   PROFILE_THEMES,
   findAccent,
@@ -436,8 +437,10 @@ function PreviewCard({
           >
             Cómo te ven en amigos, ranking y roster
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
-            <FriendCardPreview cardObj={cardObj} accentHex={accentHex} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+            <div style={{ width: 230 }}>
+              <FriendCard f={previewFriend(accentHex, cardObj)} index={0} isSuggestion preview />
+            </div>
             <StatsPreview cardObj={cardObj} />
           </div>
         </div>
@@ -446,102 +449,24 @@ function PreviewCard({
   );
 }
 
-// Mock fiel de la friend card (AmigosScreenView): wrapper con card-style del
-// tema + banner con gradiente del accent + avatar montado + badge de nivel +
-// ubicación + botón Agregar.
-function FriendCardPreview({
-  cardObj,
-  accentHex,
-}: {
-  cardObj: ReturnType<typeof findCardStyle>;
-  accentHex: string;
-}) {
-  const css = cardObj?.css;
-  return (
-    <div
-      style={{
-        width: 220,
-        borderRadius: 14,
-        overflow: "hidden",
-        background: css?.background ?? "#fff",
-        border: css?.border ?? "1px solid var(--border)",
-        boxShadow: css?.boxShadow ?? "0 1px 3px rgba(0,0,0,0.06)",
-        backdropFilter: css?.backdropFilter,
-        color: css?.color ?? "#0a0a0a",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Banner con el gradiente del accent del tema. */}
-      <div
-        style={{
-          position: "relative",
-          height: 64,
-          background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "radial-gradient(circle at 70% 40%, rgba(255,255,255,0.15), transparent 60%)",
-          }}
-        />
-      </div>
-      <div style={{ padding: "0 14px 14px" }}>
-        <div style={{ marginTop: -28, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <div
-            style={{
-              width: 54,
-              height: 54,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg,#7c3aed,#db2777)",
-              border: "4px solid #fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontWeight: 900,
-              fontSize: 16,
-            }}
-          >
-            TN
-          </div>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              background: "#0a0a0a",
-              color: "#fff",
-              borderRadius: 9999,
-              fontSize: 10,
-              fontWeight: 800,
-              marginBottom: 6,
-            }}
-          >
-            <Icon name="zap" size={10} color="#fbbf24" />
-            4.2
-          </span>
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 800 }}>Tu nombre</div>
-        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <Icon name="map-pin" size={10} />
-          Manabí / Portoviejo · Pickleball
-        </div>
-        <button
-          className="btn btn-primary"
-          type="button"
-          style={{ width: "100%", marginTop: 12, fontSize: 11, padding: "9px 10px", justifyContent: "center", pointerEvents: "none" }}
-        >
-          <Icon name="user-plus" size={12} color="#fff" />
-          Agregar
-        </button>
-      </div>
-    </div>
-  );
+// Friend mock para el preview: usa la FriendCard REAL (widget) con el accent +
+// card-style del tema seleccionado.
+function previewFriend(
+  accentHex: string,
+  cardObj: ReturnType<typeof findCardStyle>,
+): FriendLite {
+  return {
+    id: "preview",
+    name: "Tu nombre",
+    username: null,
+    city: "Manabí / Portoviejo",
+    sport: "Pickleball",
+    level: 4.2,
+    isOfficial: false,
+    isPremium: false,
+    accentHex,
+    cardStyleCss: cardObj?.css ?? null,
+  };
 }
 
 // Mock de las stat cards del perfil (ProfileScreen). El card-style del tema
