@@ -526,6 +526,22 @@ export async function cancelMatch(input: unknown): Promise<ActionResult<MatchRow
         .eq("status", "accepted");
     }
 
+    // Fiabilidad: cancelar un partido agendado cuenta como cancelación del que
+    // cancela (penaliza leve el score; ver src/lib/reliability.ts). Best-effort.
+    const { data: relRow } = await adminLoose
+      .from("player_reliability")
+      .select("cancellations")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (relRow) {
+      await adminLoose
+        .from("player_reliability")
+        .update({ cancellations: ((relRow as { cancellations: number }).cancellations ?? 0) + 1 })
+        .eq("user_id", userId);
+    } else {
+      await adminLoose.from("player_reliability").insert({ user_id: userId, cancellations: 1 });
+    }
+
     // Notif al resto de participantes.
     const others = [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])].filter(
       (id) => id !== userId,
