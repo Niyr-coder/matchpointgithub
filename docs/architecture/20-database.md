@@ -2446,9 +2446,15 @@ Organizador reporta directo (sin doble confirmación). Actions `generateRoundRob
 (método del círculo → rondas balanceadas), `addQuedadaMatch`, `reportQuedadaMatch`,
 `deleteQuedadaMatch`. RLS: read = miembro/abierta/can_manage; write = can_manage.
 En `supabase_realtime`. `getQuedadaManageData` devuelve `matches`. Sin brackets en
-el core (los formatos sociales no tienen eliminatorias). UI: tab **Partidos**
-(creador, con parejas) — generar round robin / agregar partido, reportar puntos
-por ronda, tabla de posiciones derivada por categoría.
+el core (los formatos sociales no tienen eliminatorias). **Fase de grupos (mig
+138):** `quedada_matches` +`group_no` +`court_no`. `generateGroupStage` reparte
+las parejas AL AZAR en N grupos (round robin por grupo, anti-arreglo: no se arman
+a mano) y asigna **cancha por grupo** (1 grupo → 1 cancha, ciclando por
+`courts_count`). **UI:** el panel tiene un switch superior **Gestión | Juego**;
+Gestión = Resumen/Parejas/Pagos/Configurar; **Juego** = sub-tabs **Partidos**
+(grupos × rondas, score grande tipo scoreboard) + **Posiciones** (tabla por grupo:
+#/Pareja/PJ/G/Pts) + Resultados/podio. Acciones de estado (Cerrar/Iniciar/Cancelar)
+abajo a la derecha del header.
 
 **Realtime en gestión:** las tablas (`quedadas`, `quedada_participants`,
 `quedada_categories`, `quedada_pairs`, `quedada_matches`) están en `supabase_realtime`. El panel
