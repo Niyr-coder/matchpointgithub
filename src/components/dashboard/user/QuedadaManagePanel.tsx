@@ -1409,57 +1409,83 @@ function PosicionesTab({ data }: { data: ManageData }) {
   );
 }
 
+type StandingRow = { pid: string; pj: number; pts: number; w: number };
+function computeStandings(matches: ManageMatch[], pairIds: string[]): StandingRow[] {
+  return pairIds
+    .map((pid) => {
+      let pj = 0;
+      let pts = 0;
+      let w = 0;
+      for (const m of matches) {
+        if (m.status !== "played") continue;
+        if (m.pair_a_id === pid) { pj++; pts += m.points_a ?? 0; if ((m.points_a ?? 0) > (m.points_b ?? 0)) w++; }
+        else if (m.pair_b_id === pid) { pj++; pts += m.points_b ?? 0; if ((m.points_b ?? 0) > (m.points_a ?? 0)) w++; }
+      }
+      return { pid, pj, pts, w };
+    })
+    .sort((a, b) => b.pts - a.pts || b.w - a.w || b.pj - a.pj);
+}
+
+function StandingsBody({ rows, pairLabel }: { rows: StandingRow[]; pairLabel: (id: string) => string }) {
+  return (
+    <div style={{ padding: "4px 0" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, padding: "4px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        <span>#</span><span>Pareja</span><span style={{ textAlign: "center" }}>PJ</span><span style={{ textAlign: "center" }}>G</span><span style={{ textAlign: "right" }}>Pts</span>
+      </div>
+      {rows.map((s, i) => (
+        <div key={s.pid} style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12.5, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
+          <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
+          <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.w}</span>
+          <span className="font-heading tabular" style={{ textAlign: "right", fontWeight: 900 }}>{s.pts}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CategoryStandings({ data, category }: { data: ManageData; category: ManageCategory }) {
   const pairLabel = usePairLabeler(data, category.id);
   const matches = data.matches.filter((m) => m.category_id === category.id);
   const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
   const multiGroup = groupNos.length > 1;
+  const allPairIds = Array.from(new Set(matches.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
+  const overall = computeStandings(matches, allPairIds);
 
   return (
     <div className="card" style={{ padding: 14 }}>
       <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", marginBottom: 10 }}>{category.name}</div>
-      <div style={{ display: "grid", gridTemplateColumns: multiGroup ? "repeat(auto-fit, minmax(260px, 1fr))" : "1fr", gap: 12 }}>
-        {groupNos.map((gn) => {
-          const gm = matches.filter((m) => m.group_no === gn);
-          const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
-          const pairIds = Array.from(new Set(gm.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
-          const rows = pairIds
-            .map((pid) => {
-              let pj = 0;
-              let pts = 0;
-              let w = 0;
-              for (const m of gm) {
-                if (m.status !== "played") continue;
-                if (m.pair_a_id === pid) { pj++; pts += m.points_a ?? 0; if ((m.points_a ?? 0) > (m.points_b ?? 0)) w++; }
-                else if (m.pair_b_id === pid) { pj++; pts += m.points_b ?? 0; if ((m.points_b ?? 0) > (m.points_a ?? 0)) w++; }
-              }
-              return { pid, pj, pts, w };
-            })
-            .sort((a, b) => b.pts - a.pts || b.w - a.w || b.pj - a.pj);
-          return (
-            <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "var(--muted)" }}>
-                {multiGroup && <span className="font-heading" style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>}
-                {court != null && <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
-              </div>
-              <div style={{ padding: "4px 0" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, padding: "4px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-                  <span>#</span><span>Pareja</span><span style={{ textAlign: "center" }}>PJ</span><span style={{ textAlign: "center" }}>G</span><span style={{ textAlign: "right" }}>Pts</span>
-                </div>
-                {rows.map((s, i) => (
-                  <div key={s.pid} style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12.5, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
-                    <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
-                    <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
-                    <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
-                    <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.w}</span>
-                    <span className="font-heading tabular" style={{ textAlign: "right", fontWeight: 900 }}>{s.pts}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+
+      {/* Tabla general de toda la categoría */}
+      <div className="label-mp" style={{ marginBottom: 6 }}>General</div>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+        <StandingsBody rows={overall} pairLabel={pairLabel} />
       </div>
+
+      {/* Por grupo (si hay más de uno) */}
+      {multiGroup && (
+        <>
+          <div className="label-mp" style={{ margin: "14px 0 6px" }}>Por grupo</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+            {groupNos.map((gn) => {
+              const gm = matches.filter((m) => m.group_no === gn);
+              const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
+              const pairIds = Array.from(new Set(gm.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
+              const rows = computeStandings(gm, pairIds);
+              return (
+                <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "var(--muted)" }}>
+                    <span className="font-heading" style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>
+                    {court != null && <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
+                  </div>
+                  <StandingsBody rows={rows} pairLabel={pairLabel} />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
