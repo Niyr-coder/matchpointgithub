@@ -663,7 +663,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={500}
-              placeholder="Equipo competitivo de pádel sub-4.0 que entrena 2 veces por semana en Vitacura…"
+              placeholder="Equipo de pickleball nivel 3.5–4.0 que entrena 2 veces por semana en Portoviejo…"
             />
           </Field>
         </div>
@@ -2232,11 +2232,6 @@ const ROSTER_AVATARS = [
   "linear-gradient(135deg,#dc2626,#fb923c)",
 ];
 
-const UPCOMING = [
-  { vs: "Águilas Pádel Club", date: "Sáb 18 Ene · 10:00", club: "Club Norte", round: "Cuartos · Liga" },
-  { vs: "Smash Brothers", date: "Sáb 25 Ene · 16:00", club: "Padel LC", round: "Semifinal · Copa Verano" },
-];
-
 // Color de la barra de win rate en 4 tramos (50% = parejo, no rojo).
 //  ≥70 fuerte · ≥55 récord ganador · ≥45 parejo · <45 récord perdedor.
 function wrColor(wr: number): string {
@@ -2842,58 +2837,27 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
             <div className="label-mp" style={{ marginBottom: 8 }}>
               Próximos partidos
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {UPCOMING.map((u, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: 14,
-                    background: "var(--muted)",
-                    borderRadius: 10,
-                    borderLeft: "3px solid var(--primary)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 9.5,
-                      fontWeight: 900,
-                      color: "var(--primary)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.14em",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {u.round}
-                  </div>
-                  <div
-                    className="font-heading"
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 900,
-                      letterSpacing: "-0.01em",
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    vs {u.vs}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11.5,
-                      color: "var(--muted-fg)",
-                      marginTop: 4,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                      <Icon name="calendar" size={10} />
-                      {u.date}
-                    </span>
-                    <span>{u.club}</span>
-                  </div>
-                </div>
-              ))}
+            {/* Aún no existe la mecánica de partidos team-vs-team (Arena). Estado
+                vacío honesto en vez de datos mock. */}
+            <div
+              style={{
+                padding: "24px 16px",
+                textAlign: "center",
+                color: "var(--muted-fg)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Icon name="swords" size={22} color="var(--muted-fg)" />
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0a0a0a" }}>
+                Sin partidos programados
+              </div>
+              <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+                Los retos entre equipos (Arena) llegan pronto. Por ahora coordinen
+                desde el chat del team.
+              </div>
             </div>
           </div>
           <div
