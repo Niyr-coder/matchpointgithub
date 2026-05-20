@@ -1,6 +1,8 @@
 // Panel de gestión del organizador de una Quedada (juego social).
 //
-// Modal grande (sigue patrón de RetarModal). Recibe `quedadaId` + `onClose`.
+// Se renderiza como PÁGINA (variant="page", default de la ruta
+// /dashboard/[role]/quedada/[id]) o como modal (variant="modal"). En página no
+// recibe onClose: el botón "Volver" navega a la lista. Recibe `quedadaId`.
 // Al montar llama `getQuedadaManageData` → estado. Secciones:
 //   1. Logística (solo creador): canchas, horas, precio → costo total + reparto.
 //   2. Datos bancarios + premios (solo creador).
@@ -129,11 +131,15 @@ function hourLabel(iso: string | null): string {
 export function QuedadaManagePanel({
   quedadaId,
   onClose,
+  variant = "modal",
 }: {
   quedadaId: string;
-  onClose: () => void;
+  onClose?: () => void;
+  variant?: "modal" | "page";
 }) {
   const router = useRouter();
+  // En modo página no se pasa onClose: el botón "Volver" navega a la lista.
+  const close = onClose ?? (() => router.push("/dashboard/user/quedadas"));
   const toast = useToast();
   const [data, setData] = useState<ManageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,9 +167,134 @@ export function QuedadaManagePanel({
     router.refresh();
   }, [reload, router]);
 
+  const isPage = variant === "page";
+
+  const header = (
+    <div
+      style={{
+        padding: "18px 22px",
+        background: "linear-gradient(135deg,#0a0a0a 0%,#064e3b 70%,#10b981 100%)",
+        color: "#fff",
+        position: "relative",
+        flexShrink: 0,
+        borderTopLeftRadius: isPage ? 16 : undefined,
+        borderTopRightRadius: isPage ? 16 : undefined,
+      }}
+    >
+      <button
+        onClick={close}
+        aria-label={isPage ? "Volver" : "Cerrar"}
+        style={{
+          position: "absolute",
+          top: 14,
+          right: 14,
+          height: 30,
+          borderRadius: 9999,
+          padding: isPage ? "0 12px" : 0,
+          width: isPage ? undefined : 30,
+          gap: 6,
+          background: "rgba(255,255,255,0.12)",
+          border: "1px solid rgba(255,255,255,0.2)",
+          color: "#fff",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "inherit",
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
+        {isPage ? "Volver" : null}
+      </button>
+      <div className="label-mp" style={{ color: "var(--primary)" }}>
+        ● Gestión · Quedada
+      </div>
+      <h2
+        className="font-heading"
+        style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 100 : 40 }}
+      >
+        {data ? data.quedada.title : loading ? "Cargando…" : "Quedada"}
+      </h2>
+      {data && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
+          {FORMAT_LABEL[data.quedada.format] ?? data.quedada.format} ·{" "}
+          {data.quedada.match_mode === "singles" ? "Singles" : "Dobles"}
+          {data.isCreator ? " · Eres el organizador" : data.canManage ? " · Eres co-host" : ""}
+        </div>
+      )}
+    </div>
+  );
+
+  const body = (
+    <div
+      style={
+        isPage
+          ? { padding: 22, display: "flex", flexDirection: "column", gap: 20 }
+          : { flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 20 }
+      }
+    >
+      {loading && (
+        <div style={{ padding: 24, textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
+          Cargando datos de la quedada…
+        </div>
+      )}
+      {!loading && loadError && (
+        <div
+          className="card"
+          style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}
+        >
+          No se pudo cargar la gestión: {loadError}
+        </div>
+      )}
+      {!loading && data && !data.canManage && (
+        <div
+          className="card"
+          style={{ padding: 18, background: "#fafafa", color: "var(--muted-fg)", fontSize: 13 }}
+        >
+          No tienes permiso para gestionar esta quedada.
+        </div>
+      )}
+
+      {!loading && data && data.canManage && (
+        <>
+          <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} />
+
+          {data.isCreator && <LogisticsSection data={data} onSaved={afterMutation} />}
+          {data.isCreator && <BankPrizesSection data={data} onSaved={afterMutation} />}
+          {data.isCreator && <CohostsSection data={data} onChanged={afterMutation} />}
+          {data.isCreator && <CategoriesSection data={data} onChanged={afterMutation} />}
+
+          <SlotsSection data={data} onChanged={afterMutation} />
+        </>
+      )}
+    </div>
+  );
+
+  // Variante página: tarjeta de ancho completo, scroll natural de la página.
+  if (isPage) {
+    return (
+      <div
+        className="card"
+        style={{
+          width: "100%",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          background: "#fff",
+        }}
+      >
+        {header}
+        {body}
+      </div>
+    );
+  }
+
+  // Variante modal (overlay, no cierra por click afuera para no perder cambios).
   return (
     <div
-      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -181,7 +312,6 @@ export function QuedadaManagePanel({
       <style>{`@keyframes mp-qmp-fade{from{opacity:0}to{opacity:1}}
         @keyframes mp-qmp-pop{from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}}`}</style>
       <div
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         className="card"
@@ -198,99 +328,8 @@ export function QuedadaManagePanel({
           animation: "mp-qmp-pop 180ms var(--ease-out, ease)",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            padding: "18px 22px",
-            background: "linear-gradient(135deg,#0a0a0a 0%,#064e3b 70%,#10b981 100%)",
-            color: "#fff",
-            position: "relative",
-            flexShrink: 0,
-          }}
-        >
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            style={{
-              position: "absolute",
-              top: 14,
-              right: 14,
-              width: 30,
-              height: 30,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.12)",
-              border: "1px solid rgba(255,255,255,0.2)",
-              color: "#fff",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="x" size={14} color="#fff" />
-          </button>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>
-            ● Gestión · Quedada
-          </div>
-          <h2
-            className="font-heading"
-            style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: 40 }}
-          >
-            {data ? data.quedada.title : loading ? "Cargando…" : "Quedada"}
-          </h2>
-          {data && (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
-              {FORMAT_LABEL[data.quedada.format] ?? data.quedada.format} ·{" "}
-              {data.quedada.match_mode === "singles" ? "Singles" : "Dobles"}
-              {data.isCreator ? " · Eres el organizador" : data.canManage ? " · Eres co-host" : ""}
-            </div>
-          )}
-        </div>
-
-        <div style={{ flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 20 }}>
-          {loading && (
-            <div style={{ padding: 24, textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
-              Cargando datos de la quedada…
-            </div>
-          )}
-          {!loading && loadError && (
-            <div
-              className="card"
-              style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}
-            >
-              No se pudo cargar la gestión: {loadError}
-            </div>
-          )}
-          {!loading && data && !data.canManage && (
-            <div
-              className="card"
-              style={{ padding: 18, background: "#fafafa", color: "var(--muted-fg)", fontSize: 13 }}
-            >
-              No tienes permiso para gestionar esta quedada.
-            </div>
-          )}
-
-          {!loading && data && data.canManage && (
-            <>
-              <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} />
-
-              {data.isCreator && (
-                <LogisticsSection data={data} onSaved={afterMutation} />
-              )}
-              {data.isCreator && (
-                <BankPrizesSection data={data} onSaved={afterMutation} />
-              )}
-              {data.isCreator && (
-                <CohostsSection data={data} onChanged={afterMutation} />
-              )}
-              {data.isCreator && (
-                <CategoriesSection data={data} onChanged={afterMutation} />
-              )}
-
-              <SlotsSection data={data} onChanged={afterMutation} />
-            </>
-          )}
-        </div>
+        {header}
+        {body}
       </div>
     </div>
   );

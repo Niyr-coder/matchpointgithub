@@ -10,7 +10,6 @@ import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import { CrearQuedadaModal } from "./CrearQuedadaModal";
-import { QuedadaManagePanel } from "./QuedadaManagePanel";
 import {
   joinQuedada,
   leaveQuedada,
@@ -80,13 +79,13 @@ export function QuedadasScreenView({
   discover: QuedadaLite[];
   mine: QuedadaLite[];
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("descubrir");
   const [creating, setCreating] = useState(false);
   // Modales secundarios (invitar / resultados) por quedada.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
   const [resultsFor, setResultsFor] = useState<QuedadaLite | null>(null);
-  // Panel de gestión (creador / co-host) y calendario del participante.
-  const [manageId, setManageId] = useState<string | null>(null);
+  // El calendario del participante es modal liviano; la gestión es una página.
   const [calendarFor, setCalendarFor] = useState<QuedadaLite | null>(null);
 
   const list = tab === "descubrir" ? discover : mine;
@@ -198,7 +197,7 @@ export function QuedadasScreenView({
               meUserId={meUserId}
               onInvite={() => setInviteFor(q)}
               onResults={() => setResultsFor(q)}
-              onManage={() => setManageId(q.id)}
+              onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
               onCalendar={() => setCalendarFor(q)}
             />
           ))}
@@ -211,9 +210,6 @@ export function QuedadasScreenView({
       )}
       {resultsFor && (
         <ResultsModal quedada={resultsFor} onClose={() => setResultsFor(null)} />
-      )}
-      {manageId && (
-        <QuedadaManagePanel quedadaId={manageId} onClose={() => setManageId(null)} />
       )}
       {calendarFor && (
         <CalendarModal quedada={calendarFor} onClose={() => setCalendarFor(null)} />

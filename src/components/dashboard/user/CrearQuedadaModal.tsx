@@ -1,7 +1,8 @@
 // Wizard de creación de una Quedada (juego social). Overlay tipo EditBioModal/
-// RetarModal. 4 pasos: Básicos → Cuota+Logística → Bancarios+Premios →
-// Categorías. Guarda todo con createQuedada (incl. logística, bancarios, premios
-// y categorías iniciales). Los slots/parejas/pagos se llenan luego en gestión.
+// RetarModal, sin cierre por click afuera (para no perder el progreso). 3 pasos:
+// Básicos+categorías → Cuota+canchas → Pago+premios. Guarda todo con createQuedada
+// (incl. logística, bancarios, premios y categorías iniciales). El cupo es POR
+// categoría; los slots/parejas/pagos se llenan luego en gestión.
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -48,7 +49,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
   const [visibility, setVisibility] = useState<Visibility>("open");
   const [startsLocal, setStartsLocal] = useState("");
   const [locationText, setLocationText] = useState("");
-  const [maxPlayers, setMaxPlayers] = useState("");
   // Paso 2
   const [feeUsd, setFeeUsd] = useState("0");
   const [courts, setCourts] = useState("");
@@ -77,11 +77,13 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
     return Math.round(c * h * p * 100);
   }, [courts, hours, courtPriceUsd]);
 
+  // El cupo es POR CATEGORÍA: jugadores estimados = suma de cupos × (2 dobles / 1 singles).
   const splitHint = useMemo(() => {
-    const players = parseInt(maxPlayers || "0", 10);
-    if (courtCost <= 0 || !players || players < 1) return null;
+    const perSlot = matchMode === "doubles" ? 2 : 1;
+    const players = categories.reduce((sum, c) => sum + (parseInt(c.slots || "0", 10) || 0) * perSlot, 0);
+    if (courtCost <= 0 || players < 1) return null;
     return Math.round(courtCost / players);
-  }, [courtCost, maxPlayers]);
+  }, [courtCost, categories, matchMode]);
 
   function catHourToIso(hour: string): string | undefined {
     if (!hour) return undefined;
@@ -99,11 +101,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
       }
       if (!startsLocal || Number.isNaN(Date.parse(localToIso(startsLocal)))) {
         toast({ icon: "alert-triangle", title: "Elige fecha y hora" });
-        return false;
-      }
-      const maxNum = maxPlayers.trim() ? parseInt(maxPlayers, 10) : null;
-      if (maxNum != null && (Number.isNaN(maxNum) || maxNum < 2)) {
-        toast({ icon: "alert-triangle", title: "Cupo inválido", sub: "Mínimo 2." });
         return false;
       }
     }
@@ -124,7 +121,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
     }
     const feeNum = Math.round(parseFloat(feeUsd || "0") * 100);
     const feeCents = Number.isFinite(feeNum) && feeNum > 0 ? feeNum : 0;
-    const maxNum = maxPlayers.trim() ? parseInt(maxPlayers, 10) : undefined;
     const courtsN = courts.trim() ? parseInt(courts, 10) : undefined;
     const hoursN = hours.trim() ? parseFloat(hours) : undefined;
     const priceCents = courtPriceUsd.trim() ? Math.round(parseFloat(courtPriceUsd) * 100) : undefined;
@@ -148,7 +144,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
         visibility,
         startsAt: localToIso(startsLocal),
         locationText: locationText.trim() || undefined,
-        maxPlayers: maxNum,
         feeCents,
         perks: perks.trim() || undefined,
         courtsCount: courtsN,
@@ -326,9 +321,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
                     <Icon name="plus" size={13} /> Agregar categoría
                   </button>
                 </div>
-              </Field>
-              <Field label="Cupo de jugadores · opcional">
-                <input type="number" min={2} max={64} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} placeholder="Ej. 16" style={inputStyle} />
+                <Hint>El cupo se define por categoría (cupos de arriba), no global.</Hint>
               </Field>
             </>
           )}
@@ -349,7 +342,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
                   <div style={{ fontWeight: 800 }}>Costo de cancha: {money(courtCost)}</div>
                   {splitHint != null && (
                     <div style={{ color: "var(--muted-fg)", marginTop: 3 }}>
-                      ≈ {money(splitHint)} por jugador {visibility === "private" ? "(reparto entre el cupo)" : "(referencia para la cuota)"}.
+                      ≈ {money(splitHint)} por jugador {visibility === "private" ? "(reparto entre los cupos de las categorías)" : "(referencia para la cuota)"}.
                     </div>
                   )}
                 </div>
