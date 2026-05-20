@@ -325,9 +325,10 @@ export function QuedadaManagePanel({
       {q ? (
         <h2
           className="font-heading"
-          style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
+          style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
         >
           {q.title}
+          <span style={{ color: "#34d399" }}>.</span>
         </h2>
       ) : (
         <div style={{ margin: "10px 0 0" }}>
@@ -537,32 +538,20 @@ function Section({
 
   const head = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 9,
-          background: "linear-gradient(135deg,#10b981,#047857)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon name={icon} size={14} color="#fff" />
-      </div>
+      <Icon name={icon} size={16} color="var(--primary)" strokeWidth={2.25} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div className="font-heading" style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.015em", display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          className="font-heading"
+          style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.01em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}
+        >
           {title}
           {badge != null && (
-            <span style={{ fontSize: 10, fontWeight: 900, padding: "1px 7px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)" }}>{badge}</span>
+            <span style={{ fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", letterSpacing: 0 }}>{badge}</span>
           )}
         </div>
-        {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>{sub}</div>}
+        {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{sub}</div>}
       </div>
-      {collapsible && (
-        <Icon name={open ? "chevron-up" : "chevron-down"} size={18} color="var(--muted-fg)" />
-      )}
+      {collapsible && <Icon name={open ? "chevron-up" : "chevron-down"} size={18} color="var(--muted-fg)" />}
     </div>
   );
 
@@ -692,7 +681,10 @@ function PagosTab({ data, onTogglePaid }: { data: ManageData; onTogglePaid: (use
               >
                 <input type="checkbox" checked={p.paid} onChange={() => onTogglePaid(p.user_id)} style={{ accentColor: "var(--success-fg)", cursor: "pointer" }} />
                 <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.profiles)}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--success-fg)" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--success-fg)" : "var(--muted-fg)", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                  {p.paid && <Icon name="check" size={12} color="var(--success-fg)" />}
+                  {p.paid ? "Pagado" : "Pendiente"}
+                </span>
               </label>
             ))}
           </div>
@@ -1068,7 +1060,12 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
                     {c.level_label ? <span style={{ color: "var(--muted-fg)", fontWeight: 600 }}> · {c.level_label}</span> : null}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    {c.starts_at && <span>🕒 {hourLabel(c.starts_at)}</span>}
+                    {c.starts_at && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Icon name="clock" size={11} color="var(--muted-fg)" />
+                        {hourLabel(c.starts_at)}
+                      </span>
+                    )}
                     <span>{c.max_slots ?? "—"} slot(s)</span>
                   </div>
                 </div>
@@ -1471,8 +1468,7 @@ function PaidPlayers({
         style={{ accentColor: "var(--success-fg)", cursor: "pointer" }}
         aria-label={`Marcar pago de ${p.name}`}
       />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-      <span style={{ fontSize: 11, flexShrink: 0 }}>{p.paid ? "✅" : "⬜"}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: p.paid ? "var(--success-fg)" : "var(--fg)" }}>{p.name}</span>
     </label>
   );
   return (
