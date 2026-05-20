@@ -2367,7 +2367,14 @@ queda activo sin seed). Lectura pública (el picker oculta los inactivos vía
 (`admin/cosmetics.ts`, con `setAuditActor`): al **desactivar** es hard-kill —
 revierte a Clásico (3 columnas null) a todos los perfiles que lo usen. `setTheme`
 rechaza temas inactivos (`PROFILE.THEME_INACTIVE`). `default` no se desactiva. UI:
-sección "Temas" en `AdminCosmeticsScreen`.
+sección "Temas" en `AdminCosmeticsScreen`, con bulk `setAllThemesActive(active)`
+("Activar todos" / "Desactivar todo" = hard-kill masivo).
+
+**Gestión de bundles desde admin**: `AdminCosmeticsScreen` tiene sección
+"Bundles" que lista `cosmetic_bundles` (`listBundles`) y permite editar
+`price_cents` (`setBundlePrice`) y togglear `active` (`setBundleActive`) — admin
++ `setAuditActor`. Desactivar un bundle impide nuevos grants (`grantBundleToUser`
+rechaza `active=false`). Sin cambio de schema (columnas ya existen).
 
 ---
 

@@ -21,6 +21,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { PROFILE_THEMES } from "@/lib/profile/customization-presets";
 
 async function requireAdminUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -256,5 +257,118 @@ export async function listInactiveThemes(): Promise<ActionResult<string[]>> {
       .eq("active", false);
     if (error) throw new MpError("COSMETICS.DB_ERROR", error.message, 500);
     return ((data ?? []) as Array<{ key: string }>).map((r) => r.key);
+  });
+}
+
+// ── setAllThemesActive ───────────────────────────────────────────────────────
+// Bulk: activa/desactiva TODOS los temas no-default de un golpe. Desactivar es
+// hard-kill (revierte a Clásico a todos los que tengan algún tema).
+const SetAllThemesSchema = z.object({ active: z.boolean() });
+
+export async function setAllThemesActive(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetAllThemesSchema, input, async ({ active }) => {
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+
+    const now = new Date().toISOString();
+    const rows = PROFILE_THEMES.filter((t) => t.key !== "default").map((t) => ({
+      key: t.key,
+      active,
+      updated_at: now,
+    }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: upErr } = await (admin as any)
+      .from("theme_settings")
+      .upsert(rows, { onConflict: "key" });
+    if (upErr) throw new MpError("COSMETICS.DB_ERROR", upErr.message, 500);
+
+    if (!active) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: revErr } = await (admin as any)
+        .from("profiles")
+        .update({ accent_color: null, card_style: null, banner_preset: null })
+        .eq("is_system", false)
+        .not("accent_color", "is", null);
+      if (revErr) throw new MpError("COSMETICS.DB_ERROR", revErr.message, 500);
+    }
+    return { ok: true as const };
+  });
+}
+
+// ── Bundles: listar + editar precio + activar/desactivar ─────────────────────
+export type BundleAdminRow = {
+  key: string;
+  label: string;
+  description: string | null;
+  priceCents: number;
+  active: boolean;
+};
+
+export async function listBundles(): Promise<ActionResult<BundleAdminRow[]>> {
+  return runAction(z.object({}).optional(), undefined, async () => {
+    await requireAdminUserId();
+    const admin = getAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin as any)
+      .from("cosmetic_bundles")
+      .select("key,label,description,price_cents,active,sort_order")
+      .order("sort_order", { ascending: true });
+    if (error) throw new MpError("COSMETICS.DB_ERROR", error.message, 500);
+    return (
+      (data ?? []) as Array<{
+        key: string;
+        label: string;
+        description: string | null;
+        price_cents: number;
+        active: boolean;
+      }>
+    ).map((b) => ({
+      key: b.key,
+      label: b.label,
+      description: b.description,
+      priceCents: b.price_cents,
+      active: b.active,
+    }));
+  });
+}
+
+const SetBundlePriceSchema = z.object({
+  key: z.string().trim().min(1).max(40),
+  priceCents: z.number().int().min(0).max(1000000),
+});
+
+export async function setBundlePrice(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetBundlePriceSchema, input, async ({ key, priceCents }) => {
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin as any)
+      .from("cosmetic_bundles")
+      .update({ price_cents: priceCents, updated_at: new Date().toISOString() })
+      .eq("key", key);
+    if (error) throw new MpError("COSMETICS.DB_ERROR", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+const SetBundleActiveSchema = z.object({
+  key: z.string().trim().min(1).max(40),
+  active: z.boolean(),
+});
+
+export async function setBundleActive(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetBundleActiveSchema, input, async ({ key, active }) => {
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin as any)
+      .from("cosmetic_bundles")
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq("key", key);
+    if (error) throw new MpError("COSMETICS.DB_ERROR", error.message, 500);
+    return { ok: true as const };
   });
 }

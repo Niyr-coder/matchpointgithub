@@ -14,9 +14,14 @@ import {
   listGrantsForUser,
   searchUsersForCosmetics,
   setThemeActive,
+  setAllThemesActive,
   listInactiveThemes,
+  listBundles,
+  setBundlePrice,
+  setBundleActive,
   type CosmeticGrantRow,
   type CosmeticUserSearchRow,
+  type BundleAdminRow,
 } from "@/server/actions/admin/cosmetics";
 import { FALLBACK_BUNDLES, priceLabel } from "@/lib/profile/bundles";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -307,8 +312,151 @@ export function AdminCosmeticsScreen() {
         </>
       )}
 
+      <BundlesAdminSection />
       <ThemesAdminSection />
     </main>
+  );
+}
+
+// ── Sección: bundles (precio editable + activar/desactivar) ──────────────────
+function BundlesAdminSection() {
+  const toast = useToast();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [bundles, setBundles] = useState<BundleAdminRow[] | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let alive = true;
+    listBundles().then((r) => {
+      if (alive && r.ok) {
+        setBundles(r.data);
+        setPrices(Object.fromEntries(r.data.map((b) => [b.key, (b.priceCents / 100).toFixed(2)])));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const savePrice = (key: string) => {
+    if (pending) return;
+    const dollars = parseFloat(prices[key] ?? "");
+    if (Number.isNaN(dollars) || dollars < 0) {
+      toast({ icon: "alert-triangle", title: "Precio inválido" });
+      return;
+    }
+    const cents = Math.round(dollars * 100);
+    startTransition(async () => {
+      const res = await setBundlePrice({ key, priceCents: cents });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: res.error.message });
+        return;
+      }
+      setBundles((prev) => prev?.map((b) => (b.key === key ? { ...b, priceCents: cents } : b)) ?? null);
+      toast({ icon: "check", title: "Precio actualizado" });
+      router.refresh();
+    });
+  };
+
+  const toggleActive = (key: string, label: string, nextActive: boolean) => {
+    if (pending) return;
+    startTransition(async () => {
+      const res = await setBundleActive({ key, active: nextActive });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: res.error.message });
+        return;
+      }
+      setBundles((prev) => prev?.map((b) => (b.key === key ? { ...b, active: nextActive } : b)) ?? null);
+      toast({ icon: "check", title: nextActive ? `${label} activado` : `${label} desactivado` });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="card" style={{ padding: 18, marginTop: 18 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 900,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "var(--muted-fg)",
+          marginBottom: 4,
+        }}
+      >
+        Bundles
+      </div>
+      <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 12px" }}>
+        Edita el precio de cada bundle y actívalo/desactívalo. Desactivar impide otorgarlo a nuevos
+        usuarios.
+      </p>
+      {bundles === null ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando bundles…</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {bundles.map((b) => (
+            <div
+              key={b.key}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: b.active ? "#fff" : "#fafafa",
+                opacity: b.active ? 1 : 0.7,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13, minWidth: 120 }}>{b.label}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 13, color: "var(--muted-fg)" }}>$</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={prices[b.key] ?? ""}
+                    onChange={(e) => setPrices((p) => ({ ...p, [b.key]: e.target.value }))}
+                    style={{
+                      width: 80,
+                      padding: "7px 9px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontFamily: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => savePrice(b.key)}
+                  disabled={pending}
+                  className="btn"
+                  style={{ background: "#fff", border: "1px solid var(--border)", padding: "7px 12px", fontSize: 10.5 }}
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => toggleActive(b.key, b.label, !b.active)}
+                  disabled={pending}
+                  className="btn"
+                  style={
+                    b.active
+                      ? { background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "7px 12px", fontSize: 10.5 }
+                      : { background: "#0a0a0a", color: "#fff", padding: "7px 12px", fontSize: 10.5 }
+                  }
+                >
+                  {b.active ? "Desactivar" : "Activar"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -362,19 +510,61 @@ function ThemesAdminSection() {
 
   const themes = PROFILE_THEMES_BY_RARITY.filter((t) => t.key !== "default");
 
+  const toggleAll = async (nextActive: boolean) => {
+    if (pending || inactive === null) return;
+    if (!nextActive) {
+      const ok = await confirm({
+        title: "Desactivar todos los temas",
+        body: "Se quitarán TODOS los temas del picker y todos los perfiles volverán a Clásico. ¿Continuar?",
+        confirmLabel: "Desactivar todo",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    startTransition(async () => {
+      const res = await setAllThemesActive({ active: nextActive });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: res.error.message });
+        return;
+      }
+      setInactive(nextActive ? new Set() : new Set(themes.map((t) => t.key)));
+      toast({ icon: "check", title: nextActive ? "Todos los temas activados" : "Todos los temas desactivados" });
+      router.refresh();
+    });
+  };
+
   return (
     <div className="card" style={{ padding: 18, marginTop: 18 }}>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 900,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "var(--muted-fg)",
-          marginBottom: 4,
-        }}
-      >
-        Temas
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--muted-fg)",
+          }}
+        >
+          Temas
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => toggleAll(true)}
+            disabled={pending || inactive === null}
+            className="btn"
+            style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 12px", fontSize: 10.5 }}
+          >
+            Activar todos
+          </button>
+          <button
+            onClick={() => toggleAll(false)}
+            disabled={pending || inactive === null}
+            className="btn"
+            style={{ background: "#0a0a0a", color: "#fff", padding: "6px 12px", fontSize: 10.5 }}
+          >
+            Desactivar todo
+          </button>
+        </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 12px" }}>
         Activa o desactiva temas del catálogo. Desactivar lo quita del picker y revierte a Clásico a
