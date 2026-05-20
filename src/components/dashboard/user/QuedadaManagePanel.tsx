@@ -1409,38 +1409,68 @@ function PosicionesTab({ data }: { data: ManageData }) {
   );
 }
 
-type StandingRow = { pid: string; pj: number; pts: number; w: number };
+// Standings completos: jugados (PJ), ganados/empatados/perdidos (G/E/P), puntos
+// a favor/en contra (PF/PC) y puntos de tabla (Pts = 3·G + 1·E). Orden con
+// desempates: Pts → diferencia (PF−PC) → PF.
+type StandingRow = { pid: string; pj: number; g: number; e: number; p: number; pf: number; pc: number; pts: number };
 function computeStandings(matches: ManageMatch[], pairIds: string[]): StandingRow[] {
   return pairIds
     .map((pid) => {
-      let pj = 0;
-      let pts = 0;
-      let w = 0;
+      let pj = 0, g = 0, e = 0, p = 0, pf = 0, pc = 0;
       for (const m of matches) {
         if (m.status !== "played") continue;
-        if (m.pair_a_id === pid) { pj++; pts += m.points_a ?? 0; if ((m.points_a ?? 0) > (m.points_b ?? 0)) w++; }
-        else if (m.pair_b_id === pid) { pj++; pts += m.points_b ?? 0; if ((m.points_b ?? 0) > (m.points_a ?? 0)) w++; }
+        let mine: number, theirs: number;
+        if (m.pair_a_id === pid) { mine = m.points_a ?? 0; theirs = m.points_b ?? 0; }
+        else if (m.pair_b_id === pid) { mine = m.points_b ?? 0; theirs = m.points_a ?? 0; }
+        else continue;
+        pj++; pf += mine; pc += theirs;
+        if (mine > theirs) g++;
+        else if (mine < theirs) p++;
+        else e++;
       }
-      return { pid, pj, pts, w };
+      return { pid, pj, g, e, p, pf, pc, pts: g * 3 + e };
     })
-    .sort((a, b) => b.pts - a.pts || b.w - a.w || b.pj - a.pj);
+    .sort((a, b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf);
 }
 
+const STANDINGS_COLS = "26px minmax(96px,1fr) 30px 26px 26px 26px 34px 34px 40px 40px";
 function StandingsBody({ rows, pairLabel }: { rows: StandingRow[]; pairLabel: (id: string) => string }) {
+  const head: { k: string; t: string; title: string }[] = [
+    { k: "pj", t: "PJ", title: "Partidos jugados" },
+    { k: "g", t: "G", title: "Ganados" },
+    { k: "e", t: "E", title: "Empatados" },
+    { k: "p", t: "P", title: "Perdidos" },
+    { k: "pf", t: "PF", title: "Puntos a favor" },
+    { k: "pc", t: "PC", title: "Puntos en contra" },
+    { k: "dif", t: "DIF", title: "Diferencia (PF−PC)" },
+    { k: "pts", t: "PTS", title: "Puntos de tabla (3·G + 1·E)" },
+  ];
   return (
-    <div style={{ padding: "4px 0" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, padding: "4px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-        <span>#</span><span>Pareja</span><span style={{ textAlign: "center" }}>PJ</span><span style={{ textAlign: "center" }}>G</span><span style={{ textAlign: "right" }}>Pts</span>
-      </div>
-      {rows.map((s, i) => (
-        <div key={s.pid} style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12.5, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
-          <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
-          <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
-          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
-          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.w}</span>
-          <span className="font-heading tabular" style={{ textAlign: "right", fontWeight: 900 }}>{s.pts}</span>
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ minWidth: 460 }}>
+        <div style={{ display: "grid", gridTemplateColumns: STANDINGS_COLS, gap: 6, padding: "5px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+          <span>#</span>
+          <span>Pareja</span>
+          {head.map((h) => <span key={h.k} title={h.title} style={{ textAlign: h.k === "pts" ? "right" : "center" }}>{h.t}</span>)}
         </div>
-      ))}
+        {rows.map((s, i) => {
+          const dif = s.pf - s.pc;
+          return (
+            <div key={s.pid} style={{ display: "grid", gridTemplateColumns: STANDINGS_COLS, gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
+              <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
+              <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--color-mp-primary-active)", fontWeight: 800 }}>{s.g}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.e}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.p}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pf}</span>
+              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pc}</span>
+              <span className="tabular" style={{ textAlign: "center", fontWeight: 700, color: dif > 0 ? "var(--color-mp-primary-active)" : dif < 0 ? "var(--destructive-fg)" : "var(--muted-fg)" }}>{dif > 0 ? `+${dif}` : dif}</span>
+              <span className="font-heading tabular" style={{ textAlign: "right", fontWeight: 900 }}>{s.pts}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
