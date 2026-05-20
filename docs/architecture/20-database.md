@@ -2381,6 +2381,33 @@ sección "Temas" en `AdminCosmeticsScreen`, con bulk `setAllThemesActive(active)
 + `setAuditActor`. Desactivar un bundle impide nuevos grants (`grantBundleToUser`
 rechaza `active=false`). Sin cambio de schema (columnas ya existen).
 
+### 29.21 · Quedadas — juego social (mig 131, Stage 1)
+
+Entidad social casual, distinta de torneos. Un user organiza una junta con un
+formato (`mp_quedada_format`: americano/mexicano/round_robin/kotc/canguil/libre),
+abierta (cuota + cupo) o privada (invitación). v1 = organizar + resultados
+casuales; ranked + stats por formato×modo + motor en vivo + chat = v2.
+
+- `quedadas`: creator_id, club_id?(sede), reservation_id?, title, format,
+  `match_mode` (singles/dobles, para v2 stats), visibility (open/private),
+  status (reusa `mp_event_status`), starts_at, fee_cents, perks_text, ranked
+  (v1 siempre false). RLS: select abiertas público / privadas creator+invitados;
+  write del creator (o admin).
+- `quedada_participants`: PK(quedada_id,user_id), status
+  (joined/waitlist/invited/cancelled), paid_transaction_id?, points/final_rank
+  (standings casuales que ingresa el organizador, NO tocan MP Rating en v1).
+  RLS: self + el creador puede insertar 'invited' de otros. **En el publication
+  realtime** (cupos en vivo) junto con `quedadas`.
+- `quedada_reports`: soporte/moderación (admin resuelve).
+- Pagos: cuota abierta → `transactions` kind=`quedada` (constraint ampliado) +
+  flujo de comprobante existente. **Sin payout** (el organizador maneja el dinero;
+  payout real diferido hasta convenio con banco/procesador).
+- Notif kinds: `quedada_invite/joined/reminder/cancelled` (seed mig 131).
+- Actions: `src/server/actions/quedadas.ts` (create/join/leave/invite/cancel/
+  setResults/report) + `admin/quedadas.ts` (list/cancel + reportes, con
+  `setAuditActor`). Tablas aún no en tipos generados → cliente `as any` (deuda a
+  limpiar regenerando `db/types.ts`).
+
 ---
 
 ## Próximo: `30-rls.md`
