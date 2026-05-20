@@ -64,6 +64,11 @@ AskUserQuestion) debe estar en español ecuatoriano neutro con **tuteo**.
 
 Ver `docs/README.md` Regla 2 para la guía completa.
 
+**Marca**: en copy visible la marca se escribe **MATCHPOINT** (mayúscula), no
+"MatchPoint". El premium completo es **MATCHPOINT+** (forma corta `MP+`). No
+toca identificadores de código (`MatchPointPlusModal`, `grantMatchPointPlusAdmin`)
+ni el dominio `matchpoint.top`.
+
 ## Browser automation
 
 El proyecto tiene `agent-browser` instalado como devDependency. Cuando
