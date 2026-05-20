@@ -27,6 +27,7 @@ import {
   updateCategory,
   deleteCategory,
   assignPair,
+  autoAssignCategory,
   removePair,
   setParticipantPaid,
   updateQuedadaLogistics,
@@ -1344,6 +1345,30 @@ function CategorySlots({
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
   const nameFor = (id: string | null): string | null => (id ? nameOf(partById.get(id)?.profiles ?? null) : null);
 
+  // Inscritos joined que aún no están en un cupo de esta categoría (candidatos
+  // para asignación manual y para el llenado al azar).
+  const assignedInCat = new Set<string>();
+  for (const p of pairsBySlot.values()) {
+    assignedInCat.add(p.player_a_id);
+    if (p.player_b_id) assignedInCat.add(p.player_b_id);
+  }
+  const available = data.participants
+    .filter((p) => p.status === "joined" && !assignedInCat.has(p.user_id))
+    .map((p) => ({ id: p.user_id, name: nameOf(p.profiles) }));
+  const emptyCount = slots.length - pairsBySlot.size;
+
+  const autoFill = () => {
+    startTx(async () => {
+      const res = await autoAssignCategory({ quedadaId: data.quedada.id, categoryId: category.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo llenar al azar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: `${res.data.assigned} cupo${res.data.assigned === 1 ? "" : "s"} llenado${res.data.assigned === 1 ? "" : "s"} al azar` });
+      await onChanged();
+    });
+  };
+
   const removePairById = async (pairId: string, slotNo: number) => {
     const ok = await confirm({
       title: "Quitar pareja",
@@ -1397,6 +1422,19 @@ function CategorySlots({
               <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define cuántos cupos tiene esta categoría (en Configurar).</div>
             ) : (
               <>
+                {emptyCount > 0 && available.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <button
+                      type="button"
+                      onClick={autoFill}
+                      className="btn"
+                      style={{ background: "#fff", border: "1px solid var(--border)" }}
+                      title="Reparte los inscritos disponibles al azar en los cupos vacíos"
+                    >
+                      <Icon name="shuffle" size={12} /> Llenar al azar
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 8 }}>
                   {slots.map((n) => {
                     const pair = pairsBySlot.get(n) ?? null;
@@ -1421,6 +1459,7 @@ function CategorySlots({
                       category={category}
                       slotNo={assigningSlot}
                       isDoubles={isDoubles}
+                      available={available}
                       onDone={async () => {
                         setAssigningSlot(null);
                         await onChanged();
@@ -1547,6 +1586,7 @@ function AssignPairForm({
   category,
   slotNo,
   isDoubles,
+  available,
   onDone,
   onCancel,
 }: {
@@ -1554,22 +1594,22 @@ function AssignPairForm({
   category: ManageCategory;
   slotNo: number;
   isDoubles: boolean;
+  available: { id: string; name: string }[];
   onDone: () => Promise<void>;
   onCancel: () => void;
 }) {
   const toast = useToast();
   const [pending, start] = useTransition();
-  const [a, setA] = useState<Player[]>([]);
-  const [b, setB] = useState<Player[]>([]);
+  const [aId, setAId] = useState("");
+  const [bId, setBId] = useState("");
 
   const submit = () => {
     if (pending) return;
-    if (a.length === 0) {
+    if (!aId) {
       toast({ icon: "alert-triangle", title: isDoubles ? "Elige al jugador A" : "Elige al jugador" });
       return;
     }
-    // En dobles ambos son obligatorios; en singles solo el jugador.
-    if (isDoubles && b.length === 0) {
+    if (isDoubles && !bId) {
       toast({ icon: "alert-triangle", title: "Elige al jugador B", sub: "En dobles la pareja necesita dos jugadores." });
       return;
     }
@@ -1578,8 +1618,8 @@ function AssignPairForm({
         quedadaId: data.quedada.id,
         categoryId: category.id,
         slotNo,
-        playerAId: a[0].id,
-        playerBId: isDoubles ? b[0].id : null,
+        playerAId: aId,
+        playerBId: isDoubles ? bId : null,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo asignar", sub: res.error.message });
@@ -1590,23 +1630,47 @@ function AssignPairForm({
     });
   };
 
+  const selStyle: React.CSSProperties = { ...fieldInput, cursor: "pointer" };
+
   return (
-    <div style={{ padding: "0 11px 12px", display: "flex", flexDirection: "column", gap: 10, background: "var(--muted)", borderTop: "1px solid var(--border)" }}>
-      <div style={{ paddingTop: 10 }}>
-        <PlayerPicker label={isDoubles ? "Jugador A" : "Jugador"} max={1} selected={a} onChange={setA} excludeIds={b[0] ? [b[0].id] : []} />
-      </div>
-      {isDoubles && (
-        <PlayerPicker label="Jugador B" max={1} selected={b} onChange={setB} excludeIds={a[0] ? [a[0].id] : []} />
+    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, background: "var(--muted)", borderRadius: 10, border: "1px solid var(--border)" }}>
+      {available.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+          No hay inscritos disponibles sin asignar en esta categoría.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: isDoubles ? "1fr 1fr" : "1fr", gap: 10 }}>
+            <Field label={isDoubles ? "Jugador A" : "Jugador"}>
+              <select value={aId} onChange={(e) => setAId(e.target.value)} style={selStyle}>
+                <option value="">Elige inscrito…</option>
+                {available.filter((p) => p.id !== bId).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+            {isDoubles && (
+              <Field label="Jugador B">
+                <select value={bId} onChange={(e) => setBId(e.target.value)} style={selStyle}>
+                  <option value="">Elige inscrito…</option>
+                  {available.filter((p) => p.id !== aId).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button className="btn btn-outline" onClick={onCancel} disabled={pending}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={submit} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+              {!pending && <Icon name="check" size={13} color="#fff" />}
+              {pending ? "Asignando…" : isDoubles ? "Asignar pareja" : "Asignar jugador"}
+            </button>
+          </div>
+        </>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onCancel} disabled={pending}>
-          Cancelar
-        </button>
-        <button className="btn btn-primary" onClick={submit} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
-          {!pending && <Icon name="check" size={13} color="#fff" />}
-          {pending ? "Asignando…" : isDoubles ? "Asignar pareja" : "Asignar jugador"}
-        </button>
-      </div>
     </div>
   );
 }

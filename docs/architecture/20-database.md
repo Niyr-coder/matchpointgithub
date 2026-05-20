@@ -2419,6 +2419,14 @@ SECURITY DEFINER). Recursión RLS rota con helpers definer (mig 132). Actions de
 gestión en `quedadas.ts` (cohosts/categorías/pairs/paid/logística/joinByInviteCode).
 Notif kind `quedada_cohost_added`.
 
+**Asignación de parejas — dos modos:** (1) **elegidas** (manual): el picker en
+gestión ofrece SOLO inscritos `joined` no asignados aún en la categoría (selects,
+no búsqueda global); (2) **al azar (popcorn)**: action `autoAssignCategory`
+(schema `AutoAssignCategorySchema`) mezcla (Fisher–Yates) los inscritos
+disponibles y llena los cupos vacíos (2/cupo en dobles, 1 en singles), insertando
+`quedada_pairs`. RLS = `mp_quedada_can_manage` (policies existentes), sin schema
+nuevo.
+
 **Datos de organización estructurados (mig 134):** `quedadas` +`payment_account`
 jsonb `{bank, accountType: ahorros|corriente, accountNumber, holderName,
 holderId?, note?}` + `prizes` jsonb `[{place, prize, valueCents?}]`. Reemplazan

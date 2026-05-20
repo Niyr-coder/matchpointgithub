@@ -22,6 +22,7 @@ import {
   UpdateCategorySchema,
   CategoryIdSchema,
   AssignPairSchema,
+  AutoAssignCategorySchema,
   RemovePairSchema,
   SetParticipantPaidSchema,
   QuedadaLogisticsSchema,
@@ -500,6 +501,69 @@ export async function assignPair(input: unknown): Promise<ActionResult<{ ok: tru
     );
     if (error) throw new MpError("QUEDADAS.PAIR_FAILED", error.message, 500);
     return { ok: true as const };
+  });
+}
+
+// ── autoAssignCategory (popcorn) ─────────────────────────────────────────────
+// Mezcla los inscritos joined que aún no están asignados en la categoría y los
+// reparte en los cupos vacíos (2 por cupo en dobles, 1 en singles).
+export async function autoAssignCategory(input: unknown): Promise<ActionResult<{ assigned: number }>> {
+  return runAction(AutoAssignCategorySchema, input, async ({ quedadaId, categoryId }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+
+    const { data: q } = await supabase.from("quedadas").select("match_mode").eq("id", quedadaId).maybeSingle();
+    const isDoubles = (q?.match_mode ?? "doubles") === "doubles";
+
+    const { data: cat } = await supabase.from("quedada_categories").select("max_slots").eq("id", categoryId).maybeSingle();
+    const maxSlots = (cat?.max_slots as number | null) ?? 0;
+    if (maxSlots <= 0) throw new MpError("QUEDADAS.NO_SLOTS", "La categoría no tiene cupos definidos", 400);
+
+    const { data: pairs } = await supabase
+      .from("quedada_pairs")
+      .select("slot_no,player_a_id,player_b_id")
+      .eq("category_id", categoryId);
+    const occupied = new Set<number>();
+    const assigned = new Set<string>();
+    for (const p of pairs ?? []) {
+      occupied.add(p.slot_no as number);
+      assigned.add(p.player_a_id as string);
+      if (p.player_b_id) assigned.add(p.player_b_id as string);
+    }
+
+    const { data: parts } = await supabase
+      .from("quedada_participants")
+      .select("user_id,status")
+      .eq("quedada_id", quedadaId)
+      .eq("status", "joined");
+    const available: string[] = (parts ?? [])
+      .map((p: { user_id: string }) => p.user_id)
+      .filter((id: string) => !assigned.has(id));
+    // Shuffle (Fisher–Yates).
+    for (let i = available.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [available[i], available[j]] = [available[j], available[i]];
+    }
+
+    const emptySlots: number[] = [];
+    for (let n = 1; n <= maxSlots; n++) if (!occupied.has(n)) emptySlots.push(n);
+
+    const perSlot = isDoubles ? 2 : 1;
+    const rows: Record<string, unknown>[] = [];
+    let idx = 0;
+    for (const slot of emptySlots) {
+      if (available.length - idx < perSlot) break; // sin suficientes para una pareja completa
+      const playerA = available[idx++];
+      const playerB = isDoubles ? available[idx++] : null;
+      rows.push({ quedada_id: quedadaId, category_id: categoryId, slot_no: slot, player_a_id: playerA, player_b_id: playerB });
+    }
+    if (rows.length === 0) {
+      throw new MpError("QUEDADAS.NOTHING_TO_ASSIGN", "No hay inscritos disponibles para llenar cupos", 400);
+    }
+    const { error } = await supabase.from("quedada_pairs").insert(rows as never);
+    if (error) throw new MpError("QUEDADAS.AUTOASSIGN_FAILED", error.message, 500);
+    return { assigned: rows.length };
   });
 }
 

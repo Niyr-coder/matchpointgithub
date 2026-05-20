@@ -167,6 +167,12 @@ export const AssignPairSchema = z
 
 export const RemovePairSchema = z.object({ pairId: UuidSchema }).openapi("RemoveQuedadaPair");
 
+// Auto-asignación "popcorn": mezcla los inscritos disponibles y llena los cupos
+// vacíos de la categoría (2 por cupo en dobles, 1 en singles).
+export const AutoAssignCategorySchema = z
+  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
+  .openapi("AutoAssignQuedadaCategory");
+
 export const SetParticipantPaidSchema = z
   .object({ quedadaId: UuidSchema, userId: UuidSchema, paid: z.boolean() })
   .openapi("SetQuedadaParticipantPaid");
