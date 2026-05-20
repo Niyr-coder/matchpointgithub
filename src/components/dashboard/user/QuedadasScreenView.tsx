@@ -3,13 +3,14 @@
 // creador invitar / cargar resultados / cancelar. v1 = social, no toca ranking.
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import { CrearQuedadaModal } from "./CrearQuedadaModal";
+import { QuedadaManagePanel } from "./QuedadaManagePanel";
 import {
   joinQuedada,
   leaveQuedada,
@@ -17,6 +18,7 @@ import {
   cancelQuedada,
   setQuedadaResults,
   reportQuedada,
+  getQuedadaManageData,
 } from "@/server/actions/quedadas";
 
 export type QuedadaLite = {
@@ -83,6 +85,9 @@ export function QuedadasScreenView({
   // Modales secundarios (invitar / resultados) por quedada.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
   const [resultsFor, setResultsFor] = useState<QuedadaLite | null>(null);
+  // Panel de gestión (creador / co-host) y calendario del participante.
+  const [manageId, setManageId] = useState<string | null>(null);
+  const [calendarFor, setCalendarFor] = useState<QuedadaLite | null>(null);
 
   const list = tab === "descubrir" ? discover : mine;
 
@@ -193,6 +198,8 @@ export function QuedadasScreenView({
               meUserId={meUserId}
               onInvite={() => setInviteFor(q)}
               onResults={() => setResultsFor(q)}
+              onManage={() => setManageId(q.id)}
+              onCalendar={() => setCalendarFor(q)}
             />
           ))}
         </div>
@@ -204,6 +211,12 @@ export function QuedadasScreenView({
       )}
       {resultsFor && (
         <ResultsModal quedada={resultsFor} onClose={() => setResultsFor(null)} />
+      )}
+      {manageId && (
+        <QuedadaManagePanel quedadaId={manageId} onClose={() => setManageId(null)} />
+      )}
+      {calendarFor && (
+        <CalendarModal quedada={calendarFor} onClose={() => setCalendarFor(null)} />
       )}
     </div>
   );
@@ -258,11 +271,15 @@ function QuedadaCard({
   meUserId,
   onInvite,
   onResults,
+  onManage,
+  onCalendar,
 }: {
   q: QuedadaLite;
   meUserId: string | null;
   onInvite: () => void;
   onResults: () => void;
+  onManage: () => void;
+  onCalendar: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -444,15 +461,26 @@ function QuedadaCard({
       >
         {!cancelled && !finished && !q.iAmCreator && (
           q.iAmJoined ? (
-            <button
-              className="btn"
-              onClick={doLeave}
-              disabled={pending}
-              style={{ background: "#fff", border: "1px solid var(--border)", flex: 1, justifyContent: "center" }}
-            >
-              <Icon name="log-out" size={12} />
-              Salir
-            </button>
+            <>
+              <button
+                className="btn"
+                onClick={onCalendar}
+                disabled={pending}
+                style={{ background: "#fff", border: "1px solid var(--border)", flex: 1, justifyContent: "center" }}
+              >
+                <Icon name="calendar-days" size={12} />
+                Tu calendario
+              </button>
+              <button
+                className="btn"
+                onClick={doLeave}
+                disabled={pending}
+                style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", flex: 1, justifyContent: "center" }}
+              >
+                <Icon name="log-out" size={12} color="#b91c1c" />
+                Salir
+              </button>
+            </>
           ) : (
             <button
               className="btn btn-primary"
@@ -468,6 +496,15 @@ function QuedadaCard({
 
         {q.iAmCreator && !cancelled && (
           <>
+            <button
+              className="btn btn-primary"
+              onClick={onManage}
+              disabled={pending}
+              style={{ flex: 1, justifyContent: "center" }}
+            >
+              <Icon name="settings" size={12} color="#fff" />
+              Gestionar
+            </button>
             <button
               className="btn"
               onClick={onInvite}
@@ -682,6 +719,168 @@ function ResultsModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: () 
         confirmIcon="check"
         onConfirm={save}
       />
+    </ModalShell>
+  );
+}
+
+// ── Calendario del participante (lectura) ─────────────────────────────────────
+// Muestra, por cada categoría de la quedada, su hora + cancha y el slot/pareja
+// del usuario si está asignado. v1.x = nivel categoría (no partido-por-partido).
+type CalCategory = {
+  id: string;
+  name: string;
+  level_label: string | null;
+  starts_at: string | null;
+  court_label: string | null;
+};
+type CalPair = { category_id: string; slot_no: number; player_a_id: string; player_b_id: string | null };
+type CalParticipant = { user_id: string; profiles: { display_name: string | null; username: string | null } | null };
+type CalData = {
+  meUserId: string;
+  categories: CalCategory[];
+  pairs: CalPair[];
+  participants: CalParticipant[];
+};
+
+function calHour(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: () => void }) {
+  const [data, setData] = useState<CalData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const res = await getQuedadaManageData({ quedadaId: quedada.id });
+      if (!active) return;
+      if (!res.ok) {
+        setError(res.error.message);
+        setLoading(false);
+        return;
+      }
+      setData(res.data as CalData);
+      setLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [quedada.id]);
+
+  const nameOf = (p: { display_name: string | null; username: string | null } | null): string =>
+    p?.display_name || (p?.username ? `@${p.username}` : "Jugador");
+
+  return (
+    <ModalShell title="Tu calendario" icon="calendar-days" onClose={onClose}>
+      <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
+        Tus categorías en <b style={{ color: "#0a0a0a" }}>{quedada.title}</b> con su hora y cancha.
+      </p>
+
+      {loading && (
+        <div style={{ padding: 16, textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
+          Cargando tu calendario…
+        </div>
+      )}
+      {!loading && error && (
+        <div style={{ padding: 14, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12.5 }}>
+          No se pudo cargar: {error}
+        </div>
+      )}
+      {!loading && data && data.categories.length === 0 && (
+        <div style={{ padding: 14, borderRadius: 8, background: "#fafafa", color: "var(--muted-fg)", fontSize: 12.5 }}>
+          El organizador todavía no definió categorías.
+        </div>
+      )}
+
+      {!loading && data && data.categories.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {data.categories.map((c) => {
+            const mine = data.pairs.find(
+              (p) =>
+                p.category_id === c.id &&
+                (p.player_a_id === data.meUserId || p.player_b_id === data.meUserId),
+            );
+            const partById = new Map(data.participants.map((p) => [p.user_id, p]));
+            const partnerId =
+              mine == null
+                ? null
+                : mine.player_a_id === data.meUserId
+                  ? mine.player_b_id
+                  : mine.player_a_id;
+            const partnerName = partnerId ? nameOf(partById.get(partnerId)?.profiles ?? null) : null;
+
+            return (
+              <div
+                key={c.id}
+                className="card"
+                style={{
+                  padding: 12,
+                  background: mine ? "#ecfdf5" : "#fff",
+                  border: mine ? "1px solid var(--primary)" : "1px solid var(--border)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                  <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>
+                    {c.name}
+                    {c.level_label ? <span style={{ color: "var(--muted-fg)", fontWeight: 600 }}> · {c.level_label}</span> : null}
+                  </div>
+                  {mine && (
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        fontWeight: 900,
+                        padding: "2px 8px",
+                        borderRadius: 9999,
+                        background: "var(--primary)",
+                        color: "#fff",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Slot {mine.slot_no}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 5, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {c.starts_at && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <Icon name="clock" size={11} color="var(--muted-fg)" />
+                      {calHour(c.starts_at)}
+                    </span>
+                  )}
+                  {c.court_label && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <Icon name="map-pin" size={11} color="var(--muted-fg)" />
+                      {c.court_label}
+                    </span>
+                  )}
+                </div>
+                {mine ? (
+                  <div style={{ fontSize: 12, color: "#065f46", marginTop: 6, fontWeight: 700 }}>
+                    {partnerName ? `Juegas con ${partnerName}` : "Estás inscrito en esta categoría"}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 6 }}>
+                    Aún no estás asignado en esta categoría.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+        <button onClick={onClose} className="btn btn-primary">
+          Listo
+        </button>
+      </div>
     </ModalShell>
   );
 }

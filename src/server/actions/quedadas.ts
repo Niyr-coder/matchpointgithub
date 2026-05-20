@@ -322,6 +322,47 @@ export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: 
   });
 }
 
+// ── getQuedadaManageData (lectura para panel de gestión + detalle/calendario) ─
+export async function getQuedadaManageData(input: unknown): Promise<ActionResult<unknown>> {
+  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+    const userId = await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+
+    const { data: q, error: qErr } = await supabase
+      .from("quedadas")
+      .select(
+        "id,creator_id,title,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,payment_info,prizes_text,invite_code",
+      )
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+
+    const [cats, pairs, parts, cohosts] = await Promise.all([
+      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
+      supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
+      supabase.from("quedada_participants").select("user_id,status,paid,profiles(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
+    ]);
+
+    const canManage =
+      (q.creator_id as string) === userId ||
+      ((cohosts.data ?? []) as Array<{ user_id: string }>).some((c) => c.user_id === userId);
+
+    return {
+      quedada: q,
+      isCreator: (q.creator_id as string) === userId,
+      canManage,
+      meUserId: userId,
+      categories: cats.data ?? [],
+      pairs: pairs.data ?? [],
+      participants: parts.data ?? [],
+      cohosts: cohosts.data ?? [],
+    };
+  });
+}
+
 // ════════════════ Panel de gestión (v1.x) ════════════════
 // Las policies RLS gatean: categorías/cohosts/logística = solo creador;
 // parejas/slots/paid = creador o co-host (mp_quedada_can_manage). Acá confiamos
