@@ -37,8 +37,7 @@ import {
   setQuedadaStatus,
   setQuedadaResults,
   cancelQuedada,
-  generateRoundRobin,
-  addQuedadaMatch,
+  generateGroupStage,
   reportQuedadaMatch,
   deleteQuedadaMatch,
 } from "@/server/actions/quedadas";
@@ -109,6 +108,8 @@ type ManageCohost = {
 type ManageMatch = {
   id: string;
   category_id: string;
+  group_no: number;
+  court_no: number | null;
   round_no: number;
   pair_a_id: string;
   pair_b_id: string | null;
@@ -137,7 +138,7 @@ const FORMAT_LABEL: Record<string, string> = {
   libre: "Libre",
 };
 
-type TabKey = "resumen" | "parejas" | "partidos" | "pagos" | "resultados" | "config";
+type TabKey = "resumen" | "parejas" | "partidos" | "posiciones" | "pagos" | "resultados" | "config";
 
 function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -431,6 +432,7 @@ export function QuedadaManagePanel({
   ];
   const juegoTabs: { k: TabKey; label: string }[] = [
     { k: "partidos", label: "Partidos" },
+    { k: "posiciones", label: "Posiciones" },
     ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados" }] : []),
   ];
   const sectionTabs = section === "juego" ? juegoTabs : gestionTabs;
@@ -648,6 +650,7 @@ export function QuedadaManagePanel({
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} onGoToParejas={() => setTab("parejas")} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
           {activeTab === "partidos" && <PartidosTab data={data} onChanged={afterMutation} />}
+          {activeTab === "posiciones" && <PosicionesTab data={data} />}
           {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
           {activeTab === "resultados" && <ResultadosTab data={data} onChanged={afterMutation} />}
           {activeTab === "config" && data.isCreator && (
@@ -1137,17 +1140,11 @@ function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => P
   );
 }
 
-function CategoryMatches({ data, category, onChanged }: { data: ManageData; category: ManageCategory; onChanged: () => Promise<void> }) {
-  const toast = useToast();
-  const [, startTx] = useTransition();
-  const [showAdd, setShowAdd] = useState(false);
-  const [addA, setAddA] = useState("");
-  const [addB, setAddB] = useState("");
-  const [addRound, setAddRound] = useState("1");
-
+// Etiqueta de pareja (nombres) para una categoría.
+function usePairLabeler(data: ManageData, categoryId: string) {
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const pairs = data.pairs.filter((p) => p.category_id === category.id);
-  const pairLabel = (pairId: string | null): string => {
+  const pairs = data.pairs.filter((p) => p.category_id === categoryId);
+  return (pairId: string | null): string => {
     if (!pairId) return "Bye";
     const p = pairs.find((x) => x.id === pairId);
     if (!p) return "—";
@@ -1155,113 +1152,105 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
     const b = p.player_b_id ? nameOf(partById.get(p.player_b_id)?.profiles ?? null) : null;
     return b ? `${a} · ${b}` : a;
   };
+}
+const groupLetter = (n: number): string => String.fromCharCode(64 + n);
+
+function CategoryMatches({ data, category, onChanged }: { data: ManageData; category: ManageCategory; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [, startTx] = useTransition();
+  const courts = data.quedada.courts_count ?? 0;
+  const [numGroups, setNumGroups] = useState(String(courts > 0 ? Math.min(courts, 8) : 1));
+
+  const pairLabel = usePairLabeler(data, category.id);
   const matches = data.matches.filter((m) => m.category_id === category.id);
-  const rounds = Array.from(new Set(matches.map((m) => m.round_no))).sort((a, b) => a - b);
-  const standings = pairs
-    .map((pair) => {
-      let pj = 0;
-      let pts = 0;
-      for (const m of matches) {
-        if (m.status !== "played") continue;
-        if (m.pair_a_id === pair.id) { pj++; pts += m.points_a ?? 0; }
-        else if (m.pair_b_id === pair.id) { pj++; pts += m.points_b ?? 0; }
-      }
-      return { pair, pj, pts };
-    })
-    .sort((a, b) => b.pts - a.pts || b.pj - a.pj);
+  const hasMatches = matches.length > 0;
+  const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
+  const multiGroup = groupNos.length > 1;
 
   const doGenerate = () => {
     startTx(async () => {
-      const res = await generateRoundRobin({ quedadaId: data.quedada.id, categoryId: category.id });
+      const res = await generateGroupStage({ quedadaId: data.quedada.id, categoryId: category.id, numGroups: parseInt(numGroups || "1", 10) });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo generar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: `${res.data.created} partido${res.data.created === 1 ? "" : "s"} generado${res.data.created === 1 ? "" : "s"}` });
+      toast({ icon: "check-circle-2", title: `${res.data.groups} grupo${res.data.groups === 1 ? "" : "s"} · ${res.data.created} partidos al azar` });
       await onChanged();
     });
   };
-  const doAdd = () => {
-    if (!addA || !addB || addA === addB) {
-      toast({ icon: "alert-triangle", title: "Elige dos parejas distintas" });
-      return;
-    }
-    startTx(async () => {
-      const res = await addQuedadaMatch({ quedadaId: data.quedada.id, categoryId: category.id, roundNo: parseInt(addRound || "1", 10), pairAId: addA, pairBId: addB });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo agregar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: "Partido agregado" });
-      setShowAdd(false);
-      setAddA("");
-      setAddB("");
-      await onChanged();
+  const doRegen = async () => {
+    const ok = await confirm({
+      title: "Regenerar partidos",
+      body: "Borra los partidos y marcadores actuales y re-sortea las parejas al azar. ¿Seguir?",
+      confirmLabel: "Regenerar",
+      cancelLabel: "Cancelar",
+      destructive: true,
     });
+    if (ok) doGenerate();
   };
-
-  const sel: React.CSSProperties = { ...fieldInput, cursor: "pointer", flex: 1 };
 
   return (
     <div className="card" style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", flex: 1, minWidth: 0 }}>{category.name}</span>
-        {matches.length === 0 && (
-          <button type="button" onClick={doGenerate} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
-            <Icon name="shuffle" size={12} /> Generar partidos
+        {hasMatches && (
+          <button type="button" onClick={doRegen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+            <Icon name="shuffle" size={12} /> Regenerar
           </button>
         )}
-        <button type="button" onClick={() => setShowAdd((v) => !v)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
-          <Icon name="plus" size={12} /> Partido
-        </button>
       </div>
 
-      {showAdd && (
-        <div className="mp-tab-in" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, padding: 10, background: "var(--muted)", borderRadius: 10 }}>
-          <select value={addA} onChange={(e) => setAddA(e.target.value)} style={sel}>
-            <option value="">Pareja A…</option>
-            {pairs.filter((p) => p.id !== addB).map((p) => <option key={p.id} value={p.id}>{pairLabel(p.id)}</option>)}
-          </select>
-          <select value={addB} onChange={(e) => setAddB(e.target.value)} style={sel}>
-            <option value="">Pareja B…</option>
-            {pairs.filter((p) => p.id !== addA).map((p) => <option key={p.id} value={p.id}>{pairLabel(p.id)}</option>)}
-          </select>
-          <input type="number" min={1} max={99} value={addRound} onChange={(e) => setAddRound(e.target.value)} title="Ronda" style={{ ...fieldInput, width: 64 }} />
-          <button type="button" onClick={doAdd} className="btn btn-primary">Agregar</button>
+      {!hasMatches ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
+          <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
+            Reparte las parejas <b>al azar</b> en grupos (round robin por grupo). {courts > 0 ? `Cada grupo va a una cancha (tienes ${courts}).` : "Define las canchas en Configurar para asignarlas."}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
+              Grupos
+              <input type="number" min={1} max={16} value={numGroups} onChange={(e) => setNumGroups(e.target.value)} style={{ ...fieldInput, width: 64 }} />
+            </label>
+            <button type="button" onClick={doGenerate} className="btn btn-primary">
+              <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
+            </button>
+          </div>
         </div>
-      )}
-
-      {matches.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin partidos. Genera el round robin o agrega uno a mano.</div>
       ) : (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {rounds.map((r) => (
-              <div key={r}>
-                <div className="label-mp" style={{ marginBottom: 6 }}>Ronda {r}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {matches.filter((m) => m.round_no === r).map((m) => (
-                    <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {groupNos.map((gn) => {
+            const gm = matches.filter((m) => m.group_no === gn);
+            const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
+            const grounds = Array.from(new Set(gm.map((m) => m.round_no))).sort((a, b) => a - b);
+            return (
+              <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                  {multiGroup && (
+                    <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>
+                  )}
+                  {court != null && (
+                    <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>
+                      Cancha {court}
+                    </span>
+                  )}
+                  {!multiGroup && court == null && <span className="label-mp">Round robin</span>}
+                </div>
+                <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {grounds.map((r) => (
+                    <div key={r}>
+                      <div className="label-mp" style={{ marginBottom: 6 }}>Ronda {r}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {gm.filter((m) => m.round_no === r).map((m) => (
+                          <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div className="label-mp" style={{ marginBottom: 6 }}>Tabla de posiciones</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {standings.map((s, i) => (
-                <div key={s.pair.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderRadius: 8, background: i === 0 ? "var(--color-mp-primary-light)" : "var(--muted)", fontSize: 12.5 }}>
-                  <span className="font-heading tabular" style={{ width: 20, fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pair.id)}</span>
-                  <span style={{ color: "var(--muted-fg)", fontSize: 11 }}>{s.pj} PJ</span>
-                  <span className="tabular" style={{ fontWeight: 900, minWidth: 40, textAlign: "right" }}>{s.pts} pts</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1321,17 +1310,17 @@ function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; la
       aria-label={label}
       className="font-heading tabular"
       style={{
-        width: 50,
-        height: 42,
+        width: 64,
+        height: 56,
         flexShrink: 0,
         textAlign: "center",
-        border: win ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-        borderRadius: 10,
-        fontSize: 18,
+        border: win ? "2px solid var(--primary)" : "1.5px solid var(--border)",
+        borderRadius: 12,
+        fontSize: 26,
         fontWeight: 900,
         fontFamily: "inherit",
         outline: "none",
-        background: "#fff",
+        background: win ? "var(--color-mp-primary-light)" : "#fff",
         color: win ? "var(--color-mp-primary-active)" : "var(--fg)",
       }}
     />
@@ -1356,6 +1345,79 @@ function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; la
         <button type="button" onClick={remove} aria-label="Quitar partido" style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 4 }}>
           <Icon name="x" size={14} color="var(--muted-fg)" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Posiciones (tabla por grupo de cada categoría) ──────────────────────
+function PosicionesTab({ data }: { data: ManageData }) {
+  const cats = data.categories.filter((c) => data.matches.some((m) => m.category_id === c.id));
+  return (
+    <Section label="Juego" title="Tabla de posiciones" sub="Por grupo, según los puntos de los partidos jugados.">
+      {cats.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Genera partidos (pestaña Partidos) para ver la tabla.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {cats.map((c) => (
+            <div key={c.id} className="mp-rise"><CategoryStandings data={data} category={c} /></div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function CategoryStandings({ data, category }: { data: ManageData; category: ManageCategory }) {
+  const pairLabel = usePairLabeler(data, category.id);
+  const matches = data.matches.filter((m) => m.category_id === category.id);
+  const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
+  const multiGroup = groupNos.length > 1;
+
+  return (
+    <div className="card" style={{ padding: 14 }}>
+      <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", marginBottom: 10 }}>{category.name}</div>
+      <div style={{ display: "grid", gridTemplateColumns: multiGroup ? "repeat(auto-fit, minmax(260px, 1fr))" : "1fr", gap: 12 }}>
+        {groupNos.map((gn) => {
+          const gm = matches.filter((m) => m.group_no === gn);
+          const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
+          const pairIds = Array.from(new Set(gm.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
+          const rows = pairIds
+            .map((pid) => {
+              let pj = 0;
+              let pts = 0;
+              let w = 0;
+              for (const m of gm) {
+                if (m.status !== "played") continue;
+                if (m.pair_a_id === pid) { pj++; pts += m.points_a ?? 0; if ((m.points_a ?? 0) > (m.points_b ?? 0)) w++; }
+                else if (m.pair_b_id === pid) { pj++; pts += m.points_b ?? 0; if ((m.points_b ?? 0) > (m.points_a ?? 0)) w++; }
+              }
+              return { pid, pj, pts, w };
+            })
+            .sort((a, b) => b.pts - a.pts || b.w - a.w || b.pj - a.pj);
+          return (
+            <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "var(--muted)" }}>
+                {multiGroup && <span className="font-heading" style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>}
+                {court != null && <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
+              </div>
+              <div style={{ padding: "4px 0" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, padding: "4px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                  <span>#</span><span>Pareja</span><span style={{ textAlign: "center" }}>PJ</span><span style={{ textAlign: "center" }}>G</span><span style={{ textAlign: "right" }}>Pts</span>
+                </div>
+                {rows.map((s, i) => (
+                  <div key={s.pid} style={{ display: "grid", gridTemplateColumns: "26px 1fr 32px 32px 44px", gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12.5, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
+                    <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
+                    <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
+                    <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
+                    <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.w}</span>
+                    <span className="font-heading tabular" style={{ textAlign: "right", fontWeight: 900 }}>{s.pts}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

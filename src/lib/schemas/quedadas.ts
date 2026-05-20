@@ -218,6 +218,15 @@ export const QuedadaTemplateIdSchema = z.object({ templateId: UuidSchema }).open
 export const GenerateRoundRobinSchema = z
   .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
   .openapi("GenerateQuedadaRoundRobin");
+// Fase de grupos: reparte las parejas al AZAR en N grupos (round robin por grupo)
+// y asigna cancha por grupo (1 grupo → 1 cancha, ciclando si faltan canchas).
+export const GenerateGroupStageSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    categoryId: UuidSchema,
+    numGroups: z.coerce.number().int().min(1).max(16).default(1),
+  })
+  .openapi("GenerateQuedadaGroupStage");
 export const AddQuedadaMatchSchema = z
   .object({
     quedadaId: UuidSchema,

@@ -4947,8 +4947,10 @@ export type Database = {
       quedada_matches: {
         Row: {
           category_id: string
+          court_no: number | null
           created_at: string
           created_by: string | null
+          group_no: number
           id: string
           pair_a_id: string
           pair_b_id: string | null
@@ -4961,8 +4963,10 @@ export type Database = {
         }
         Insert: {
           category_id: string
+          court_no?: number | null
           created_at?: string
           created_by?: string | null
+          group_no?: number
           id?: string
           pair_a_id: string
           pair_b_id?: string | null
@@ -4975,8 +4979,10 @@ export type Database = {
         }
         Update: {
           category_id?: string
+          court_no?: number | null
           created_at?: string
           created_by?: string | null
+          group_no?: number
           id?: string
           pair_a_id?: string
           pair_b_id?: string | null

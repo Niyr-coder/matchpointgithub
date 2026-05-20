@@ -32,6 +32,7 @@ import {
   SaveQuedadaTemplateSchema,
   QuedadaTemplateIdSchema,
   GenerateRoundRobinSchema,
+  GenerateGroupStageSchema,
   AddQuedadaMatchSchema,
   ReportQuedadaMatchSchema,
   QuedadaMatchIdSchema,
@@ -386,7 +387,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
       supabase.from("quedada_participants").select("user_id,status,paid,points,final_rank,profiles(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
-      supabase.from("quedada_matches").select("id,category_id,round_no,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
+      supabase.from("quedada_matches").select("id,category_id,group_no,court_no,round_no,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
     ]);
 
     const canManage =
@@ -768,6 +769,42 @@ export async function generateRoundRobin(input: unknown): Promise<ActionResult<{
     const { error } = await supabase.from("quedada_matches").insert(rows as never);
     if (error) throw new MpError("QUEDADAS.MATCHES_FAILED", error.message, 500);
     return { created: rows.length };
+  });
+}
+
+export async function generateGroupStage(input: unknown): Promise<ActionResult<{ created: number; groups: number }>> {
+  return runAction(GenerateGroupStageSchema, input, async ({ quedadaId, categoryId, numGroups }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { data: q } = await supabase.from("quedadas").select("courts_count").eq("id", quedadaId).maybeSingle();
+    const courts = (q?.courts_count as number | null) ?? 0;
+
+    const { data: pairs } = await supabase.from("quedada_pairs").select("id").eq("category_id", categoryId);
+    const ids = (pairs ?? []).map((p) => p.id as string);
+    if (ids.length < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_PAIRS", "Necesitas al menos 2 parejas asignadas", 400);
+
+    const ng = Math.max(1, Math.min(numGroups, ids.length));
+    // Shuffle (al azar — anti-arreglo de partidos).
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    const groups: string[][] = Array.from({ length: ng }, () => []);
+    ids.forEach((id, idx) => groups[idx % ng].push(id));
+
+    const rows: Record<string, unknown>[] = [];
+    groups.forEach((gids, gi) => {
+      const courtNo = courts > 0 ? (gi % courts) + 1 : gi + 1;
+      for (const m of roundRobinSchedule(gids)) {
+        rows.push({ quedada_id: quedadaId, category_id: categoryId, group_no: gi + 1, court_no: courtNo, round_no: m.round, pair_a_id: m.a, pair_b_id: m.b, status: "scheduled" });
+      }
+    });
+    if (rows.length === 0) throw new MpError("QUEDADAS.TOO_MANY_GROUPS", "Demasiados grupos para las parejas que hay", 400);
+
+    await supabase.from("quedada_matches").delete().eq("category_id", categoryId);
+    const { error } = await supabase.from("quedada_matches").insert(rows as never);
+    if (error) throw new MpError("QUEDADAS.MATCHES_FAILED", error.message, 500);
+    return { created: rows.length, groups: ng };
   });
 }
 
