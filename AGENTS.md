@@ -30,6 +30,26 @@ Si vas a agregar feature nueva (tabla, notif, status, etc), revisar la
 sección "Reglas para el dev" en `docs/README.md` — lista lo que tienes que
 mantener en sync.
 
+## Skill routing (usa estas skills automáticamente)
+
+Las skills se auto-disparan por su `description`, pero **no esperes a que el
+usuario las recuerde** — invoca la que corresponda según el tipo de trabajo.
+Orden general: **leer doc → planear → implementar → revisar**.
+
+| Cuándo | Skill a invocar | Momento |
+|---|---|---|
+| Vas a tocar torneos, pagos, premium, roles, RLS, realtime, notifs, audit, schema, server actions, endpoints, pantallas | `matchpoint-docs-guide` | ANTES (leer doc) |
+| El usuario expresa intención de feature ("quiero/implementemos/qué falta/siguiente fase") | `matchpoint-feature-plan` | ANTES de codear (tras docs-guide) |
+| Tocás temas de personalización, packs/bundles, colores, rareza del catálogo | `matchpoint-theme-create` | durante el trabajo de temas |
+| Agregás/cambiás RoleKey, permiso, superficie admin, sidebar, o una feature necesita "path admin" | `matchpoint-role-governance` | en el paso de governance |
+| Hay animación/transición nueva (modal, drawer, hover, entrada/salida) | `emil-design-eng` | durante la implementación |
+| Terminaste UI (cards, listas, forms, modales, tabs) | `matchpoint-ui-review` | DESPUÉS (QA visual) |
+| Feature con 3+ archivos tocados, o bug "estructural" cross-superficie | `matchpoint-logic-review` | DESPUÉS, antes del commit final |
+
+Regla dura (memoria del proyecto): para features de MP v2, **SIEMPRE**
+invoca `matchpoint-docs-guide` + `matchpoint-feature-plan` antes de tocar
+código; no empieces a codear hasta que el plan esté aceptado.
+
 ## Tono: español ecuatoriano neutro (obligatorio)
 
 Todo el contenido escrito (commits, comentarios de código, mensajes de
