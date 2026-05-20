@@ -1161,12 +1161,17 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
   const [, startTx] = useTransition();
   const courts = data.quedada.courts_count ?? 0;
   const [numGroups, setNumGroups] = useState(String(courts > 0 ? Math.min(courts, 8) : 1));
+  const [open, setOpen] = useState(true);
+  const [round, setRound] = useState<number | null>(null);
 
   const pairLabel = usePairLabeler(data, category.id);
   const matches = data.matches.filter((m) => m.category_id === category.id);
   const hasMatches = matches.length > 0;
   const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
   const multiGroup = groupNos.length > 1;
+  const rounds = Array.from(new Set(matches.map((m) => m.round_no))).sort((a, b) => a - b);
+  const activeRound = round != null && rounds.includes(round) ? round : rounds[0] ?? 1;
+  const playedCount = matches.filter((m) => m.status === "played").length;
 
   const doGenerate = () => {
     startTx(async () => {
@@ -1176,6 +1181,7 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
         return;
       }
       toast({ icon: "check-circle-2", title: `${res.data.groups} grupo${res.data.groups === 1 ? "" : "s"} · ${res.data.created} partidos al azar` });
+      setRound(null);
       await onChanged();
     });
   };
@@ -1192,64 +1198,89 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
 
   return (
     <div className="card" style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", flex: 1, minWidth: 0 }}>{category.name}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+        >
+          <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em" }}>{category.name}</span>
+          {hasMatches && (
+            <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)" }}>{playedCount}/{matches.length}</span>
+          )}
+          <span style={{ flex: 1 }} />
+          <span style={{ transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)" }}>
+            <Icon name="chevron-down" size={16} color="var(--muted-fg)" />
+          </span>
+        </button>
         {hasMatches && (
-          <button type="button" onClick={doRegen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+          <button type="button" onClick={doRegen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0 }}>
             <Icon name="shuffle" size={12} /> Regenerar
           </button>
         )}
       </div>
 
-      {!hasMatches ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
-          <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
-            Reparte las parejas <b>al azar</b> en grupos (round robin por grupo). {courts > 0 ? `Cada grupo va a una cancha (tienes ${courts}).` : "Define las canchas en Configurar para asignarlas."}
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
-              Grupos
-              <input type="number" min={1} max={16} value={numGroups} onChange={(e) => setNumGroups(e.target.value)} style={{ ...fieldInput, width: 64 }} />
-            </label>
-            <button type="button" onClick={doGenerate} className="btn btn-primary">
-              <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {groupNos.map((gn) => {
-            const gm = matches.filter((m) => m.group_no === gn);
-            const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
-            const grounds = Array.from(new Set(gm.map((m) => m.round_no))).sort((a, b) => a - b);
-            return (
-              <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
-                  {multiGroup && (
-                    <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>
-                  )}
-                  {court != null && (
-                    <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>
-                      Cancha {court}
-                    </span>
-                  )}
-                  {!multiGroup && court == null && <span className="label-mp">Round robin</span>}
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {!hasMatches ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
+              <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
+                Reparte las parejas <b>al azar</b> en grupos (round robin por grupo). {courts > 0 ? `Cada grupo va a una cancha (tienes ${courts}).` : "Define las canchas en Configurar para asignarlas."}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
+                  Grupos
+                  <input type="number" min={1} max={16} value={numGroups} onChange={(e) => setNumGroups(e.target.value)} style={{ ...fieldInput, width: 64 }} />
+                </label>
+                <button type="button" onClick={doGenerate} className="btn btn-primary">
+                  <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {rounds.length > 1 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                  {rounds.map((r) => {
+                    const on = r === activeRound;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRound(r)}
+                        style={{ padding: "6px 13px", borderRadius: 9999, border: on ? "0" : "1px solid var(--border)", background: on ? "var(--fg)" : "transparent", color: on ? "#fff" : "var(--muted-fg)", fontFamily: "inherit", fontWeight: 900, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" }}
+                      >
+                        Ronda {r}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {grounds.map((r) => (
-                    <div key={r}>
-                      <div className="label-mp" style={{ marginBottom: 6 }}>Ronda {r}</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {gm.filter((m) => m.round_no === r).map((m) => (
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: multiGroup ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 12, alignItems: "start" }}>
+                {groupNos.map((gn) => {
+                  const rm = matches.filter((m) => m.group_no === gn && m.round_no === activeRound);
+                  if (rm.length === 0) return null;
+                  const court = matches.find((m) => m.group_no === gn && m.court_no != null)?.court_no ?? null;
+                  return (
+                    <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                      {(multiGroup || court != null) && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                          {multiGroup && <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>}
+                          {court != null && <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
+                        </div>
+                      )}
+                      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {rm.map((m) => (
                           <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </>
+          )}
         </div>
       )}
     </div>
