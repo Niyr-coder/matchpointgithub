@@ -1063,9 +1063,8 @@ function MyBadgesSection({ badges }: { badges: BadgeLite[] }) {
 
 const ACTIONS = [
   { icon: "calendar-plus", label: "Reservar cancha", action: "reservar" },
-  { icon: "users", label: "Crear match", action: "crear-match" },
-  { icon: "swords", label: "Busco partido", action: "buscar-partido" },
-  { icon: "shuffle", label: "Crear juego · Round Robin", action: "crear-juego" },
+  { icon: "users", label: "Crear partido", action: "crear-match" },
+  { icon: "swords", label: "Buscar rival", action: "buscar-partido" },
   { icon: "user-plus", label: "Invitar amigo", action: "invitar" },
 ] as const;
 
@@ -1074,18 +1073,19 @@ function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
   const router = useRouter();
   const handle = (a: (typeof ACTIONS)[number]["action"]) => {
     if (a === "crear-match") window.dispatchEvent(new CustomEvent("mp-open-crear-match"));
-    else if (a === "crear-juego") window.dispatchEvent(new CustomEvent("mp-open-crear-juego"));
     else if (a === "reservar") window.dispatchEvent(new CustomEvent("mp-open-reservar"));
     else if (a === "buscar-partido") router.push("/dashboard/user/busco-partido");
     else if (a === "invitar") {
-      const url = `matchpoint.app/invite/${inviteSlug}`;
+      // Link real al app (origin actual) con ref del invitador, no un dominio inventado.
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const url = `${origin}/?ref=${inviteSlug}`;
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         navigator.clipboard.writeText(url).catch(() => {});
       }
       toast({
         icon: "copy",
         title: "Link de invitación copiado",
-        sub: `${url} · pégalo en WhatsApp`,
+        sub: "Compártelo para que se unan a MATCHPOINT",
       });
     }
   };

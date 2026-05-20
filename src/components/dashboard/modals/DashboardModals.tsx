@@ -11,7 +11,6 @@
 import { CarritoModal } from "./CarritoModal";
 import { RetarModal } from "./RetarModal";
 import { CrearMatchModal } from "./CrearMatchModal";
-import { CrearJuegoModal } from "./CrearJuegoModal";
 import { ReservarCanchaDrawer } from "./ReservarCanchaDrawer";
 import { VerMapaOverlay } from "./VerMapaOverlay";
 import { CrearEventoModal } from "./CrearEventoModal";
@@ -28,7 +27,6 @@ export function DashboardModals({ currentUserId }: { currentUserId: string | nul
     <>
       <RetarModal currentUserId={currentUserId} />
       <CrearMatchModal currentUserId={currentUserId} />
-      <CrearJuegoModal />
       <ReservarCanchaDrawer />
       <VerMapaOverlay />
       <CarritoModal />
