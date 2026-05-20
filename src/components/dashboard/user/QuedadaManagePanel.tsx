@@ -38,6 +38,8 @@ import {
   setQuedadaResults,
   cancelQuedada,
   generateGroupStage,
+  generateMedalFinal,
+  finishQuedada,
   reportQuedadaMatch,
   deleteQuedadaMatch,
 } from "@/server/actions/quedadas";
@@ -111,7 +113,10 @@ type ManageMatch = {
   group_no: number;
   court_no: number | null;
   round_no: number;
-  pair_a_id: string;
+  phase: string; // 'groups' | 'final'
+  bracket_pos: number | null;
+  is_bronze: boolean;
+  pair_a_id: string | null;
   pair_b_id: string | null;
   points_a: number | null;
   points_b: number | null;
@@ -1122,7 +1127,33 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
 
 // ── Tab: Partidos (motor — rondas, puntos, tabla) ────────────────────────────
 function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [, startTx] = useTransition();
   const cats = data.categories.filter((c) => data.pairs.some((p) => p.category_id === c.id));
+  const hasMatches = data.matches.length > 0;
+  const finished = data.quedada.status === "finished";
+  const cancelled = data.quedada.status === "cancelled";
+
+  const doFinish = async () => {
+    const ok = await confirm({
+      title: "Cerrar quedada",
+      body: "Se calcula el podio (campeón, finalista y 3er puesto desde la fase final, o el top 3 de la tabla) y la quedada pasa a finalizada. ¿Cerrar?",
+      confirmLabel: "Cerrar y publicar podio",
+      cancelLabel: "Cancelar",
+    });
+    if (!ok) return;
+    startTx(async () => {
+      const res = await finishQuedada({ quedadaId: data.quedada.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo cerrar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "trophy", title: "Podio publicado" });
+      await onChanged();
+    });
+  };
+
   return (
     <Section label="Juego" title="Partidos por categoría" sub="Genera los partidos, carga los puntos y mira la tabla.">
       {cats.length === 0 ? (
@@ -1134,6 +1165,18 @@ function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => P
               <CategoryMatches data={data} category={c} onChanged={onChanged} />
             </div>
           ))}
+          {hasMatches && !finished && !cancelled && (
+            <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--border-subtle)", paddingTop: 14 }}>
+              <button type="button" onClick={doFinish} className="btn btn-primary">
+                <Icon name="trophy" size={14} color="#fff" /> Cerrar quedada y publicar podio
+              </button>
+            </div>
+          )}
+          {finished && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", padding: 12, borderRadius: 10, background: "var(--success-bg)", color: "var(--success-fg)", fontSize: 12.5, fontWeight: 800 }}>
+              <Icon name="check-circle-2" size={15} color="var(--success-fg)" /> Quedada finalizada · revisa el podio en Resumen
+            </div>
+          )}
         </div>
       )}
     </Section>
@@ -1169,13 +1212,18 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
   const perGroup = autoGroups > 0 ? Math.ceil(pairCount / autoGroups) : 0;
 
   const pairLabel = usePairLabeler(data, category.id);
-  const matches = data.matches.filter((m) => m.category_id === category.id);
-  const hasMatches = matches.length > 0;
-  const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
+  const allMatches = data.matches.filter((m) => m.category_id === category.id);
+  const groupMatches = allMatches.filter((m) => m.phase !== "final");
+  const finalMatches = allMatches.filter((m) => m.phase === "final");
+  const hasGroups = groupMatches.length > 0;
+  const hasFinal = finalMatches.length > 0;
+  const groupNos = Array.from(new Set(groupMatches.map((m) => m.group_no))).sort((a, b) => a - b);
   const multiGroup = groupNos.length > 1;
-  const rounds = Array.from(new Set(matches.map((m) => m.round_no))).sort((a, b) => a - b);
-  const activeRound = round != null && rounds.includes(round) ? round : rounds[0] ?? 1;
-  const playedCount = matches.filter((m) => m.status === "played").length;
+  const playedGroups = groupMatches.filter((m) => m.status === "played").length;
+  const groupsDone = hasGroups && playedGroups === groupMatches.length;
+  // `round` (estado del selector) ya no se usa para la fase de grupos: cada grupo
+  // muestra sus propias rondas. Lo dejamos para no romper el setState existente.
+  void round;
 
   const doGenerate = () => {
     startTx(async () => {
@@ -1192,12 +1240,23 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
   const doRegen = async () => {
     const ok = await confirm({
       title: "Regenerar partidos",
-      body: "Borra los partidos y marcadores actuales y re-sortea las parejas al azar. ¿Seguir?",
+      body: "Borra los partidos y marcadores actuales (incluida la fase final) y re-sortea las parejas al azar. ¿Seguir?",
       confirmLabel: "Regenerar",
       cancelLabel: "Cancelar",
       destructive: true,
     });
     if (ok) doGenerate();
+  };
+  const doGenerateFinal = () => {
+    startTx(async () => {
+      const res = await generateMedalFinal({ quedadaId: data.quedada.id, categoryId: category.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo armar la fase final", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "trophy", title: `Fase final · ${res.data.classified} clasificados` });
+      await onChanged();
+    });
   };
 
   return (
@@ -1210,15 +1269,15 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
           style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
         >
           <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em" }}>{category.name}</span>
-          {hasMatches && (
-            <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)" }}>{playedCount}/{matches.length}</span>
+          {hasGroups && (
+            <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: groupsDone ? "var(--success-bg)" : "var(--muted)", color: groupsDone ? "var(--success-fg)" : "var(--muted-fg)" }}>{playedGroups}/{groupMatches.length}</span>
           )}
           <span style={{ flex: 1 }} />
           <span style={{ transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)" }}>
             <Icon name="chevron-down" size={16} color="var(--muted-fg)" />
           </span>
         </button>
-        {hasMatches && (
+        {hasGroups && (
           <button type="button" onClick={doRegen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0 }}>
             <Icon name="shuffle" size={12} /> Regenerar
           </button>
@@ -1227,7 +1286,7 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
 
       {open && (
         <div style={{ marginTop: 12 }}>
-          {!hasMatches ? (
+          {!hasGroups ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
               {pairCount < 2 ? (
                 <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>Asigna al menos 2 parejas a esta categoría (pestaña Parejas) para armar la fase de grupos.</div>
@@ -1250,28 +1309,12 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
             </div>
           ) : (
             <>
-              {rounds.length > 1 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                  {rounds.map((r) => {
-                    const on = r === activeRound;
-                    return (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setRound(r)}
-                        style={{ padding: "6px 13px", borderRadius: 9999, border: on ? "0" : "1px solid var(--border)", background: on ? "var(--fg)" : "transparent", color: on ? "#fff" : "var(--muted-fg)", fontFamily: "inherit", fontWeight: 900, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" }}
-                      >
-                        Ronda {r}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* Fase de grupos — cada grupo muestra sus propias rondas */}
               <div style={{ display: "grid", gridTemplateColumns: multiGroup ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 12, alignItems: "start" }}>
                 {groupNos.map((gn) => {
-                  const rm = matches.filter((m) => m.group_no === gn && m.round_no === activeRound);
-                  if (rm.length === 0) return null;
-                  const court = matches.find((m) => m.group_no === gn && m.court_no != null)?.court_no ?? null;
+                  const gm = groupMatches.filter((m) => m.group_no === gn);
+                  const gRounds = Array.from(new Set(gm.map((m) => m.round_no))).sort((a, b) => a - b);
+                  const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
                   return (
                     <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
                       {(multiGroup || court != null) && (
@@ -1280,17 +1323,93 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
                           {court != null && <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
                         </div>
                       )}
-                      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        {rm.map((m) => (
-                          <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+                      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                        {gRounds.map((r) => (
+                          <div key={r} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {gRounds.length > 1 && (
+                              <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                                Ronda {r} de {gRounds.length}
+                              </span>
+                            )}
+                            {gm.filter((m) => m.round_no === r).map((m) => (
+                              <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+                            ))}
+                          </div>
                         ))}
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Paso a la fase final de medallas */}
+              {!hasFinal && (
+                <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: groupsDone ? "var(--color-mp-primary-light)" : "var(--muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <Icon name="trophy" size={16} color={groupsDone ? "var(--color-mp-primary-active)" : "var(--muted-fg)"} />
+                  <span style={{ flex: 1, minWidth: 160, fontSize: 12.5, fontWeight: 700, color: groupsDone ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>
+                    {groupsDone ? "Grupos completos. Clasifican los 2 mejores de cada grupo a la eliminación directa." : `Termina los ${groupMatches.length - playedGroups} partidos que faltan para abrir la fase final.`}
+                  </span>
+                  <button type="button" onClick={doGenerateFinal} disabled={!groupsDone} className="btn btn-primary" style={{ opacity: groupsDone ? 1 : 0.5, cursor: groupsDone ? "pointer" : "not-allowed" }}>
+                    <Icon name="trophy" size={13} color="#fff" /> Generar fase final
+                  </button>
+                </div>
+              )}
+
+              {hasFinal && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.04em" }}>Fase final · medallas</span>
+                    <button type="button" onClick={doGenerateFinal} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0, marginLeft: "auto" }}>
+                      <Icon name="rotate-ccw" size={12} /> Rehacer
+                    </button>
+                  </div>
+                  <BracketView matches={finalMatches} pairLabel={pairLabel} onChanged={onChanged} />
+                </div>
+              )}
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Cuadro de eliminación directa: rondas (cuartos/semis/final) + 3er puesto.
+function BracketView({ matches, pairLabel, onChanged }: { matches: ManageMatch[]; pairLabel: (id: string | null) => string; onChanged: () => Promise<void> }) {
+  const main = matches.filter((m) => !m.is_bronze);
+  const bronze = matches.find((m) => m.is_bronze) ?? null;
+  const rounds = Array.from(new Set(main.map((m) => m.round_no))).sort((a, b) => a - b);
+  const finalRound = rounds.length > 0 ? rounds[rounds.length - 1] : 1;
+  const roundLabel = (r: number): string => {
+    const fromEnd = finalRound - r;
+    if (fromEnd === 0) return "Final";
+    if (fromEnd === 1) return "Semifinales";
+    if (fromEnd === 2) return "Cuartos de final";
+    if (fromEnd === 3) return "Octavos de final";
+    return `Ronda ${r}`;
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
+      {rounds.map((r) => (
+        <div key={r} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "8px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>{roundLabel(r)}</span>
+          </div>
+          <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {main.filter((m) => m.round_no === r).sort((a, b) => (a.bracket_pos ?? 0) - (b.bracket_pos ?? 0)).map((m) => (
+              <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {bronze && (
+        <div style={{ border: "1px solid var(--warning-border)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "8px 12px", background: "var(--warning-bg)", borderBottom: "1px solid var(--warning-border)" }}>
+            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase", color: "var(--warning-fg)" }}>3er puesto</span>
+          </div>
+          <div style={{ padding: 10 }}>
+            <MatchRow match={bronze} labelA={pairLabel(bronze.pair_a_id)} labelB={pairLabel(bronze.pair_b_id)} onChanged={onChanged} />
+          </div>
         </div>
       )}
     </div>
@@ -1304,6 +1423,26 @@ function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; la
   const [a, setA] = useState(match.points_a != null ? String(match.points_a) : "");
   const [b, setB] = useState(match.points_b != null ? String(match.points_b) : "");
   const played = match.status === "played";
+  const incomplete = !match.pair_a_id || !match.pair_b_id;
+
+  // Cuadro de eliminación: partido sin ambos lados definidos.
+  if (incomplete) {
+    if (played) {
+      // Bye: el presente pasa directo a la siguiente ronda.
+      const who = match.pair_a_id ? labelA : labelB;
+      return (
+        <div style={{ borderRadius: 12, border: "1px dashed var(--border)", background: "var(--muted)", padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
+          <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Pasa directo</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ borderRadius: 12, border: "1px dashed var(--border)", background: "var(--muted)", padding: "14px", textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>
+        Esperando clasificados
+      </div>
+    );
+  }
 
   const report = () => {
     const pa = parseInt(a, 10);

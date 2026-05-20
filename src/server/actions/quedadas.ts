@@ -389,7 +389,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
       supabase.from("quedada_participants").select("user_id,status,paid,points,final_rank,profiles(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
-      supabase.from("quedada_matches").select("id,category_id,group_no,court_no,round_no,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
+      supabase.from("quedada_matches").select("id,category_id,group_no,court_no,round_no,phase,bracket_pos,is_bronze,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
     ]);
 
     const canManage =
