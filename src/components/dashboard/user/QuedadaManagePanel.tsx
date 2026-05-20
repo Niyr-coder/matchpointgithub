@@ -992,41 +992,55 @@ function CategorySlots({
   category: ManageCategory;
   onChanged: () => Promise<void>;
 }) {
+  const [open, setOpen] = useState(true);
   const slotCount = category.max_slots ?? 0;
   const pairsBySlot = new Map<number, ManagePair>();
   for (const p of data.pairs) {
     if (p.category_id === category.id) pairsBySlot.set(p.slot_no, p);
   }
   const slots = slotCount > 0 ? Array.from({ length: slotCount }, (_, i) => i + 1) : [];
+  const filled = pairsBySlot.size;
 
   return (
-    <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-        <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>
-          {category.name}
+    <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: open ? 10 : 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8, width: "100%" }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <span className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>{category.name}</span>
+            <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+              {category.starts_at ? `${hourLabel(category.starts_at)} · ` : ""}
+              {slotCount} slot(s)
+            </span>
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-          {category.starts_at ? `${hourLabel(category.starts_at)} · ` : ""}
-          {slotCount} slot(s)
-        </div>
-      </div>
+        <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: filled > 0 ? "#ecfdf5" : "var(--muted)", color: filled > 0 ? "#065f46" : "var(--muted-fg)", flexShrink: 0 }}>
+          {filled}/{slotCount || "?"}
+        </span>
+        <Icon name={open ? "chevron-up" : "chevron-down"} size={16} color="var(--muted-fg)" />
+      </button>
 
-      {slots.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define un cupo de slots para esta categoría.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {slots.map((slotNo) => (
-            <SlotRow
-              key={slotNo}
-              data={data}
-              category={category}
-              slotNo={slotNo}
-              pair={pairsBySlot.get(slotNo) ?? null}
-              onChanged={onChanged}
-            />
-          ))}
-        </div>
-      )}
+      {open &&
+        (slots.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define un cupo de slots para esta categoría.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {slots.map((slotNo) => (
+              <SlotRow
+                key={slotNo}
+                data={data}
+                category={category}
+                slotNo={slotNo}
+                pair={pairsBySlot.get(slotNo) ?? null}
+                onChanged={onChanged}
+              />
+            ))}
+          </div>
+        ))}
     </div>
   );
 }
@@ -1236,7 +1250,12 @@ function AssignPairForm({
   const submit = () => {
     if (pending) return;
     if (a.length === 0) {
-      toast({ icon: "alert-triangle", title: "Elige al jugador A" });
+      toast({ icon: "alert-triangle", title: isDoubles ? "Elige al jugador A" : "Elige al jugador" });
+      return;
+    }
+    // En dobles ambos son obligatorios; en singles solo el jugador.
+    if (isDoubles && b.length === 0) {
+      toast({ icon: "alert-triangle", title: "Elige al jugador B", sub: "En dobles la pareja necesita dos jugadores." });
       return;
     }
     start(async () => {
@@ -1245,13 +1264,13 @@ function AssignPairForm({
         categoryId: category.id,
         slotNo,
         playerAId: a[0].id,
-        playerBId: isDoubles && b.length > 0 ? b[0].id : null,
+        playerBId: isDoubles ? b[0].id : null,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo asignar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: `Pareja asignada al slot ${slotNo}` });
+      toast({ icon: "check-circle-2", title: `${isDoubles ? "Pareja" : "Jugador"} asignad${isDoubles ? "a" : "o"} al slot ${slotNo}` });
       await onDone();
     });
   };
@@ -1259,10 +1278,10 @@ function AssignPairForm({
   return (
     <div style={{ padding: "0 11px 12px", display: "flex", flexDirection: "column", gap: 10, background: "#fafafa", borderTop: "1px solid var(--border)" }}>
       <div style={{ paddingTop: 10 }}>
-        <PlayerPicker label="Jugador A" max={1} selected={a} onChange={setA} excludeIds={b[0] ? [b[0].id] : []} />
+        <PlayerPicker label={isDoubles ? "Jugador A" : "Jugador"} max={1} selected={a} onChange={setA} excludeIds={b[0] ? [b[0].id] : []} />
       </div>
       {isDoubles && (
-        <PlayerPicker label="Jugador B · opcional" max={1} selected={b} onChange={setB} excludeIds={a[0] ? [a[0].id] : []} />
+        <PlayerPicker label="Jugador B" max={1} selected={b} onChange={setB} excludeIds={a[0] ? [a[0].id] : []} />
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onCancel} disabled={pending}>
@@ -1270,7 +1289,7 @@ function AssignPairForm({
         </button>
         <button className="btn btn-primary" onClick={submit} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
           {!pending && <Icon name="check" size={13} color="#fff" />}
-          {pending ? "Asignando…" : "Asignar pareja"}
+          {pending ? "Asignando…" : isDoubles ? "Asignar pareja" : "Asignar jugador"}
         </button>
       </div>
     </div>
