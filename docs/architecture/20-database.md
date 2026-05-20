@@ -2427,6 +2427,17 @@ disponibles y llena los cupos vacíos (2/cupo en dobles, 1 en singles), insertan
 `quedada_pairs`. RLS = `mp_quedada_can_manage` (policies existentes), sin schema
 nuevo.
 
+**Ciclo de cierre (lifecycle):** estados `mp_event_status`. El panel de gestión
+(header, solo creador) transiciona: `registration_open` →(Cerrar inscripciones)→
+`registration_closed` →(Iniciar)→ `live` →(Resultados)→ `finished`; `Reabrir`
+vuelve a `registration_open`; `Cancelar` → `cancelled`. Action `setQuedadaStatus`
+(schema `SetQuedadaStatusSchema`, creador) para closed/live/reopen; `finished`
+se setea vía `setQuedadaResults` (puestos por categoría: el organizador ordena
+las parejas, `final_rank` se escribe a ambos jugadores de la pareja; casual, NO
+toca MP Rating). Tab **Resultados** (creador, visible cuando status ≥ closed) y
+**podio** en Resumen cuando `finished`. El viejo `ResultsModal` (flujo plano en
+las tarjetas) fue removido; resultados viven en la página de gestión.
+
 **Realtime en gestión:** las 4 tablas (`quedadas`, `quedada_participants`,
 `quedada_categories`, `quedada_pairs`) están en `supabase_realtime`. El panel
 (`QuedadaManagePanel`) usa `useRealtimeRefresh` en modo `onChange` (datos

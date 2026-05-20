@@ -20,7 +20,6 @@ import {
   leaveQuedada,
   inviteToQuedada,
   cancelQuedada,
-  setQuedadaResults,
   reportQuedada,
   getQuedadaManageData,
 } from "@/server/actions/quedadas";
@@ -89,9 +88,8 @@ export function QuedadasScreenView({
   const [tab, setTab] = useState<Tab>("descubrir");
   // null = wizard cerrado; {} = nueva; {initial} = duplicada/plantilla.
   const [wizard, setWizard] = useState<{ initial?: QuedadaInitial } | null>(null);
-  // Modales secundarios (invitar / resultados) por quedada.
+  // Invitar es modal liviano; resultados/cierre viven en la página de gestión.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
-  const [resultsFor, setResultsFor] = useState<QuedadaLite | null>(null);
   // El calendario del participante es modal liviano; la gestión es una página.
   const [calendarFor, setCalendarFor] = useState<QuedadaLite | null>(null);
 
@@ -215,7 +213,6 @@ export function QuedadasScreenView({
               q={q}
               meUserId={meUserId}
               onInvite={() => setInviteFor(q)}
-              onResults={() => setResultsFor(q)}
               onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
               onCalendar={() => setCalendarFor(q)}
               onDuplicate={() => doDuplicate(q.id)}
@@ -227,9 +224,6 @@ export function QuedadasScreenView({
       {wizard && <CrearQuedadaModal initial={wizard.initial} onClose={() => setWizard(null)} />}
       {inviteFor && (
         <InviteModal quedada={inviteFor} meUserId={meUserId} onClose={() => setInviteFor(null)} />
-      )}
-      {resultsFor && (
-        <ResultsModal quedada={resultsFor} onClose={() => setResultsFor(null)} />
       )}
       {calendarFor && (
         <CalendarModal quedada={calendarFor} onClose={() => setCalendarFor(null)} />
@@ -330,7 +324,6 @@ function QuedadaCard({
   q,
   meUserId,
   onInvite,
-  onResults,
   onManage,
   onCalendar,
   onDuplicate,
@@ -338,7 +331,6 @@ function QuedadaCard({
   q: QuedadaLite;
   meUserId: string | null;
   onInvite: () => void;
-  onResults: () => void;
   onManage: () => void;
   onCalendar: () => void;
   onDuplicate: () => void;
@@ -578,15 +570,6 @@ function QuedadaCard({
             </button>
             <button
               className="btn"
-              onClick={onResults}
-              disabled={pending}
-              style={{ background: "#fff", border: "1px solid var(--border)", flex: 1, justifyContent: "center" }}
-            >
-              <Icon name="clipboard-list" size={12} />
-              Resultados
-            </button>
-            <button
-              className="btn"
               onClick={doCancel}
               disabled={pending}
               style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", flex: 1, justifyContent: "center" }}
@@ -694,109 +677,6 @@ function InviteModal({
   );
 }
 
-// ── Cargar resultados ─────────────────────────────────────────────────────────
-function ResultsModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: () => void }) {
-  const router = useRouter();
-  const toast = useToast();
-  const [participants, setParticipants] = useState<Player[]>([]);
-  const [byId, setById] = useState<Record<string, { points: string; finalRank: string }>>({});
-  const [pending, startTransition] = useTransition();
-
-  const updateRow = (id: string, field: "points" | "finalRank", value: string) => {
-    setById((prev) => {
-      const base = prev[id] ?? { points: "", finalRank: "" };
-      return { ...prev, [id]: { ...base, [field]: value } };
-    });
-  };
-
-  const save = () => {
-    if (pending) return;
-    if (participants.length === 0) {
-      toast({ icon: "alert-triangle", title: "Agrega al menos un jugador" });
-      return;
-    }
-    const results = participants.map((p) => {
-      const v = byId[p.id] ?? { points: "", finalRank: "" };
-      const points = v.points.trim() ? parseInt(v.points, 10) : null;
-      const finalRank = v.finalRank.trim() ? parseInt(v.finalRank, 10) : null;
-      return {
-        userId: p.id,
-        points: points != null && Number.isFinite(points) ? points : null,
-        finalRank: finalRank != null && Number.isFinite(finalRank) ? finalRank : null,
-      };
-    });
-    startTransition(async () => {
-      const res = await setQuedadaResults({ quedadaId: quedada.id, results });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudieron guardar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "Resultados guardados" });
-      onClose();
-      router.refresh();
-    });
-  };
-
-  return (
-    <ModalShell title="Cargar resultados" icon="clipboard-list" onClose={onClose}>
-      <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Resultados casuales de <b style={{ color: "var(--fg)" }}>{quedada.title}</b>. No afectan tu ranking.
-      </p>
-      <PlayerPicker
-        label="Participantes"
-        max={64}
-        selected={participants}
-        onChange={setParticipants}
-      />
-      {participants.length > 0 && (
-        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div className="label-mp">Puntos y posición · opcional</div>
-          {participants.map((p) => {
-            const v = byId[p.id] ?? { points: "", finalRank: "" };
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 80px 80px",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.displayName}
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  value={v.points}
-                  onChange={(e) => updateRow(p.id, "points", e.target.value)}
-                  placeholder="Pts"
-                  style={miniInput}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  value={v.finalRank}
-                  onChange={(e) => updateRow(p.id, "finalRank", e.target.value)}
-                  placeholder="Pos"
-                  style={miniInput}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <ModalFooter
-        onClose={onClose}
-        pending={pending}
-        confirmLabel="Guardar resultados"
-        confirmIcon="check"
-        onConfirm={save}
-      />
-    </ModalShell>
-  );
-}
 
 // ── Calendario del participante (lectura) ─────────────────────────────────────
 // Muestra, por cada categoría de la quedada, su hora + cancha y el slot/pareja
@@ -1065,15 +945,3 @@ function ModalFooter({
   );
 }
 
-const miniInput: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 8px",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  fontSize: 12.5,
-  fontFamily: "inherit",
-  outline: "none",
-  textAlign: "center",
-  background: "#fff",
-  color: "var(--fg)",
-};

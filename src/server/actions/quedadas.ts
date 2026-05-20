@@ -16,6 +16,7 @@ import {
   QuedadaIdSchema,
   InviteToQuedadaSchema,
   SetQuedadaResultsSchema,
+  SetQuedadaStatusSchema,
   ReportQuedadaSchema,
   CohostSchema,
   CreateCategorySchema,
@@ -323,6 +324,30 @@ export async function setQuedadaResults(input: unknown): Promise<ActionResult<{ 
   });
 }
 
+// ── setQuedadaStatus (transiciones intermedias: cerrar/iniciar/reabrir) ───────
+export async function setQuedadaStatus(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetQuedadaStatusSchema, input, async ({ quedadaId, status }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: q } = await supabase
+      .from("quedadas")
+      .select("creator_id,status")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if (q.creator_id !== userId) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador cambia el estado");
+    if (q.status === "finished" || q.status === "cancelled") {
+      throw new MpError("QUEDADAS.CLOSED", "La quedada ya terminó; no se puede cambiar el estado", 409);
+    }
+    const { error } = await supabase
+      .from("quedadas")
+      .update({ status, updated_at: new Date().toISOString() } as never)
+      .eq("id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.STATUS_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
 // ── reportQuedada (soporte/moderación) ───────────────────────────────────────
 export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(ReportQuedadaSchema, input, async ({ quedadaId, reason }) => {
@@ -355,7 +380,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     const [cats, pairs, parts, cohosts] = await Promise.all([
       supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
-      supabase.from("quedada_participants").select("user_id,status,paid,profiles(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_participants").select("user_id,status,paid,points,final_rank,profiles(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
     ]);
 

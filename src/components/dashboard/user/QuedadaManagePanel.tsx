@@ -34,6 +34,9 @@ import {
   updateQuedadaLogistics,
   addCohost,
   removeCohost,
+  setQuedadaStatus,
+  setQuedadaResults,
+  cancelQuedada,
 } from "@/server/actions/quedadas";
 import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
 import {
@@ -91,6 +94,8 @@ type ManageParticipant = {
   user_id: string;
   status: string;
   paid: boolean;
+  points: number | null;
+  final_rank: number | null;
   profiles: { display_name: string | null; username: string | null } | null;
 };
 type ManageCohost = {
@@ -117,7 +122,7 @@ const FORMAT_LABEL: Record<string, string> = {
   libre: "Libre",
 };
 
-type TabKey = "resumen" | "parejas" | "pagos" | "config";
+type TabKey = "resumen" | "parejas" | "pagos" | "resultados" | "config";
 
 function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -134,6 +139,49 @@ function quedadaStatusMeta(status: string): { label: string; bg: string; fg: str
     default:
       return { label: status, bg: "rgba(255,255,255,0.16)", fg: "#fff" };
   }
+}
+
+function HeaderBtn({
+  children,
+  onClick,
+  disabled,
+  icon,
+  destructive = false,
+  ghost = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  icon: string;
+  destructive?: boolean;
+  ghost?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "7px 12px",
+        borderRadius: 9999,
+        cursor: disabled ? "default" : "pointer",
+        fontFamily: "inherit",
+        fontSize: 11.5,
+        fontWeight: 800,
+        border: "1px solid rgba(255,255,255,0.22)",
+        background: destructive ? "rgba(239,68,68,0.2)" : ghost ? "transparent" : "rgba(255,255,255,0.15)",
+        color: "#fff",
+        opacity: disabled ? 0.6 : 1,
+        transition: "background 150ms var(--ease-out)",
+      }}
+    >
+      <Icon name={icon} size={12} color="#fff" />
+      {children}
+    </button>
+  );
 }
 
 function StatChip({ label, value }: { label: string; value: string }) {
@@ -218,6 +266,8 @@ export function QuedadaManagePanel({
   // En modo página no se pasa onClose: el botón "Volver" navega a la lista.
   const close = onClose ?? (() => router.push("/dashboard/user/quedadas"));
   const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [busy, startBusy] = useTransition();
   const [data, setData] = useState<ManageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -306,6 +356,38 @@ export function QuedadaManagePanel({
     [data, quedadaId, toast],
   );
 
+  // Transiciones de estado (creador): cerrar inscripciones / iniciar / reabrir.
+  const changeStatus = (status: "registration_open" | "registration_closed" | "live") => {
+    startBusy(async () => {
+      const res = await setQuedadaStatus({ quedadaId, status });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo cambiar el estado", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Estado actualizado" });
+      await afterMutation();
+    });
+  };
+  const doCancel = async () => {
+    const ok = await confirm({
+      title: "Cancelar quedada",
+      body: `¿Cancelar “${data?.quedada.title ?? "esta quedada"}”? Se avisa a los inscritos y no se puede deshacer.`,
+      confirmLabel: "Cancelar quedada",
+      cancelLabel: "No, volver",
+      destructive: true,
+    });
+    if (!ok) return;
+    startBusy(async () => {
+      const res = await cancelQuedada({ quedadaId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Quedada cancelada" });
+      await afterMutation();
+    });
+  };
+
   const isPage = variant === "page";
   const q = data?.quedada ?? null;
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
@@ -313,10 +395,16 @@ export function QuedadaManagePanel({
   const sm = q ? quedadaStatusMeta(q.status) : null;
 
   // Tabs (config solo para el creador). Si el activo no aplica, cae a "parejas".
+  // El tab Resultados aparece para el creador una vez cerradas las inscripciones.
+  const showResultados =
+    !!data?.isCreator &&
+    !!q &&
+    (q.status === "registration_closed" || q.status === "live" || q.status === "finished");
   const tabs: { k: TabKey; label: string; icon: string }[] = [
     { k: "resumen", label: "Resumen", icon: "layout-dashboard" },
     { k: "parejas", label: "Parejas", icon: "grid-3x3" },
     { k: "pagos", label: "Pagos", icon: "banknote" },
+    ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados", icon: "trophy" }] : []),
     ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar", icon: "settings" }] : []),
   ];
   const activeTab: TabKey = tabs.some((t) => t.k === tab) ? tab : "parejas";
@@ -412,6 +500,23 @@ export function QuedadaManagePanel({
           ))
         )}
       </div>
+      {q && data?.isCreator && q.status !== "finished" && q.status !== "cancelled" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          {q.status === "registration_open" && (
+            <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock">Cerrar inscripciones</HeaderBtn>
+          )}
+          {q.status === "registration_closed" && (
+            <>
+              <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play">Iniciar</HeaderBtn>
+              <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" ghost>Reabrir</HeaderBtn>
+            </>
+          )}
+          {q.status === "live" && (
+            <HeaderBtn onClick={() => setTab("resultados")} disabled={busy} icon="flag">Cargar resultados y finalizar</HeaderBtn>
+          )}
+          <HeaderBtn onClick={doCancel} disabled={busy} icon="x" destructive>Cancelar</HeaderBtn>
+        </div>
+      )}
     </div>
   );
 
@@ -477,6 +582,7 @@ export function QuedadaManagePanel({
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} onGoToParejas={() => setTab("parejas")} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
           {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
+          {activeTab === "resultados" && <ResultadosTab data={data} onChanged={afterMutation} />}
           {activeTab === "config" && data.isCreator && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
               {[
@@ -680,6 +786,8 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
         </div>
       </div>
 
+      {q.status === "finished" && <PodiumSection data={data} />}
+
       <div style={{ display: "grid", gridTemplateColumns: q.prizes && q.prizes.length > 0 ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
         <InviteLinkSection inviteCode={q.invite_code} toast={toast} />
 
@@ -707,6 +815,49 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 800, marginTop: 3 }}>{value}</div>
     </div>
+  );
+}
+
+// Podio por categoría (cuando la quedada está finalizada): parejas ordenadas por
+// final_rank. Sin emoji (regla del kit): puesto en texto, top 3 en primary.
+function PodiumSection({ data }: { data: ManageData }) {
+  const partById = new Map(data.participants.map((p) => [p.user_id, p]));
+  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+  const rankOf = (id: string): number | null => partById.get(id)?.final_rank ?? null;
+  const cats = data.categories
+    .map((c) => ({
+      cat: c,
+      pairs: data.pairs
+        .filter((p) => p.category_id === c.id && rankOf(p.player_a_id) != null)
+        .sort((a, b) => (rankOf(a.player_a_id) ?? 99) - (rankOf(b.player_a_id) ?? 99)),
+    }))
+    .filter((x) => x.pairs.length > 0);
+  if (cats.length === 0) return null;
+  return (
+    <Section label="Podio" title="Resultados">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px,1fr))", gap: 12 }}>
+        {cats.map(({ cat, pairs }) => (
+          <div key={cat.id} className="card" style={{ padding: 12 }}>
+            <div className="font-heading" style={{ fontSize: 13, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", marginBottom: 8 }}>{cat.name}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {pairs.map((p) => {
+                const r = rankOf(p.player_a_id);
+                const top = r != null && r <= 3;
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
+                    <span className="font-heading tabular" style={{ width: 26, fontWeight: 900, color: top ? "var(--primary)" : "var(--muted-fg)" }}>{r}°</span>
+                    <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {nameFor(p.player_a_id)}
+                      {p.player_b_id ? <span style={{ color: "var(--muted-fg)" }}> · {nameFor(p.player_b_id)}</span> : null}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 
@@ -791,6 +942,109 @@ function PagosTab({
         )}
       </Section>
     </div>
+  );
+}
+
+// ── Tab: Resultados (puestos por categoría + finalizar) ──────────────────────
+function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const finished = data.quedada.status === "finished";
+  const partById = new Map(data.participants.map((p) => [p.user_id, p]));
+  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+
+  const cats = data.categories
+    .map((c) => ({ cat: c, pairs: data.pairs.filter((p) => p.category_id === c.id).sort((a, b) => a.slot_no - b.slot_no) }))
+    .filter((x) => x.pairs.length > 0);
+
+  const [pos, setPos] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const p of data.pairs) {
+      const fr = partById.get(p.player_a_id)?.final_rank;
+      if (fr != null) init[p.id] = String(fr);
+    }
+    return init;
+  });
+
+  const save = () => {
+    if (pending) return;
+    const results: { userId: string; finalRank: number | null }[] = [];
+    for (const { pairs } of cats) {
+      for (const p of pairs) {
+        const v = (pos[p.id] ?? "").trim();
+        const n = v ? parseInt(v, 10) : NaN;
+        const finalRank = Number.isFinite(n) && n > 0 ? n : null;
+        results.push({ userId: p.player_a_id, finalRank });
+        if (p.player_b_id) results.push({ userId: p.player_b_id, finalRank });
+      }
+    }
+    if (results.length === 0) {
+      toast({ icon: "alert-triangle", title: "No hay parejas para puntuar" });
+      return;
+    }
+    start(async () => {
+      const res = await setQuedadaResults({ quedadaId: data.quedada.id, results });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: finished ? "Resultados actualizados" : "Quedada finalizada" });
+      await onChanged();
+    });
+  };
+
+  if (cats.length === 0) {
+    return (
+      <Section label="Cierre" title="Resultados">
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+          Asigna parejas a las categorías (pestaña Parejas) para poder cargar resultados.
+        </div>
+      </Section>
+    );
+  }
+
+  const posInput: React.CSSProperties = { width: 46, textAlign: "center", padding: "7px 4px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", background: "#fff", color: "var(--fg)" };
+
+  return (
+    <Section
+      label="Cierre"
+      title="Resultados por categoría"
+      sub={finished ? "Quedada finalizada — puedes ajustar los puestos." : "Pon el puesto de cada pareja (1°, 2°, 3°…) y finaliza."}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {cats.map(({ cat, pairs }) => (
+          <div key={cat.id} className="card" style={{ padding: 12 }}>
+            <div className="font-heading" style={{ fontSize: 13, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", marginBottom: 8 }}>{cat.name}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {pairs.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={pairs.length}
+                    value={pos[p.id] ?? ""}
+                    onChange={(e) => setPos((m) => ({ ...m, [p.id]: e.target.value }))}
+                    placeholder="#"
+                    style={posInput}
+                    aria-label="Puesto"
+                  />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {nameFor(p.player_a_id)}
+                    {p.player_b_id ? <span style={{ color: "var(--muted-fg)" }}> · {nameFor(p.player_b_id)}</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn btn-primary" onClick={save} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+            {!pending && <Icon name="flag" size={13} color="#fff" />}
+            {pending ? "Guardando…" : finished ? "Guardar resultados" : "Guardar y finalizar"}
+          </button>
+        </div>
+      </div>
+    </Section>
   );
 }
 

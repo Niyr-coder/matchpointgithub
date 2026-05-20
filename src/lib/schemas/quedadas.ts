@@ -106,6 +106,15 @@ export const ReportQuedadaSchema = z
   .object({ quedadaId: UuidSchema, reason: z.string().trim().min(3).max(280) })
   .openapi("ReportQuedada");
 
+// Transiciones de estado intermedias (creador). finished = vía resultados;
+// cancelled = vía cancelQuedada.
+export const SetQuedadaStatusSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    status: z.enum(["registration_open", "registration_closed", "live"]),
+  })
+  .openapi("SetQuedadaStatus");
+
 // ── Output ───────────────────────────────────────────────────────────────────
 export const QuedadaSchema = z
   .object({
