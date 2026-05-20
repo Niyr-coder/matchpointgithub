@@ -66,7 +66,7 @@ const inp: React.CSSProperties = {
   fontFamily: "inherit",
   outline: "none",
   background: "#fff",
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };
 const lbl: React.CSSProperties = {
   fontSize: 11,
@@ -133,8 +133,8 @@ export function BankAccountFields({
                     padding: "9px 6px",
                     borderRadius: 9,
                     border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
-                    background: on ? "#ecfdf5" : "#fff",
-                    color: on ? "#065f46" : "#0a0a0a",
+                    background: on ? "var(--color-mp-primary-light)" : "#fff",
+                    color: on ? "var(--color-mp-primary-active)" : "var(--fg)",
                     fontWeight: 800,
                     fontSize: 12,
                     fontFamily: "inherit",

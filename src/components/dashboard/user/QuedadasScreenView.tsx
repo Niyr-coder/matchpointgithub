@@ -158,7 +158,7 @@ export function QuedadasScreenView({
               borderRadius: 9999,
               border: 0,
               background: tab === t.k ? "#fff" : "transparent",
-              color: tab === t.k ? "#0a0a0a" : "var(--muted-fg)",
+              color: tab === t.k ? "var(--fg)" : "var(--muted-fg)",
               fontWeight: tab === t.k ? 800 : 600,
               fontSize: 11.5,
               cursor: "pointer",
@@ -176,7 +176,7 @@ export function QuedadasScreenView({
                 fontWeight: 900,
                 padding: "1px 6px",
                 borderRadius: 9999,
-                background: tab === t.k ? "#0a0a0a" : "transparent",
+                background: tab === t.k ? "var(--fg)" : "transparent",
                 color: tab === t.k ? "#fff" : "var(--muted-fg)",
                 border: tab === t.k ? 0 : "1px solid var(--border)",
               }}
@@ -286,7 +286,7 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
   return (
     <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--muted-fg)" }}>
       <Icon name={icon} size={32} color="var(--muted-fg)" />
-      <div className="font-heading" style={{ fontSize: 18, fontWeight: 900, marginTop: 12, color: "#0a0a0a" }}>
+      <div className="font-heading" style={{ fontSize: 18, fontWeight: 900, marginTop: 12, color: "var(--fg)" }}>
         {title}
         <span className="dot">.</span>
       </div>
@@ -440,13 +440,13 @@ function QuedadaCard({
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {cancelled ? (
-            <Chip bg="#fee2e2" color="#b91c1c">Cancelada</Chip>
+            <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
           ) : finished ? (
             <Chip bg="var(--muted)" color="var(--muted-fg)">Finalizada</Chip>
           ) : q.visibility === "private" ? (
             <Chip bg="#1f2937" color="#fff">Privada</Chip>
           ) : (
-            <Chip bg="#ecfdf5" color="#065f46">Abierta</Chip>
+            <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">Abierta</Chip>
           )}
           <Chip bg="var(--muted)" color="var(--muted-fg)">
             {FORMAT_LABEL[q.format] ?? q.format}
@@ -454,7 +454,7 @@ function QuedadaCard({
           <Chip bg="var(--muted)" color="var(--muted-fg)">
             {q.matchMode === "singles" ? "Singles" : "Dobles"}
           </Chip>
-          {q.iAmCreator && <Chip bg="#fbbf24" color="#0a0a0a">Organizas</Chip>}
+          {q.iAmCreator && <Chip bg="#fbbf24" color="var(--fg)">Organizas</Chip>}
         </div>
 
         <div
@@ -493,8 +493,8 @@ function QuedadaCard({
           <div
             style={{
               fontSize: 11.5,
-              color: "#065f46",
-              background: "#ecfdf5",
+              color: "var(--color-mp-primary-active)",
+              background: "var(--color-mp-primary-light)",
               borderRadius: 8,
               padding: "8px 10px",
               display: "flex",
@@ -518,7 +518,7 @@ function QuedadaCard({
           display: "flex",
           flexWrap: "wrap",
           gap: 6,
-          background: "#fafafa",
+          background: "var(--muted)",
         }}
       >
         {!cancelled && !finished && !q.iAmCreator && (
@@ -537,9 +537,9 @@ function QuedadaCard({
                 className="btn"
                 onClick={doLeave}
                 disabled={pending}
-                style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", flex: 1, justifyContent: "center" }}
+                style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", flex: 1, justifyContent: "center" }}
               >
-                <Icon name="log-out" size={12} color="#b91c1c" />
+                <Icon name="log-out" size={12} color="var(--destructive-fg)" />
                 Salir
               </button>
             </>
@@ -589,9 +589,9 @@ function QuedadaCard({
               className="btn"
               onClick={doCancel}
               disabled={pending}
-              style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", flex: 1, justifyContent: "center" }}
+              style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", flex: 1, justifyContent: "center" }}
             >
-              <Icon name="x" size={12} color="#b91c1c" />
+              <Icon name="x" size={12} color="var(--destructive-fg)" />
               Cancelar
             </button>
           </>
@@ -674,7 +674,7 @@ function InviteModal({
   return (
     <ModalShell title="Invitar a la quedada" icon="user-plus" onClose={onClose}>
       <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Invita jugadores a <b style={{ color: "#0a0a0a" }}>{quedada.title}</b>. Recibirán una notificación.
+        Invita jugadores a <b style={{ color: "var(--fg)" }}>{quedada.title}</b>. Recibirán una notificación.
       </p>
       <PlayerPicker
         label="A quién invitas"
@@ -740,7 +740,7 @@ function ResultsModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: () 
   return (
     <ModalShell title="Cargar resultados" icon="clipboard-list" onClose={onClose}>
       <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Resultados casuales de <b style={{ color: "#0a0a0a" }}>{quedada.title}</b>. No afectan tu ranking.
+        Resultados casuales de <b style={{ color: "var(--fg)" }}>{quedada.title}</b>. No afectan tu ranking.
       </p>
       <PlayerPicker
         label="Participantes"
@@ -853,19 +853,19 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
   return (
     <ModalShell title="Tu calendario" icon="calendar-days" onClose={onClose}>
       <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Tus categorías en <b style={{ color: "#0a0a0a" }}>{quedada.title}</b> con su hora y cancha.
+        Tus categorías en <b style={{ color: "var(--fg)" }}>{quedada.title}</b> con su hora y cancha.
       </p>
 
       {loading && (
         <SkeletonRows rows={3} height={56} />
       )}
       {!loading && error && (
-        <div style={{ padding: 14, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12.5 }}>
+        <div style={{ padding: 14, borderRadius: 8, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 12.5 }}>
           No se pudo cargar: {error}
         </div>
       )}
       {!loading && data && data.categories.length === 0 && (
-        <div style={{ padding: 14, borderRadius: 8, background: "#fafafa", color: "var(--muted-fg)", fontSize: 12.5 }}>
+        <div style={{ padding: 14, borderRadius: 8, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 12.5 }}>
           El organizador todavía no definió categorías.
         </div>
       )}
@@ -893,7 +893,7 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
                 className="card"
                 style={{
                   padding: 12,
-                  background: mine ? "#ecfdf5" : "#fff",
+                  background: mine ? "var(--color-mp-primary-light)" : "#fff",
                   border: mine ? "1px solid var(--primary)" : "1px solid var(--border)",
                 }}
               >
@@ -929,7 +929,7 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
                   )}
                 </div>
                 {mine ? (
-                  <div style={{ fontSize: 12, color: "#065f46", marginTop: 6, fontWeight: 700 }}>
+                  <div style={{ fontSize: 12, color: "var(--color-mp-primary-active)", marginTop: 6, fontWeight: 700 }}>
                     {partnerName ? `Juegas con ${partnerName}` : "Estás inscrito en esta categoría"}
                   </div>
                 ) : (
@@ -1075,5 +1075,5 @@ const miniInput: React.CSSProperties = {
   outline: "none",
   textAlign: "center",
   background: "#fff",
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };

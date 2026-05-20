@@ -128,7 +128,7 @@ function quedadaStatusMeta(status: string): { label: string; bg: string; fg: str
     case "finished":
       return { label: "Finalizada", bg: "rgba(255,255,255,0.16)", fg: "#fff" };
     case "cancelled":
-      return { label: "Cancelada", bg: "rgba(239,68,68,0.25)", fg: "#fecaca" };
+      return { label: "Cancelada", bg: "rgba(239,68,68,0.25)", fg: "var(--destructive-border)" };
     default:
       return { label: status, bg: "rgba(255,255,255,0.16)", fg: "#fff" };
   }
@@ -399,7 +399,7 @@ export function QuedadaManagePanel({
     >
       {loading && <ManageSkeleton />}
       {!loading && loadError && (
-        <div className="card" style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}>
+        <div className="card" style={{ padding: 18, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 13 }}>
           No se pudo cargar la gestión: {loadError}
         </div>
       )}
@@ -973,9 +973,9 @@ function CohostsSection({ data, onChanged }: { data: ManageData; onChanged: () =
                 onClick={() => remove(c)}
                 disabled={pending}
                 aria-label="Quitar co-host"
-                style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", padding: "6px 10px", flexShrink: 0 }}
+                style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "6px 10px", flexShrink: 0 }}
               >
-                <Icon name="x" size={12} color="#b91c1c" />
+                <Icon name="x" size={12} color="var(--destructive-fg)" />
                 Quitar
               </button>
             </div>
@@ -1079,9 +1079,9 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
                     onClick={() => del(c)}
                     disabled={pending}
                     aria-label="Borrar categoría"
-                    style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", padding: "6px 9px" }}
+                    style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "6px 9px" }}
                   >
-                    <Icon name="trash-2" size={12} color="#b91c1c" />
+                    <Icon name="trash-2" size={12} color="var(--destructive-fg)" />
                   </button>
                 </div>
               </div>
@@ -1407,9 +1407,9 @@ function SlotRow({
               onClick={remove}
               disabled={pending}
               aria-label="Quitar pareja"
-              style={{ background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", padding: "6px 9px" }}
+              style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "6px 9px" }}
             >
-              <Icon name="x" size={12} color="#b91c1c" />
+              <Icon name="x" size={12} color="var(--destructive-fg)" />
             </button>
           ) : (
             <button

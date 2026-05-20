@@ -374,7 +374,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         <div style={{ flex: 1, overflow: "auto", padding: 22, paddingTop: 8, display: "flex", flexDirection: "column", gap: 16, borderTop: "1px solid var(--border)" }}>
           {step === 0 && (
             <>
-              <div style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, background: "#fafafa" }}>
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, background: "var(--muted)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   <span className="label-mp">Plantillas · {templates.length}/5</span>
                   <button type="button" onClick={saveAsTemplate} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "5px 10px", fontSize: 11.5 }}>
@@ -389,7 +389,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {templates.map((t) => (
                       <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
-                        <button type="button" onClick={() => loadInitial(t.config)} title="Cargar plantilla" style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "#0a0a0a", padding: 0 }}>
+                        <button type="button" onClick={() => loadInitial(t.config)} title="Cargar plantilla" style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "var(--fg)", padding: 0 }}>
                           {t.name}
                         </button>
                         <button type="button" onClick={() => removeTemplate(t.id)} aria-label="Borrar plantilla" style={{ border: 0, background: "transparent", cursor: "pointer", color: "var(--muted-fg)", display: "inline-flex", padding: 0 }}>
@@ -411,8 +411,8 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   {FORMATS.map((f) => {
                     const on = format === f.k;
                     return (
-                      <button key={f.k} type="button" onClick={() => setFormat(f.k)} style={{ padding: 11, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "#ecfdf5" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 900, color: on ? "#065f46" : "#0a0a0a" }}>{f.label}</div>
+                      <button key={f.k} type="button" onClick={() => setFormat(f.k)} style={{ padding: 11, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "var(--color-mp-primary-light)" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 900, color: on ? "var(--color-mp-primary-active)" : "var(--fg)" }}>{f.label}</div>
                         <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>{f.sub}</div>
                       </button>
                     );
@@ -426,7 +426,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                       const on = matchMode === o.k;
                       return (
                         <button key={o.k} type="button" onClick={() => setMatchMode(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
-                          <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />{o.l}
+                          <Icon name={o.i} size={12} color={on ? "var(--color-mp-primary-active)" : "var(--fg)"} />{o.l}
                         </button>
                       );
                     })}
@@ -438,7 +438,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                       const on = visibility === o.k;
                       return (
                         <button key={o.k} type="button" onClick={() => setVisibility(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
-                          <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />{o.l}
+                          <Icon name={o.i} size={12} color={on ? "var(--color-mp-primary-active)" : "var(--fg)"} />{o.l}
                         </button>
                       );
                     })}
@@ -466,7 +466,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                       <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                         <div style={{ display: "flex", gap: 8 }}>
                           <input value={c.name} placeholder="Nombre (ej. Suma 6.0, Open Mixto)" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCat({ name: e.target.value })} />
-                          <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
+                          <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "0 12px" }} aria-label="Quitar categoría">
                             <Icon name="trash-2" size={14} />
                           </button>
                         </div>
@@ -474,7 +474,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                         {/* Nivel (Suma) */}
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 700, color: c.noLevel ? "var(--muted-fg)" : "#0a0a0a" }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: c.noLevel ? "var(--muted-fg)" : "var(--fg)" }}>
                               Nivel (Suma){c.noLevel ? "" : <span style={{ color: "var(--primary)", marginLeft: 6 }}>{c.suma.toFixed(1)}</span>}
                             </span>
                             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted-fg)", cursor: "pointer" }}>
@@ -551,7 +551,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", background: "#fafafa", display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", background: "var(--muted)", display: "flex", justifyContent: "space-between", gap: 8 }}>
           <button onClick={step === 0 ? onClose : back} className="btn btn-outline" disabled={pending}>
             {step === 0 ? "Cancelar" : "Atrás"}
           </button>
@@ -592,7 +592,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
   outline: "none",
   background: "#fff",
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };
 const segBtn: React.CSSProperties = {
   flex: 1,
@@ -608,10 +608,10 @@ const segBtn: React.CSSProperties = {
   fontFamily: "inherit",
   fontSize: 12,
   fontWeight: 800,
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };
 const segBtnOn: React.CSSProperties = {
   border: "2px solid var(--primary)",
-  background: "#ecfdf5",
-  color: "#065f46",
+  background: "var(--color-mp-primary-light)",
+  color: "var(--color-mp-primary-active)",
 };

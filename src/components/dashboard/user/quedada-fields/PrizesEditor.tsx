@@ -42,7 +42,7 @@ const inp: React.CSSProperties = {
   fontFamily: "inherit",
   outline: "none",
   background: "#fff",
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };
 
 export function PrizesEditor({
@@ -75,7 +75,7 @@ export function PrizesEditor({
             <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", fontSize: 12.5, color: "var(--muted-fg)" }}>$</span>
             <input value={r.value} onChange={(e) => setRow(i, { value: e.target.value })} placeholder="0" type="number" min={0} step="0.5" style={{ ...inp, paddingLeft: 18 }} />
           </div>
-          <button type="button" onClick={() => remove(i)} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 11px" }} aria-label="Quitar premio">
+          <button type="button" onClick={() => remove(i)} className="btn" style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "0 11px" }} aria-label="Quitar premio">
             <Icon name="trash-2" size={13} />
           </button>
         </div>
