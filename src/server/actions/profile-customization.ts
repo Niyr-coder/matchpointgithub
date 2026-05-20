@@ -22,6 +22,7 @@ import {
   findBanner,
   findCardStyle,
   findTheme,
+  themeColumns,
 } from "@/lib/profile/customization-presets";
 import { canUsePreset } from "@/lib/profile/bundles";
 
@@ -83,7 +84,7 @@ export async function setTheme(input: unknown): Promise<ActionResult<{ ok: true 
 
     const { error } = await supabase
       .from("profiles")
-      .update({ accent_color: t.accent, card_style: t.card, banner_preset: t.banner } as never)
+      .update(themeColumns(t) as never)
       .eq("id", user.id);
     if (error) throw new MpError("PROFILE.UPDATE_FAILED", error.message, 500);
     return { ok: true as const };

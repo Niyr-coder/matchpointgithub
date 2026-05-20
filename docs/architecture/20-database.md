@@ -2310,7 +2310,7 @@ Ver `docs/product/04-matches-lifecycle.md`. Detrás de `match_reliability_enable
 - **Notif** `match_no_show_reported` + branch dispatcher.
 - Ambas con `tg_audit`.
 
-### 29.20 · Personalización por temas (mig 126)
+### 29.20 · Personalización por temas (migs 126-127)
 
 Rediseño: el user ya no mezcla `accent_color`/`card_style`/`banner_preset`
 libremente (combos feos). Elige UN **tema** curado (`PROFILE_THEMES` en
@@ -2318,10 +2318,26 @@ libremente (combos feos). Elige UN **tema** curado (`PROFILE_THEMES` en
 **No cambia el schema** (siguen siendo los 3 campos; el tema solo los escribe
 juntos), así que todo el render (perfil, roster, amigos) queda igual.
 
+**Catálogo autocontenido (mig 127)**: `PROFILE_THEMES` es la **única fuente de
+verdad**. Cada tema define INLINE sus valores (`accentHex`, `bannerCss`,
+`cardCss`) — no referencia catálogos sueltos. Los catálogos legacy
+(`ACCENT_COLORS`/`BANNER_PRESETS`/`CARD_STYLES`) y sus Sets de validación se
+**derivan** de `PROFILE_THEMES` (una entry por tema, keyed por la key del tema),
+para que el render (`findAccent`/`findBanner`/`findCardStyle`) y el path legacy
+de mezcla libre sigan funcionando sin cambios. Agregar un tema = una entry nueva.
+
+- Persistencia: el tema escribe su `key` en las 3 columnas (helper
+  `themeColumns(t)`); el render resuelve cada faceta vía `find*`. Combo legacy
+  no-matcheante → cae a default (mig 127 lo limpia por prolijidad).
+- Catálogo actual: **9 temas** = 1 free (Clásico) + 4 mp_plus (Esmeralda,
+  Océano, Crepúsculo, Pizarra) + 4 packs (Neón/Oro/Carbón/Sakura, uno por
+  bundle pago para no dejar bundles huérfanos).
 - Action **`setTheme(themeKey)`** (`profile-customization.ts`) valida ownership
   del bundle del tema (`free` siempre; `mp_plus` → premium; `pack_*` → grant) y
-  escribe accent+card+banner.
-- UI: `PersonalizacionScreenClient` ahora es un picker de temas (no 3 selectores).
+  escribe accent+card+banner vía `themeColumns`.
+- UI: `PersonalizacionScreenClient` es un picker de temas (no 3 selectores). El
+  preview replica fielmente el `ProfileHeaderCard`, `FriendCard` y `StatCard`
+  reales (no mocks).
 - Mig 126 reseteó los combos viejos al tema default (Clásico = los 3 en null).
 - `setProfileCustomization` (mezcla libre) queda para admin/legacy, no para la UI del user.
 

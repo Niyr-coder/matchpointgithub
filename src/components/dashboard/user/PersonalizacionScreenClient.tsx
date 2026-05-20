@@ -15,11 +15,9 @@ import { ProfileHeaderCard } from "./ProfileHeaderCard";
 import { FriendCard, type FriendLite } from "../widgets/FriendCard";
 import {
   PROFILE_THEMES,
-  findAccent,
-  findBanner,
-  findCardStyle,
   themeFromState,
   type ProfileTheme,
+  type ThemeCardCss,
 } from "@/lib/profile/customization-presets";
 import {
   canUsePreset,
@@ -63,15 +61,12 @@ export function PersonalizacionScreenClient({
   // Tema activo: matchea el estado actual; si es un combo viejo no-temático
   // (no debería tras la migración 126), cae a 'default'.
   const currentKey =
-    themeFromState(initial?.accentColor ?? null, initial?.bannerPreset ?? null, initial?.cardStyle ?? null)?.key ??
+    themeFromState(initial?.accentColor ?? null, initial?.cardStyle ?? null, initial?.bannerPreset ?? null)?.key ??
     "default";
   const [selected, setSelected] = useState<string>(currentKey);
 
   const selectedTheme = PROFILE_THEMES.find((t) => t.key === selected) ?? PROFILE_THEMES[0];
-  const accentObj = findAccent(selectedTheme.accent);
-  const bannerObj = findBanner(selectedTheme.banner);
-  const cardObj = findCardStyle(selectedTheme.card);
-  const accentHex = accentObj?.hex ?? DEFAULT_ACCENT;
+  const accentHex = selectedTheme.accentHex ?? DEFAULT_ACCENT;
 
   const applyTheme = (t: ProfileTheme) => {
     if (pending) return;
@@ -143,11 +138,10 @@ export function PersonalizacionScreenClient({
 
       <PreviewCard
         accentHex={accentHex}
-        bannerCss={bannerObj?.background ?? null}
-        bannerKey={selectedTheme.banner}
-        bodyPattern={bannerObj ? bodyPatternForBundle(bannerObj.bundleKey) : null}
-        bundleKey={bannerObj?.bundleKey ?? null}
-        cardObj={cardObj}
+        bannerCss={selectedTheme.bannerCss}
+        bodyPattern={selectedTheme.bannerCss ? bodyPatternForBundle(selectedTheme.bundleKey) : null}
+        bundleKey={selectedTheme.bannerCss ? selectedTheme.bundleKey : null}
+        cardCss={selectedTheme.cardCss}
       />
 
       <section style={{ marginBottom: 28 }}>
@@ -199,14 +193,12 @@ function ThemeCard({
   disabled: boolean;
   onClick: () => void;
 }) {
-  const accentObj = findAccent(theme.accent);
-  const bannerObj = findBanner(theme.banner);
-  const cardObj = findCardStyle(theme.card);
-  const accentHex = accentObj?.hex ?? "#10b981";
+  const accentHex = theme.accentHex ?? "#10b981";
   // Preview del banner: gradiente del tema, o un fondo neutro para "Clásico".
-  const bannerBg = bannerObj?.background ?? "linear-gradient(135deg, #f5f5f5, #e5e5e5)";
-  const cardBg = cardObj?.css.background ?? "#fff";
-  const cardBorder = cardObj?.css.border ?? "1px solid var(--border)";
+  const bannerBg = theme.bannerCss ?? "linear-gradient(135deg, #f5f5f5, #e5e5e5)";
+  const cardBg = theme.cardCss?.background ?? "#fff";
+  const cardBorder = theme.cardCss?.border ?? "1px solid var(--border)";
+  const cardColor = theme.cardCss?.color ?? "#0a0a0a";
   const locked = !owned;
 
   return (
@@ -243,7 +235,7 @@ function ThemeCard({
             borderRadius: 10,
             background: cardBg,
             border: cardBorder,
-            color: cardObj?.css.color ?? "#0a0a0a",
+            color: cardColor,
             // glow/boxShadow cosmético omitido en el chip mini para no recargar.
           }}
         >
@@ -358,17 +350,15 @@ function UpgradeBanner() {
 function PreviewCard({
   accentHex,
   bannerCss,
-  bannerKey,
   bodyPattern,
   bundleKey,
-  cardObj,
+  cardCss,
 }: {
   accentHex: string;
   bannerCss: string | null;
-  bannerKey: string | null;
   bodyPattern: string | null;
   bundleKey: string | null;
-  cardObj: ReturnType<typeof findCardStyle>;
+  cardCss: ThemeCardCss | null;
 }) {
   return (
     <div
@@ -409,7 +399,7 @@ function PreviewCard({
           primaryClub={{ name: "Tu club" }}
           memberSince={new Date().toISOString()}
           accentHex={accentHex}
-          bannerCss={bannerKey ? bannerCss : null}
+          bannerCss={bannerCss}
           bodyPattern={bodyPattern}
           bundleKey={bundleKey}
           coverButton={null}
@@ -439,9 +429,9 @@ function PreviewCard({
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
             <div style={{ width: 230 }}>
-              <FriendCard f={previewFriend(accentHex, cardObj)} index={0} isSuggestion preview />
+              <FriendCard f={previewFriend(accentHex, cardCss)} index={0} isSuggestion preview />
             </div>
-            <StatsPreview cardObj={cardObj} />
+            <StatsPreview accentHex={accentHex} cardCss={cardCss} />
           </div>
         </div>
       </div>
@@ -453,7 +443,7 @@ function PreviewCard({
 // card-style del tema seleccionado.
 function previewFriend(
   accentHex: string,
-  cardObj: ReturnType<typeof findCardStyle>,
+  cardCss: ThemeCardCss | null,
 ): FriendLite {
   return {
     id: "preview",
@@ -465,35 +455,55 @@ function previewFriend(
     isOfficial: false,
     isPremium: false,
     accentHex,
-    cardStyleCss: cardObj?.css ?? null,
+    cardStyleCss: cardCss,
   };
 }
 
-// Mock de las stat cards del perfil (ProfileScreen). El card-style del tema
-// aplica al wrapper de cada stat.
-function StatsPreview({ cardObj }: { cardObj: ReturnType<typeof findCardStyle> }) {
-  const css = cardObj?.css;
+// Stat cards del preview: replican fielmente el StatCard real de ProfileScreenView
+// (className "card" + "label-mp" + número "font-heading tabular" 36px tintado con
+// el accent; el card-style del tema reemplaza bg/border/shadow del wrapper).
+function StatsPreview({
+  accentHex,
+  cardCss,
+}: {
+  accentHex: string;
+  cardCss: ThemeCardCss | null;
+}) {
+  const customBorder = cardCss?.border ?? (accentHex ? `1px solid ${accentHex}` : undefined);
   const stat = (label: string, value: string, sub: string) => (
     <div
+      className="card"
       style={{
         flex: 1,
-        minWidth: 120,
-        padding: "12px 14px",
-        borderRadius: 12,
-        background: css?.background ?? "#fff",
-        border: css?.border ?? "1px solid var(--border)",
-        boxShadow: css?.boxShadow ?? "none",
-        backdropFilter: css?.backdropFilter,
-        color: css?.color ?? "#0a0a0a",
+        minWidth: 130,
+        padding: 20,
+        background: cardCss?.background,
+        border: customBorder,
+        boxShadow: cardCss?.boxShadow,
+        backdropFilter: cardCss?.backdropFilter,
+        color: cardCss?.color,
       }}
     >
-      <div style={{ fontSize: 8.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", opacity: 0.6 }}>
+      <div className="label-mp" style={cardCss?.color ? { color: cardCss.color, opacity: 0.7 } : undefined}>
         {label}
       </div>
-      <div className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, marginTop: 4 }}>
-        {value}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
+        <div
+          className="font-heading tabular"
+          style={{
+            fontWeight: 900,
+            fontSize: 36,
+            lineHeight: 1,
+            letterSpacing: "-0.03em",
+            color: accentHex ?? cardCss?.color,
+          }}
+        >
+          {value}
+        </div>
       </div>
-      <div style={{ fontSize: 10, opacity: 0.65, marginTop: 2 }}>{sub}</div>
+      <div style={{ fontSize: 11, color: cardCss?.color ? `${cardCss.color}99` : "var(--muted-fg)", marginTop: 4 }}>
+        {sub}
+      </div>
     </div>
   );
   return (
