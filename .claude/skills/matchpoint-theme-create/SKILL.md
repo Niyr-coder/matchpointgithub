@@ -102,6 +102,22 @@ huérfanos):
 Verificá que la `key` del tema, el `bundleKey`, la key de `FALLBACK_BUNDLES` y
 la key del seed coincidan exactamente (un mismatch deja el pack sin desbloquear).
 
+## Admin governance (NO olvidar)
+
+El catálogo de temas/bundles tiene su home admin en **`AdminCosmeticsScreen`**
+(`/dashboard/admin/admin-cosmetics`). Siempre que toques temas, preguntá:
+¿cómo lo lista/activa/pausa el admin sin abrir Supabase Studio?
+
+- **Grants de bundles**: `grantBundleToUser` / `revokeBundleFromUser` (admin/cosmetics.ts).
+- **Activar/desactivar temas**: tabla `theme_settings` (mig 129, ausencia=activo)
+  + `setThemeActive(key, active)` (admin + `setAuditActor`; desactivar = hard-kill
+  que revierte a Clásico). El picker oculta inactivos vía `getInactiveThemeKeys`;
+  `setTheme` rechaza inactivos. `default` está protegido.
+- Si agregás un eje nuevo que el admin deba controlar en runtime (ej. destacar un
+  tema, fecha de lanzamiento), necesita: estado en DB + action admin con audit +
+  sección en `AdminCosmeticsScreen`. No lo dejes "solo en código" si el negocio
+  necesita cambiarlo sin deploy.
+
 ## Persistencia y render (no romper sincronía)
 
 - `setTheme(themeKey)` escribe la key del tema en las 3 columnas de `profiles`
