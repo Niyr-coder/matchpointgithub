@@ -1064,16 +1064,19 @@ function MyBadgesSection({ badges }: { badges: BadgeLite[] }) {
 const ACTIONS = [
   { icon: "calendar-plus", label: "Reservar cancha", action: "reservar" },
   { icon: "users", label: "Crear match", action: "crear-match" },
+  { icon: "swords", label: "Busco partido", action: "buscar-partido" },
   { icon: "shuffle", label: "Crear juego · Round Robin", action: "crear-juego" },
   { icon: "user-plus", label: "Invitar amigo", action: "invitar" },
 ] as const;
 
 function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
   const toast = useToast();
+  const router = useRouter();
   const handle = (a: (typeof ACTIONS)[number]["action"]) => {
     if (a === "crear-match") window.dispatchEvent(new CustomEvent("mp-open-crear-match"));
     else if (a === "crear-juego") window.dispatchEvent(new CustomEvent("mp-open-crear-juego"));
     else if (a === "reservar") window.dispatchEvent(new CustomEvent("mp-open-reservar"));
+    else if (a === "buscar-partido") router.push("/dashboard/user/busco-partido");
     else if (a === "invitar") {
       const url = `matchpoint.app/invite/${inviteSlug}`;
       if (typeof navigator !== "undefined" && navigator.clipboard) {

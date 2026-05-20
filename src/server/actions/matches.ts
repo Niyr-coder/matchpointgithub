@@ -12,11 +12,13 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { IsoDateTimeSchema, MpSportSchema, UuidSchema } from "@/lib/schemas/common";
 import { getPlanForUser } from "@/lib/auth/plan";
+import { getProfileSummary } from "@/lib/auth/profile";
 
 // Los tipos generados de Supabase (src/lib/db/types.ts) todavía no incluyen la
 // tabla `matches` — esos tipos se regeneran cuando la migration 053 se aplica.
@@ -407,5 +409,274 @@ export async function listRecentMatchesForUser(
       throw new MpError("MATCH.LIST_FAILED", error.message, 500);
     }
     return ((data ?? []) as DbMatch[]).map((r) => rowToMatch(r));
+  });
+}
+
+// ── Ciclo de vida post-aceptación: cancelar / reprogramar ──────────────────
+// Ver docs/product/04-matches-lifecycle.md.
+const CancelMatchSchema = z.object({
+  matchId: UuidSchema,
+  reason: z.string().max(280).optional(),
+});
+
+const RescheduleMatchSchema = z.object({
+  matchId: UuidSchema,
+  playedAt: IsoDateTimeSchema,
+});
+
+// Devuelve el conversation_id del chat del match (creado por trigger mig 118).
+async function findMatchConversationId(matchId: string): Promise<string | null> {
+  const supabase = await getMatchesClient();
+  const { data } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("match_id", matchId)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+// Encola una notif inapp a cada userId (best-effort, service role).
+async function enqueueMatchNotif(
+  recipientIds: string[],
+  kind: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (recipientIds.length === 0) return;
+  const admin = getAdminClient();
+  const rows = recipientIds.map((uid) => ({
+    user_id: uid,
+    role: "user",
+    kind,
+    channel: "inapp",
+    payload,
+    status: "pending",
+  }));
+  const { error } = await admin.from("notification_jobs").insert(rows as never);
+  if (error) console.error(`[${kind}] enqueue notif failed:`, error.message);
+}
+
+// ── cancelMatch ────────────────────────────────────────────────────────────
+// Cancela un partido agendado. Notifica al resto de participantes y, si el
+// match nació de un "Busco partido", reabre el aviso (si no expiró) para que
+// el autor pueda elegir a otro postulante (que quedaron en pausa).
+export async function cancelMatch(input: unknown): Promise<ActionResult<MatchRow>> {
+  return runAction(CancelMatchSchema, input, async ({ matchId, reason }) => {
+    const userId = await requireUserId();
+    const supabase = await getMatchesClient();
+
+    const { data: existing, error: selErr } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("id", matchId)
+      .single();
+    if (selErr || !existing) throw new MpError("MATCH.NOT_FOUND", "Partido no encontrado", 404);
+    const row = existing as DbMatch;
+    assertParticipant(userId, row);
+
+    // Solo se puede cancelar antes de confirmarse (scheduled o reported).
+    if (row.status !== "scheduled" && row.status !== "reported") {
+      throw new MpError(
+        "MATCH.NOT_CANCELLABLE",
+        `No se puede cancelar un partido en estado '${row.status}'`,
+        409,
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: updErr } = await supabase
+      .from("matches")
+      .update({
+        status: "cancelled",
+        cancelled_by: userId,
+        cancelled_reason: reason ?? null,
+        cancelled_at: nowIso,
+      } as never)
+      .eq("id", matchId)
+      .select("*")
+      .single();
+    if (updErr || !updated) {
+      throw new MpError("MATCH.CANCEL_FAILED", updErr?.message ?? "No se pudo cancelar", 500);
+    }
+
+    const conversationId = await findMatchConversationId(matchId);
+    const canceller = await getProfileSummary(userId);
+
+    // Reabrir el aviso de origen (si vino de un match_seek y no expiró). El que
+    // cancela puede NO ser el autor del seek → RLS de match_seeks bloquearía el
+    // update; usamos service role con actor seteado para el audit.
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "system");
+    // match_seeks* no están en los Database types generados → shim laxo.
+    const adminLoose = admin as unknown as LooseClient;
+    const { data: seekRow } = await adminLoose
+      .from("match_seeks")
+      .select("id,expires_at")
+      .eq("match_id", matchId)
+      .eq("status", "matched")
+      .maybeSingle();
+    const seek = seekRow as { id: string; expires_at: string } | null;
+    if (seek && new Date(seek.expires_at).getTime() > Date.now()) {
+      await adminLoose.from("match_seeks").update({ status: "open", match_id: null }).eq("id", seek.id);
+      // La postulación aceptada se marca rejected (el pairing falló); el resto
+      // sigue 'pending' y el autor puede elegir de nuevo.
+      await adminLoose
+        .from("match_seek_applications")
+        .update({ status: "rejected", responded_at: nowIso })
+        .eq("seek_id", seek.id)
+        .eq("status", "accepted");
+    }
+
+    // Notif al resto de participantes.
+    const others = [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])].filter(
+      (id) => id !== userId,
+    );
+    await enqueueMatchNotif(others, "match_cancelled", {
+      match_id: matchId,
+      conversation_id: conversationId,
+      canceller_name: canceller.displayName ?? "El otro jugador",
+      reason: reason ?? null,
+    });
+
+    return rowToMatch(updated as DbMatch);
+  });
+}
+
+// ── reportNoShow (Stage 3 · gated por match_reliability_enabled) ───────────
+const ReportNoShowSchema = z.object({
+  matchId: UuidSchema,
+  noShowUserId: UuidSchema,
+});
+
+async function reliabilityEnabled(): Promise<boolean> {
+  const supabase = await getServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any).rpc("fn_my_effective_flags");
+  return ((data ?? []) as { key: string; enabled: boolean }[]).some(
+    (r) => r.key === "match_reliability_enabled" && r.enabled,
+  );
+}
+
+export async function reportNoShow(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(ReportNoShowSchema, input, async ({ matchId, noShowUserId }) => {
+    if (!(await reliabilityEnabled())) {
+      throw new MpError("MATCH.RELIABILITY_DISABLED", "El reporte de inasistencias no está disponible.", 403);
+    }
+    const userId = await requireUserId();
+    if (noShowUserId === userId) {
+      throw new MpError("MATCH.NO_SHOW_SELF", "No puedes reportarte a ti mismo", 422);
+    }
+    const supabase = await getMatchesClient();
+    const { data: existing, error: selErr } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("id", matchId)
+      .single();
+    if (selErr || !existing) throw new MpError("MATCH.NOT_FOUND", "Partido no encontrado", 404);
+    const row = existing as DbMatch;
+    assertParticipant(userId, row);
+
+    const allPlayers = [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])];
+    if (!allPlayers.includes(noShowUserId)) {
+      throw new MpError("MATCH.NO_SHOW_NOT_PARTICIPANT", "Ese jugador no es del partido", 422);
+    }
+    if (row.status !== "scheduled" && row.status !== "reported") {
+      throw new MpError("MATCH.NO_SHOW_BAD_STATUS", `No se puede reportar en estado '${row.status}'`, 409);
+    }
+    if (new Date(row.played_at).getTime() > Date.now()) {
+      throw new MpError("MATCH.NO_SHOW_TOO_EARLY", "Solo puedes reportar después de la hora del partido", 409);
+    }
+
+    // Insert + contador vía service role (RLS de match_no_shows = admin-only;
+    // la identidad de participante ya está validada).
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "system");
+    // match_no_shows / player_reliability no están en los Database types → loose.
+    const adminLoose = admin as unknown as LooseClient;
+    const { error: insErr } = await adminLoose
+      .from("match_no_shows")
+      .insert({ match_id: matchId, reported_by: userId, no_show_user_id: noShowUserId });
+    if (insErr) {
+      if (insErr.code === "23505") {
+        throw new MpError("MATCH.NO_SHOW_DUPLICATE", "Ya reportaste esta inasistencia", 409);
+      }
+      throw new MpError("MATCH.NO_SHOW_FAILED", insErr.message, 500);
+    }
+    // Upsert del contador del jugador reportado.
+    const { data: relRow } = await adminLoose
+      .from("player_reliability")
+      .select("no_shows")
+      .eq("user_id", noShowUserId)
+      .maybeSingle();
+    if (relRow) {
+      await adminLoose
+        .from("player_reliability")
+        .update({ no_shows: ((relRow as { no_shows: number }).no_shows ?? 0) + 1 })
+        .eq("user_id", noShowUserId);
+    } else {
+      await adminLoose
+        .from("player_reliability")
+        .insert({ user_id: noShowUserId, no_shows: 1 });
+    }
+
+    const conversationId = await findMatchConversationId(matchId);
+    const reporter = await getProfileSummary(userId);
+    await enqueueMatchNotif([noShowUserId], "match_no_show_reported", {
+      match_id: matchId,
+      conversation_id: conversationId,
+      reporter_name: reporter.displayName ?? "Un jugador",
+    });
+
+    return { ok: true as const };
+  });
+}
+
+// ── rescheduleMatch ────────────────────────────────────────────────────────
+export async function rescheduleMatch(input: unknown): Promise<ActionResult<MatchRow>> {
+  return runAction(RescheduleMatchSchema, input, async ({ matchId, playedAt }) => {
+    const userId = await requireUserId();
+    if (new Date(playedAt).getTime() <= Date.now()) {
+      throw new MpError("MATCH.RESCHEDULE_PAST", "La nueva fecha debe ser futura", 422);
+    }
+    const supabase = await getMatchesClient();
+
+    const { data: existing, error: selErr } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("id", matchId)
+      .single();
+    if (selErr || !existing) throw new MpError("MATCH.NOT_FOUND", "Partido no encontrado", 404);
+    const row = existing as DbMatch;
+    assertParticipant(userId, row);
+    if (row.status !== "scheduled") {
+      throw new MpError(
+        "MATCH.NOT_RESCHEDULABLE",
+        `Solo se puede reprogramar un partido agendado (estado: '${row.status}')`,
+        409,
+      );
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from("matches")
+      .update({ played_at: playedAt } as never)
+      .eq("id", matchId)
+      .select("*")
+      .single();
+    if (updErr || !updated) {
+      throw new MpError("MATCH.RESCHEDULE_FAILED", updErr?.message ?? "No se pudo reprogramar", 500);
+    }
+
+    const conversationId = await findMatchConversationId(matchId);
+    const rescheduler = await getProfileSummary(userId);
+    const others = [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])].filter(
+      (id) => id !== userId,
+    );
+    await enqueueMatchNotif(others, "match_rescheduled", {
+      match_id: matchId,
+      conversation_id: conversationId,
+      rescheduler_name: rescheduler.displayName ?? "El otro jugador",
+      played_at: playedAt,
+    });
+
+    return rowToMatch(updated as DbMatch);
   });
 }

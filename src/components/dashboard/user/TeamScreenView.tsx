@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { SelfChip, selfRingStyle } from "../widgets/SelfBadge";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   cancelInvite,
@@ -125,10 +126,12 @@ export function TeamScreenView({
   team,
   publicTeams,
   friends,
+  meUserId,
 }: {
   team: TeamLite | null;
   publicTeams: PublicTeamLite[];
   friends: FriendLite[];
+  meUserId: string | null;
 }) {
   // Realtime: invites + membership + el team mismo.
   useRealtimeRefresh([
@@ -168,7 +171,7 @@ export function TeamScreenView({
   if (view === "settings" && team)
     return <TeamSettings team={team} onBack={() => setView("team")} onLeave={() => setView("empty")} />;
   if (view === "invite" && team) return <TeamInvite team={team} friends={friends} onBack={() => setView("team")} />;
-  if (team) return <TeamHome setView={setView} team={team} />;
+  if (team) return <TeamHome setView={setView} team={team} meUserId={meUserId} />;
   return <TeamEmpty onCreate={() => setView("create")} onJoin={() => setView("join")} />;
 }
 
@@ -2225,7 +2228,7 @@ const UPCOMING = [
   { vs: "Smash Brothers", date: "Sáb 25 Ene · 16:00", club: "Padel LC", round: "Semifinal · Copa Verano" },
 ];
 
-function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: TeamLite }) {
+function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => void; team: TeamLite; meUserId: string | null }) {
   const ROSTER = TEAM.members;
   const winRate =
     TEAM.wins + TEAM.losses > 0
@@ -2489,6 +2492,7 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
                 const avatarBg = memberAccent
                   ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
                   : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                const isMe = !!meUserId && p.userId === meUserId;
                 return (
                 <tr
                   key={p.name}
@@ -2511,6 +2515,7 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
                             alignItems: "center",
                             justifyContent: "center",
                             color: "#fff",
+                            ...(isMe ? selfRingStyle : {}),
                           }}
                         >
                           <span className="font-heading" style={{ fontSize: 10.5, fontWeight: 900 }}>
@@ -2536,7 +2541,10 @@ function TeamHome({ setView, team: TEAM }: { setView: (v: View) => void; team: T
                           />
                         )}
                       </div>
-                      <span style={{ fontWeight: 700 }}>{p.name}</span>
+                      <span style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {p.name}
+                        {isMe && <SelfChip />}
+                      </span>
                     </div>
                   </td>
                   <td style={{ padding: "12px 6px" }}>

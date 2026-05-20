@@ -36,3 +36,4 @@ import "@/app/api/v1/_openapi/coach-bundle.openapi";
 import "@/app/api/v1/_openapi/social-bundle.openapi";
 import "@/app/api/v1/_openapi/competitive-bundle.openapi";
 import "@/app/api/v1/_openapi/cross-bundle.openapi";
+import "@/app/api/v1/_openapi/match-seeks-bundle.openapi";

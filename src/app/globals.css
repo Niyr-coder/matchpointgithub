@@ -1092,3 +1092,29 @@ input[type="range"].mp-mpr,
   background: #3f3f46;
   border-radius: 9999px;
 }
+
+/* ── Modal "Busco partido" (y reutilizable) ──────────────────────────────
+   Backdrop hace fade aparte; el card escala 0.96 → 1 con ease-out (~200ms).
+   transform-origin: center porque un modal no está anclado a un trigger.
+   prefers-reduced-motion conserva solo el fade (sin movimiento). */
+.mp-modal-overlay {
+  animation: mpModalBackdrop 180ms var(--ease-out) both;
+}
+.mp-modal-pop {
+  animation: mpModalPop 200ms var(--ease-out) both;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+@keyframes mpModalBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mpModalPop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-modal-pop {
+    animation: mpModalBackdrop 160ms var(--ease-out) both;
+  }
+}

@@ -52,6 +52,9 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("reservation")) return "calendar-clock";
   if (kind.startsWith("ticket")) return "life-buoy";
   if (kind.startsWith("friend_request")) return "user-plus";
+  if (kind === "match_cancelled") return "x-circle";
+  if (kind === "match_rescheduled") return "calendar-clock";
+  if (kind.startsWith("match_seek")) return "swords";
   if (kind.startsWith("team_")) return "users";
   return "bell";
 }
@@ -101,6 +104,18 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   if (kind === "team_roster_cap_reached") {
     return "/dashboard/user/team";
   }
+  if (kind === "match_seek_applied") {
+    const seekId = typeof payload.seek_id === "string" ? payload.seek_id : null;
+    return seekId
+      ? `/dashboard/user/busco-partido?focus=${seekId}`
+      : "/dashboard/user/busco-partido";
+  }
+  if (kind === "match_seek_accepted" || kind === "match_cancelled" || kind === "match_rescheduled") {
+    const convId = typeof payload.conversation_id === "string" ? payload.conversation_id : null;
+    return convId
+      ? `/dashboard/user/chat?conv=${convId}`
+      : "/dashboard/user/busco-partido";
+  }
   return null;
 }
 
@@ -109,6 +124,7 @@ function colorForKind(kind: string): string {
   if (kind.includes("rejected") || kind.includes("cancelled")) return "#dc2626";
   if (kind.includes("approved")) return "#10b981";
   if (kind.startsWith("reservation")) return "var(--primary)";
+  if (kind.startsWith("match")) return "var(--primary)";
   if (kind.startsWith("ticket")) return "#fbbf24";
   if (kind.startsWith("friend")) return "#7c3aed";
   if (kind.startsWith("club_application")) return "#0ea5e9";

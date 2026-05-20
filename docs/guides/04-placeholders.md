@@ -239,6 +239,35 @@ server action correspondiente + wire onClick + toast de resultado.
   roster filas aplican `cardStyleCss` y `accentHex`). Falta `/players/[username]`
   card aparte si quieres tematizar más allá del header — el header ya
   consume `ProfileHeaderCard` con todo.
+- [ ] **Busco partido (match seeks)** — items diferidos de v1:
+  - Sidebar item `busco-partido` es visible con el flag `match_seeks_enabled`
+    en `false` → lleva a `BuscoPartidoComingSoon` ("Pronto") para todos.
+    Placeholder deliberado pre-launch; al activar el flag se vuelve la
+    pantalla real. Alternativa futura: filtrar el item del sidebar por flag
+    efectivo (requiere plumbing de flags en `DashboardChrome`).
+  - Chat `kind='match'` usa título genérico "Partido", sin avatar/icono
+    distintivo en `MensajesScreenView`. Funciona, falta polish visual.
+  - Filtro "mi club" en el feed pendiente — el perfil no tiene `home_club_id`.
+  - Caso dobles "completar mi equipo con randoms" fuera de v1.
+  - Sin pantalla admin dedicada para moderar avisos (solo audit log).
+  - `Database` types no incluyen `match_seeks*` (casts `LooseClient`, igual
+    que `matches.ts`). Regenerar types es mantenimiento aparte.
+- [ ] **No-show + fiabilidad — UI** (backend listo, mig 124, flag
+  `match_reliability_enabled` OFF; ver `product/04-matches-lifecycle.md`):
+  - Botón "Marcar inasistencia" en el `MatchActionBar` del chat (gated por flag
+    + `played_at` pasado + elegir jugador). Hoy la action `reportNoShow` existe
+    pero no hay UI que la invoque.
+  - Badge de fiabilidad (`reliabilityTier`) en perfil / `AdminUsersScreen`.
+  - Incrementar `player_reliability.cancellations` en `cancelMatch` (hoy solo
+    no-show mueve el score).
+- [ ] **Multideporte — cola de refactor + admin UI** (ver `product/05-multisport.md`):
+  - Selectores aún hardcoded a pickleball (ya correctos con el flag OFF, default):
+    `CrearJuegoModal`, `CreateTournamentFlow`, filtros de ranking
+    (`RankingScreen`/`RankingPageView`), landing (`ClubesPageView`,
+    `EventosPageView`, `CoachesPageView`), `SolicitarClubScreenView`,
+    métricas/reportes. Pasarlos a `useEnabledSports()` para multisport ON completo.
+  - Falta control visual en `AdminConfigScreen` para el toggle
+    `multisport_enabled` (hoy se cambia por SQL).
 - [ ] **Cosmetics: self-service purchase flow** (Stage 4 de customización).
   Hoy fase 1 es admin grant manual tras pago manual. Falta UI en
   `/dashboard/user/personalizar` para que el user clickee "Comprar pack

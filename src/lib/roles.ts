@@ -49,9 +49,10 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Principal",
         items: [
-          { k: "home", label: "Inicio", icon: "layout-dashboard" },
+          { k: "home", label: "Inicio", icon: "home" },
           { k: "clubes", label: "Clubes", icon: "building-2" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
+          { k: "busco-partido", label: "Busco partido", icon: "swords" },
           { k: "eventos", label: "Eventos", icon: "trophy" },
         ],
       },

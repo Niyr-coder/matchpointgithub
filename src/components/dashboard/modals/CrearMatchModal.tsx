@@ -22,6 +22,7 @@ import { useToast } from "../ToastProvider";
 import { createMatch } from "@/server/actions/matches";
 import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
 import { RankedBadge } from "@/components/dashboard/widgets/RankedBadge";
+import { useEnabledSports } from "@/components/SportsProvider";
 
 type Sport = "pickleball" | "padel" | "tenis";
 type Mode = "singles" | "dobles" | "mixto";
@@ -497,51 +498,50 @@ const MODES: { k: Mode; t: string; sub: string }[] = [
 const LEVELS = ["Principiante", "2.5-3.0", "3.0-3.5", "3.5-4.0", "4.0-4.5", "4.5+"];
 
 function Step1({ form, set }: { form: Form; set: Setter }) {
+  const { sports: enabledDb, single } = useEnabledSports();
+  // Filtra los deportes del modal a los habilitados (mapea k local → db).
+  const visibleSports = SPORTS.filter((s) => enabledDb.includes(SPORT_TO_DB[s.k]));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {!single && (
       <div>
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Deporte
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          {SPORTS.map((s) => (
+          {visibleSports.map((s) => (
             <PickCard
               key={s.k}
               active={form.sport === s.k}
               accent
-              disabled={s.soon}
-              onClick={() => !s.soon && set("sport", s.k)}
+              onClick={() => set("sport", s.k)}
             >
-              <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8, opacity: s.soon ? 0.35 : 1 }}>
+              <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }}>
                 {s.i}
               </div>
               <div
                 className="font-heading"
-                style={{
-                  fontSize: 15,
-                  fontWeight: 900,
-                  letterSpacing: "-0.01em",
-                  opacity: s.soon ? 0.5 : 1,
-                }}
+                style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.01em" }}
               >
                 {s.t}
               </div>
               <div
                 style={{
                   fontSize: 10.5,
-                  color: s.soon ? "var(--muted-fg)" : "var(--primary)",
+                  color: "var(--primary)",
                   marginTop: 4,
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.12em",
                 }}
               >
-                {s.sub}
+                Disponible ahora
               </div>
             </PickCard>
           ))}
         </div>
       </div>
+      )}
       <div>
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Modalidad

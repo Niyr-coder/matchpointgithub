@@ -307,10 +307,12 @@ async function loadFriends(): Promise<FriendLite[]> {
 }
 
 export async function TeamScreen() {
-  const [team, publicTeams, friends] = await Promise.all([
+  const [team, publicTeams, friends, session] = await Promise.all([
     loadTeam(),
     loadPublicTeams(),
     loadFriends(),
+    getSession(),
   ]);
-  return <TeamScreenView team={team} publicTeams={publicTeams} friends={friends} />;
+  const meUserId = session.authenticated ? session.session.userId : null;
+  return <TeamScreenView team={team} publicTeams={publicTeams} friends={friends} meUserId={meUserId} />;
 }

@@ -65,6 +65,11 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `registration_rejected` | tournaments | jugadores del registration | `updateRegistrationStatus(rejected)` | 079 | ✅ |
 | `payment_proof_rejected` | pagos | customer_user_id de la tx | `rejectPaymentProofAdmin` | 079 | ✅ |
 | `plan_expiring_soon` | (sin categoría custom) | user con sub que vence ≤7d | cron diario `notify-expiring-plans` (mig 049) | 050 | ✅ |
+| `match_seek_applied` | matches | autor del aviso | `applyToMatchSeek` | 119 | ✅ |
+| `match_seek_accepted` | matches | postulante aceptado | `acceptApplicant` | 119 | ✅ |
+| `match_cancelled` | matches | resto de participantes | `cancelMatch` | 122 | ✅ |
+| `match_rescheduled` | matches | resto de participantes | `rescheduleMatch` | 122 | ✅ |
+| `match_no_show_reported` | matches | jugador reportado | `reportNoShow` (flag) | 124 | ✅ |
 
 ## 3. Render del dispatcher (cómo derivá title/body/link)
 

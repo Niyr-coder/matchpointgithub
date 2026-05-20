@@ -27,6 +27,7 @@ import { AmigosScreen } from "@/components/dashboard/user/AmigosScreen";
 import { ShopScreen } from "@/components/dashboard/user/ShopScreen";
 import { SolicitarClubScreen } from "@/components/dashboard/user/SolicitarClubScreen";
 import { TeamScreen } from "@/components/dashboard/user/TeamScreen";
+import { BuscoPartidoScreen } from "@/components/dashboard/user/BuscoPartidoScreen";
 import { AcademiaScreen } from "@/components/dashboard/user/AcademiaScreen";
 import { MisClasesScreen } from "@/components/dashboard/user/MisClasesScreen";
 import { MiPlanScreen } from "@/components/dashboard/user/MiPlanScreen";
@@ -95,6 +96,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     shop: () => <ShopScreen />,
     "solicitar-club": () => <SolicitarClubScreen />,
     team: () => <TeamScreen />,
+    "busco-partido": (sp) => <BuscoPartidoScreen searchParams={sp} />,
     academia: () => <AcademiaScreen />,
     "mis-clases": () => <MisClasesScreen />,
     "mi-plan": () => <MiPlanScreen />,

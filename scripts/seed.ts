@@ -118,6 +118,9 @@ async function wipeDemo() {
     await sb.from("reservations").delete().in("club_id", clubIds);
     await sb.from("walkins").delete().in("club_id", clubIds);
     await sb.from("check_ins").delete().in("club_id", clubIds);
+    // Featuring de clubes antes que transactions (FK transaction_id NO ACTION),
+    // sino quedan huérfanas en AdminPlans "featuring reciente".
+    await sb.from("club_featuring_subscriptions").delete().in("club_id", clubIds);
     await sb.from("transactions").delete().in("club_id", clubIds);
     await sb.from("cash_sessions").delete().in("club_id", clubIds);
     await sb.from("sales").delete().in("club_id", clubIds);
@@ -153,6 +156,12 @@ async function wipeDemo() {
       userIds.map((id) => `from_user_id.eq.${id},to_user_id.eq.${id}`).join(","),
     );
     await sb.from("player_stats").delete().in("user_id", userIds);
+    // Planes premium: NO cascadean siempre (el borrado por auth.admin /
+    // Studio puede bypassear el cascade y dejar player_subscriptions huérfanas
+    // → seguían saliendo en AdminPlans "historial reciente"). Borramos explícito.
+    // Orden: subs ANTES que transactions (FK transaction_id es NO ACTION).
+    await sb.from("player_subscriptions").delete().in("user_id", userIds);
+    await sb.from("transactions").delete().in("customer_user_id", userIds);
     await sb.from("role_assignments").delete().in("user_id", userIds);
   }
 

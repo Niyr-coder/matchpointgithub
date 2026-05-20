@@ -165,7 +165,32 @@ async function loadData(activeConvId: string | null) {
   }
 
   const activeConv = convos.find((c) => c.id === activeId) ?? null;
-  return { convos, messages, activeConv, meUserId: userId };
+
+  // Si la conversación activa es de un partido, traemos el estado del match
+  // para renderizar el action-bar (cancelar/reprogramar). El user es miembro
+  // de la conversación ⇒ participante del match (trigger mig 118).
+  let activeMatch: { matchId: string; status: string; playedAt: string } | null = null;
+  if (activeConv?.kind === "match" && activeId) {
+    // match_id de conversations no está en los Database types (mig 118) → loose.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: convRow } = await (supabase as any)
+      .from("conversations")
+      .select("match_id")
+      .eq("id", activeId)
+      .maybeSingle();
+    const matchId = (convRow as { match_id?: string | null } | null)?.match_id ?? null;
+    if (matchId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: m } = await (supabase as any)
+        .from("matches")
+        .select("id,status,played_at")
+        .eq("id", matchId)
+        .maybeSingle();
+      if (m) activeMatch = { matchId: m.id, status: m.status, playedAt: m.played_at };
+    }
+  }
+
+  return { convos, messages, activeConv, activeMatch, meUserId: userId };
 }
 
 export async function MensajesScreen({

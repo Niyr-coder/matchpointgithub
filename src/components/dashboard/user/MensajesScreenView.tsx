@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { markRead, sendMessage } from "@/server/actions/messaging";
+import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+
+export type ActiveMatch = { matchId: string; status: string; playedAt: string };
 
 export type ConvoLite = {
   id: string;
   name: string;
-  kind: "dm" | "group" | "support" | "club_channel" | "team_channel";
+  kind: "dm" | "group" | "support" | "club_channel" | "team_channel" | "match";
   isGroup: boolean;
   isSystem: boolean;
   // True cuando el "otro" del DM es el perfil oficial MatchPoint (is_system).
@@ -70,11 +73,13 @@ export function MensajesScreenView({
   convos,
   messages,
   activeConv,
+  activeMatch,
   meUserId,
 }: {
   convos: ConvoLite[];
   messages: MessageLite[];
   activeConv: ConvoLite | null;
+  activeMatch?: ActiveMatch | null;
   meUserId: string | null;
 }) {
   const [draft, setDraft] = useState("");
@@ -131,6 +136,7 @@ export function MensajesScreenView({
       ...(activeConv ? [{ table: "messages", filter: `conversation_id=eq.${activeConv.id}` }] : []),
       { table: "conversations" },
       ...(meUserId ? [{ table: "conversation_members", filter: `user_id=eq.${meUserId}` }] : []),
+      ...(activeMatch ? [{ table: "matches", filter: `id=eq.${activeMatch.matchId}` }] : []),
     ],
     { enabled: !!meUserId },
   );
@@ -484,6 +490,10 @@ export function MensajesScreenView({
               </button>
             </div>
 
+            {activeConv.kind === "match" && activeMatch && (
+              <MatchActionBar match={activeMatch} />
+            )}
+
             <div
               style={{
                 flex: 1,
@@ -696,3 +706,129 @@ export function MensajesScreenView({
     </div>
   );
 }
+
+// Barra de acciones del partido dentro de su chat: cancelar / reprogramar.
+// Cubre TODOS los matches (incluido el reto del RetarModal), no solo los de avisos.
+function MatchActionBar({ match }: { match: ActiveMatch }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, setPending] = useState(false);
+  const [reschedOpen, setReschedOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("19:00");
+
+  const canCancel = match.status === "scheduled" || match.status === "reported";
+  const canReschedule = match.status === "scheduled";
+
+  // Estados no accionables: solo mostramos una etiqueta de estado.
+  if (!canCancel && !canReschedule) {
+    const label =
+      match.status === "cancelled" ? "Partido cancelado" :
+      match.status === "confirmed" ? "Resultado confirmado" :
+      match.status === "disputed" ? "Resultado en disputa" : "Partido";
+    return (
+      <div style={matchBarStyle}>
+        <span style={{ fontSize: 11.5, color: "var(--muted-fg)", fontWeight: 700 }}>{label}</span>
+      </div>
+    );
+  }
+
+  const doCancel = () => {
+    setPending(true);
+    void cancelMatch({ matchId: match.matchId }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Partido cancelado" });
+      router.refresh();
+    });
+  };
+
+  const doReschedule = () => {
+    if (!date) {
+      toast({ icon: "alert-triangle", title: "Elige una fecha" });
+      return;
+    }
+    setPending(true);
+    const playedAt = new Date(`${date}T${time}:00`).toISOString();
+    void rescheduleMatch({ matchId: match.matchId, playedAt }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo reprogramar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Partido reprogramado" });
+      setReschedOpen(false);
+      router.refresh();
+    });
+  };
+
+  return (
+    <div style={{ ...matchBarStyle, flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 11.5, color: "var(--muted-fg)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="swords" size={13} color="var(--primary)" />
+          Partido agendado
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {canReschedule && (
+            <button
+              onClick={() => setReschedOpen((v) => !v)}
+              disabled={pending}
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 12px", fontSize: 11 }}
+            >
+              <Icon name="calendar-clock" size={12} />
+              Reprogramar
+            </button>
+          )}
+          <button
+            onClick={doCancel}
+            disabled={pending}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "#dc2626",
+              padding: "6px 12px",
+              borderRadius: 9999,
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: pending ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {pending ? "…" : "Cancelar partido"}
+          </button>
+        </div>
+      </div>
+      {reschedOpen && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={matchInputStyle} />
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...matchInputStyle, maxWidth: 110 }} />
+          <button className="btn btn-primary" disabled={pending} onClick={doReschedule} style={{ padding: "7px 14px", fontSize: 11 }}>
+            {pending ? "…" : "Guardar"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const matchBarStyle: React.CSSProperties = {
+  padding: "10px 22px",
+  borderBottom: "1px solid var(--border)",
+  background: "#fff",
+  display: "flex",
+  alignItems: "center",
+};
+
+const matchInputStyle: React.CSSProperties = {
+  padding: "7px 10px",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  fontSize: 12,
+  fontFamily: "inherit",
+  background: "var(--muted)",
+};

@@ -2258,6 +2258,58 @@ mantener la fórmula como fallback inicial; una vez que el team tenga
 matches propios, `team_stats.current_rating` se actualiza vía trigger
 (análogo a `tg_update_player_stats` que ya existe para player matches).
 
+### 29.17 · Busco partido / match seeks (migs 117–120)
+
+Tablón LFG. Ver doc de producto `docs/product/03-match-seeks.md`.
+
+- **`match_seeks`** (mig 117): `created_by`, `sport`, `mode` (reusa
+  `mp_match_mode`), `partner_id` (obligatorio en doubles vía check
+  `match_seeks_partner_by_mode`), `city` (snapshot del autor), `club_id`,
+  `skill_min`/`skill_max numeric(3,1)`, `ranked`, `window_start`/`window_end`,
+  `notes`, `status mp_match_seek_status` (`open|matched|expired|cancelled`),
+  `match_id` (FK al match creado), `expires_at`. Trigger `tg_set_updated_at`.
+- **`match_seek_applications`** (mig 117): `seek_id`, `applicant_id`,
+  `partner_id`, `status` (`pending|accepted|rejected|withdrawn`), `message`.
+  Unique `(seek_id, applicant_id)`.
+- **RLS**: patrón espejo de `team_join_requests` — seek `open` legible por
+  todos, mutado solo por `created_by` o admin; aplicación legible por
+  applicant/partner/owner-del-seek.
+- **Audit**: `tg_audit` en ambas tablas.
+- **Chat (mig 118)**: `conversations.kind` suma `'match'` + columna
+  `match_id` (FK cascade). Trigger `fn_create_match_channel` AFTER INSERT on
+  `matches` crea la conversación y suma a todos los `team_a/team_b` player_ids.
+  Aplica a **todos** los matches, no solo los del tablón.
+- **Notif (mig 119)**: kinds `match_seek_applied`, `match_seek_accepted`
+  (categoría `matches`) + branch en `fn_dispatch_inapp_notifications`.
+- **Flag/config (mig 120)**: `feature_flags.match_seeks_enabled` (default
+  false); `platform_config.match_seek_expiry_days` (7) y
+  `match_seek_max_open_per_user` (5).
+
+### 29.18 · Ciclo de vida de matches (migs 121–122)
+
+Ver `docs/product/04-matches-lifecycle.md`.
+
+- **`matches`** (mig 121): `+cancelled_by`, `+cancelled_reason`,
+  `+cancelled_at`. Sumada al publication realtime.
+- **Actions** (`matches.ts`): `cancelMatch` (status→cancelled, notif, reabre el
+  `match_seek` de origen vía service role si no expiró), `rescheduleMatch`
+  (update `played_at` + notif). `acceptApplicant` (match-seeks) **dejó de
+  auto-rechazar**: los demás postulantes quedan `pending`.
+- **Notif** (mig 122): `match_cancelled`, `match_rescheduled` + branches en
+  el dispatcher (link al chat del partido vía `conversation_id`).
+
+### 29.19 · No-show + fiabilidad (mig 124, flag OFF)
+
+Ver `docs/product/04-matches-lifecycle.md`. Detrás de `match_reliability_enabled`.
+
+- **`player_reliability`** (`user_id` PK, `no_shows`, `cancellations`) — score
+  computado en `src/lib/reliability.ts`. SELECT público (badge), write admin.
+- **`match_no_shows`** (`match_id`, `reported_by`, `no_show_user_id`) — unique
+  por reporter+match+no-show, check no-self. SELECT participantes/admin, insert
+  admin-only (la action `reportNoShow` usa service role tras validar).
+- **Notif** `match_no_show_reported` + branch dispatcher.
+- Ambas con `tg_audit`.
+
 ---
 
 ## Próximo: `30-rls.md`

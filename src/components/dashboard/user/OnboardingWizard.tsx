@@ -11,6 +11,7 @@ import { Icon } from "@/components/Icon";
 import { listFeaturedClubs } from "@/server/actions/clubs";
 import { completeOnboarding } from "@/server/actions/me";
 import { useToast } from "../ToastProvider";
+import { useEnabledSports } from "@/components/SportsProvider";
 
 type Step = 1 | 2 | 3;
 type Sport = "padel" | "tennis" | "pickleball";
@@ -46,9 +47,11 @@ export function OnboardingWizard({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { single: singleSport } = useEnabledSports();
   const [step, setStep] = useState<Step>(1);
   const [city, setCity] = useState(defaultCity ?? "");
-  const [sport, setSport] = useState<Sport | null>(null);
+  // Si solo hay un deporte (pickleball), se preselecciona y la pregunta se oculta.
+  const [sport, setSport] = useState<Sport | null>(singleSport ? "pickleball" : null);
   const [level, setLevel] = useState<SkillLevel | null>(null);
   const [suggestions, setSuggestions] = useState<ClubSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -224,6 +227,8 @@ function Step1({
   level: SkillLevel | null;
   setLevel: (l: SkillLevel) => void;
 }) {
+  const { sports } = useEnabledSports();
+  const enabledSportSet = new Set<Sport>(sports);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.5 }}>
@@ -241,29 +246,31 @@ function Step1({
         />
       </div>
 
-      <div>
-        <label style={labelStyle}>¿Cuál es tu deporte principal?</label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {SPORTS.map((s) => {
-            const on = sport === s.value;
-            return (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => setSport(s.value)}
-                style={{
-                  ...pickerCard,
-                  borderColor: on ? "var(--primary)" : "var(--border)",
-                  background: on ? "#ecfdf5" : "#fff",
-                }}
-              >
-                <Icon name={s.icon} size={20} color={on ? "var(--primary)" : "var(--fg)"} />
-                <span style={{ fontSize: 12, fontWeight: 800, marginTop: 6 }}>{s.label}</span>
-              </button>
-            );
-          })}
+      {enabledSportSet.size > 1 && (
+        <div>
+          <label style={labelStyle}>¿Cuál es tu deporte principal?</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {SPORTS.filter((s) => enabledSportSet.has(s.value)).map((s) => {
+              const on = sport === s.value;
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setSport(s.value)}
+                  style={{
+                    ...pickerCard,
+                    borderColor: on ? "var(--primary)" : "var(--border)",
+                    background: on ? "#ecfdf5" : "#fff",
+                  }}
+                >
+                  <Icon name={s.icon} size={20} color={on ? "var(--primary)" : "var(--fg)"} />
+                  <span style={{ fontSize: 12, fontWeight: 800, marginTop: 6 }}>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label style={labelStyle}>¿Tu nivel?</label>

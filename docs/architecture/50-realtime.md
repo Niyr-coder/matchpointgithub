@@ -357,6 +357,9 @@ funcione, la tabla debe estar en el publication `supabase_realtime`.
 | `tournament_categories` | Panel gestión torneo (edits concurrentes) | 078 |
 | `tournament_schedule_blocks` | Panel gestión torneo | 078 |
 | `tournament_prizes` | Panel gestión torneo | 078 |
+| `match_seeks` | BuscoPartido feed + mis avisos | 117 |
+| `match_seek_applications` | BuscoPartido (postulantes en vivo) | 117 |
+| `matches` | chat del partido + Mis avisos (cancel/reschedule en vivo) | 121 |
 
 **Para sumar una tabla nueva**:
 
