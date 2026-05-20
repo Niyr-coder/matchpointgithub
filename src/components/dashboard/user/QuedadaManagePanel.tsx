@@ -1160,9 +1160,13 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const courts = data.quedada.courts_count ?? 0;
-  const [numGroups, setNumGroups] = useState(String(courts > 0 ? Math.min(courts, 8) : 1));
   const [open, setOpen] = useState(true);
   const [round, setRound] = useState<number | null>(null);
+
+  // El nº de grupos se CALCULA (1 por cancha, cada grupo ≥2 parejas). No se elige.
+  const pairCount = data.pairs.filter((p) => p.category_id === category.id).length;
+  const autoGroups = Math.max(1, Math.min(courts > 0 ? courts : 1, Math.floor(pairCount / 2)));
+  const perGroup = autoGroups > 0 ? Math.ceil(pairCount / autoGroups) : 0;
 
   const pairLabel = usePairLabeler(data, category.id);
   const matches = data.matches.filter((m) => m.category_id === category.id);
@@ -1175,7 +1179,7 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
 
   const doGenerate = () => {
     startTx(async () => {
-      const res = await generateGroupStage({ quedadaId: data.quedada.id, categoryId: category.id, numGroups: parseInt(numGroups || "1", 10) });
+      const res = await generateGroupStage({ quedadaId: data.quedada.id, categoryId: category.id });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo generar", sub: res.error.message });
         return;
@@ -1224,19 +1228,25 @@ function CategoryMatches({ data, category, onChanged }: { data: ManageData; cate
       {open && (
         <div style={{ marginTop: 12 }}>
           {!hasMatches ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
-              <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
-                Reparte las parejas <b>al azar</b> en grupos (round robin por grupo). {courts > 0 ? `Cada grupo va a una cancha (tienes ${courts}).` : "Define las canchas en Configurar para asignarlas."}
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
-                  Grupos
-                  <input type="number" min={1} max={16} value={numGroups} onChange={(e) => setNumGroups(e.target.value)} style={{ ...fieldInput, width: 64 }} />
-                </label>
-                <button type="button" onClick={doGenerate} className="btn btn-primary">
-                  <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
-                </button>
-              </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
+              {pairCount < 2 ? (
+                <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>Asigna al menos 2 parejas a esta categoría (pestaña Parejas) para armar la fase de grupos.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
+                    Las {pairCount} parejas se reparten <b>al azar</b>. {courts > 0 ? `Con ${courts} cancha${courts === 1 ? "" : "s"}:` : "Sin canchas definidas (Configurar):"}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}>
+                      <span className="font-heading tabular" style={{ fontSize: 28, fontWeight: 900, color: "var(--fg)" }}>{autoGroups}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted-fg)" }}>{autoGroups === 1 ? "grupo" : "grupos"} · ~{perGroup} parejas c/u{courts > 0 && autoGroups <= courts ? " · 1 por cancha" : ""}</span>
+                    </div>
+                    <button type="button" onClick={doGenerate} className="btn btn-primary" style={{ marginLeft: "auto" }}>
+                      <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <>

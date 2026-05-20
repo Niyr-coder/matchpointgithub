@@ -773,7 +773,7 @@ export async function generateRoundRobin(input: unknown): Promise<ActionResult<{
 }
 
 export async function generateGroupStage(input: unknown): Promise<ActionResult<{ created: number; groups: number }>> {
-  return runAction(GenerateGroupStageSchema, input, async ({ quedadaId, categoryId, numGroups }) => {
+  return runAction(GenerateGroupStageSchema, input, async ({ quedadaId, categoryId }) => {
     await requireUserId();
     const supabase = await getServerClient();
     const { data: q } = await supabase.from("quedadas").select("courts_count").eq("id", quedadaId).maybeSingle();
@@ -783,7 +783,9 @@ export async function generateGroupStage(input: unknown): Promise<ActionResult<{
     const ids = (pairs ?? []).map((p) => p.id as string);
     if (ids.length < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_PAIRS", "Necesitas al menos 2 parejas asignadas", 400);
 
-    const ng = Math.max(1, Math.min(numGroups, ids.length));
+    // Nº de grupos = matemático: 1 grupo por cancha, pero cada grupo con ≥2
+    // parejas (floor(parejas/2)). Sin canchas definidas → un solo grupo.
+    const ng = Math.max(1, Math.min(courts > 0 ? courts : 1, Math.floor(ids.length / 2)));
     // Shuffle (al azar — anti-arreglo de partidos).
     for (let i = ids.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
