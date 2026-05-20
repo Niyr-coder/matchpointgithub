@@ -133,12 +133,61 @@ function quedadaStatusMeta(status: string): { label: string; bg: string; fg: str
   }
 }
 
+// Barra de skeleton (pulse). Keyframe propio `qmpSk` para no chocar con el
+// `mpSkeleton` global. `dark` = sobre el header con gradiente.
+function SkBar({ w = "100%", h, r = 8, dark = false }: { w?: number | string; h: number; r?: number; dark?: boolean }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        width: w,
+        height: h,
+        borderRadius: r,
+        background: dark ? "rgba(255,255,255,0.18)" : "var(--muted)",
+        animation: "qmpSk 1.4s ease-in-out infinite",
+      }}
+    />
+  );
+}
+
 function StatChip({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
       <div className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: "#fff" }}>{value}</div>
       <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.62)", marginTop: 4 }}>{label}</div>
     </div>
+  );
+}
+
+// Skeleton del body mientras carga (espejo aproximado del tab Resumen).
+function ManageSkeleton() {
+  return (
+    <>
+      <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 12 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} style={{ display: "flex", gap: 9 }}>
+              <SkBar w={30} h={30} r={8} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <SkBar w="50%" h={8} r={4} />
+                <SkBar w="80%" h={12} r={5} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <SkBar w="92%" h={10} r={5} />
+        <SkBar w="68%" h={10} r={5} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px,1fr))", gap: 18 }}>
+        {[0, 1].map((i) => (
+          <div key={i} className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <SkBar w={140} h={14} r={6} />
+            <SkBar h={44} r={10} />
+            <SkBar w="60%" h={12} r={5} />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -264,16 +313,23 @@ export function QuedadaManagePanel({
         <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
         {isPage ? "Volver" : null}
       </button>
+      <style>{`@keyframes qmpSk{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       <div className="label-mp" style={{ color: "var(--primary)" }}>
         ● Gestión · Quedada
       </div>
-      <h2
-        className="font-heading"
-        style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
-      >
-        {q ? q.title : loading ? "Cargando…" : "Quedada"}
-      </h2>
-      {q && (
+      {q ? (
+        <h2
+          className="font-heading"
+          style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
+        >
+          {q.title}
+        </h2>
+      ) : (
+        <div style={{ margin: "10px 0 0" }}>
+          <SkBar w={260} h={24} r={8} dark />
+        </div>
+      )}
+      {q ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "rgba(255,255,255,0.82)" }}>
           {sm && (
             <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: sm.bg, color: sm.fg }}>
@@ -285,20 +341,40 @@ export function QuedadaManagePanel({
             {data?.isCreator ? "Organizador" : "Co-host"}
           </span>
         </div>
-      )}
-      {q && (
-        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-          <StatChip label="Inscritos" value={String(joinedCount)} />
-          <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
-          <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
-          <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <SkBar w={200} h={12} r={6} dark />
         </div>
       )}
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+        {q ? (
+          <>
+            <StatChip label="Inscritos" value={String(joinedCount)} />
+            <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
+            <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+            <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
+          </>
+        ) : (
+          [0, 1, 2, 3].map((i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
+              <SkBar w={36} h={18} r={5} dark />
+              <div style={{ marginTop: 6 }}>
+                <SkBar w={54} h={8} r={4} dark />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 
-  const tabsBar =
-    !loading && data && data.canManage ? (
+  const tabsBar = loading ? (
+    <div style={{ display: "flex", gap: 16, padding: "13px 14px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0 }}>
+      {[60, 56, 48, 70].map((w, i) => (
+        <SkBar key={i} w={w} h={14} r={6} />
+      ))}
+    </div>
+  ) : data && data.canManage ? (
       <div style={{ display: "flex", gap: 2, padding: "0 12px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0, overflowX: "auto" }}>
         {tabs.map((t) => {
           const on = t.k === activeTab;
@@ -338,11 +414,7 @@ export function QuedadaManagePanel({
           : { flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 18 }
       }
     >
-      {loading && (
-        <div style={{ padding: 24, textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
-          Cargando datos de la quedada…
-        </div>
-      )}
+      {loading && <ManageSkeleton />}
       {!loading && loadError && (
         <div className="card" style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}>
           No se pudo cargar la gestión: {loadError}
