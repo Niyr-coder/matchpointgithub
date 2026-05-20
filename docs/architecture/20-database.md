@@ -2360,6 +2360,15 @@ clase `.btn-accent` (`filter: brightness`, gateado a `pointer:fine`) porque el
 `background` inline tapa el `:hover` de `.btn-primary`. Catálogo total de
 temas: 14 (1 free + 6 mp_plus + 7 packs).
 
+**Activar/desactivar temas (mig 129)**: tabla `theme_settings(key, active)` que
+guarda SOLO overrides — **ausencia de fila = activo** (agregar un tema en código
+queda activo sin seed). Lectura pública (el picker oculta los inactivos vía
+`getInactiveThemeKeys`), escritura admin. Action `setThemeActive(key, active)`
+(`admin/cosmetics.ts`, con `setAuditActor`): al **desactivar** es hard-kill —
+revierte a Clásico (3 columnas null) a todos los perfiles que lo usen. `setTheme`
+rechaza temas inactivos (`PROFILE.THEME_INACTIVE`). `default` no se desactiva. UI:
+sección "Temas" en `AdminCosmeticsScreen`.
+
 ---
 
 ## Próximo: `30-rls.md`

@@ -47,11 +47,13 @@ export function PersonalizacionScreenClient({
   initial,
   myGrants,
   bundles,
+  inactiveThemes = [],
 }: {
   isPremium: boolean;
   initial: InitialState | null;
   myGrants: string[];
   bundles: BundleCatalogRow[];
+  inactiveThemes?: string[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -60,6 +62,9 @@ export function PersonalizacionScreenClient({
   const myGrantsSet = new Set(myGrants);
   const ownArgs = { isPremium, myGrants: myGrantsSet };
   const bundleByKey = new Map(bundles.map((b) => [b.key, b]));
+  // Temas desactivados por admin: se ocultan del picker (mig 129).
+  const inactiveSet = new Set(inactiveThemes);
+  const visibleThemes = PROFILE_THEMES_BY_RARITY.filter((t) => !inactiveSet.has(t.key));
 
   // Tema activo: matchea el estado actual; si es un combo viejo no-temático
   // (no debería tras la migración 126), cae a 'default'.
@@ -163,7 +168,7 @@ export function PersonalizacionScreenClient({
             gap: 12,
           }}
         >
-          {PROFILE_THEMES_BY_RARITY.map((t) => (
+          {visibleThemes.map((t) => (
             <ThemeCard
               key={t.key}
               theme={t}

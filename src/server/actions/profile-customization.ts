@@ -25,6 +25,7 @@ import {
   themeColumns,
 } from "@/lib/profile/customization-presets";
 import { canUsePreset } from "@/lib/profile/bundles";
+import { getInactiveThemeKeys } from "@/lib/profile/theme-settings.server";
 
 const PresetKeySchema = z
   .string()
@@ -61,6 +62,13 @@ export async function setTheme(input: unknown): Promise<ActionResult<{ ok: true 
 
     const t = findTheme(theme);
     if (!t) throw new MpError("PROFILE.THEME_INVALID", "Tema no válido", 422);
+
+    // Tema desactivado por admin (theme_settings, mig 129). 'default' nunca se
+    // desactiva, así que no hace falta exceptuarlo acá.
+    const inactive = await getInactiveThemeKeys(supabase);
+    if (inactive.has(t.key)) {
+      throw new MpError("PROFILE.THEME_INACTIVE", "Este tema no está disponible", 409);
+    }
 
     // 'free' (Clásico) siempre disponible; el resto requiere ownership.
     if (t.bundleKey !== "free") {

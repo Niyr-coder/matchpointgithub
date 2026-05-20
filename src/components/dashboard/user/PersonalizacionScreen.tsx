@@ -4,6 +4,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getServerClient } from "@/lib/db/client.server";
 import { getPlanForUser } from "@/lib/auth/plan";
+import { getInactiveThemeKeys } from "@/lib/profile/theme-settings.server";
 import { PersonalizacionScreenClient } from "./PersonalizacionScreenClient";
 
 export type BundleCatalogRow = {
@@ -22,13 +23,14 @@ export async function PersonalizacionScreen() {
         initial={null}
         myGrants={[]}
         bundles={[]}
+        inactiveThemes={[]}
       />
     );
   }
   const userId = session.session.userId;
   const supabase = await getServerClient();
 
-  const [plan, profileRes, grantsRes, bundlesRes] = await Promise.all([
+  const [plan, profileRes, grantsRes, bundlesRes, inactiveThemes] = await Promise.all([
     getPlanForUser(supabase, userId),
     supabase
       .from("profiles")
@@ -44,6 +46,7 @@ export async function PersonalizacionScreen() {
       .select("key,label,description,price_cents,active,sort_order")
       .eq("active", true)
       .order("sort_order", { ascending: true }),
+    getInactiveThemeKeys(supabase),
   ]);
 
   const row = (profileRes.data ?? {}) as {
@@ -78,6 +81,7 @@ export async function PersonalizacionScreen() {
       }}
       myGrants={myGrants}
       bundles={bundles}
+      inactiveThemes={[...inactiveThemes]}
     />
   );
 }

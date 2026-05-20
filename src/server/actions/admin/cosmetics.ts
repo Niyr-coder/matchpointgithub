@@ -203,3 +203,58 @@ export async function searchUsersForCosmetics(
     }));
   });
 }
+
+// ── setThemeActive ─────────────────────────────────────────────────────────
+// Activa/desactiva un tema (tabla theme_settings, mig 129). Desactivar es un
+// hard-kill: además de marcar inactive, revierte a Clásico (3 columnas null) a
+// todos los perfiles que lo tengan aplicado. 'default' (Clásico) no se toca.
+const SetThemeActiveSchema = z.object({
+  key: z.string().trim().min(1).max(40),
+  active: z.boolean(),
+});
+
+export async function setThemeActive(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetThemeActiveSchema, input, async ({ key, active }) => {
+    if (key === "default") {
+      throw new MpError("COSMETICS.THEME_PROTECTED", "El tema Clásico no se puede desactivar", 400);
+    }
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: upErr } = await (admin as any)
+      .from("theme_settings")
+      .upsert({ key, active, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (upErr) throw new MpError("COSMETICS.DB_ERROR", upErr.message, 500);
+
+    // Hard-kill: revertir a Clásico a quien lo tenga puesto (themeColumns escribe
+    // la key en las 3 columnas; basta matchear accent_color).
+    if (!active) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: revErr } = await (admin as any)
+        .from("profiles")
+        .update({ accent_color: null, card_style: null, banner_preset: null })
+        .eq("accent_color", key)
+        .eq("is_system", false);
+      if (revErr) throw new MpError("COSMETICS.DB_ERROR", revErr.message, 500);
+    }
+    return { ok: true as const };
+  });
+}
+
+// ── listInactiveThemes ───────────────────────────────────────────────────────
+// Para la UI admin: keys de temas actualmente inactivos.
+export async function listInactiveThemes(): Promise<ActionResult<string[]>> {
+  return runAction(z.object({}).optional(), undefined, async () => {
+    await requireAdminUserId();
+    const admin = getAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin as any)
+      .from("theme_settings")
+      .select("key")
+      .eq("active", false);
+    if (error) throw new MpError("COSMETICS.DB_ERROR", error.message, 500);
+    return ((data ?? []) as Array<{ key: string }>).map((r) => r.key);
+  });
+}

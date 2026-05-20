@@ -4,7 +4,7 @@
 // via setAuditActor en la server action.
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
@@ -13,10 +13,13 @@ import {
   revokeBundleFromUser,
   listGrantsForUser,
   searchUsersForCosmetics,
+  setThemeActive,
+  listInactiveThemes,
   type CosmeticGrantRow,
   type CosmeticUserSearchRow,
 } from "@/server/actions/admin/cosmetics";
 import { FALLBACK_BUNDLES, priceLabel } from "@/lib/profile/bundles";
+import { PROFILE_THEMES_BY_RARITY, rarityOf, RARITY_META } from "@/lib/profile/customization-presets";
 
 export function AdminCosmeticsScreen() {
   const toast = useToast();
@@ -295,7 +298,132 @@ export function AdminCosmeticsScreen() {
           </div>
         </>
       )}
+
+      <ThemesAdminSection />
     </main>
+  );
+}
+
+// ── Sección: activar/desactivar temas ───────────────────────────────────────
+// Desactivar es hard-kill: revierte a Clásico a todos los que lo usan (lo
+// maneja setThemeActive en server). 'default' (Clásico) no se lista.
+function ThemesAdminSection() {
+  const toast = useToast();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [inactive, setInactive] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    listInactiveThemes().then((r) => {
+      if (alive && r.ok) setInactive(new Set(r.data));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const toggle = (key: string, label: string, nextActive: boolean) => {
+    if (pending || inactive === null) return;
+    if (!nextActive && !confirm(`¿Desactivar "${label}"? Quien lo tenga puesto volverá a Clásico.`)) return;
+    startTransition(async () => {
+      const r = await setThemeActive({ key, active: nextActive });
+      if (!r.ok) {
+        toast({ icon: "alert-triangle", title: r.error.message });
+        return;
+      }
+      setInactive((prev) => {
+        const next = new Set(prev ?? []);
+        if (nextActive) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      toast({ icon: "check", title: nextActive ? `"${label}" activado` : `"${label}" desactivado` });
+      router.refresh();
+    });
+  };
+
+  const themes = PROFILE_THEMES_BY_RARITY.filter((t) => t.key !== "default");
+
+  return (
+    <div className="card" style={{ padding: 18, marginTop: 18 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 900,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "var(--muted-fg)",
+          marginBottom: 4,
+        }}
+      >
+        Temas
+      </div>
+      <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 12px" }}>
+        Activa o desactiva temas del catálogo. Desactivar lo quita del picker y revierte a Clásico a
+        quien lo tenga aplicado.
+      </p>
+      {inactive === null ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando temas…</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {themes.map((t) => {
+            const r = RARITY_META[rarityOf(t.key)];
+            const isActive = !inactive.has(t.key);
+            return (
+              <div
+                key={t.key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: isActive ? "#fff" : "#fafafa",
+                  opacity: isActive ? 1 : 0.7,
+                }}
+              >
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13 }}>{t.label}</span>
+                  <span
+                    style={{
+                      fontSize: 8.5,
+                      fontWeight: 900,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      padding: "2px 7px",
+                      borderRadius: 6,
+                      background: r.color,
+                      color: "#fff",
+                    }}
+                  >
+                    {r.label}
+                  </span>
+                  {t.bundleKey !== "free" && (
+                    <span style={{ fontSize: 10, color: "var(--muted-fg)" }}>
+                      {t.bundleKey === "mp_plus" ? "MP+" : t.bundleKey}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => toggle(t.key, t.label, !isActive)}
+                  disabled={pending}
+                  className="btn"
+                  style={
+                    isActive
+                      ? { background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "7px 14px" }
+                      : { background: "#0a0a0a", color: "#fff", padding: "7px 14px" }
+                  }
+                >
+                  {isActive ? "Desactivar" : "Activar"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
