@@ -1216,7 +1216,7 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
       } else {
         const msg =
           res.error.code === "TEAMS.RENAME_LIMIT_REACHED"
-            ? "Alcanzaste el máximo de cambios de nombre. Activa MatchPoint+ para más."
+            ? "Alcanzaste el máximo de cambios de nombre. Activa MATCHPOINT+ para más."
             : res.error.message;
         toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: msg });
       }
@@ -1298,7 +1298,7 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
           const renameCount = team.renameCount;
           const renameExhausted = renameCount >= renamesMax;
           const renameHint = renameExhausted
-            ? "Alcanzaste el máximo. Activa MatchPoint+ para más cambios."
+            ? "Alcanzaste el máximo. Activa MATCHPOINT+ para más cambios."
             : `${renameCount}/${renamesMax} cambios usados`;
           return (
             <Field label="Nombre" required hint={renameHint}>
@@ -1632,7 +1632,7 @@ function TeamInvite({
           res.error.code === "TEAMS.ALREADY_INVITED"
             ? "Ya tiene una invitación pendiente"
             : res.error.code === "TEAMS.ROSTER_LIMIT_REACHED"
-            ? "El roster está lleno. Activa MatchPoint+ para más cupos."
+            ? "El roster está lleno. Activa MATCHPOINT+ para más cupos."
             : res.error.code === "TEAMS.INVITES_LIMIT_REACHED"
             ? "Llegaste al máximo de invitaciones pendientes."
             : res.error.code === "TEAMS.ALREADY_CAPTAIN"
@@ -2100,7 +2100,7 @@ function TeamInvite({
               {rosterFull
                 ? "Roster lleno. No puedes sumar más miembros."
                 : team.captainPlanTier === "free"
-                ? `Te quedan ${rosterMax - team.members.length} cupos. Activa MatchPoint+ para 24 miembros.`
+                ? `Te quedan ${rosterMax - team.members.length} cupos. Activa MATCHPOINT+ para 24 miembros.`
                 : `Te quedan ${rosterMax - team.members.length} cupos.`}
             </div>
             {team.captainPlanTier === "free" && (
@@ -2117,7 +2117,7 @@ function TeamInvite({
                   textDecoration: "none",
                 }}
               >
-                Activa MatchPoint+ →
+                Activa MATCHPOINT+ →
               </a>
             )}
           </div>
@@ -2654,7 +2654,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <Icon name="zap" size={13} color="#92400e" />
-                Activa MatchPoint+ para 24 miembros
+                Activa MATCHPOINT+ para 24 miembros
               </span>
               <span style={{ color: "#92400e" }}>→</span>
             </a>
@@ -2933,7 +2933,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               }}
             >
               <Icon name="zap" size={12} color="#92400e" />
-              Activa MatchPoint+
+              Activa MATCHPOINT+
             </a>
           )}
         </div>

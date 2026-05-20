@@ -85,7 +85,7 @@ export async function setTheme(input: unknown): Promise<ActionResult<{ ok: true 
       if (!canUsePreset(t.bundleKey, { isPremium, myGrants })) {
         // Cualquier tema no-free requiere MP+ activo primero.
         if (!isPremium) {
-          throw new MpError("PROFILE.PREMIUM_REQUIRED", "Este tema requiere MatchPoint+", 402);
+          throw new MpError("PROFILE.PREMIUM_REQUIRED", "Este tema requiere MATCHPOINT+", 402);
         }
         // MP+ activo pero falta el grant del pack.
         throw new MpError("PROFILE.PRESET_LOCKED", `Este tema requiere desbloquear ${t.bundleKey}`, 403);
@@ -136,7 +136,7 @@ export async function setProfileCustomization(
     ) {
       if (canUsePreset(bundleKey, { isPremium, myGrants })) return;
       if (bundleKey === "mp_plus") {
-        fields[kind] = ["Requiere MatchPoint+ activo"];
+        fields[kind] = ["Requiere MATCHPOINT+ activo"];
       } else {
         fields[kind] = [`Requiere desbloquear ${bundleKey}`];
       }
@@ -169,12 +169,12 @@ export async function setProfileCustomization(
       // Si el único motivo de fallo es "requiere MP+" en TODOS los campos
       // intentados, devolver PREMIUM_REQUIRED (más actionable que VALIDATION).
       const allMpPlus = Object.values(fields).every((arr) =>
-        arr[0]?.includes("MatchPoint+"),
+        arr[0]?.includes("MATCHPOINT+"),
       );
       if (allMpPlus) {
         throw new MpError(
           "PROFILE.PREMIUM_REQUIRED",
-          "La customización de perfil requiere MatchPoint+",
+          "La customización de perfil requiere MATCHPOINT+",
           402,
           fields,
         );

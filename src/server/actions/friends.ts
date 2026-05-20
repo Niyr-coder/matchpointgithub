@@ -226,7 +226,7 @@ export type PlayerSearchResult = {
   // badge verified + CTA "Ir al chat" en vez de "Enviar solicitud" — no
   // se puede ser "amigo" de una cuenta oficial.
   isOfficial: boolean;
-  // True si tiene MatchPoint+ activo. Muestra badge dorado en la card.
+  // True si tiene MATCHPOINT+ activo. Muestra badge dorado en la card.
   isPremium: boolean;
   // Relación con el viewer:
   //   none           — nada, puede enviar request

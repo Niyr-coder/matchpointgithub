@@ -40,7 +40,7 @@ function fmtDate(iso: string | null): string {
 
 const TIER_LABEL: Record<string, string> = {
   free: "Free",
-  premium: "MatchPoint+",
+  premium: "MATCHPOINT+",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -207,7 +207,7 @@ export function MiPlanScreenView({
               }}
             >
               <Icon name="zap" size={14} color="#fff" />
-              {pending ? "Procesando…" : "Activar MatchPoint+ · USD 5/mes"}
+              {pending ? "Procesando…" : "Activar MATCHPOINT+ · USD 5/mes"}
             </button>
           )}
           <div
@@ -349,7 +349,7 @@ export function MiPlanScreenView({
 }
 
 // ── Beneficios ─────────────────────────────────────────────────────────
-// Lista de features gateadas detrás de MatchPoint+. Teams es la primera
+// Lista de features gateadas detrás de MATCHPOINT+. Teams es la primera
 // con caps reales (migration 102). El resto son placeholders honestos
 // ("Próximamente") hasta que se implementen.
 type BenefitRow = {
@@ -405,7 +405,7 @@ function BenefitsSection({ isPremium }: { isPremium: boolean }) {
           margin: "4px 0 14px",
         }}
       >
-        Qué incluye MatchPoint+<span className="dot">.</span>
+        Qué incluye MATCHPOINT+<span className="dot">.</span>
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {BENEFITS.map((cat) => (
@@ -508,7 +508,7 @@ function BenefitCard({
                 textAlign: "right",
                 minWidth: 56,
               }}
-              title="MatchPoint+"
+              title="MATCHPOINT+"
             >
               {row.premium}
             </div>

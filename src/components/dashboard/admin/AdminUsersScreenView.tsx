@@ -1,5 +1,5 @@
 // Client view de AdminUsersScreen. Muestra la lista de usuarios con su plan
-// (Free / MatchPoint+) y permite al admin activar o revocar el plan en un
+// (Free / MATCHPOINT+) y permite al admin activar o revocar el plan en un
 // solo click sin pasar por el flujo de comprobantes.
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -152,7 +152,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
             }}
           >
             <Icon name="crown" size={9} color="#047857" />
-            MatchPoint+
+            MATCHPOINT+
           </span>
         ) : (
           <span
@@ -318,7 +318,7 @@ function RowMenu({
             {user.planTier === "free" ? (
               <MenuItem
                 icon="crown"
-                label="Activar MatchPoint+"
+                label="Activar MATCHPOINT+"
                 onClick={() => {
                   setOpen(false);
                   onGrant();
@@ -328,7 +328,7 @@ function RowMenu({
               <>
                 <MenuItem
                   icon="rotate-cw"
-                  label="Extender MatchPoint+"
+                  label="Extender MATCHPOINT+"
                   onClick={() => {
                     setOpen(false);
                     onGrant();
@@ -337,7 +337,7 @@ function RowMenu({
                 <MenuItem
                   icon="x-circle"
                   danger
-                  label="Revocar MatchPoint+"
+                  label="Revocar MATCHPOINT+"
                   onClick={() => {
                     setOpen(false);
                     onRevoke();
@@ -414,7 +414,7 @@ function GrantPlusDialog({
       if (res.ok) {
         toast({
           icon: "check-circle-2",
-          title: "MatchPoint+ activado",
+          title: "MATCHPOINT+ activado",
           sub: `Vence: ${fmtExpiry(res.data.expiresAt)}`,
         });
         onClose();
@@ -433,7 +433,7 @@ function GrantPlusDialog({
         className="font-heading"
         style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
       >
-        {extending ? "Extender" : "Activar"} MatchPoint+ para {user.n}
+        {extending ? "Extender" : "Activar"} MATCHPOINT+ para {user.n}
       </h3>
       <p
         style={{ margin: "8px 0 16px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}
@@ -515,7 +515,7 @@ function RevokePlusDialog({
         reason: reason.trim(),
       });
       if (res.ok) {
-        toast({ icon: "check", title: "MatchPoint+ revocado" });
+        toast({ icon: "check", title: "MATCHPOINT+ revocado" });
         onClose();
         router.refresh();
       } else {
@@ -530,7 +530,7 @@ function RevokePlusDialog({
         className="font-heading"
         style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
       >
-        Revocar MatchPoint+ de {user.n}
+        Revocar MATCHPOINT+ de {user.n}
       </h3>
       <p
         style={{ margin: "8px 0 16px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}

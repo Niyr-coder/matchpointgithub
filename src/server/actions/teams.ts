@@ -250,14 +250,14 @@ export async function inviteToTeam(
     if (exceedsCap(memberCount ?? 0, caps.rosterMax)) {
       throw new MpError(
         "TEAMS.ROSTER_LIMIT_REACHED",
-        `Tu team alcanzó el máximo de ${caps.rosterMax} miembros. Activa MatchPoint+ para subir el límite.`,
+        `Tu team alcanzó el máximo de ${caps.rosterMax} miembros. Activa MATCHPOINT+ para subir el límite.`,
         409,
       );
     }
     if (exceedsCap(pendingInvitesCount ?? 0, caps.pendingInvitesMax)) {
       throw new MpError(
         "TEAMS.INVITES_LIMIT_REACHED",
-        `Tienes ${pendingInvitesCount} invitaciones pendientes (máximo ${caps.pendingInvitesMax}). Cancela alguna o activa MatchPoint+.`,
+        `Tienes ${pendingInvitesCount} invitaciones pendientes (máximo ${caps.pendingInvitesMax}). Cancela alguna o activa MATCHPOINT+.`,
         409,
       );
     }
@@ -650,7 +650,7 @@ export async function updateTeam(input: unknown): Promise<ActionResult<Team>> {
         throw new MpError(
           "TEAMS.RENAME_LIMIT_REACHED",
           `Alcanzaste el máximo de ${caps.renamesMax} cambios de nombre. ${
-            caps.renamesMax < 5 ? "Activa MatchPoint+ para más." : ""
+            caps.renamesMax < 5 ? "Activa MATCHPOINT+ para más." : ""
           }`,
           409,
         );

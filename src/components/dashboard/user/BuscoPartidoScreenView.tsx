@@ -952,7 +952,7 @@ function PublishModal({
             <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
               {myPlanTier === "premium"
                 ? "Tu nivel sube o baja según el resultado."
-                : "Será ranked solo si tienes MatchPoint+ al momento de jugar."}
+                : "Será ranked solo si tienes MATCHPOINT+ al momento de jugar."}
             </div>
           </div>
         </button>

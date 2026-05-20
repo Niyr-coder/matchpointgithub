@@ -1,5 +1,5 @@
-// Modal de info del plan MatchPoint+ — features + precio + CTA de compra.
-// Se abre desde el botón "Activar MatchPoint+" para que el usuario vea
+// Modal de info del plan MATCHPOINT+ — features + precio + CTA de compra.
+// Se abre desde el botón "Activar MATCHPOINT+" para que el usuario vea
 // qué obtiene antes de entrar al checkout.
 "use client";
 import { useEffect } from "react";
@@ -14,7 +14,7 @@ type Props = {
   onCancel: () => void;
 };
 
-// Brand color para MatchPoint+ — ámbar dorado consistente con el header,
+// Brand color para MATCHPOINT+ — ámbar dorado consistente con el header,
 // pill y dot. Lo guardamos en una const para no repetirlo en cada style.
 const GOLD = "#facc15";
 
@@ -169,7 +169,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
               }}
             >
               <Icon name="crown" size={11} color="#0a0a0a" />
-              MatchPoint+
+              MATCHPOINT+
             </div>
             <h2
               className="font-heading"

@@ -489,7 +489,7 @@ export function ProfileScreenView({
                         Mostrando últimos {data.matchHistoryCap} partidos
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-                        Activa MatchPoint+ para ver el historial completo
+                        Activa MATCHPOINT+ para ver el historial completo
                         de cualquier jugador.
                       </div>
                     </div>

@@ -244,7 +244,7 @@ export async function approvePlanSubscriptionAdmin(
 }
 
 // ── grantMatchPointPlusAdmin ───────────────────────────────────────────
-// Atajo admin para activar MatchPoint+ directamente, sin pasar por el flujo
+// Atajo admin para activar MATCHPOINT+ directamente, sin pasar por el flujo
 // de comprobantes. Útil para regalos, soporte, beta testers, recompensas.
 // Crea una subscription con status='active' inmediato y extiende
 // plan_expires_at desde el expiry vigente (o desde ahora si no había).
@@ -347,7 +347,7 @@ export async function grantMatchPointPlusAdmin(
 }
 
 // ── revokeMatchPointPlusAdmin ──────────────────────────────────────────
-// Quita MatchPoint+ inmediato: marca todas las subs activas del user como
+// Quita MATCHPOINT+ inmediato: marca todas las subs activas del user como
 // cancelled y resetea profile a free. Útil para soporte/banear.
 const RevokeSchema = z.object({
   userId: UuidSchema,

@@ -66,7 +66,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: null,
   },
 
-  // ── MatchPoint+ — card tintada con el accent, intensidad por rareza.
+  // ── MATCHPOINT+ — card tintada con el accent, intensidad por rareza.
   //    Raro (esmeralda/oceano/pizarra): glass con tinte claro del accent + borde
   //    del accent. Épico (crepusculo/coral/medianoche): tinte más saturado +
   //    borde del accent. Sin boxShadow. Ver THEME_RARITY + escalera rareza→intensidad.
@@ -175,7 +175,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     },
   },
 
-  // ── MatchPoint+ extra (2) — épico: tinte saturado + borde del accent.
+  // ── MATCHPOINT+ extra (2) — épico: tinte saturado + borde del accent.
   {
     key: "coral",
     label: "Coral",

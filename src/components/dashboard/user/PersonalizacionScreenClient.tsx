@@ -81,7 +81,7 @@ export function PersonalizacionScreenClient({
     if (!themeIsOwned(t, ownArgs)) {
       if (!isPremium) {
         // Cualquier tema (MP+ o pack) requiere MP+ activo primero.
-        toast({ icon: "lock", title: "Tema MatchPoint+", sub: "Actívalo desde Mi plan" });
+        toast({ icon: "lock", title: "Tema MATCHPOINT+", sub: "Actívalo desde Mi plan" });
       } else {
         // MP+ activo pero falta el grant del pack.
         const b = bundleByKey.get(t.bundleKey);
@@ -121,7 +121,7 @@ export function PersonalizacionScreenClient({
             marginBottom: 6,
           }}
         >
-          ● MatchPoint+ · Personaliza
+          ● MATCHPOINT+ · Personaliza
         </div>
         <h1
           className="font-heading"
@@ -139,7 +139,7 @@ export function PersonalizacionScreenClient({
         <p style={{ fontSize: 13, color: "var(--muted-fg)", marginTop: 8, maxWidth: 600 }}>
           Elige un <strong style={{ color: "#0a0a0a" }}>tema</strong>: define accent, banner y card de
           forma cohesiva, sin combinaciones raras. Los <strong style={{ color: "#0a0a0a" }}>MP+</strong> se
-          desbloquean con MatchPoint+; los de <strong style={{ color: "#0a0a0a" }}>bundles</strong>, con
+          desbloquean con MATCHPOINT+; los de <strong style={{ color: "#0a0a0a" }}>bundles</strong>, con
           compra única.
         </p>
       </header>
@@ -359,7 +359,7 @@ function UpgradeBanner() {
         </div>
         <div>
           <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em" }}>
-            Los temas premium son MatchPoint+
+            Los temas premium son MATCHPOINT+
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 3 }}>
             Desbloquea los temas con la subscription. El tema Clásico es gratis.
@@ -371,7 +371,7 @@ function UpgradeBanner() {
         className="btn"
         style={{ background: "#fbbf24", color: "#0a0a0a", fontWeight: 800 }}
       >
-        Activar MatchPoint+
+        Activar MATCHPOINT+
         <Icon name="arrow-right" size={12} />
       </Link>
     </div>
@@ -575,7 +575,7 @@ function BundleStore({
         <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Compra única · sin expiración</span>
       </div>
       <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "0 0 16px" }}>
-        Cada bundle desbloquea su tema. Para usarlos necesitas <strong>MatchPoint+ activo</strong> además
+        Cada bundle desbloquea su tema. Para usarlos necesitas <strong>MATCHPOINT+ activo</strong> además
         del pack. Para adquirir uno, contacta a soporte vía WhatsApp o mensaje directo a MATCHPOINT — el
         equipo te confirma datos de transferencia y otorga el bundle al recibir el pago.
       </p>

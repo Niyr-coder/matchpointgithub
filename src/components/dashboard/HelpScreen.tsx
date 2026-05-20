@@ -196,7 +196,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       },
       {
         icon: "crown",
-        title: "MatchPoint+",
+        title: "MATCHPOINT+",
         body: "Suscripción premium con beneficios extra (acceso a torneos privados, descuentos en clases, badge en perfil). Pago mensual por transferencia/DeUna, activación manual de admin.",
       },
     ],
@@ -222,7 +222,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       },
       {
         icon: "crown",
-        title: "MatchPoint+ a usuarios",
+        title: "MATCHPOINT+ a usuarios",
         body: "Desde 'Usuarios' podés activar/extender/revocar el plan premium de cualquier user. Todas las acciones quedan en el audit log.",
       },
       {

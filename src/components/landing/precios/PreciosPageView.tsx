@@ -20,7 +20,7 @@ const PLAYER_TIERS = [
     highlight: false,
   },
   {
-    name: "MatchPoint+",
+    name: "MATCHPOINT+",
     priceMonth: 5,
     desc: "Para quienes juegan varias veces por semana y arman partidos.",
     features: [
@@ -31,7 +31,7 @@ const PLAYER_TIERS = [
       "Crear juegos / matches sin límite",
       "Soporte prioritario",
     ],
-    cta: "Activar MatchPoint+",
+    cta: "Activar MATCHPOINT+",
     ctaHref: "/dashboard/user?upgrade=premium",
     highlight: true,
   },

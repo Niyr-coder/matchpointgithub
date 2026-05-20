@@ -69,9 +69,9 @@ export const WELCOME_TEMPLATES = {
   welcome_signup:
     "¡Hola {firstName}! Bienvenido a MatchPoint, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Si tienes dudas, escríbenos por aquí.",
   welcome_team_created:
-    'Felicidades {firstName}, creaste el team "{teamName}". Como capitán puedes invitar hasta {rosterMax} miembros y gestionar el roster. Activa MatchPoint+ para subir el cap a 24.',
+    'Felicidades {firstName}, creaste el team "{teamName}". Como capitán puedes invitar hasta {rosterMax} miembros y gestionar el roster. Activa MATCHPOINT+ para subir el cap a 24.',
   welcome_premium_activated:
-    "¡{firstName}, tu MatchPoint+ está activo hasta {expiresAt}! Disfrutá reservas ilimitadas, roster ampliado en teams y estadísticas avanzadas.",
+    "¡{firstName}, tu MATCHPOINT+ está activo hasta {expiresAt}! Disfrutá reservas ilimitadas, roster ampliado en teams y estadísticas avanzadas.",
   welcome_onboarding_completed:
     "Ya completaste tu perfil, {firstName}. Te recomendamos empezar explorando los clubes cerca de {city}. ¡Buen juego!",
   cosmetic_bundle_granted:

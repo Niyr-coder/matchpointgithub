@@ -47,8 +47,8 @@ export function initials(name: string): string {
 export function MpPlusBadge() {
   return (
     <span
-      title="MatchPoint+ activo"
-      aria-label="MatchPoint+ activo"
+      title="MATCHPOINT+ activo"
+      aria-label="MATCHPOINT+ activo"
       style={{
         display: "inline-flex",
         alignItems: "center",
