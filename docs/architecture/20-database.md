@@ -2310,6 +2310,21 @@ Ver `docs/product/04-matches-lifecycle.md`. Detrás de `match_reliability_enable
 - **Notif** `match_no_show_reported` + branch dispatcher.
 - Ambas con `tg_audit`.
 
+### 29.20 · Personalización por temas (mig 126)
+
+Rediseño: el user ya no mezcla `accent_color`/`card_style`/`banner_preset`
+libremente (combos feos). Elige UN **tema** curado (`PROFILE_THEMES` en
+`src/lib/profile/customization-presets.ts`) que setea los 3 campos coherentes.
+**No cambia el schema** (siguen siendo los 3 campos; el tema solo los escribe
+juntos), así que todo el render (perfil, roster, amigos) queda igual.
+
+- Action **`setTheme(themeKey)`** (`profile-customization.ts`) valida ownership
+  del bundle del tema (`free` siempre; `mp_plus` → premium; `pack_*` → grant) y
+  escribe accent+card+banner.
+- UI: `PersonalizacionScreenClient` ahora es un picker de temas (no 3 selectores).
+- Mig 126 reseteó los combos viejos al tema default (Clásico = los 3 en null).
+- `setProfileCustomization` (mezcla libre) queda para admin/legacy, no para la UI del user.
+
 ---
 
 ## Próximo: `30-rls.md`
