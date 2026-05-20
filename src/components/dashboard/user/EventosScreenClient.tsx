@@ -190,9 +190,6 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
         <h1 className="font-heading display-md" style={{ margin: 0 }}>
           Calendario <span className="dot">●</span> {new Date().getFullYear()}
         </h1>
-        <button className="btn btn-primary" onClick={() => window.dispatchEvent(new Event("mp-open-crear-evento"))}>
-          <Icon name="plus" size={13} /> Crear evento
-        </button>
       </div>
 
       <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)" }}>
