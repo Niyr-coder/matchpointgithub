@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import {
   createTournamentCategory,
   updateTournamentCategory,
@@ -72,6 +73,7 @@ export function CategoriesPanel({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -135,8 +137,14 @@ export function CategoriesPanel({
     });
   };
 
-  const onDelete = (c: CategoryRow) => {
-    if (!confirm(`¿Borrar la categoría "${c.name}"? No se puede deshacer.`)) return;
+  const onDelete = async (c: CategoryRow) => {
+    const ok = await confirm({
+      title: "Borrar categoría",
+      body: `¿Borrar la categoría "${c.name}"? No se puede deshacer.`,
+      confirmLabel: "Borrar",
+      destructive: true,
+    });
+    if (!ok) return;
     startTx(async () => {
       const res = await deleteTournamentCategory({ tournamentId, categoryId: c.id });
       if (res.ok) {

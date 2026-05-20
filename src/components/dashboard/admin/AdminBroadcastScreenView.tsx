@@ -7,6 +7,7 @@ import { PolHero } from "../widgets/PolHero";
 import { RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import { cancelBroadcast, createBroadcast, dispatchBroadcast } from "@/server/actions/marketing";
 
 export type Kind = "push" | "email" | "banner" | "in-app";
@@ -131,6 +132,7 @@ function SentPlaceholderRow() {
 export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
   useRealtimeRefresh([{ table: "broadcasts" }, { table: "broadcast_recipients" }], { debounceMs: 4000 });
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -140,7 +142,13 @@ export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
 
   const handleCancel = async (id: string, label: string) => {
     if (cancellingId) return;
-    if (!window.confirm(`Cancelar la campaña "${label}"?`)) return;
+    const ok = await confirm({
+      title: "Cancelar campaña",
+      body: `¿Cancelar la campaña "${label}"?`,
+      confirmLabel: "Cancelar campaña",
+      destructive: true,
+    });
+    if (!ok) return;
     setCancellingId(id);
     try {
       const res = await cancelBroadcast({ id });

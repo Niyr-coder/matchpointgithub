@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { SelfChip } from "../widgets/SelfBadge";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -1166,6 +1167,7 @@ const TOGGLES = [
 
 function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () => void; onLeave: () => void }) {
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [busy, setBusy] = useState<"leave" | "disband" | "save" | "transfer" | null>(null);
   const [name, setName] = useState(team.name);
   const [description, setDescription] = useState(team.description ?? "");
@@ -1180,7 +1182,13 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
     if (busy || !transferTarget) return;
     const target = team.members.find((m) => m.userId === transferTarget);
     if (!target) return;
-    if (!window.confirm(`Transferir capitanía a ${target.name}? Tú pasarás a ser jugador.`)) return;
+    const ok = await confirm({
+      title: "Transferir capitanía",
+      body: `¿Transferir capitanía a ${target.name}? Tú pasarás a ser jugador.`,
+      confirmLabel: "Transferir",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy("transfer");
     try {
       const res = await transferCaptain({ teamId: team.id, newCaptainUserId: transferTarget });
@@ -1227,7 +1235,13 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
 
   const handleLeave = async () => {
     if (busy) return;
-    if (!window.confirm(`Salir de "${team.name}"? Perderás acceso al chat y stats grupales.`)) return;
+    const ok = await confirm({
+      title: "Salir del equipo",
+      body: `¿Salir de "${team.name}"? Perderás acceso al chat y stats grupales.`,
+      confirmLabel: "Salir",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy("leave");
     try {
       const res = await leaveTeam({ teamId: team.id });
@@ -1591,6 +1605,7 @@ function TeamInvite({
 }) {
   const comingSoon = useComingSoon();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [qrOpen, setQrOpen] = useState(false);
@@ -1675,7 +1690,13 @@ function TeamInvite({
 
   const handleCancelPending = async (inviteId: string, displayName: string) => {
     if (cancelling) return;
-    if (!window.confirm(`Cancelar invitación a ${displayName}?`)) return;
+    const ok = await confirm({
+      title: "Cancelar invitación",
+      body: `¿Cancelar invitación a ${displayName}?`,
+      confirmLabel: "Cancelar invitación",
+      destructive: true,
+    });
+    if (!ok) return;
     setCancelling(inviteId);
     try {
       const res = await cancelInvite({ inviteId });

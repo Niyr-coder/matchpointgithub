@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icon";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 import { cancelMyRegistration, registerToTournament } from "@/server/actions/tournaments";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 
 export type MyRegistration = {
   id: string;
@@ -90,6 +91,7 @@ function levelRange(cats: TournamentDetail["categories"]): string | null {
 export function TournamentDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [], meUserId }: Props) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [myReg, setMyReg] = useState<MyRegistration | null>(initialReg);
   const [cancelling, startCancel] = useTransition();
   const [registering, startRegister] = useTransition();
@@ -197,12 +199,15 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
     });
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (!myReg) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm("¿Seguro que quieres abandonar la inscripción? Liberarás tu cupo.");
-      if (!ok) return;
-    }
+    const ok = await confirm({
+      title: "Abandonar inscripción",
+      body: "¿Seguro que quieres abandonar la inscripción? Liberarás tu cupo.",
+      confirmLabel: "Abandonar",
+      destructive: true,
+    });
+    if (!ok) return;
     startCancel(async () => {
       const res = await cancelMyRegistration({ registrationId: myReg.id });
       if (res.ok) {

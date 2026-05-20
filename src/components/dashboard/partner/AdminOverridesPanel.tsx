@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import { setTournamentStatus } from "@/server/actions/tournaments";
 
 export function AdminOverridesPanel({
@@ -16,17 +17,19 @@ export function AdminOverridesPanel({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const run = (key: string, newStatus: string, ok: string, icon = "shield") => {
+  const run = async (key: string, newStatus: string, ok: string, icon = "shield") => {
     if (busy) return;
-    if (
-      !confirm(
-        `Override admin: cambiar estado a "${newStatus}". Esta acción es de soporte, no se valida políticas de partner. ¿Continuar?`,
-      )
-    )
-      return;
+    const proceed = await confirm({
+      title: "Override admin",
+      body: `Cambiar estado a "${newStatus}". Esta acción es de soporte, no valida políticas de partner. ¿Continuar?`,
+      confirmLabel: "Aplicar override",
+      destructive: true,
+    });
+    if (!proceed) return;
     setBusy(key);
     startTx(async () => {
       const res = await setTournamentStatus({ tournamentId, status: newStatus });

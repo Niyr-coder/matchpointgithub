@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import {
   createTournamentPrize,
   updateTournamentPrize,
@@ -51,6 +52,7 @@ export function PrizesPanel({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -120,8 +122,14 @@ export function PrizesPanel({
     });
   };
 
-  const onDelete = (p: PrizeRow) => {
-    if (!confirm(`¿Borrar el premio "${p.placeLabel} · ${p.prizeLabel}"?`)) return;
+  const onDelete = async (p: PrizeRow) => {
+    const ok = await confirm({
+      title: "Borrar premio",
+      body: `¿Borrar el premio "${p.placeLabel} · ${p.prizeLabel}"?`,
+      confirmLabel: "Borrar",
+      destructive: true,
+    });
+    if (!ok) return;
     startTx(async () => {
       const res = await deleteTournamentPrize({ tournamentId, prizeId: p.id });
       if (res.ok) {

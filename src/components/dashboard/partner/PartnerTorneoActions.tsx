@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import {
   setTournamentStatus,
   setTournamentFeatured,
@@ -36,6 +37,7 @@ export function PartnerTorneoActions({
   const [editOpen, setEditOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -77,8 +79,14 @@ export function PartnerTorneoActions({
       "lock",
     );
 
-  const onCancelar = () => {
-    if (!confirm("Cancelar el torneo. Esta acción avisa a todos los inscritos. ¿Continuar?")) return;
+  const onCancelar = async () => {
+    const ok = await confirm({
+      title: "Cancelar torneo",
+      body: "Esta acción avisa a todos los inscritos. ¿Continuar?",
+      confirmLabel: "Cancelar torneo",
+      destructive: true,
+    });
+    if (!ok) return;
     wrap(
       "cancelar",
       () => setTournamentStatus({ tournamentId, status: "cancelled" }),

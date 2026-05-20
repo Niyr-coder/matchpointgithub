@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import { setTournamentStatus } from "@/server/actions/tournaments";
 import { CreateTournamentFlow } from "./CreateTournamentFlow";
 
@@ -37,6 +38,7 @@ const ST_STYLES: Record<TorneoStatus, { bg: string; l: string }> = {
 function TorneoCard({ t }: { t: TorneoRow }) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -74,14 +76,15 @@ function TorneoCard({ t }: { t: TorneoRow }) {
       }
     });
   };
-  const onCancelar = () => {
+  const onCancelar = async () => {
     setMenuOpen(false);
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(
-        `Cancelar "${t.n}"? Esta acción avisa a todos los inscritos y libera los cupos.`,
-      );
-      if (!ok) return;
-    }
+    const ok = await confirm({
+      title: "Cancelar torneo",
+      body: `Cancelar "${t.n}"? Esta acción avisa a todos los inscritos y libera los cupos.`,
+      confirmLabel: "Cancelar torneo",
+      destructive: true,
+    });
+    if (!ok) return;
     startTx(async () => {
       const res = await setTournamentStatus({ tournamentId: t.id, status: "cancelled" });
       if (res.ok) {
