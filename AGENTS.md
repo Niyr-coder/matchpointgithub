@@ -40,7 +40,8 @@ Orden general: **leer doc → planear → implementar → revisar**.
 |---|---|---|
 | Vas a tocar torneos, pagos, premium, roles, RLS, realtime, notifs, audit, schema, server actions, endpoints, pantallas | `matchpoint-docs-guide` | ANTES (leer doc) |
 | El usuario expresa intención de feature ("quiero/implementemos/qué falta/siguiente fase") | `matchpoint-feature-plan` | ANTES de codear (tras docs-guide) |
-| Tocás temas de personalización, packs/bundles, colores, rareza del catálogo | `matchpoint-theme-create` | durante el trabajo de temas |
+| Tocás temas de personalización, packs/bundles, colores, rareza del catálogo | `matchpoint-theme-create` | durante el trabajo de temas (cómo construir) |
+| Agregás/cambiás algo de personalización y querés pensar QUÉ MÁS debe existir/cablearse (gating MP+, superficies, catálogo, path admin) | `matchpoint-personalization-governance` | en el paso de governance de personalización |
 | Agregás/cambiás RoleKey, permiso, superficie admin, sidebar, o una feature necesita "path admin" | `matchpoint-role-governance` | en el paso de governance |
 | Hay animación/transición nueva (modal, drawer, hover, entrada/salida) | `emil-design-eng` | durante la implementación |
 | Terminaste UI (cards, listas, forms, modales, tabs) | `matchpoint-ui-review` | DESPUÉS (QA visual) |
