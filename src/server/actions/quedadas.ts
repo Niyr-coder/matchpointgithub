@@ -31,6 +31,10 @@ import {
   ListQuedadaTemplatesSchema,
   SaveQuedadaTemplateSchema,
   QuedadaTemplateIdSchema,
+  GenerateRoundRobinSchema,
+  AddQuedadaMatchSchema,
+  ReportQuedadaMatchSchema,
+  QuedadaMatchIdSchema,
 } from "@/lib/schemas/quedadas";
 
 const MAX_QUEDADA_TEMPLATES = 5;
@@ -377,11 +381,12 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
-    const [cats, pairs, parts, cohosts] = await Promise.all([
+    const [cats, pairs, parts, cohosts, matches] = await Promise.all([
       supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
       supabase.from("quedada_participants").select("user_id,status,paid,points,final_rank,profiles(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_matches").select("id,category_id,round_no,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
     ]);
 
     const canManage =
@@ -397,6 +402,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       pairs: pairs.data ?? [],
       participants: parts.data ?? [],
       cohosts: cohosts.data ?? [],
+      matches: matches.data ?? [],
     };
   });
 }
@@ -709,6 +715,102 @@ export async function deleteQuedadaTemplate(input: unknown): Promise<ActionResul
     // RLS limita el delete a las plantillas del propio usuario.
     const { error } = await supabase.from("quedada_templates").delete().eq("id", templateId);
     if (error) throw new MpError("QUEDADAS.TEMPLATE_DELETE_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Motor de juego (v2): partidos por ronda + puntos ─────────────────────────
+// Programación round-robin (método del círculo): genera rondas balanceadas.
+function roundRobinSchedule(ids: string[]): { round: number; a: string; b: string }[] {
+  const arr = [...ids];
+  if (arr.length % 2 !== 0) arr.push("__BYE__");
+  const n = arr.length;
+  const half = n / 2;
+  let list = arr.slice();
+  const out: { round: number; a: string; b: string }[] = [];
+  for (let r = 0; r < n - 1; r++) {
+    for (let i = 0; i < half; i++) {
+      const a = list[i];
+      const b = list[n - 1 - i];
+      if (a !== "__BYE__" && b !== "__BYE__") out.push({ round: r + 1, a, b });
+    }
+    list = [list[0], list[n - 1], ...list.slice(1, n - 1)];
+  }
+  return out;
+}
+
+export async function generateRoundRobin(input: unknown): Promise<ActionResult<{ created: number }>> {
+  return runAction(GenerateRoundRobinSchema, input, async ({ quedadaId, categoryId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { count } = await supabase
+      .from("quedada_matches")
+      .select("id", { count: "exact", head: true })
+      .eq("category_id", categoryId);
+    if ((count ?? 0) > 0) throw new MpError("QUEDADAS.MATCHES_EXIST", "Ya hay partidos en esta categoría. Bórralos antes de regenerar.", 409);
+
+    const { data: pairs } = await supabase
+      .from("quedada_pairs")
+      .select("id")
+      .eq("category_id", categoryId);
+    const ids = (pairs ?? []).map((p) => p.id as string);
+    if (ids.length < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_PAIRS", "Necesitas al menos 2 parejas asignadas", 400);
+
+    const sched = roundRobinSchedule(ids);
+    const rows = sched.map((m) => ({
+      quedada_id: quedadaId,
+      category_id: categoryId,
+      round_no: m.round,
+      pair_a_id: m.a,
+      pair_b_id: m.b,
+      status: "scheduled",
+    }));
+    const { error } = await supabase.from("quedada_matches").insert(rows as never);
+    if (error) throw new MpError("QUEDADAS.MATCHES_FAILED", error.message, 500);
+    return { created: rows.length };
+  });
+}
+
+export async function addQuedadaMatch(input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(AddQuedadaMatchSchema, input, async (d) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { data, error } = await supabase
+      .from("quedada_matches")
+      .insert({
+        quedada_id: d.quedadaId,
+        category_id: d.categoryId,
+        round_no: d.roundNo,
+        pair_a_id: d.pairAId,
+        pair_b_id: d.pairBId,
+        status: "scheduled",
+      } as never)
+      .select("id")
+      .single();
+    if (error || !data) throw new MpError("QUEDADAS.MATCH_FAILED", error?.message ?? "No se pudo crear el partido", 500);
+    return { id: data.id as string };
+  });
+}
+
+export async function reportQuedadaMatch(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(ReportQuedadaMatchSchema, input, async ({ matchId, pointsA, pointsB }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { error } = await supabase
+      .from("quedada_matches")
+      .update({ points_a: pointsA, points_b: pointsB, status: "played", updated_at: new Date().toISOString() } as never)
+      .eq("id", matchId);
+    if (error) throw new MpError("QUEDADAS.MATCH_REPORT_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function deleteQuedadaMatch(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(QuedadaMatchIdSchema, input, async ({ matchId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { error } = await supabase.from("quedada_matches").delete().eq("id", matchId);
+    if (error) throw new MpError("QUEDADAS.MATCH_DELETE_FAILED", error.message, 500);
     return { ok: true as const };
   });
 }

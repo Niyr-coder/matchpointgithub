@@ -214,6 +214,28 @@ export const SaveQuedadaTemplateSchema = z
   .openapi("SaveQuedadaTemplate");
 export const QuedadaTemplateIdSchema = z.object({ templateId: UuidSchema }).openapi("QuedadaTemplateId");
 
+// ── Motor de juego (v2): partidos por ronda + puntos ─────────────────────────
+export const GenerateRoundRobinSchema = z
+  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
+  .openapi("GenerateQuedadaRoundRobin");
+export const AddQuedadaMatchSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    categoryId: UuidSchema,
+    roundNo: z.coerce.number().int().min(1).max(99).default(1),
+    pairAId: UuidSchema,
+    pairBId: UuidSchema,
+  })
+  .openapi("AddQuedadaMatch");
+export const ReportQuedadaMatchSchema = z
+  .object({
+    matchId: UuidSchema,
+    pointsA: z.coerce.number().int().min(0).max(999),
+    pointsB: z.coerce.number().int().min(0).max(999),
+  })
+  .openapi("ReportQuedadaMatch");
+export const QuedadaMatchIdSchema = z.object({ matchId: UuidSchema }).openapi("QuedadaMatchId");
+
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;
 export type QuedadaFormat = z.infer<typeof QuedadaFormatSchema>;

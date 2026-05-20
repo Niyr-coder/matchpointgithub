@@ -2438,8 +2438,18 @@ toca MP Rating). Tab **Resultados** (creador, visible cuando status ≥ closed) 
 **podio** en Resumen cuando `finished`. El viejo `ResultsModal` (flujo plano en
 las tarjetas) fue removido; resultados viven en la página de gestión.
 
-**Realtime en gestión:** las 4 tablas (`quedadas`, `quedada_participants`,
-`quedada_categories`, `quedada_pairs`) están en `supabase_realtime`. El panel
+**Motor de juego v2 (mig 137, Stage A):** `quedada_matches` (quedada_id,
+category_id, round_no, pair_a_id, pair_b_id?, points_a?, points_b?, status
+scheduled|played). Unificado para todos los formatos: rondas de partidos con
+**puntos por partido**; standings DERIVADOS (append-only) de los partidos played.
+Organizador reporta directo (sin doble confirmación). Actions `generateRoundRobin`
+(método del círculo → rondas balanceadas), `addQuedadaMatch`, `reportQuedadaMatch`,
+`deleteQuedadaMatch`. RLS: read = miembro/abierta/can_manage; write = can_manage.
+En `supabase_realtime`. `getQuedadaManageData` devuelve `matches`. Sin brackets en
+el core (los formatos sociales no tienen eliminatorias). UI por fase = siguiente.
+
+**Realtime en gestión:** las tablas (`quedadas`, `quedada_participants`,
+`quedada_categories`, `quedada_pairs`, `quedada_matches`) están en `supabase_realtime`. El panel
 (`QuedadaManagePanel`) usa `useRealtimeRefresh` en modo `onChange` (datos
 client-side vía `getQuedadaManageData` → refetchea con `reload()`, no
 `router.refresh`), filtrando por `quedada_id`/`id`, debounce 400ms. Creador +

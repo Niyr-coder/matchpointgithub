@@ -4944,6 +4944,80 @@ export type Database = {
           },
         ]
       }
+      quedada_matches: {
+        Row: {
+          category_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          pair_a_id: string
+          pair_b_id: string | null
+          points_a: number | null
+          points_b: number | null
+          quedada_id: string
+          round_no: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pair_a_id: string
+          pair_b_id?: string | null
+          points_a?: number | null
+          points_b?: number | null
+          quedada_id: string
+          round_no?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pair_a_id?: string
+          pair_b_id?: string | null
+          points_a?: number | null
+          points_b?: number | null
+          quedada_id?: string
+          round_no?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_matches_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "quedada_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_matches_pair_a_id_fkey"
+            columns: ["pair_a_id"]
+            isOneToOne: false
+            referencedRelation: "quedada_pairs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_matches_pair_b_id_fkey"
+            columns: ["pair_b_id"]
+            isOneToOne: false
+            referencedRelation: "quedada_pairs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_matches_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quedada_pairs: {
         Row: {
           category_id: string

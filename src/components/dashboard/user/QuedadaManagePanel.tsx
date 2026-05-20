@@ -102,6 +102,16 @@ type ManageCohost = {
   user_id: string;
   profiles: { display_name: string | null; username: string | null } | null;
 };
+type ManageMatch = {
+  id: string;
+  category_id: string;
+  round_no: number;
+  pair_a_id: string;
+  pair_b_id: string | null;
+  points_a: number | null;
+  points_b: number | null;
+  status: string;
+};
 type ManageData = {
   quedada: ManageQuedada;
   isCreator: boolean;
@@ -111,6 +121,7 @@ type ManageData = {
   pairs: ManagePair[];
   participants: ManageParticipant[];
   cohosts: ManageCohost[];
+  matches: ManageMatch[];
 };
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -304,6 +315,7 @@ export function QuedadaManagePanel({
       { table: "quedada_pairs", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_participants", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_categories", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_matches", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedadas", filter: `id=eq.${quedadaId}` },
     ],
     {
