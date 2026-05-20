@@ -128,6 +128,19 @@ function hourLabel(iso: string | null): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
+// Nivel = "Suma" combinada de la pareja: 2.0–14.0, paso 0.5. `noLevel` = sin
+// número (ej. Open Mixto). Parsea el level_label existente de vuelta a suma.
+const SUMA_MIN = 2;
+const SUMA_MAX = 14;
+function parseSuma(label: string | null): { suma: number; noLevel: boolean } {
+  if (!label) return { suma: 6, noLevel: true };
+  const m = /(\d+(?:\.\d+)?)/.exec(label);
+  if (!m) return { suma: 6, noLevel: true };
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return { suma: 6, noLevel: true };
+  return { suma: Math.min(SUMA_MAX, Math.max(SUMA_MIN, Math.round(n * 2) / 2)), noLevel: false };
+}
+
 export function QuedadaManagePanel({
   quedadaId,
   onClose,
@@ -830,8 +843,10 @@ function CategoryForm({
 }) {
   const toast = useToast();
   const [pending, start] = useTransition();
+  const initLevel = category ? parseSuma(category.level_label) : { suma: 6, noLevel: false };
   const [name, setName] = useState(category?.name ?? "");
-  const [level, setLevel] = useState(category?.level_label ?? "");
+  const [suma, setSuma] = useState(initLevel.suma);
+  const [noLevel, setNoLevel] = useState(initLevel.noLevel);
   const [hour, setHour] = useState(hourLabel(category?.starts_at ?? null));
   const [court, setCourt] = useState(category?.court_label ?? "");
   const [maxSlots, setMaxSlots] = useState(category?.max_slots != null ? String(category.max_slots) : "");
@@ -859,7 +874,7 @@ function CategoryForm({
         ? await updateCategory({
             categoryId: category.id,
             name: name.trim(),
-            levelLabel: level.trim() ? level.trim() : null,
+            levelLabel: noLevel ? null : `Suma ${suma.toFixed(1)}`,
             startsAt: hourToIso(hour) ?? null,
             courtLabel: court.trim() ? court.trim() : null,
             maxSlots: slotsN ?? null,
@@ -867,7 +882,7 @@ function CategoryForm({
         : await createCategory({
             quedadaId,
             name: name.trim(),
-            levelLabel: level.trim() || undefined,
+            levelLabel: noLevel ? undefined : `Suma ${suma.toFixed(1)}`,
             startsAt: hourToIso(hour),
             courtLabel: court.trim() || undefined,
             maxSlots: slotsN,
@@ -885,11 +900,28 @@ function CategoryForm({
     <div className="card" style={{ padding: 14, background: "#fafafa", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Nombre">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Suma 6.0" maxLength={60} style={fieldInput} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Suma 6.0 / Open Mixto" maxLength={60} style={fieldInput} />
         </Field>
-        <Field label="Nivel · opcional">
-          <input value={level} onChange={(e) => setLevel(e.target.value)} placeholder="6.0" maxLength={40} style={fieldInput} />
-        </Field>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: noLevel ? "var(--muted-fg)" : "#0a0a0a" }}>
+              Nivel (Suma){noLevel ? "" : <span style={{ color: "var(--primary)", marginLeft: 6 }}>{suma.toFixed(1)}</span>}
+            </span>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted-fg)", cursor: "pointer" }}>
+              <input type="checkbox" checked={noLevel} onChange={(e) => setNoLevel(e.target.checked)} style={{ accentColor: "var(--primary)" }} />
+              Sin nivel (Open)
+            </label>
+          </div>
+          {!noLevel && (
+            <>
+              <input type="range" min={SUMA_MIN} max={SUMA_MAX} step={0.5} value={suma} onChange={(e) => setSuma(parseFloat(e.target.value))} style={{ width: "100%", accentColor: "var(--primary)", cursor: "pointer" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: "var(--muted-fg)" }}>
+                <span>{SUMA_MIN.toFixed(1)}</span>
+                <span>{SUMA_MAX.toFixed(1)}</span>
+              </div>
+            </>
+          )}
+        </div>
         <Field label="Hora · opcional">
           <input type="time" value={hour} onChange={(e) => setHour(e.target.value)} style={fieldInput} />
         </Field>

@@ -15,7 +15,12 @@ type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "l
 type MatchMode = "singles" | "doubles";
 type Visibility = "open" | "private";
 
-type CatDraft = { name: string; level: string; hour: string; court: string; slots: string };
+// El nivel es la "Suma" (nivel combinado de la pareja): 2.0–14.0, paso 0.5.
+// `noLevel` = categoría sin número (ej. Open Mixto) → oculta el slider.
+type CatDraft = { name: string; suma: number; noLevel: boolean; hour: string; court: string; slots: string };
+
+const SUMA_MIN = 2;
+const SUMA_MAX = 14;
 
 const FORMATS: { k: Format; label: string; sub: string }[] = [
   { k: "americano", label: "Americano", sub: "Rotación de parejas" },
@@ -129,7 +134,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
       .filter((c) => c.name.trim())
       .map((c) => ({
         name: c.name.trim(),
-        levelLabel: c.level.trim() || undefined,
+        levelLabel: c.noLevel ? undefined : `Suma ${c.suma.toFixed(1)}`,
         startsAt: catHourToIso(c.hour),
         courtLabel: c.court.trim() || undefined,
         maxSlots: c.slots.trim() ? parseInt(c.slots, 10) : undefined,
@@ -301,23 +306,49 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
                   llenas después en <strong>Gestionar</strong>.
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {categories.map((c, i) => (
-                    <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input value={c.name} placeholder="Nombre (ej. Suma 6.0)" style={{ ...inputStyle, flex: 2 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-                        <input value={c.level} placeholder="Nivel" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, level: e.target.value } : x)))} />
-                        <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
-                          <Icon name="trash-2" size={14} />
-                        </button>
+                  {categories.map((c, i) => {
+                    const setCat = (patch: Partial<CatDraft>) =>
+                      setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                    return (
+                      <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={c.name} placeholder="Nombre (ej. Suma 6.0, Open Mixto)" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCat({ name: e.target.value })} />
+                          <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
+                            <Icon name="trash-2" size={14} />
+                          </button>
+                        </div>
+
+                        {/* Nivel (Suma) */}
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: c.noLevel ? "var(--muted-fg)" : "#0a0a0a" }}>
+                              Nivel (Suma){c.noLevel ? "" : <span style={{ color: "var(--primary)", marginLeft: 6 }}>{c.suma.toFixed(1)}</span>}
+                            </span>
+                            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted-fg)", cursor: "pointer" }}>
+                              <input type="checkbox" checked={c.noLevel} onChange={(e) => setCat({ noLevel: e.target.checked })} style={{ accentColor: "var(--primary)" }} />
+                              Sin nivel (Open)
+                            </label>
+                          </div>
+                          {!c.noLevel && (
+                            <>
+                              <input type="range" min={SUMA_MIN} max={SUMA_MAX} step={0.5} value={c.suma} onChange={(e) => setCat({ suma: parseFloat(e.target.value) })} style={{ width: "100%", accentColor: "var(--primary)", cursor: "pointer" }} />
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: "var(--muted-fg)" }}>
+                                <span>{SUMA_MIN.toFixed(1)}</span>
+                                <span>{SUMA_MAX.toFixed(1)}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                          <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCat({ hour: e.target.value })} />
+                          <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCat({ court: e.target.value })} />
+                          <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCat({ slots: e.target.value })} />
+                        </div>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                        <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, hour: e.target.value } : x)))} />
-                        <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, court: e.target.value } : x)))} />
-                        <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, slots: e.target.value } : x)))} />
-                      </div>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", level: "", hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
+                    );
+                  })}
+                  <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", suma: 6, noLevel: false, hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
                     <Icon name="plus" size={13} /> Agregar categoría
                   </button>
                 </div>
