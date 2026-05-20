@@ -497,6 +497,18 @@ export type UserPaymentProofView = {
   proofReviewedAt: string | null;
   proofRejectionReason: string | null;
   createdAt: string;
+  // Datos bancarios del organizador (solo kind='quedada' que los tenga).
+  paymentAccount: QuedadaPaymentAccount | null;
+};
+
+// Cuenta del organizador de una quedada (jsonb en quedadas.payment_account).
+type QuedadaPaymentAccount = {
+  bank: string;
+  accountType: "ahorros" | "corriente";
+  accountNumber: string;
+  holderName: string;
+  holderId?: string;
+  note?: string;
 };
 
 export async function getPaymentProofForUser(
@@ -519,6 +531,7 @@ export async function getPaymentProofForUser(
     }
 
     let refLabel: string | null = null;
+    let paymentAccount: QuedadaPaymentAccount | null = null;
     if (tx.ref_id) {
       if (tx.kind === "event") {
         const { data: ev } = await supabase
@@ -534,6 +547,19 @@ export async function getPaymentProofForUser(
           .eq("id", tx.ref_id as string)
           .maybeSingle();
         refLabel = (tn?.name as string | null) ?? null;
+      } else if (tx.kind === "quedada") {
+        // quedadas no está en los tipos generados → cliente sin tipar.
+        const { data: qd } = await (supabase as unknown as {
+          from: (t: string) => {
+            select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { title?: string; payment_account?: QuedadaPaymentAccount | null } | null }> } };
+          };
+        })
+          .from("quedadas")
+          .select("title,payment_account")
+          .eq("id", tx.ref_id as string)
+          .maybeSingle();
+        refLabel = qd?.title ?? null;
+        paymentAccount = qd?.payment_account ?? null;
       }
     }
 
@@ -559,6 +585,7 @@ export async function getPaymentProofForUser(
       proofReviewedAt: (tx.proof_reviewed_at as string | null) ?? null,
       proofRejectionReason: (tx.proof_rejection_reason as string | null) ?? null,
       createdAt: tx.created_at as string,
+      paymentAccount,
     };
   });
 }

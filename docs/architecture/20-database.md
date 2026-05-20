@@ -2426,7 +2426,10 @@ el texto libre `payment_info`/`prizes_text` (deprecados, quedan por compat). El
 banco se elige de un catálogo estático EC (`src/lib/geo/ec-banks.ts`). Mismos
 editores (`BankAccountFields`/`PrizesEditor`) en wizard de crear y panel de
 gestión. RLS sin cambios (columnas de `quedadas`). "Duplicar" precarga el wizard
-desde una quedada previa (reusa `getQuedadaManageData`, sin storage nuevo).
+desde una quedada previa (reusa `getQuedadaManageData`, sin storage nuevo). El
+inscrito que paga la cuota ve el banco en `/pagos/[txId]`: `getPaymentProofForUser`
+resuelve `kind=quedada` → `refLabel` (title) + `paymentAccount`, y `PaymentProofView`
+muestra la tarjeta "Datos para transferir".
 
 **Plantillas (mig 135):** `quedada_templates` (user_id, name, config jsonb,
 created_at) — snapshot del wizard (QuedadaInitial sin fecha) para repetir armados.

@@ -317,6 +317,21 @@ function StatusBlock({
         </div>
       ) : null}
 
+      {tx.paymentAccount && (
+        <div className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          <strong style={{ fontSize: 14, marginBottom: 6 }}>Datos para transferir</strong>
+          <div style={{ fontWeight: 900 }}>{tx.paymentAccount.bank}</div>
+          <div style={{ color: "var(--muted-fg)" }}>
+            {tx.paymentAccount.accountType === "ahorros" ? "Ahorros" : "Corriente"} · {tx.paymentAccount.accountNumber}
+          </div>
+          <div>
+            {tx.paymentAccount.holderName}
+            {tx.paymentAccount.holderId ? ` · ${tx.paymentAccount.holderId}` : ""}
+          </div>
+          {tx.paymentAccount.note ? <div style={{ color: "var(--muted-fg)" }}>{tx.paymentAccount.note}</div> : null}
+        </div>
+      )}
+
       <div className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <strong style={{ fontSize: 14 }}>Cómo pagar</strong>
