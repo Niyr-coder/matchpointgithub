@@ -135,7 +135,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1e1b4b, #0c0a1f)",
       border: "1px solid #a855f7",
-      boxShadow: "0 0 24px rgba(168,85,247,0.4)",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#ede9fe",
     },
   },
@@ -222,7 +222,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1c0a0a, #0a0a0a)",
       border: "1px solid #ef4444",
-      boxShadow: "0 0 24px rgba(239,68,68,0.3)",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#fee2e2",
     },
   },
@@ -250,7 +250,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: {
       background: "linear-gradient(135deg, #1e1b4b, #3b0764)",
       border: "1px solid #f0abfc",
-      boxShadow: "0 0 24px rgba(217,70,239,0.3)",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       color: "#f5d0fe",
     },
   },
@@ -291,9 +291,10 @@ export const RARITY_META: Record<Rarity, { label: string; color: string }> = {
 //   raro       → glass con tinte claro del accent + borde del accent
 //   epico      → tinte más saturado + sombra de color suave
 //   mitico     → card oscura/saturada + borde de color
-//   legendario → card rica + glow de color
-//   especial   → gradiente oscuro + glow
+//   legendario → card rica + borde marcado + sombra
+//   especial   → gradiente oscuro + borde de color
 //   unico      → máximo (outline grueso / gradiente fuerte)
+// Sin glow (boxShadow tipo "0 0 Npx"): usar sombras direccionales normales.
 // Mantener la card de cada tema acorde a su rareza para una progresión coherente.
 const THEME_RARITY: Record<string, Rarity> = {
   default: "comun",
@@ -317,6 +318,26 @@ const THEME_RARITY: Record<string, Rarity> = {
 export function rarityOf(themeKey: string): Rarity {
   return THEME_RARITY[themeKey] ?? "comun";
 }
+
+// Orden de menor a mayor rareza (para ordenar el picker).
+export const RARITY_ORDER: Rarity[] = [
+  "comun",
+  "raro",
+  "epico",
+  "mitico",
+  "legendario",
+  "especial",
+  "unico",
+];
+
+export function rarityRank(themeKey: string): number {
+  return RARITY_ORDER.indexOf(rarityOf(themeKey));
+}
+
+// Temas ordenados por rareza ascendente (Clásico/común primero → único último).
+export const PROFILE_THEMES_BY_RARITY: ProfileTheme[] = [...PROFILE_THEMES].sort(
+  (a, b) => rarityRank(a.key) - rarityRank(b.key),
+);
 
 // Dado el estado persistido (accent/card/banner = key del tema en cada faceta),
 // devuelve el tema que matchea, o null si es un combo legacy no-temático.

@@ -15,6 +15,7 @@ import { ProfileHeaderCard } from "./ProfileHeaderCard";
 import { FriendCard, type FriendLite } from "../widgets/FriendCard";
 import {
   PROFILE_THEMES,
+  PROFILE_THEMES_BY_RARITY,
   themeFromState,
   rarityOf,
   RARITY_META,
@@ -160,7 +161,7 @@ export function PersonalizacionScreenClient({
             gap: 12,
           }}
         >
-          {PROFILE_THEMES.map((t) => (
+          {PROFILE_THEMES_BY_RARITY.map((t) => (
             <ThemeCard
               key={t.key}
               theme={t}
