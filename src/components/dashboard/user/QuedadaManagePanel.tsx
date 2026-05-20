@@ -776,7 +776,6 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
                     {c.starts_at && <span>🕒 {hourLabel(c.starts_at)}</span>}
-                    {c.court_label && <span>📍 {c.court_label}</span>}
                     <span>{c.max_slots ?? "—"} slot(s)</span>
                   </div>
                 </div>
@@ -848,7 +847,6 @@ function CategoryForm({
   const [suma, setSuma] = useState(initLevel.suma);
   const [noLevel, setNoLevel] = useState(initLevel.noLevel);
   const [hour, setHour] = useState(hourLabel(category?.starts_at ?? null));
-  const [court, setCourt] = useState(category?.court_label ?? "");
   const [maxSlots, setMaxSlots] = useState(category?.max_slots != null ? String(category.max_slots) : "");
 
   // Hora "HH:mm" → ISO usando hoy como fecha base (v1: solo importa la hora).
@@ -876,7 +874,6 @@ function CategoryForm({
             name: name.trim(),
             levelLabel: noLevel ? null : `Suma ${suma.toFixed(1)}`,
             startsAt: hourToIso(hour) ?? null,
-            courtLabel: court.trim() ? court.trim() : null,
             maxSlots: slotsN ?? null,
           })
         : await createCategory({
@@ -884,7 +881,6 @@ function CategoryForm({
             name: name.trim(),
             levelLabel: noLevel ? undefined : `Suma ${suma.toFixed(1)}`,
             startsAt: hourToIso(hour),
-            courtLabel: court.trim() || undefined,
             maxSlots: slotsN,
           });
       if (!res.ok) {
@@ -924,9 +920,6 @@ function CategoryForm({
         </div>
         <Field label="Hora · opcional">
           <input type="time" value={hour} onChange={(e) => setHour(e.target.value)} style={fieldInput} />
-        </Field>
-        <Field label="Cancha · opcional">
-          <input value={court} onChange={(e) => setCourt(e.target.value)} placeholder="Cancha 1" maxLength={40} style={fieldInput} />
         </Field>
         <Field label="Cupo (slots)">
           <input type="number" min={1} value={maxSlots} onChange={(e) => setMaxSlots(e.target.value)} placeholder="8" style={fieldInput} />
@@ -984,7 +977,6 @@ function CategorySlots({
         </div>
         <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
           {category.starts_at ? `${hourLabel(category.starts_at)} · ` : ""}
-          {category.court_label ? `${category.court_label} · ` : ""}
           {slotCount} slot(s)
         </div>
       </div>

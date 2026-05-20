@@ -850,12 +850,6 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
                       {calHour(c.starts_at)}
                     </span>
                   )}
-                  {c.court_label && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <Icon name="map-pin" size={11} color="var(--muted-fg)" />
-                      {c.court_label}
-                    </span>
-                  )}
                 </div>
                 {mine ? (
                   <div style={{ fontSize: 12, color: "#065f46", marginTop: 6, fontWeight: 700 }}>

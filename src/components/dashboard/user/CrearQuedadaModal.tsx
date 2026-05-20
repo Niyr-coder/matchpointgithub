@@ -17,7 +17,7 @@ type Visibility = "open" | "private";
 
 // El nivel es la "Suma" (nivel combinado de la pareja): 2.0–14.0, paso 0.5.
 // `noLevel` = categoría sin número (ej. Open Mixto) → oculta el slider.
-type CatDraft = { name: string; suma: number; noLevel: boolean; hour: string; court: string; slots: string };
+type CatDraft = { name: string; suma: number; noLevel: boolean; hour: string; slots: string };
 
 const SUMA_MIN = 2;
 const SUMA_MAX = 14;
@@ -136,7 +136,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
         name: c.name.trim(),
         levelLabel: c.noLevel ? undefined : `Suma ${c.suma.toFixed(1)}`,
         startsAt: catHourToIso(c.hour),
-        courtLabel: c.court.trim() || undefined,
         maxSlots: c.slots.trim() ? parseInt(c.slots, 10) : undefined,
       }));
 
@@ -340,15 +339,14 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
                           )}
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCat({ hour: e.target.value })} />
-                          <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCat({ court: e.target.value })} />
                           <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCat({ slots: e.target.value })} />
                         </div>
                       </div>
                     );
                   })}
-                  <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", suma: 6, noLevel: false, hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
+                  <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", suma: 6, noLevel: false, hour: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
                     <Icon name="plus" size={13} /> Agregar categoría
                   </button>
                 </div>
