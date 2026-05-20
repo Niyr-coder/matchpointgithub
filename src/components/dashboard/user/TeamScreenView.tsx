@@ -2472,14 +2472,14 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
           {(() => {
             const ROSTER_GRID = "minmax(0,1.5fr) auto 48px 40px 104px 34px";
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0, fontSize: 12.5 }}>
                 <div
                   style={{
                     display: "grid",
                     gridTemplateColumns: ROSTER_GRID,
                     gap: 12,
                     alignItems: "center",
-                    padding: "0 14px",
+                    padding: "0 10px 8px",
                   }}
                 >
                   {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
@@ -2505,6 +2505,8 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                     ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
                     : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
                   const isMe = !!meUserId && p.userId === meUserId;
+                  const hasCosmetic = !!memberCard;
+                  const isLast = i === ROSTER.length - 1;
                   return (
                     <div
                       key={p.name}
@@ -2513,12 +2515,17 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                         gridTemplateColumns: ROSTER_GRID,
                         gap: 12,
                         alignItems: "center",
-                        padding: "10px 14px",
-                        borderRadius: 12,
-                        background: memberCard?.background ?? "#fafafa",
-                        border: memberCard?.border ?? "1px solid var(--border)",
+                        // Default: fila limpia y aireada (separador hairline), como la
+                        // referencia. Miembros con card cosmética conservan su card
+                        // (personalización — no se toca).
+                        padding: "13px 10px",
+                        borderRadius: hasCosmetic ? 12 : 0,
+                        background: memberCard?.background,
+                        border: memberCard?.border,
                         boxShadow: memberCard?.boxShadow,
                         color: memberCard?.color,
+                        margin: hasCosmetic ? "5px 0" : undefined,
+                        borderBottom: hasCosmetic || isLast ? undefined : "1px solid var(--border)",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
