@@ -187,6 +187,18 @@ export const QuedadaLogisticsSchema = z
 
 export const JoinByCodeSchema = z.object({ code: z.string().trim().min(4).max(40) }).openapi("JoinQuedadaByCode");
 
+// ── Plantillas (hasta 5/usuario) ─────────────────────────────────────────────
+// config = snapshot del wizard (QuedadaInitial, sin fecha). Permisivo a propósito:
+// es data privada del propio usuario que vuelve a su wizard.
+export const ListQuedadaTemplatesSchema = z.object({}).openapi("ListQuedadaTemplates");
+export const SaveQuedadaTemplateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    config: z.record(z.string(), z.unknown()),
+  })
+  .openapi("SaveQuedadaTemplate");
+export const QuedadaTemplateIdSchema = z.object({ templateId: UuidSchema }).openapi("QuedadaTemplateId");
+
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;
 export type QuedadaFormat = z.infer<typeof QuedadaFormatSchema>;

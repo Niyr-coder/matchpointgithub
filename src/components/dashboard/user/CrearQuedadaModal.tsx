@@ -5,11 +5,17 @@
 // categoría; los slots/parejas/pagos se llenan luego en gestión.
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
-import { createQuedada } from "@/server/actions/quedadas";
+import { usePromptModal } from "../widgets/PromptModal";
+import {
+  createQuedada,
+  listQuedadaTemplates,
+  saveQuedadaTemplate,
+  deleteQuedadaTemplate,
+} from "@/server/actions/quedadas";
 import { DEFAULT_QUEDADA_DESCRIPTION } from "@/lib/quedadas/defaults";
 import {
   BankAccountFields,
@@ -65,11 +71,15 @@ function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+type TemplateRow = { id: string; name: string; config: QuedadaInitial };
+
 export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; initial?: QuedadaInitial }) {
   const router = useRouter();
   const toast = useToast();
+  const { ask, confirm } = usePromptModal();
   const [pending, startTransition] = useTransition();
   const [step, setStep] = useState(0);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
   // Paso 1 — se siembran de `initial` (duplicar/plantilla) si viene.
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -121,6 +131,94 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     const d = new Date(`${base}T${hour}`);
     return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
   }
+
+  // ── Plantillas (hasta 5) ────────────────────────────────────────────────────
+  const refreshTemplates = useCallback(async () => {
+    const res = await listQuedadaTemplates({});
+    if (res.ok) setTemplates(res.data as unknown as TemplateRow[]);
+  }, []);
+  useEffect(() => {
+    void refreshTemplates();
+  }, [refreshTemplates]);
+
+  // Snapshot del estado actual del wizard (sin fecha) para guardar como plantilla.
+  const currentConfig = (): QuedadaInitial => ({
+    title,
+    description,
+    format,
+    matchMode,
+    visibility,
+    locationText,
+    feeUsd,
+    courts,
+    hours,
+    courtPriceUsd,
+    bank,
+    prizeRows,
+    perks,
+    categories,
+  });
+
+  // Carga una plantilla/duplicado en todos los pasos (no toca la fecha).
+  const loadInitial = (init: QuedadaInitial) => {
+    setTitle(init.title ?? "");
+    setDescription(init.description ?? DEFAULT_QUEDADA_DESCRIPTION);
+    if (init.format) setFormat(init.format);
+    if (init.matchMode) setMatchMode(init.matchMode);
+    if (init.visibility) setVisibility(init.visibility);
+    setLocationText(init.locationText ?? "");
+    setFeeUsd(init.feeUsd ?? "0");
+    setCourts(init.courts ?? "");
+    setHours(init.hours ?? "");
+    setCourtPriceUsd(init.courtPriceUsd ?? "");
+    setBank(init.bank ?? { ...EMPTY_BANK });
+    setPrizeRows(init.prizeRows ?? []);
+    setPerks(init.perks ?? "");
+    setCategories(init.categories ?? []);
+    setStep(0);
+    toast({ icon: "check", title: "Plantilla cargada" });
+  };
+
+  const saveAsTemplate = async () => {
+    if (templates.length >= 5) {
+      toast({ icon: "alert-triangle", title: "Máximo 5 plantillas", sub: "Borra una para guardar otra." });
+      return;
+    }
+    const name = await ask({
+      title: "Guardar como plantilla",
+      label: "Nombre de la plantilla",
+      placeholder: "Ej. Americano de los sábados",
+      required: true,
+      confirmLabel: "Guardar",
+      validate: (v) => (v.trim().length < 1 ? "Escribe un nombre" : null),
+    });
+    if (name == null) return;
+    const res = await saveQuedadaTemplate({ name: name.trim(), config: currentConfig() });
+    if (!res.ok) {
+      toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+      return;
+    }
+    toast({ icon: "check-circle-2", title: "Plantilla guardada" });
+    void refreshTemplates();
+  };
+
+  const removeTemplate = async (id: string) => {
+    const ok = await confirm({
+      title: "Borrar plantilla",
+      body: "¿Borrar esta plantilla? No afecta a las quedadas ya creadas.",
+      confirmLabel: "Borrar",
+      cancelLabel: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+    const res = await deleteQuedadaTemplate({ templateId: id });
+    if (!res.ok) {
+      toast({ icon: "alert-triangle", title: "No se pudo borrar", sub: res.error.message });
+      return;
+    }
+    toast({ icon: "check", title: "Plantilla borrada" });
+    void refreshTemplates();
+  };
 
   // Validación para avanzar de paso.
   const canAdvance = (): boolean => {
@@ -276,6 +374,32 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         <div style={{ flex: 1, overflow: "auto", padding: 22, paddingTop: 8, display: "flex", flexDirection: "column", gap: 16, borderTop: "1px solid var(--border)" }}>
           {step === 0 && (
             <>
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, background: "#fafafa" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span className="label-mp">Plantillas · {templates.length}/5</span>
+                  <button type="button" onClick={saveAsTemplate} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "5px 10px", fontSize: 11.5 }}>
+                    <Icon name="bookmark" size={12} /> Guardar actual
+                  </button>
+                </div>
+                {templates.length === 0 ? (
+                  <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                    Guarda esta configuración para repetirla luego sin volver a llenar todo.
+                  </span>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {templates.map((t) => (
+                      <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
+                        <button type="button" onClick={() => loadInitial(t.config)} title="Cargar plantilla" style={{ border: 0, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "#0a0a0a", padding: 0 }}>
+                          {t.name}
+                        </button>
+                        <button type="button" onClick={() => removeTemplate(t.id)} aria-label="Borrar plantilla" style={{ border: 0, background: "transparent", cursor: "pointer", color: "var(--muted-fg)", display: "inline-flex", padding: 0 }}>
+                          <Icon name="x" size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Field label="Título">
                 <input autoFocus value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Americano del sábado en Cumbayá" style={inputStyle} />
               </Field>

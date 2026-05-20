@@ -2426,7 +2426,15 @@ el texto libre `payment_info`/`prizes_text` (deprecados, quedan por compat). El
 banco se elige de un catálogo estático EC (`src/lib/geo/ec-banks.ts`). Mismos
 editores (`BankAccountFields`/`PrizesEditor`) en wizard de crear y panel de
 gestión. RLS sin cambios (columnas de `quedadas`). "Duplicar" precarga el wizard
-desde una quedada previa; plantillas con nombre (hasta 5) = `quedada_templates`.
+desde una quedada previa (reusa `getQuedadaManageData`, sin storage nuevo).
+
+**Plantillas (mig 135):** `quedada_templates` (user_id, name, config jsonb,
+created_at) — snapshot del wizard (QuedadaInitial sin fecha) para repetir armados.
+Data privada del usuario: RLS = dueño (`user_id = auth.uid()` en select/insert/
+update/delete), sin audit/realtime/path admin (config personal, no entidad
+moderable). Cap **5/usuario** validado en `saveQuedadaTemplate`. Actions
+`listQuedadaTemplates`/`saveQuedadaTemplate`/`deleteQuedadaTemplate` + UI en el
+wizard (chips de carga + "Guardar actual").
 
 ---
 

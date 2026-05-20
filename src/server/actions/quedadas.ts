@@ -26,7 +26,12 @@ import {
   SetParticipantPaidSchema,
   QuedadaLogisticsSchema,
   JoinByCodeSchema,
+  ListQuedadaTemplatesSchema,
+  SaveQuedadaTemplateSchema,
+  QuedadaTemplateIdSchema,
 } from "@/lib/schemas/quedadas";
+
+const MAX_QUEDADA_TEMPLATES = 5;
 
 async function requireUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -594,5 +599,57 @@ export async function joinByInviteCode(
       );
     if (pErr) throw new MpError("QUEDADAS.JOIN_FAILED", pErr.message, 500);
     return { ok: true as const, quedadaId: q.id as string, transactionId };
+  });
+}
+
+// ── Plantillas (hasta 5/usuario) ─────────────────────────────────────────────
+// Config personal del wizard (RLS = dueño). El cap se valida acá.
+type QuedadaTemplateRow = { id: string; name: string; config: unknown; created_at: string };
+
+export async function listQuedadaTemplates(input: unknown): Promise<ActionResult<QuedadaTemplateRow[]>> {
+  return runAction(ListQuedadaTemplatesSchema, input ?? {}, async () => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { data, error } = await supabase
+      .from("quedada_templates")
+      .select("id,name,config,created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw new MpError("QUEDADAS.TEMPLATES_FAILED", error.message, 500);
+    return (data ?? []) as QuedadaTemplateRow[];
+  });
+}
+
+export async function saveQuedadaTemplate(input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(SaveQuedadaTemplateSchema, input, async (d) => {
+    const userId = await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { count } = await supabase
+      .from("quedada_templates")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    if ((count ?? 0) >= MAX_QUEDADA_TEMPLATES) {
+      throw new MpError("QUEDADAS.TEMPLATE_LIMIT", `Máximo ${MAX_QUEDADA_TEMPLATES} plantillas. Borra una para guardar otra.`, 409);
+    }
+    const { data, error } = await supabase
+      .from("quedada_templates")
+      .insert({ user_id: userId, name: d.name, config: d.config } as never)
+      .select("id")
+      .single();
+    if (error || !data) throw new MpError("QUEDADAS.TEMPLATE_SAVE_FAILED", error?.message ?? "No se pudo guardar", 500);
+    return { id: data.id as string };
+  });
+}
+
+export async function deleteQuedadaTemplate(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(QuedadaTemplateIdSchema, input, async ({ templateId }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    // RLS limita el delete a las plantillas del propio usuario.
+    const { error } = await supabase.from("quedada_templates").delete().eq("id", templateId);
+    if (error) throw new MpError("QUEDADAS.TEMPLATE_DELETE_FAILED", error.message, 500);
+    return { ok: true as const };
   });
 }
