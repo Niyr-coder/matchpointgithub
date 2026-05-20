@@ -2467,155 +2467,175 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               <span style={{ color: "#92400e" }}>→</span>
             </a>
           )}
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontSize: 12.5 }}>
-            <thead>
-              <tr>
-                {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
-                  <th
-                    key={i}
-                    style={{
-                      textAlign: i >= 2 && i < 5 ? "right" : "left",
-                      padding: "8px 6px",
-                      fontSize: 9.5,
-                      color: "var(--muted-fg)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.14em",
-                      fontWeight: 800,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ROSTER.map((p, i) => {
-                // ROSTER === TEAM.members (línea 2229), así que p es un
-                // TeamMemberLite completo con su propia customización.
-                // Acceso directo — sin lookup extra.
-                const memberAccent = p.accentHex ?? null;
-                const memberCard = p.cardStyleCss ?? null;
-                const avatarBg = memberAccent
-                  ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
-                  : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
-                const isMe = !!meUserId && p.userId === meUserId;
-                // Card por fila: fondo + borde van en las CELDAS (no en el <tr>),
-                // porque el box-shadow del <tr> es un rectángulo y sus esquinas
-                // grises asomaban detrás de las celdas redondeadas.
-                const rowBg = memberCard?.background ?? "#fafafa";
-                const cellYBorder = "inset 0 1px 0 var(--border), inset 0 -1px 0 var(--border)";
-                return (
-                <tr key={p.name} style={{ color: memberCard?.color }}>
-                  <td style={{ padding: "12px 6px 12px 12px", borderRadius: "12px 0 0 12px", background: rowBg, boxShadow: `${cellYBorder}, inset 1px 0 0 var(--border)` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ position: "relative" }}>
-                        <div
+          {/* Roster como cards (no tabla): cada fila es UNA card con fondo +
+              borde + redondeo continuos. Grid compartido header/cards. */}
+          {(() => {
+            const ROSTER_GRID = "minmax(0,1.5fr) auto 48px 40px 104px 34px";
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: ROSTER_GRID,
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "0 14px",
+                  }}
+                >
+                  {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        textAlign: i >= 2 && i < 5 ? "right" : "left",
+                        fontSize: 9.5,
+                        color: "var(--muted-fg)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.14em",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {h}
+                    </div>
+                  ))}
+                </div>
+                {ROSTER.map((p, i) => {
+                  const memberAccent = p.accentHex ?? null;
+                  const memberCard = p.cardStyleCss ?? null;
+                  const avatarBg = memberAccent
+                    ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
+                    : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                  const isMe = !!meUserId && p.userId === meUserId;
+                  return (
+                    <div
+                      key={p.name}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: ROSTER_GRID,
+                        gap: 12,
+                        alignItems: "center",
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: memberCard?.background ?? "#fafafa",
+                        border: memberCard?.border ?? "1px solid var(--border)",
+                        boxShadow: memberCard?.boxShadow,
+                        color: memberCard?.color,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <div style={{ position: "relative", flexShrink: 0 }}>
+                          <div
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: "50%",
+                              background: avatarBg,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#fff",
+                            }}
+                          >
+                            <span className="font-heading" style={{ fontSize: 10.5, fontWeight: 900 }}>
+                              {p.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)}
+                            </span>
+                          </div>
+                          {p.online && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                bottom: -1,
+                                right: -1,
+                                width: 9,
+                                height: 9,
+                                borderRadius: "50%",
+                                background: "#10b981",
+                                border: "2px solid #fff",
+                              }}
+                            />
+                          )}
+                        </div>
+                        <span
                           style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: "50%",
-                            background: avatarBg,
-                            display: "flex",
+                            fontWeight: 700,
+                            display: "inline-flex",
                             alignItems: "center",
-                            justifyContent: "center",
-                            color: "#fff",
+                            gap: 6,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          <span className="font-heading" style={{ fontSize: 10.5, fontWeight: 900 }}>
-                            {p.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .slice(0, 2)}
-                          </span>
-                        </div>
-                        {p.online && (
-                          <span
-                            style={{
-                              position: "absolute",
-                              bottom: -1,
-                              right: -1,
-                              width: 9,
-                              height: 9,
-                              borderRadius: "50%",
-                              background: "#10b981",
-                              border: "2px solid #fff",
-                            }}
-                          />
-                        )}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                          {isMe && <SelfChip />}
+                        </span>
                       </div>
-                      <span style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        {p.name}
-                        {isMe && <SelfChip />}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 6px", background: rowBg, boxShadow: cellYBorder }}>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: "2px 8px",
-                        borderRadius: 9999,
-                        background: p.role.includes("apit") ? "#fef3c7" : "var(--muted)",
-                        color: p.role.includes("apit") ? "#92400e" : "var(--muted-fg)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                      }}
-                    >
-                      {p.role}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px 6px", textAlign: "right", fontWeight: 800, background: rowBg, boxShadow: cellYBorder }}>
-                    {p.level}
-                  </td>
-                  <td style={{ padding: "12px 6px", textAlign: "right", background: rowBg, boxShadow: cellYBorder }}>{p.played}</td>
-                  <td style={{ padding: "12px 6px", textAlign: "right", background: rowBg, boxShadow: cellYBorder }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <div
-                        style={{
-                          width: 36,
-                          height: 4,
-                          background: "var(--muted)",
-                          borderRadius: 9999,
-                          overflow: "hidden",
-                        }}
-                      >
+                      <div>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: "2px 8px",
+                            borderRadius: 9999,
+                            background: p.role.includes("apit") ? "#fef3c7" : "var(--muted)",
+                            color: p.role.includes("apit") ? "#92400e" : "var(--muted-fg)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.1em",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {p.role}
+                        </span>
+                      </div>
+                      <div style={{ textAlign: "right", fontWeight: 800 }}>{p.level}</div>
+                      <div style={{ textAlign: "right" }}>{p.played}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                         <div
                           style={{
-                            width: p.wr + "%",
-                            height: "100%",
-                            background: p.wr >= 75 ? "#10b981" : p.wr >= 60 ? "#fbbf24" : "#dc2626",
+                            width: 36,
+                            height: 4,
+                            background: "var(--muted)",
+                            borderRadius: 9999,
+                            overflow: "hidden",
                           }}
-                        />
+                        >
+                          <div
+                            style={{
+                              width: p.wr + "%",
+                              height: "100%",
+                              background: p.wr >= 75 ? "#10b981" : p.wr >= 60 ? "#fbbf24" : "#dc2626",
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontWeight: 800, minWidth: 28, textAlign: "right" }}>{p.wr}%</span>
                       </div>
-                      <span style={{ fontWeight: 800, minWidth: 28, textAlign: "right" }}>
-                        {p.wr}%
-                      </span>
+                      <div style={{ textAlign: "right" }}>
+                        <button
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 9999,
+                            border: "1px solid var(--border)",
+                            background: "#fff",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Icon name="more-horizontal" size={12} />
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                  <td style={{ padding: "12px 12px 12px 6px", textAlign: "right", borderRadius: "0 12px 12px 0", background: rowBg, boxShadow: `${cellYBorder}, inset -1px 0 0 var(--border)` }}>
-                    <button
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: 9999,
-                        border: "1px solid var(--border)",
-                        background: "#fff",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Icon name="more-horizontal" size={12} />
-                    </button>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Right column */}
