@@ -239,3 +239,52 @@ export function findCardStyle(key: string | null | undefined): CardStyle | null 
   if (!key) return null;
   return CARD_STYLES.find((c) => c.key === key) ?? null;
 }
+
+// ── Temas (combos curados) ────────────────────────────────────────────────
+// El jugador elige UN tema; no mezcla accent/card/banner por separado (combos
+// libres salían feos). Cada tema setea los 3 campos de forma cohesiva y
+// pertenece a un bundle (ownership). 'free' = default, disponible para todos.
+// Ver docs/architecture/20-database.md §29.15-16 y product de personalización.
+export type ProfileTheme = {
+  key: string;
+  label: string;
+  bundleKey: string; // 'free' | 'mp_plus' | 'pack_*'
+  accent: string | null;
+  card: string | null;
+  banner: string | null;
+};
+
+export const PROFILE_THEMES: ProfileTheme[] = [
+  { key: "default",    label: "Clásico",     bundleKey: "free",        accent: null,        card: null,           banner: null },
+  // MP+ (6)
+  { key: "esmeralda",  label: "Esmeralda",   bundleKey: "mp_plus",     accent: "emerald",   card: "glass",        banner: "emerald-night" },
+  { key: "oceano",     label: "Océano",      bundleKey: "mp_plus",     accent: "sky",       card: "frosted",      banner: "ocean" },
+  { key: "crepusculo", label: "Crepúsculo",  bundleKey: "mp_plus",     accent: "violet",    card: "soft-shadow",  banner: "twilight" },
+  { key: "bosque",     label: "Bosque",      bundleKey: "mp_plus",     accent: "green",     card: "paper",        banner: "forest" },
+  { key: "rubi",       label: "Rubí",        bundleKey: "mp_plus",     accent: "rose",      card: "soft-shadow",  banner: "ruby" },
+  { key: "pizarra",    label: "Pizarra",     bundleKey: "mp_plus",     accent: "slate",     card: "outline",      banner: "stormy" },
+  // Packs (4)
+  { key: "neon",       label: "Neón",        bundleKey: "pack_neon",   accent: "neon-mint", card: "neon-emerald", banner: "neon-violet" },
+  { key: "oro",        label: "Oro",         bundleKey: "pack_gold",   accent: "amber",     card: "holographic",  banner: "gold-rush" },
+  { key: "carbon",     label: "Carbón",      bundleKey: "pack_carbon", accent: "zinc",      card: "carbon-deck",  banner: "midnight" },
+  { key: "sakura",     label: "Sakura",      bundleKey: "pack_sakura", accent: "pink",      card: "sakura-glass", banner: "sakura" },
+];
+
+export const THEME_KEYS = new Set(PROFILE_THEMES.map((t) => t.key));
+
+export function findTheme(key: string | null | undefined): ProfileTheme | null {
+  if (!key) return null;
+  return PROFILE_THEMES.find((t) => t.key === key) ?? null;
+}
+
+// Dado el estado actual (accent/card/banner), devuelve el tema que matchea
+// exactamente, o null si es un combo viejo no-temático.
+export function themeFromState(
+  accent: string | null,
+  card: string | null,
+  banner: string | null,
+): ProfileTheme | null {
+  return (
+    PROFILE_THEMES.find((t) => t.accent === accent && t.card === card && t.banner === banner) ?? null
+  );
+}

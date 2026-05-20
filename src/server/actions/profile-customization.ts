@@ -21,6 +21,7 @@ import {
   findAccent,
   findBanner,
   findCardStyle,
+  findTheme,
 } from "@/lib/profile/customization-presets";
 import { canUsePreset } from "@/lib/profile/bundles";
 
@@ -42,6 +43,52 @@ const SetCustomizationSchema = z
     (v) => v.accentColor !== undefined || v.bannerPreset !== undefined || v.cardStyle !== undefined,
     { message: "Especifica al menos un campo a actualizar" },
   );
+
+// ── setTheme ──────────────────────────────────────────────────────────────
+// Path nuevo del panel Personalizar: el user elige UN tema curado, que setea
+// accent_color + card_style + banner_preset coherentes. Reemplaza la mezcla
+// libre (que salía fea). Valida ownership del bundle del tema.
+const SetThemeSchema = z.object({ theme: z.string().trim().min(1).max(40) });
+
+export async function setTheme(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetThemeSchema, input, async ({ theme }) => {
+    const supabase = await getServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+
+    const t = findTheme(theme);
+    if (!t) throw new MpError("PROFILE.THEME_INVALID", "Tema no válido", 422);
+
+    // 'free' (Clásico) siempre disponible; el resto requiere ownership.
+    if (t.bundleKey !== "free") {
+      const plan = await getPlanForUser(supabase, user.id);
+      const isPremium = plan.tier === "premium";
+      const { data: grantRows, error: grantErr } = await supabase
+        .from("profile_cosmetic_grants")
+        .select("bundle_key")
+        .eq("user_id", user.id);
+      if (grantErr) throw new MpError("PROFILE.READ_FAILED", grantErr.message, 500);
+      const myGrants = new Set(
+        ((grantRows ?? []) as Array<{ bundle_key: string }>).map((g) => g.bundle_key),
+      );
+      if (!canUsePreset(t.bundleKey, { isPremium, myGrants })) {
+        if (t.bundleKey === "mp_plus") {
+          throw new MpError("PROFILE.PREMIUM_REQUIRED", "Este tema requiere MatchPoint+", 402);
+        }
+        throw new MpError("PROFILE.PRESET_LOCKED", `Este tema requiere desbloquear ${t.bundleKey}`, 403);
+      }
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ accent_color: t.accent, card_style: t.card, banner_preset: t.banner } as never)
+      .eq("id", user.id);
+    if (error) throw new MpError("PROFILE.UPDATE_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
 
 export async function setProfileCustomization(
   input: unknown,
