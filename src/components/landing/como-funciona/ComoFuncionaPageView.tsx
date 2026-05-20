@@ -40,7 +40,7 @@ export function ComoFuncionaPageView() {
           Reserva, juega y sube de nivel<span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="MatchPoint es la plataforma #1 de pickleball en Ecuador. Conecta jugadores con clubes y eventos en tu ciudad, con disponibilidad real y pago local."
+      lead="MATCHPOINT es la plataforma #1 de pickleball en Ecuador. Conecta jugadores con clubes y eventos en tu ciudad, con disponibilidad real y pago local."
     >
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-14">
         {STEPS.map((s) => (
@@ -75,7 +75,7 @@ export function ComoFuncionaPageView() {
         ))}
       </div>
 
-      <div className="label-mp" style={{ marginBottom: 18 }}>¿Qué hace distinto a MatchPoint?</div>
+      <div className="label-mp" style={{ marginBottom: 18 }}>¿Qué hace distinto a MATCHPOINT?</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-14">
         {FEATURES.map((f) => (
           <div key={f.title} style={{ padding: 18, border: "1px solid var(--border)", borderRadius: 12 }}>

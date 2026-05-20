@@ -1,4 +1,4 @@
-// /sandbox — migrado 1:1 desde MatchPoint Public.html (793-872)
+// /sandbox — migrado 1:1 desde MATCHPOINT Public.html (793-872)
 "use client";
 import Link from "next/link";
 import { Fragment } from "react";

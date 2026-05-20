@@ -322,7 +322,7 @@ export async function quickApproveApplication(
       role: "user",
       kind: "club_application_approved",
       title: "Tu solicitud de club fue aprobada",
-      body: clubName ? `${clubName} ya está activo en MatchPoint.` : null,
+      body: clubName ? `${clubName} ya está activo en MATCHPOINT.` : null,
       payload: { applicationId, clubId },
     });
     // Bienvenida al inbox del rol owner: se ve cuando el user entra al portal.
@@ -376,7 +376,7 @@ export async function approveApplication(
       role: "user",
       kind: "club_application_approved",
       title: "Tu solicitud de club fue aprobada",
-      body: app.name ? `${app.name} ya está activo en MatchPoint.` : null,
+      body: app.name ? `${app.name} ya está activo en MATCHPOINT.` : null,
       payload: { applicationId, clubId },
     });
 

@@ -1,4 +1,4 @@
-// Server: equipo interno MatchPoint (role_assignments role=admin sin club_id).
+// Server: equipo interno MATCHPOINT (role_assignments role=admin sin club_id).
 import { getServerClient } from "@/lib/db/client.server";
 import { AdminTeamScreenView, type TeamData, type MemberRow } from "./AdminTeamScreenView";
 

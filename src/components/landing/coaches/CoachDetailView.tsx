@@ -1,4 +1,4 @@
-// /coaches/[id] — migrado 1:1 desde MatchPoint Public.html (líneas 583-657)
+// /coaches/[id] — migrado 1:1 desde MATCHPOINT Public.html (líneas 583-657)
 "use client";
 import { Icon } from "@/components/Icon";
 import { usePaywall } from "@/components/landing/PublicChromeClient";
@@ -188,7 +188,7 @@ export function CoachDetailView({ detail }: { detail: CoachDetail }) {
           </h2>
           <p style={{ fontSize: 14.5, lineHeight: 1.65, color: "var(--muted-fg)", marginBottom: 28 }}>
             {coach.bio ??
-              `Coach certificado con programa probado. Especialista en técnica y juego competitivo. Más de ${coach.ratingCount > 0 ? coach.ratingCount : 50} clases dictadas en la red MatchPoint.`}
+              `Coach certificado con programa probado. Especialista en técnica y juego competitivo. Más de ${coach.ratingCount > 0 ? coach.ratingCount : 50} clases dictadas en la red MATCHPOINT.`}
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 36 }}>
             {certNames.map((cert) => (

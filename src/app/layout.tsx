@@ -4,7 +4,7 @@ import { SportsProvider } from "@/components/SportsProvider";
 import { getMultisportEnabled } from "@/lib/sports.server";
 
 export const metadata: Metadata = {
-  title: "MatchPoint — La comunidad #1 de Pickleball en Ecuador",
+  title: "MATCHPOINT — La comunidad #1 de Pickleball en Ecuador",
   description:
     "Reserva canchas, encuentra rivales de tu nivel y sube al ranking. De cero a cancha en 60 segundos.",
   keywords: ["pickleball", "ecuador", "canchas", "reservas", "ranking"],

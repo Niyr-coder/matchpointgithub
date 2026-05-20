@@ -13,7 +13,7 @@ export function BlogIndexView({ posts }: { posts: BlogPost[] }) {
   const [featured, ...rest] = posts;
   return (
     <MarketingShell
-      eyebrow="Blog MatchPoint"
+      eyebrow="Blog MATCHPOINT"
       title={
         <>
           Historias, guías y novedades del deporte del Ecuador

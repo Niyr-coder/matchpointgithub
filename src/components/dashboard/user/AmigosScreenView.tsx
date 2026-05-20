@@ -226,7 +226,7 @@ export function AmigosScreenView({
           title={
             tab === "amigos"
               ? friends.length === 0
-                ? "Aún no tienes amigos en MatchPoint"
+                ? "Aún no tienes amigos en MATCHPOINT"
                 : "Sin matches con esa búsqueda"
               : myCity == null
                 ? "Configura tu ciudad para ver sugerencias"

@@ -213,7 +213,7 @@ function StatusBlock({
           <strong style={{ fontSize: 14 }}>Pago aprobado</strong>
         </div>
         <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: 0 }}>
-          Tu pago fue verificado por el equipo de MatchPoint. No tienes que hacer nada más.
+          Tu pago fue verificado por el equipo de MATCHPOINT. No tienes que hacer nada más.
         </p>
         {tx.proofSignedUrl ? (
           <a

@@ -34,7 +34,7 @@ async function loadData() {
         verified: c.verifiedAt != null,
         cert: c.verifiedAt != null ? "Verificado" : "Coach activo",
         club: c.city ?? "—",
-        bio: c.headline ?? "Coach en la red MatchPoint.",
+        bio: c.headline ?? "Coach en la red MATCHPOINT.",
       }))
     : [];
 

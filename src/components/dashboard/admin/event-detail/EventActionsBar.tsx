@@ -49,7 +49,7 @@ export function EventActionsBar({ data }: { data: AdminEventDetail }) {
 
   const handleContact = () => {
     if (!organizerEmail) return;
-    const subject = encodeURIComponent(`MatchPoint · Evento "${data.event.name}"`);
+    const subject = encodeURIComponent(`MATCHPOINT · Evento "${data.event.name}"`);
     window.location.href = `mailto:${organizerEmail}?subject=${subject}`;
   };
 

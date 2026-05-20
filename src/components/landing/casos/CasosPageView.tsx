@@ -9,7 +9,7 @@ const CASES = [
     sport: "Pickleball",
     courts: 4,
     quote:
-      "Antes coordinábamos las reservas por WhatsApp y se nos pasaban turnos. Con MatchPoint pasamos a un calendario único; las reservas se llenan solas y nadie se queda esperando.",
+      "Antes coordinábamos las reservas por WhatsApp y se nos pasaban turnos. Con MATCHPOINT pasamos a un calendario único; las reservas se llenan solas y nadie se queda esperando.",
     by: "Mauricio P., dueño",
     metrics: [
       { k: "Ocupación", v: "+38%", sub: "vs trimestre anterior" },
@@ -18,7 +18,7 @@ const CASES = [
     ],
   },
   {
-    club: "MatchPoint Quito",
+    club: "MATCHPOINT Quito",
     city: "La Carolina, Quito",
     sport: "Pickleball · Pádel",
     courts: 6,
@@ -37,10 +37,10 @@ const CASES = [
     sport: "Pickleball",
     courts: 3,
     quote:
-      "El check-in en mostrador con MatchPoint nos ahorró el cuaderno. La caja del día cuadra sola y nuestros empleados ya no tienen que armar el reporte a mano.",
+      "El check-in en mostrador con MATCHPOINT nos ahorró el cuaderno. La caja del día cuadra sola y nuestros empleados ya no tienen que armar el reporte a mano.",
     by: "Andrés V., owner",
     metrics: [
-      { k: "Ingresos mensuales", v: "+27%", sub: "vs antes de MatchPoint" },
+      { k: "Ingresos mensuales", v: "+27%", sub: "vs antes de MATCHPOINT" },
       { k: "Cuadres en caja", v: "100%", sub: "automáticos" },
       { k: "Eventos del club", v: "9", sub: "torneos internos en 6 meses" },
     ],
@@ -67,11 +67,11 @@ export function CasosPageView() {
       eyebrow="Casos de éxito"
       title={
         <>
-          Clubes ecuatorianos que escalaron con MatchPoint
+          Clubes ecuatorianos que escalaron con MATCHPOINT
           <span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="Los siguientes son ejemplos representativos de clubes que ya operan con MatchPoint. Si quieres aparecer aquí con tu caso real, escríbenos a hola@matchpoint.top."
+      lead="Los siguientes son ejemplos representativos de clubes que ya operan con MATCHPOINT. Si quieres aparecer aquí con tu caso real, escríbenos a hola@matchpoint.top."
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         {CASES.map((c) => (
@@ -177,7 +177,7 @@ export function CasosPageView() {
         }}
       >
         * Las cifras de esta página son ejemplos representativos del impacto que vemos en clubes
-        usando MatchPoint. Para un caso real verificado, contáctanos.
+        usando MATCHPOINT. Para un caso real verificado, contáctanos.
       </p>
     </MarketingShell>
   );

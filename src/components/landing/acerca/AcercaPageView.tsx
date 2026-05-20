@@ -12,14 +12,14 @@ const VALUES = [
 export function AcercaPageView() {
   return (
     <MarketingShell
-      eyebrow="Acerca de MatchPoint"
+      eyebrow="Acerca de MATCHPOINT"
       title={
         <>
           Construido en Quito,<br />
           para el pickleball del Ecuador<span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="MatchPoint nació de la frustración de coordinar partidos y reservar canchas por WhatsApp. Hoy es la plataforma que conecta jugadores, coaches, clubes y partners en una sola app."
+      lead="MATCHPOINT nació de la frustración de coordinar partidos y reservar canchas por WhatsApp. Hoy es la plataforma que conecta jugadores, coaches, clubes y partners en una sola app."
     >
       <div className="card" style={{ padding: 28, marginBottom: 32 }}>
         <h3 className="font-heading" style={{ fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", margin: "0 0 14px" }}>
@@ -29,7 +29,7 @@ export function AcercaPageView() {
         <p style={{ fontSize: 14, color: "var(--muted-fg)", lineHeight: 1.65, margin: 0 }}>
           El deporte de cancha en Ecuador creció más rápido que la infraestructura digital
           que lo soporta. Clubes coordinan su agenda por mensajes; jugadores invitan amigos
-          uno por uno; los torneos viven en planillas dispersas. MatchPoint unifica todo
+          uno por uno; los torneos viven en planillas dispersas. MATCHPOINT unifica todo
           eso en una sola plataforma con pagos locales y datos abiertos para la comunidad.
         </p>
       </div>

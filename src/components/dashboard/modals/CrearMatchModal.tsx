@@ -593,7 +593,7 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
 const TIME_SLOTS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 const CLUBS = [
   { n: "Club Norte Pickleball", d: "Cumbayá · 8 km", price: "$24/h" },
-  { n: "MatchPoint Quito", d: "La Carolina · 4 km", price: "$28/h" },
+  { n: "MATCHPOINT Quito", d: "La Carolina · 4 km", price: "$28/h" },
   { n: "Smash Sport Cumbayá", d: "Cumbayá · 12 km", price: "$22/h" },
   { n: "Pickle Club Guayaquil", d: "Samborondón · 6 km", price: "$26/h" },
 ];

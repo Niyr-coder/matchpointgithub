@@ -1,7 +1,7 @@
 "use server";
 
 // Admin refunds: refunds manuales por transaction.
-// MatchPoint NO usa Stripe ni PSP. El admin marca la transaction como
+// MATCHPOINT NO usa Stripe ni PSP. El admin marca la transaction como
 // `refunded` con motivo + referencia de transferencia bancaria/DeUna; un
 // humano hace la transferencia real fuera de la app.
 import "server-only";

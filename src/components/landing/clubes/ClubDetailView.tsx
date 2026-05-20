@@ -1,4 +1,4 @@
-// /clubes/[slug] — migrado 1:1 desde MatchPoint Public.html (líneas 446-501)
+// /clubes/[slug] — migrado 1:1 desde MATCHPOINT Public.html (líneas 446-501)
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";

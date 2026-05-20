@@ -18,7 +18,7 @@ type RoleHelp = {
 const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
   partner: {
     intro:
-      "Como partner organizas torneos en MatchPoint. Acá vas a encontrar los flujos clave para que tu evento corra bien y los jugadores tengan la mejor experiencia.",
+      "Como partner organizas torneos en MATCHPOINT. Acá vas a encontrar los flujos clave para que tu evento corra bien y los jugadores tengan la mejor experiencia.",
     sections: [
       {
         icon: "trophy",
@@ -33,7 +33,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "users",
         title: "Categorías y rango MPR",
-        body: "Las categorías agrupan a los jugadores por nivel. En MatchPoint usamos el MPR (MatchPoint Rating), escala 2.0–8.0 propia de la plataforma. Definí cada categoría con dos puntas del slider: ej. 'A: 4.5–6.0', 'B: 3.0–4.5', 'Open' para sin restricción, o '5.5+' para sin tope superior.",
+        body: "Las categorías agrupan a los jugadores por nivel. En MATCHPOINT usamos el MPR (MATCHPOINT Rating), escala 2.0–8.0 propia de la plataforma. Definí cada categoría con dos puntas del slider: ej. 'A: 4.5–6.0', 'B: 3.0–4.5', 'Open' para sin restricción, o '5.5+' para sin tope superior.",
         bullets: [
           "Las categorías son opcionales; un torneo sin categorías acepta inscripciones libres.",
           "Una categoría con inscripciones NO se puede borrar; primero cancela esas inscripciones.",
@@ -47,7 +47,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "dollar-sign",
         title: "Cobro de inscripciones",
-        body: "MatchPoint no procesa pagos con tarjeta. Las cuotas se cobran por transferencia bancaria o DeUna (Ecuador). Tenés tres modos:",
+        body: "MATCHPOINT no procesa pagos con tarjeta. Las cuotas se cobran por transferencia bancaria o DeUna (Ecuador). Tenés tres modos:",
         bullets: [
           "Online (prepay): el jugador transfiere y sube comprobante. Auto-aprobado al subir (sin revisión).",
           "En club (onsite): el jugador llega, paga en mostrador, y vos marcas 'Pagado' desde la tabla de inscritos.",
@@ -57,23 +57,23 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "x-circle",
         title: "Cancelaciones y reembolsos",
-        body: "Si cancelás el torneo, todos los inscritos reciben notificación inapp automáticamente. La devolución de cuotas la hacés vos por fuera (transferencia/DeUna), en un máximo de 7 días según las reglas que aceptaste al crear el torneo. MatchPoint NO procesa refunds.",
+        body: "Si cancelás el torneo, todos los inscritos reciben notificación inapp automáticamente. La devolución de cuotas la hacés vos por fuera (transferencia/DeUna), en un máximo de 7 días según las reglas que aceptaste al crear el torneo. MATCHPOINT NO procesa refunds.",
       },
       {
         icon: "star",
         title: "Torneo 'estelar' (banner grande)",
-        body: "El badge 'Estelar' destaca tu torneo en el banner principal del listado público. Cuesta $20 USD por torneo. Solo lo activa un admin de MatchPoint después de confirmar el pago — escribinos para coordinar.",
+        body: "El badge 'Estelar' destaca tu torneo en el banner principal del listado público. Cuesta $20 USD por torneo. Solo lo activa un admin de MATCHPOINT después de confirmar el pago — escribinos para coordinar.",
       },
       {
         icon: "shield",
         title: "Reglas del organizador",
-        body: "Aceptás 8 cláusulas al crear cada torneo: responsabilidad civil, info veraz, política de reembolsos, antitrampas, reglas oficiales de pickleball, datos personales, comisión MatchPoint, y derecho de suspensión. Léelas en cada flujo de creación.",
+        body: "Aceptás 8 cláusulas al crear cada torneo: responsabilidad civil, info veraz, política de reembolsos, antitrampas, reglas oficiales de pickleball, datos personales, comisión MATCHPOINT, y derecho de suspensión. Léelas en cada flujo de creación.",
       },
     ],
   },
   owner: {
     intro:
-      "Como dueño del club, controlás todo lo que pasa en tu sede: canchas, reservas, staff, clientes, finanzas y la presencia pública de tu club en MatchPoint.",
+      "Como dueño del club, controlás todo lo que pasa en tu sede: canchas, reservas, staff, clientes, finanzas y la presencia pública de tu club en MATCHPOINT.",
     sections: [
       {
         icon: "building-2",
@@ -130,7 +130,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
   },
   coach: {
     intro:
-      "Como coach gestionás tus clases, alumnos, calendario y cobros. MatchPoint es tu agenda profesional + canal de captación.",
+      "Como coach gestionás tus clases, alumnos, calendario y cobros. MATCHPOINT es tu agenda profesional + canal de captación.",
     sections: [
       {
         icon: "calendar",
@@ -145,7 +145,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "dollar-sign",
         title: "Pagos y comisiones",
-        body: "Los alumnos pagan por clase vía transferencia/DeUna (igual que el resto de pagos en MatchPoint). Vos confirmás recibido. El club puede cobrar comisión sobre tus clases si así lo acordaste con el owner.",
+        body: "Los alumnos pagan por clase vía transferencia/DeUna (igual que el resto de pagos en MATCHPOINT). Vos confirmás recibido. El club puede cobrar comisión sobre tus clases si así lo acordaste con el owner.",
       },
     ],
   },
@@ -172,7 +172,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
   },
   user: {
     intro:
-      "Como jugador en MatchPoint reservás canchas, te inscribís a torneos, tomás clases con coaches y trackeás tu ranking.",
+      "Como jugador en MATCHPOINT reservás canchas, te inscribís a torneos, tomás clases con coaches y trackeás tu ranking.",
     sections: [
       {
         icon: "calendar",
@@ -187,12 +187,12 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "x-circle",
         title: "Cancelar tu inscripción",
-        body: "Desde el detalle del torneo en tu dashboard. La devolución de cuota la coordina el organizador del torneo, no MatchPoint.",
+        body: "Desde el detalle del torneo en tu dashboard. La devolución de cuota la coordina el organizador del torneo, no MATCHPOINT.",
       },
       {
         icon: "trending-up",
         title: "Ranking ELO y MPR",
-        body: "Tu rating se actualiza después de cada partido oficial reportado. Singles y dobles llevan ratings separados. Tu MPR (MatchPoint Rating, escala 2.0–8.0) se usa para inscribirte en categorías por nivel.",
+        body: "Tu rating se actualiza después de cada partido oficial reportado. Singles y dobles llevan ratings separados. Tu MPR (MATCHPOINT Rating, escala 2.0–8.0) se usa para inscribirte en categorías por nivel.",
       },
       {
         icon: "crown",
@@ -266,7 +266,7 @@ export function HelpScreen({ role }: { role: RoleKey }) {
             lineHeight: 1,
           }}
         >
-          Cómo usar MatchPoint
+          Cómo usar MATCHPOINT
           <span style={{ color: "var(--primary)" }}>.</span>
         </h1>
         <p

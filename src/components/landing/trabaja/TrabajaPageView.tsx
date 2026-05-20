@@ -62,7 +62,7 @@ export function TrabajaPageView() {
         </h3>
         <p style={{ fontSize: 13.5, color: "var(--muted-fg)", lineHeight: 1.55, margin: "0 0 14px" }}>
           Si crees que podemos sumarte aunque no tengamos vacante abierta, mándanos tu CV y un párrafo
-          de por qué te interesa MatchPoint. Te respondemos siempre.
+          de por qué te interesa MATCHPOINT. Te respondemos siempre.
         </p>
         <a
           href="mailto:trabaja@matchpoint.top?subject=Postulación%20espontánea"

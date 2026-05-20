@@ -45,7 +45,7 @@ export function TournamentActionsBar({ data }: { data: AdminTournamentDetail }) 
 
   const handleContact = () => {
     if (!organizerEmail) return;
-    const subject = encodeURIComponent(`MatchPoint · Torneo "${data.tournament.name}"`);
+    const subject = encodeURIComponent(`MATCHPOINT · Torneo "${data.tournament.name}"`);
     window.location.href = `mailto:${organizerEmail}?subject=${subject}`;
   };
 

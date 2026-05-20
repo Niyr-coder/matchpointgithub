@@ -91,7 +91,7 @@ export function OnboardingWizard({
       }
       const res = await completeOnboarding(payload);
       if (res.ok) {
-        if (!markAsSkipped) toast({ icon: "check", title: "¡Listo!", sub: "Bienvenido a MatchPoint" });
+        if (!markAsSkipped) toast({ icon: "check", title: "¡Listo!", sub: "Bienvenido a MATCHPOINT" });
         onClose();
         router.refresh();
       } else {
@@ -340,7 +340,7 @@ function Step2({
             textAlign: "center",
           }}
         >
-          Aún no hay clubes en MatchPoint. Vuelve pronto.
+          Aún no hay clubes en MATCHPOINT. Vuelve pronto.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

@@ -118,7 +118,7 @@ async function loadData(activeConvId: string | null) {
     if (!name) name = isGroup ? "Grupo" : "Conversación";
 
     const last = lastByConv.get(cid);
-    // Si el "otro" del DM es el perfil oficial MatchPoint, marcamos isOfficial
+    // Si el "otro" del DM es el perfil oficial MATCHPOINT, marcamos isOfficial
     // para badge verified + pin top en MensajesScreenView.
     const otherProfile = otherIds[0] ? profileMap.get(otherIds[0]) : undefined;
     const isOfficial = otherProfile?.is_system === true;
@@ -138,7 +138,7 @@ async function loadData(activeConvId: string | null) {
     };
   });
 
-  // Pin del DM MatchPoint al top de la lista.
+  // Pin del DM MATCHPOINT al top de la lista.
   convos.sort((a, b) => {
     if (a.isOfficial && !b.isOfficial) return -1;
     if (b.isOfficial && !a.isOfficial) return 1;

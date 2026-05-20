@@ -6,13 +6,13 @@ export default function TerminosPage() {
     <PublicChrome>
       <LegalDoc eyebrow="Legal" title="Términos y condiciones" updated="17 de mayo de 2026">
         <p style={{ marginTop: 0 }}>
-          Bienvenido a MatchPoint. Al crear una cuenta o utilizar nuestros servicios aceptas estos
+          Bienvenido a MATCHPOINT. Al crear una cuenta o utilizar nuestros servicios aceptas estos
           términos. Léelos con atención. Estos términos rigen el uso de la plataforma matchpoint.top
-          y de la app móvil MatchPoint operadas por MatchPoint Ecuador.
+          y de la app móvil MATCHPOINT operadas por MATCHPOINT Ecuador.
         </p>
 
         <LegalSection n={1} title="Objeto">
-          MatchPoint es una plataforma digital que conecta jugadores con clubes deportivos, coaches y
+          MATCHPOINT es una plataforma digital que conecta jugadores con clubes deportivos, coaches y
           organizadores de torneos en Ecuador. La plataforma facilita reservas de cancha, inscripción
           a eventos, gestión de rankings y comunicación entre las partes.
         </LegalSection>
@@ -25,7 +25,7 @@ export default function TerminosPage() {
 
         <LegalSection n={3} title="Reservas y pagos">
           Las reservas se confirman cuando el club admin aprueba el comprobante de pago. Los pagos se
-          realizan por transferencia bancaria o DeUna directamente al club organizador; MatchPoint no
+          realizan por transferencia bancaria o DeUna directamente al club organizador; MATCHPOINT no
           actúa como intermediario financiero. Las cancelaciones y reembolsos se rigen por la política
           de cada club, visible en el detalle de la reserva.
         </LegalSection>
@@ -44,13 +44,13 @@ export default function TerminosPage() {
         </LegalSection>
 
         <LegalSection n={6} title="Propiedad intelectual">
-          La marca MatchPoint, el logotipo, la plataforma y su código son propiedad de MatchPoint
+          La marca MATCHPOINT, el logotipo, la plataforma y su código son propiedad de MATCHPOINT
           Ecuador. Está prohibido copiar, modificar o redistribuir cualquier parte del servicio sin
           autorización por escrito.
         </LegalSection>
 
         <LegalSection n={7} title="Limitación de responsabilidad">
-          MatchPoint conecta a las partes pero no es responsable por la calidad del servicio prestado
+          MATCHPOINT conecta a las partes pero no es responsable por la calidad del servicio prestado
           por clubes, coaches o partners, ni por lesiones, pérdidas o daños ocurridos en las
           instalaciones. La relación contractual del servicio deportivo es directa entre el usuario y
           el club/coach.
@@ -70,7 +70,7 @@ export default function TerminosPage() {
 
         <LegalSection n={10} title="Jurisdicción y contacto">
           Estos términos se rigen por las leyes de la República del Ecuador. Para dudas o reclamos:
-          <br /><strong>hola@matchpoint.top</strong> · MatchPoint Ecuador · Quito, Ecuador.
+          <br /><strong>hola@matchpoint.top</strong> · MATCHPOINT Ecuador · Quito, Ecuador.
         </LegalSection>
 
         <p style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 32 }}>

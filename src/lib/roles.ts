@@ -1,4 +1,4 @@
-// Roles — config central de los 7 roles del sistema MatchPoint.
+// Roles — config central de los 7 roles del sistema MATCHPOINT.
 // AGENTS.md hierarchy: ADMIN > OWNER > MANAGER > PARTNER > COACH > EMPLOYEE > USER
 // Source de verdad migrada 1:1 desde el design system (ui_kits/dashboard/roles.jsx).
 

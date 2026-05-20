@@ -505,7 +505,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           </h2>
           <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#0a0a0a", marginBottom: 32 }}>
             {t.description ??
-              `${fmt}. Inscripción ${fee > 0 ? `desde $${fee} por jugador` : "gratis"}. Premios para top 3 y kit oficial MatchPoint para todos los inscritos.`}
+              `${fmt}. Inscripción ${fee > 0 ? `desde $${fee} por jugador` : "gratis"}. Premios para top 3 y kit oficial MATCHPOINT para todos los inscritos.`}
           </p>
           <div className="label-mp">Cronograma</div>
           <h2

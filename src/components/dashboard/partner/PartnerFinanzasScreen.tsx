@@ -7,7 +7,7 @@ import {
   type RevenueRow,
 } from "./PartnerFinanzasScreenView";
 
-const MP_FEE_PCT = 10; // comisión MatchPoint fija
+const MP_FEE_PCT = 10; // comisión MATCHPOINT fija
 
 const COLORS = ["#0a0a0a", "var(--primary)", "#0c4a6e", "#7c3aed", "#db2777", "#0ea5e9"];
 

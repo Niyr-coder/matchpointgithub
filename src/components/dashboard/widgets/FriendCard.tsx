@@ -334,7 +334,7 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
           </span>
         </div>
         <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 6, lineHeight: 1.45 }}>
-          Cuenta oficial de MatchPoint EC. Te enviamos novedades, recordatorios y respuestas de soporte.
+          Cuenta oficial de MATCHPOINT EC. Te enviamos novedades, recordatorios y respuestas de soporte.
         </div>
       </div>
     </>

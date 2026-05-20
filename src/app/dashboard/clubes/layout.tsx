@@ -43,7 +43,7 @@ export default async function DashboardClubesLayout({
   const profile = await getProfileSummary(session.session.userId);
   const userName = profile.displayName ?? profile.username ?? "Usuario";
   const contextLabel: string | null =
-    role === "admin" ? "Plataforma · MatchPoint EC" : role === "user" ? null : null;
+    role === "admin" ? "Plataforma · MATCHPOINT EC" : role === "user" ? null : null;
 
   return (
     <div

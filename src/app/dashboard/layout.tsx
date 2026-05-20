@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { getAdminClient } from "@/lib/db/client.admin";
 
 export const metadata = {
-  title: "MatchPoint · Dashboard",
+  title: "MATCHPOINT · Dashboard",
 };
 
 // Cacheamos el flag `onboarded_at` por userId. La sesión cambia muy poco y este

@@ -106,7 +106,7 @@ const CLUB_PROMOS = [
     price: 0,
     color: "linear-gradient(135deg,#064e3b,#10b981)",
     href: "/?auth=signup",
-    promo: { ctaLabel: "Comparte MatchPoint" },
+    promo: { ctaLabel: "Comparte MATCHPOINT" },
   },
 ];
 

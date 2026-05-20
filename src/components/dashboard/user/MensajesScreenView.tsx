@@ -24,7 +24,7 @@ export type ConvoLite = {
   kind: "dm" | "group" | "support" | "club_channel" | "team_channel" | "match";
   isGroup: boolean;
   isSystem: boolean;
-  // True cuando el "otro" del DM es el perfil oficial MatchPoint (is_system).
+  // True cuando el "otro" del DM es el perfil oficial MATCHPOINT (is_system).
   // Habilita badge verified + pin top.
   isOfficial: boolean;
   memberCount: number;
@@ -286,7 +286,7 @@ export function MensajesScreenView({
                     }}
                   >
                     {c.isOfficial ? (
-                      // Símbolo oficial del logo MatchPoint: dot verde sobre negro.
+                      // Símbolo oficial del logo MATCHPOINT: dot verde sobre negro.
                       <span className="dot" style={{ fontSize: 18, lineHeight: 1 }}>●</span>
                     ) : c.kind === "match" ? (
                       <Icon name="swords" size={15} color="#fff" />

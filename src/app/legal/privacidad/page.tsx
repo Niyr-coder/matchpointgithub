@@ -6,7 +6,7 @@ export default function PrivacidadPage() {
     <PublicChrome>
       <LegalDoc eyebrow="Legal" title="Política de privacidad" updated="17 de mayo de 2026">
         <p style={{ marginTop: 0 }}>
-          En MatchPoint respetamos tu privacidad. Esta política describe qué datos recopilamos, cómo
+          En MATCHPOINT respetamos tu privacidad. Esta política describe qué datos recopilamos, cómo
           los usamos y qué derechos tienes sobre ellos. Cumple con la Ley Orgánica de Protección de
           Datos Personales del Ecuador (LOPDP).
         </p>
@@ -71,7 +71,7 @@ export default function PrivacidadPage() {
         </LegalSection>
 
         <LegalSection n={10} title="Contacto">
-          Responsable del tratamiento: MatchPoint Ecuador, Quito.
+          Responsable del tratamiento: MATCHPOINT Ecuador, Quito.
           <br />Correo de privacidad: <strong>privacidad@matchpoint.top</strong>.
           <br />Si no estás satisfecho con nuestra respuesta puedes presentar reclamo ante la
           Superintendencia de Protección de Datos Personales del Ecuador.

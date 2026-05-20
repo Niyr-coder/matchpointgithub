@@ -226,9 +226,9 @@ body {
 @keyframes mpToastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes mpSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-/* ── Landing (MatchPoint Public.html) classes ─────────────────
+/* ── Landing (MATCHPOINT Public.html) classes ─────────────────
    Prefix `lp-` para no chocar con .btn del dashboard.
-   Fiel 1:1 a MatchPoint Public.html (líneas 21-27). */
+   Fiel 1:1 a MATCHPOINT Public.html (líneas 21-27). */
 .lp-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   border-radius: 9999px; padding: 11px 20px; font-weight: 900; font-size: 12px;

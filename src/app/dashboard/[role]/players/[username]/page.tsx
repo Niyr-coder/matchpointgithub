@@ -118,7 +118,7 @@ function OfficialAccountView({
   const handle = profile.username ?? "matchpoint";
   const bio =
     profile.bio ??
-    "Cuenta oficial de MatchPoint EC. Te enviamos novedades, recordatorios y respuestas de soporte por aquí. Si tienes dudas, escríbenos por chat — un humano del equipo te responde.";
+    "Cuenta oficial de MATCHPOINT EC. Te enviamos novedades, recordatorios y respuestas de soporte por aquí. Si tienes dudas, escríbenos por chat — un humano del equipo te responde.";
 
   return (
     <>
@@ -172,7 +172,7 @@ function OfficialAccountView({
                 <span
                   className="dot"
                   style={{ fontSize: 52, lineHeight: 1 }}
-                  aria-label="Logo MatchPoint"
+                  aria-label="Logo MATCHPOINT"
                 >
                   ●
                 </span>
@@ -239,7 +239,7 @@ function OfficialAccountView({
                 </span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <Icon name="building-2" size={12} />
-                  MatchPoint EC
+                  MATCHPOINT EC
                 </span>
               </div>
               <p

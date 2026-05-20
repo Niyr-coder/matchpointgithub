@@ -1,4 +1,4 @@
-// Catálogo estático de posts del blog MatchPoint.
+// Catálogo estático de posts del blog MATCHPOINT.
 // Reemplazar por CMS o tabla blog_posts cuando crezca.
 
 export type BlogPost = {
@@ -29,7 +29,7 @@ export const BLOG_POSTS: BlogPost[] = [
       "2. Definan reglas de comunicación antes del primer punto. ¿Quién pide los del medio? ¿Se piden o se llaman? Decirlo antes evita choques en el momento.",
       "3. Roten cada 4 juegos. Si jugaron 11 puntos × 4 juegos y nadie cambió de pareja, el grupo se enfría. La rotación obliga a conocer estilos distintos.",
       "4. Cero análisis tras cada error. Reservar la conversación técnica para el final del partido (o el siguiente día) baja drásticamente la frustración. El pickleball es muy rápido para teorizar entre puntos.",
-      "MatchPoint te ayuda con la parte 1: el ranking automático muestra el nivel de cada jugador para que armes mixtos parejos sin tener que improvisar. Pruébalo en /eventos · juegos abiertos.",
+      "MATCHPOINT te ayuda con la parte 1: el ranking automático muestra el nivel de cada jugador para que armes mixtos parejos sin tener que improvisar. Pruébalo en /eventos · juegos abiertos.",
     ],
   },
   {
@@ -44,16 +44,16 @@ export const BLOG_POSTS: BlogPost[] = [
     body: [
       "El pickleball llegó a Quito hace poco más de dos años y ya tiene una comunidad activa de unas 600 personas que juegan al menos una vez por semana. Las canchas todavía son pocas, pero crecen rápido. Aquí va una guía corta a los clubes con instalaciones dedicadas.",
       "Club Norte Pickleball — Cumbayá. 4 canchas outdoor con luces hasta las 22:00. Cuna de la liga mensual más grande de Ecuador. Nivel mixto, sales con partidos asegurados.",
-      "MatchPoint Quito — La Carolina. 4 canchas indoor + 2 outdoor. Único club céntrico con horarios extendidos los fines de semana (hasta las 23:00). Tarifas más altas pero canchas premium.",
+      "MATCHPOINT Quito — La Carolina. 4 canchas indoor + 2 outdoor. Único club céntrico con horarios extendidos los fines de semana (hasta las 23:00). Tarifas más altas pero canchas premium.",
       "Smash Sport Cumbayá — Cumbayá. 3 canchas outdoor. Ambiente más familiar, ideal para empezar. Tienen clases iniciales todos los sábados.",
       "Pickle Club Quito — Tumbaco. 2 canchas indoor en una nave techada. Único refugio en días de lluvia. Comunidad chica pero apretada; armar partido es fácil.",
       "Top Spin Cumbayá — Cumbayá. 3 canchas multifunción (también pádel). Buen para mixtos avanzados; los lunes hacen 'pro nights'.",
-      "Todos estos clubes están en MatchPoint con calendario en vivo de disponibilidad. Reservas desde la app, pagas por transferencia o DeUna, y nadie te tira sin previo aviso.",
+      "Todos estos clubes están en MATCHPOINT con calendario en vivo de disponibilidad. Reservas desde la app, pagas por transferencia o DeUna, y nadie te tira sin previo aviso.",
     ],
   },
   {
     slug: "como-leer-tu-ranking-mejorar-rapido",
-    title: "Cómo leer tu ranking MatchPoint y subir 0.5 puntos en 3 meses",
+    title: "Cómo leer tu ranking MATCHPOINT y subir 0.5 puntos en 3 meses",
     excerpt:
       "El ranking no es solo un número. Te decimos qué métricas mirar para diagnosticar qué te falta y ajustar tu plan de entrenamiento.",
     author: "Renata Salas",
@@ -62,7 +62,7 @@ export const BLOG_POSTS: BlogPost[] = [
     category: "Coaching",
     body: [
       "La pregunta más común que recibimos de jugadores recreativos es '¿cómo subo de 3.0 a 3.5?'. La respuesta no es 'jugar más'; es 'jugar mejor lo que ya juegas mal'.",
-      "El ranking MatchPoint se compone de tres factores: puntos por victoria (50%), nivel de los rivales (30%) y consistencia mensual (20%). Si solo miras el número global, te pierdes la mitad de la información.",
+      "El ranking MATCHPOINT se compone de tres factores: puntos por victoria (50%), nivel de los rivales (30%) y consistencia mensual (20%). Si solo miras el número global, te pierdes la mitad de la información.",
       "Diagnóstico rápido. Entra a tu perfil → ranking → expandir. Vas a ver tres barras: ataque, defensa y consistencia. La que está más baja es tu próxima asignatura.",
       "Si tu barra de ataque está baja: te falta cierre. Trabaja drives y volea de derecha. 30 min de drills por sesión durante 6 semanas suben drásticamente este indicador.",
       "Si tu barra de defensa está baja: te ganan en la transición. Trabaja resets desde el fondo y dinks angulados. Inscríbete en una clínica grupal antes de pedir clase 1 a 1 — es más barato y aprendes mirando.",
@@ -82,9 +82,9 @@ export const BLOG_POSTS: BlogPost[] = [
     body: [
       "Hasta hace un año todos los clubes pedían transferencia interbancaria para reservas. El problema: cada cliente tardaba un día en confirmar y los lunes el admin perdía dos horas verificando comprobantes.",
       "DeUna cambió eso. La wallet del Banco Pichincha permite enviar y recibir hasta USD 1,000 al día sin costo, instantáneo, con comprobante automático en QR.",
-      "Para clubes: pides el QR estático a tu ejecutivo de Pichincha; lo pegas en tu perfil MatchPoint en /soy-club > pagos. Los jugadores escanean al inscribirse y suben el screenshot del comprobante.",
+      "Para clubes: pides el QR estático a tu ejecutivo de Pichincha; lo pegas en tu perfil MATCHPOINT en /soy-club > pagos. Los jugadores escanean al inscribirse y suben el screenshot del comprobante.",
       "Para jugadores: descarga DeUna desde tu banco, asocia tu cuenta y listo. Al pagar una reserva, abres el QR del club, confirmas el monto exacto, y compartes el screenshot directamente desde la app.",
-      "MatchPoint no procesa ese pago; solo registra el comprobante y notifica al admin del club. Por eso no tomamos comisión por transacción.",
+      "MATCHPOINT no procesa ese pago; solo registra el comprobante y notifica al admin del club. Por eso no tomamos comisión por transacción.",
       "Para los clubes que aún no aceptan DeUna: el flujo manual (transferencia + comprobante) sigue funcionando. Pero la diferencia en velocidad de aprobación es notable: con DeUna el cliente entra al partido confirmado el mismo día.",
     ],
   },

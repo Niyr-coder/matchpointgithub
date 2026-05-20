@@ -274,7 +274,7 @@ export function OnboardingWizard({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Bienvenido a MatchPoint"
+        aria-label="Bienvenido a MATCHPOINT"
         style={{
           position: "fixed",
           inset: 0,
@@ -300,7 +300,7 @@ export function OnboardingWizard({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Bienvenido a MatchPoint"
+      aria-label="Bienvenido a MATCHPOINT"
       onClick={close}
       style={{
         position: "fixed",
@@ -519,7 +519,7 @@ function StepIdentity({
           Bienvenido a MATCHPOINT<span className="dot">.</span>
         </h2>
         <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
-          Confirma tu nombre y elige tu usuario en MatchPoint.
+          Confirma tu nombre y elige tu usuario en MATCHPOINT.
         </p>
       </div>
 

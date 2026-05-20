@@ -23,7 +23,7 @@ export const runtime = "nodejs";
 
 const MAX_JOBS_PER_RUN = 50;
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
-const DEFAULT_FROM = "MatchPoint <notif@matchpoint.top>";
+const DEFAULT_FROM = "MATCHPOINT <notif@matchpoint.top>";
 
 type DispatchSummary = {
   processed: number;

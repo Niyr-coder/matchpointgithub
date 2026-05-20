@@ -152,9 +152,9 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
         tone="dark"
         wm="STAFF"
         accent="#dc2626"
-        label="Plataforma · Equipo interno MatchPoint"
+        label="Plataforma · Equipo interno MATCHPOINT"
         title="Equipo MP"
-        sub={`${data.kpis.totalCount} ${data.kpis.totalCount === 1 ? "persona" : "personas"} operando MatchPoint. Asigna casos, balancea carga y mira quién está disponible.`}
+        sub={`${data.kpis.totalCount} ${data.kpis.totalCount === 1 ? "persona" : "personas"} operando MATCHPOINT. Asigna casos, balancea carga y mira quién está disponible.`}
         right={
           <div style={{ display: "flex", gap: 8 }}>
             <button

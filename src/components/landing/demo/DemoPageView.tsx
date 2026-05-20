@@ -1,4 +1,4 @@
-// /demo — migrado 1:1 desde MatchPoint Public.html (661-789)
+// /demo — migrado 1:1 desde MATCHPOINT Public.html (661-789)
 "use client";
 import Link from "next/link";
 import { useState } from "react";

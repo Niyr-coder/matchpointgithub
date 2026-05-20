@@ -209,7 +209,7 @@ export function CoachesPageView({ coaches }: { coaches: CoachProfile[] }) {
                     </div>
                   </div>
                   <p style={{ fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.45, margin: 0 }}>
-                    Únete como coach a la red MatchPoint.
+                    Únete como coach a la red MATCHPOINT.
                   </p>
                   <div
                     style={{

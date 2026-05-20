@@ -123,7 +123,7 @@ export function MiPlanScreenView({
         wm="PLAN"
         accent={badgeColor}
         label="Suscripción · Mi plan"
-        title="Tu plan MatchPoint"
+        title="Tu plan MATCHPOINT"
         sub="Administra tu plan, pide un upgrade y revisa el historial de pagos."
       />
 
@@ -174,7 +174,7 @@ export function MiPlanScreenView({
             }}
           >
             {isPremium
-              ? `Plan activo hasta ${fmtDate(plan.expiresAt)}. Disfrutas todas las funciones Premium de MatchPoint.`
+              ? `Plan activo hasta ${fmtDate(plan.expiresAt)}. Disfrutas todas las funciones Premium de MATCHPOINT.`
               : "Estás en el plan gratuito. Activa Premium para ver estadísticas avanzadas, reservas prioritarias y más."}
           </div>
         </div>

@@ -40,10 +40,10 @@ const INCLUDED = [
 ];
 
 const FAQ: [string, string][] = [
-  ["¿Cuánto cuesta publicar un torneo?", "Publicar es gratis. Solo cobramos 8% sobre las inscripciones que se paguen vía MatchPoint. Si tu torneo se paga en efectivo, no pagas comisión."],
+  ["¿Cuánto cuesta publicar un torneo?", "Publicar es gratis. Solo cobramos 8% sobre las inscripciones que se paguen vía MATCHPOINT. Si tu torneo se paga en efectivo, no pagas comisión."],
   ["¿Necesito tener un club registrado?", "No. Cualquier organizador o asociación puede publicar torneos. Si además operas un club, mira /soy-club."],
   ["¿Puedo cobrar inscripciones en USD y DeUna?", "Sí, ambas. El dinero llega a tu cuenta bancaria ecuatoriana en máximo 7 días después del torneo."],
-  ["¿Los puntos del torneo cuentan para el ranking?", "Sí, si el torneo se marca como ranked. MatchPoint aplica ELO según el resultado de cada partido oficial."],
+  ["¿Los puntos del torneo cuentan para el ranking?", "Sí, si el torneo se marca como ranked. MATCHPOINT aplica ELO según el resultado de cada partido oficial."],
   ["¿Cuánto demora la aprobación?", "Menos de 24 horas. Tu equipo revisa el formato, fechas y premios y te confirma por WhatsApp."],
 ];
 
@@ -180,7 +180,7 @@ export function SoyPartnerPageView() {
 
       {/* Benefits */}
       <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-15 md:py-25">
-        <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MatchPoint para tu torneo</div>
+        <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MATCHPOINT para tu torneo</div>
         <h2
           className="font-heading"
           style={{
@@ -268,14 +268,14 @@ export function SoyPartnerPageView() {
                 Por inscripción<span style={{ color: "#fb923c" }}>.</span>
               </h2>
               <p style={{ fontSize: 15, color: "var(--muted-fg)", lineHeight: 1.65, marginBottom: 24 }}>
-                Publicar el torneo es gratis. Solo cobramos 8% de comisión sobre las inscripciones que se paguen por MatchPoint. Pagos en efectivo no pagan comisión.
+                Publicar el torneo es gratis. Solo cobramos 8% de comisión sobre las inscripciones que se paguen por MATCHPOINT. Pagos en efectivo no pagan comisión.
               </p>
               <div style={{ padding: 18, background: "#fff", borderRadius: 12, border: "1px solid var(--border)" }}>
                 <div className="label-mp">Ejemplo real</div>
                 <div style={{ marginTop: 10 }}>
                   {([
                     ["Torneo de 64 inscritos · $25 c/u", "$1,600"],
-                    ["Comisión MatchPoint (8%)", "–$128"],
+                    ["Comisión MATCHPOINT (8%)", "–$128"],
                     ["Comisión Stripe (2.9%)", "–$46"],
                   ] as const).map(([k, v]) => (
                     <div

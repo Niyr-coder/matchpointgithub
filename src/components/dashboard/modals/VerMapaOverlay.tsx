@@ -21,7 +21,7 @@ const PINS: Pin[] = [
   { x: "46%", y: "58%", label: "$11", name: "Pickle Garden", city: "Cumbayá", dist: "3.4 km", rating: 4.8, courts: 5 },
   { x: "68%", y: "46%", label: "$13", name: "Smash Sport", city: "Cumbayá", dist: "5.1 km", rating: 4.5, courts: 10 },
   { x: "34%", y: "70%", label: "$15", name: "Court 21", city: "Lo Barnechea", dist: "6 km", rating: 4.9, courts: 3 },
-  { x: "74%", y: "70%", label: "$10", name: "MatchPoint Ñ", city: "Ñuñoa", dist: "7.2 km", rating: 4.6, courts: 4 },
+  { x: "74%", y: "70%", label: "$10", name: "MATCHPOINT Ñ", city: "Ñuñoa", dist: "7.2 km", rating: 4.6, courts: 4 },
   { x: "60%", y: "78%", label: "$9", name: "Top Spin", city: "San Miguel", dist: "8.4 km", rating: 4.4, courts: 7 },
 ];
 

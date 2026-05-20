@@ -13,7 +13,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 export const metadata = {
-  title: "MatchPoint · Onboarding",
+  title: "MATCHPOINT · Onboarding",
 };
 
 // Sanitizar el next para evitar open-redirect a dominios externos.

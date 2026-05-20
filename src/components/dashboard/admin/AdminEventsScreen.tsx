@@ -108,7 +108,7 @@ async function loadData(): Promise<EventsData> {
     const insc = evRegByEvent.get(e.id as string) ?? 0;
     const cap = (e.capacity as number | null) ?? null;
     const full = cap != null && insc >= cap;
-    const orgName = e.club_id ? clubName.get(e.club_id as string) ?? "—" : "MatchPoint";
+    const orgName = e.club_id ? clubName.get(e.club_id as string) ?? "—" : "MATCHPOINT";
     return {
       id: `ev-${e.id as string}`,
       n: (e.name as string) ?? "Evento",
@@ -129,7 +129,7 @@ async function loadData(): Promise<EventsData> {
     const insc = trRegByTournament.get(t.id as string) ?? 0;
     const cap = (t.max_participants as number | null) ?? null;
     const full = cap != null && insc >= cap;
-    const orgName = t.club_id ? clubName.get(t.club_id as string) ?? "MatchPoint Pro Series" : "MatchPoint Pro Series";
+    const orgName = t.club_id ? clubName.get(t.club_id as string) ?? "MATCHPOINT Pro Series" : "MATCHPOINT Pro Series";
     const prizeCents = (t.prize_pool_cents as number | null) ?? null;
     return {
       id: `tr-${t.id as string}`,

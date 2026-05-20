@@ -204,7 +204,7 @@ export async function removeFriend(input: unknown): Promise<ActionResult<{ ok: t
 // ── searchPlayers ──────────────────────────────────────────────────────
 // Búsqueda global de jugadores por display_name. Excluye:
 //   - el propio user
-//   - perfiles is_system (MatchPoint oficial)
+//   - perfiles is_system (MATCHPOINT oficial)
 //   - friendships ya activas
 //   - friend_requests pendientes bidireccional (no spam de invites)
 //

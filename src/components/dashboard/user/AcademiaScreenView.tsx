@@ -118,7 +118,7 @@ export function AcademiaScreenView({
         tone="dark"
         wm="ACADEMY"
         accent="#f59e0b"
-        label="Coaching · MatchPoint Academia"
+        label="Coaching · MATCHPOINT Academia"
         title="Sube tu juego"
         sub={
           coaches.length > 0

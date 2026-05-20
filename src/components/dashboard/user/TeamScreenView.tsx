@@ -1651,7 +1651,7 @@ function TeamInvite({
     ? `matchpoint.app/team/join/${team.inviteCode}`
     : `matchpoint.app/team/${team.tag.toLowerCase()}`;
   const fullLink = `https://${link}`;
-  const inviteMessage = `Te invito a unirte a "${team.name}" en MatchPoint. Código: ${code} · ${fullLink}`;
+  const inviteMessage = `Te invito a unirte a "${team.name}" en MATCHPOINT. Código: ${code} · ${fullLink}`;
   const visiblePending = team.pendingInvites.filter((p) => !hidden.has(p.id));
 
   const handleShare = (channel: "email" | "whatsapp" | "qr") => {
@@ -1661,7 +1661,7 @@ function TeamInvite({
     }
     if (channel === "email") {
       const url = `mailto:?subject=${encodeURIComponent(
-        `Únete a ${team.name} en MatchPoint`,
+        `Únete a ${team.name} en MATCHPOINT`,
       )}&body=${encodeURIComponent(inviteMessage)}`;
       window.open(url, "_blank");
       return;

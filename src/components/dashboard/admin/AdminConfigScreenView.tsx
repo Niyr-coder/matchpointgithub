@@ -25,7 +25,7 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
       i: "sliders-horizontal",
       t: "General",
       items: [
-        ["Nombre de la plataforma", "MatchPoint"],
+        ["Nombre de la plataforma", "MATCHPOINT"],
         ["País", "🇪🇨 Ecuador"],
         ["Moneda por defecto", "USD ($)"],
         ["Locale", "es-EC"],
@@ -42,7 +42,7 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
       i: "wallet",
       t: "Pagos",
       items: [
-        ["Comisión MatchPoint", "10%", "critical"],
+        ["Comisión MATCHPOINT", "10%", "critical"],
         ["Procesador", "—"],
         ["Payout schedule", "—"],
         ["Mínimo payout", "—"],

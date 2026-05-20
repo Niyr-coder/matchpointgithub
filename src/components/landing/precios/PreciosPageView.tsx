@@ -65,7 +65,7 @@ const CLUB_TIERS = [
       "Soporte prioritario",
     ],
     cta: "Hablar con ventas",
-    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Pro%20MatchPoint",
+    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Pro%20MATCHPOINT",
     highlight: true,
   },
   {
@@ -79,7 +79,7 @@ const CLUB_TIERS = [
       "Onboarding personalizado",
     ],
     cta: "Hablar con ventas",
-    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Partner%20MatchPoint",
+    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Partner%20MATCHPOINT",
     highlight: false,
   },
 ];
@@ -178,7 +178,7 @@ export function PreciosPageView() {
           <span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="Para jugadores, clubes y partners. Pagos por transferencia o DeUna; MatchPoint no actúa como pasarela ni cobra porcentaje de cada cobro."
+      lead="Para jugadores, clubes y partners. Pagos por transferencia o DeUna; MATCHPOINT no actúa como pasarela ni cobra porcentaje de cada cobro."
     >
       <section style={{ marginBottom: 56 }}>
         <div
@@ -265,7 +265,7 @@ export function PreciosPageView() {
           Preguntas frecuentes
         </h3>
         <div style={{ fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.55 }}>
-          <strong style={{ color: "#0a0a0a" }}>¿MatchPoint cobra comisión por reserva o pago?</strong>{" "}
+          <strong style={{ color: "#0a0a0a" }}>¿MATCHPOINT cobra comisión por reserva o pago?</strong>{" "}
           No. Solo pagas la suscripción de tu plan; cada reserva o cobro que recibe el club te llega
           íntegro.
           <br /><br />

@@ -24,7 +24,7 @@ const COLS: { t: string; l: FooterLink[] }[] = [
       { label: "Casos de éxito", href: "/clubes/casos" },
       {
         label: "Soporte clubes",
-        href: "mailto:soporte-clubes@matchpoint.top?subject=Soporte%20MatchPoint",
+        href: "mailto:soporte-clubes@matchpoint.top?subject=Soporte%20MATCHPOINT",
         external: true,
       },
     ],
@@ -45,7 +45,7 @@ const COLS: { t: string; l: FooterLink[] }[] = [
     ],
   },
   {
-    t: "MatchPoint",
+    t: "MATCHPOINT",
     l: [
       { label: "Acerca de", href: "/acerca-de" },
       { label: "Blog", href: "/blog" },
@@ -158,7 +158,7 @@ export function Footer() {
             gap: 10,
           }}
         >
-          <span>© 2026 MatchPoint Ecuador · matchpoint.top</span>
+          <span>© 2026 MATCHPOINT Ecuador · matchpoint.top</span>
           <span>
             Hecho con <span style={{ color: "#dc2626" }}>♥</span> para la comunidad deportiva · Quito,
             Ecuador

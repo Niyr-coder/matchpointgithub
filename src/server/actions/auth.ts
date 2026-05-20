@@ -79,7 +79,7 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     c.set(ACTIVE_ROLE_COOKIE, "user", COOKIE_OPTS);
     c.delete(ACTIVE_CLUB_COOKIE);
 
-    // Welcome DM del perfil MatchPoint. Fire-and-forget; si falla NO rompe
+    // Welcome DM del perfil MATCHPOINT. Fire-and-forget; si falla NO rompe
     // el signup. El killswitch system_messages_enabled lo apaga global.
     try {
       const { sendSystemMessage, renderTemplate } = await import("@/lib/messages/system");

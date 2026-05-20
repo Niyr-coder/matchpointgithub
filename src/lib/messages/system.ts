@@ -1,11 +1,11 @@
-// Helper para enviar mensajes desde el perfil oficial "MatchPoint".
+// Helper para enviar mensajes desde el perfil oficial "MATCHPOINT".
 // Wrapper sobre el RPC fn_send_system_message (migration 105).
 //
 // Uso desde server actions:
 //   await sendSystemMessage({
 //     recipientUserId,
 //     kind: "welcome_signup",
-//     body: "¡Hola Vicente! Te damos la bienvenida a MatchPoint.",
+//     body: "¡Hola Vicente! Te damos la bienvenida a MATCHPOINT.",
 //     payload: { signupAt: new Date().toISOString() },
 //   });
 //
@@ -67,7 +67,7 @@ function applyVars(template: string, vars: TemplateVars): string {
 
 export const WELCOME_TEMPLATES = {
   welcome_signup:
-    "¡Hola {firstName}! Bienvenido a MatchPoint, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Si tienes dudas, escríbenos por aquí.",
+    "¡Hola {firstName}! Bienvenido a MATCHPOINT, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Si tienes dudas, escríbenos por aquí.",
   welcome_team_created:
     'Felicidades {firstName}, creaste el team "{teamName}". Como capitán puedes invitar hasta {rosterMax} miembros y gestionar el roster. Activa MATCHPOINT+ para subir el cap a 24.',
   welcome_premium_activated:

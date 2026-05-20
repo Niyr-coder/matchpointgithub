@@ -262,7 +262,7 @@ export default async function RoleLayout({
   const partnerOrg = (partnerMember as any)?.partner_orgs as { name?: string } | null | undefined;
   const contextLabel: string | null =
     role === "admin"
-      ? "Plataforma · MatchPoint EC"
+      ? "Plataforma · MATCHPOINT EC"
       : role === "user"
         ? null
         : role === "partner"

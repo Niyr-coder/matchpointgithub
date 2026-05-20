@@ -1,4 +1,4 @@
-// /eventos — migrado 1:1 desde MatchPoint Public.html (líneas 1090-1231)
+// /eventos — migrado 1:1 desde MATCHPOINT Public.html (líneas 1090-1231)
 "use client";
 import Link from "next/link";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -97,7 +97,7 @@ export function EventosPageView({
   const upcoming = tournaments.filter((t) => t.status !== "live" && t.status !== "finished");
   const live = tournaments.filter((t) => t.status === "live");
   // El banner grande "Estelar" solo se llena con un torneo marcado
-  // explícitamente is_featured=true por el equipo MatchPoint. Si no hay
+  // explícitamente is_featured=true por el equipo MATCHPOINT. Si no hay
   // ninguno, el banner queda como placeholder y todos los próximos van
   // al grid debajo.
   const featured = upcoming.find((t) => t.isFeatured) ?? null;

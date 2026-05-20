@@ -1,4 +1,4 @@
-// /soy-club — migrado 1:1 desde MatchPoint Public.html (líneas 876-1086)
+// /soy-club — migrado 1:1 desde MATCHPOINT Public.html (líneas 876-1086)
 "use client";
 import Link from "next/link";
 import { useState } from "react";
@@ -350,7 +350,7 @@ export function SoyClubPageView() {
 
       {/* Benefits 3-up */}
       <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-15 md:py-25">
-        <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MatchPoint</div>
+        <div className="label-mp" style={{ color: "var(--primary)" }}>● Por qué MATCHPOINT</div>
         <h2
           className="font-heading"
           style={{
@@ -445,7 +445,7 @@ export function SoyClubPageView() {
                 <div style={{ marginTop: 10 }}>
                   {([
                     ["Cancha a $14/h · 100 reservas/mes", "$1,400"],
-                    ["Comisión MatchPoint (10%)", "–$140"],
+                    ["Comisión MATCHPOINT (10%)", "–$140"],
                     ["Comisión Stripe (2.9%)", "–$41"],
                   ] as const).map(([k, v]) => (
                     <div

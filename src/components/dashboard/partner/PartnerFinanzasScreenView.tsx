@@ -53,7 +53,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
 
   const waterfall = [
     { l: "Revenue bruto", v: fmtUSD(data.monthRevenueCents), sign: "+" as const, color: "#fff" },
-    { l: "Comisión MatchPoint (10%)", v: fmtUSD(data.mpFeeCents), sign: "–" as const, color: "#dc2626" },
+    { l: "Comisión MATCHPOINT (10%)", v: fmtUSD(data.mpFeeCents), sign: "–" as const, color: "#dc2626" },
     { l: "Pago a clubes sede", v: fmtUSD(data.clubsShareCents), sign: "–" as const, color: "#fbbf24" },
     { l: "Tu neto", v: fmtUSD(data.netCents), sign: "=" as const, color: "var(--primary)", bold: true },
   ];

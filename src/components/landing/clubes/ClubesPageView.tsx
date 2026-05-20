@@ -1,4 +1,4 @@
-// /clubes — migrado 1:1 desde MatchPoint Public.html (líneas 373-443)
+// /clubes — migrado 1:1 desde MATCHPOINT Public.html (líneas 373-443)
 "use client";
 import Link from "next/link";
 import { useState } from "react";

@@ -1,5 +1,5 @@
 "use client";
-// MpBarChart — gráfico de barras verticales reutilizable, on-brand MatchPoint.
+// MpBarChart — gráfico de barras verticales reutilizable, on-brand MATCHPOINT.
 //
 // Características:
 // - Stagger animation al montar: cada barra "crece" desde y=0% con un retraso

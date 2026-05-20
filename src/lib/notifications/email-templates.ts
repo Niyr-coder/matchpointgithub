@@ -93,7 +93,7 @@ const layout = (opts: {
                         box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow:hidden;">
             <tr>
               <td style="padding:24px 32px 8px 32px;">
-                <div style="font-size:18px;font-weight:700;color:#0a7d3a;">MatchPoint</div>
+                <div style="font-size:18px;font-weight:700;color:#0a7d3a;">MATCHPOINT</div>
               </td>
             </tr>
             <tr>
@@ -108,7 +108,7 @@ const layout = (opts: {
             <tr>
               <td style="padding:16px 32px 24px 32px;border-top:1px solid #e5e7eb;
                          font-size:12px;color:#6b7280;line-height:1.5;">
-                MatchPoint Ecuador · matchpoint.top<br />
+                MATCHPOINT Ecuador · matchpoint.top<br />
                 Para administrar tus notificaciones o darte de baja, visita
                 <a href="${escapeHtml(profileUrl)}" style="color:#0a7d3a;">tu perfil</a>.
               </td>
@@ -142,7 +142,7 @@ const renderEventRescheduled = (payload: Payload): EmailRender => {
     <p style="margin:0 0 12px 0;">Revisa los detalles actualizados en tu panel.</p>`;
   const text = `${subject}\n\nEl evento "${name}" fue reprogramado.${
     newDate ? ` Nueva fecha: ${newDate}.` : ""
-  }\n\nDetalles: ${link}\n\n— MatchPoint`;
+  }\n\nDetalles: ${link}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({
@@ -183,7 +183,7 @@ const renderTournamentRescheduled = (payload: Payload): EmailRender => {
     <p style="margin:0 0 12px 0;">Revisa los detalles actualizados del cuadro y horarios.</p>`;
   const text = `${subject}\n\nEl torneo "${name}" fue reprogramado.${
     newDate ? ` Nueva fecha: ${newDate}.` : ""
-  }\n\nDetalles: ${link}\n\n— MatchPoint`;
+  }\n\nDetalles: ${link}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({
@@ -210,7 +210,7 @@ const renderPlanExpiringSoon = (payload: Payload): EmailRender => {
       Renuévalo ahora para no perder beneficios como inscripción anticipada a eventos,
       ranking ponderado y acceso a torneos exclusivos.
     </p>`;
-  const text = `${subject}\n\nTu plan Premium está por vencer en ${daysRaw} días.\nRenuévalo en: ${renewUrl}\n\n— MatchPoint`;
+  const text = `${subject}\n\nTu plan Premium está por vencer en ${daysRaw} días.\nRenuévalo en: ${renewUrl}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({
@@ -250,7 +250,7 @@ const renderReservationCreated = (payload: Payload): EmailRender => {
     startsAt ? `Inicio: ${startsAt}` : null,
     `Detalles: ${link}`,
   ].filter(Boolean);
-  const text = `${subject}\n\n${textParts.join("\n")}\n\n— MatchPoint`;
+  const text = `${subject}\n\n${textParts.join("\n")}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({
@@ -265,7 +265,7 @@ const renderReservationCreated = (payload: Payload): EmailRender => {
 };
 
 const renderFallback = (kind: string, payload: Payload): EmailRender => {
-  const subject = "Notificación de MatchPoint";
+  const subject = "Notificación de MATCHPOINT";
   const serialized = JSON.stringify(payload, null, 2);
   const bodyHtml = `
     <p style="margin:0 0 12px 0;">
@@ -274,7 +274,7 @@ const renderFallback = (kind: string, payload: Payload): EmailRender => {
     <pre style="background:#f4f5f7;padding:12px;border-radius:6px;
                 font-size:12px;line-height:1.4;overflow:auto;
                 white-space:pre-wrap;word-break:break-word;">${escapeHtml(serialized)}</pre>`;
-  const text = `${subject}\n\nKind: ${kind}\n\n${serialized}\n\n— MatchPoint`;
+  const text = `${subject}\n\nKind: ${kind}\n\n${serialized}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({ title: subject, bodyHtml }),

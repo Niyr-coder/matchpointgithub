@@ -177,7 +177,7 @@ export function TopBar({
       {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky). */}
       <div
         className="md:hidden flex items-center gap-1.5"
-        aria-label="MatchPoint"
+        aria-label="MATCHPOINT"
       >
         <span className="dot" style={{ fontSize: 16 }}>●</span>
         <span

@@ -24,9 +24,9 @@ type Props = {
 
 const MARQUEE_PLACEHOLDERS = [
   "Tu club aquí",
-  "Pronto en MatchPoint",
+  "Pronto en MATCHPOINT",
   "Tu club aquí",
-  "Pronto en MatchPoint",
+  "Pronto en MATCHPOINT",
 ];
 
 const EMPTY_STATS: LandingStats = {
@@ -699,7 +699,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
                     fontStyle: "italic",
                   }}
                 >
-                  Pronto: aquí leerás lo que la comunidad dice de MatchPoint.
+                  Pronto: aquí leerás lo que la comunidad dice de MATCHPOINT.
                 </p>
                 <div
                   style={{

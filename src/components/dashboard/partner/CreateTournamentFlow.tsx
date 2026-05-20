@@ -12,7 +12,7 @@ import { createTournament } from "@/server/actions/tournaments";
 export const TOURNAMENT_TERMS: Array<{ title: string; body: string }> = [
   {
     title: "Responsabilidad del organizador",
-    body: "Como partner/admin que crea el torneo, asumes plena responsabilidad por la organización, la logística del evento, el cumplimiento de cupos, premios y horarios anunciados. MatchPoint es la plataforma, no el organizador legal del torneo.",
+    body: "Como partner/admin que crea el torneo, asumes plena responsabilidad por la organización, la logística del evento, el cumplimiento de cupos, premios y horarios anunciados. MATCHPOINT es la plataforma, no el organizador legal del torneo.",
   },
   {
     title: "Información veraz y precisa",
@@ -20,7 +20,7 @@ export const TOURNAMENT_TERMS: Array<{ title: string; body: string }> = [
   },
   {
     title: "Política de reembolsos",
-    body: "Las inscripciones cobradas son no reembolsables salvo cancelación del torneo por parte tuya. Si cancelas, debes devolver el 100% de lo cobrado a cada jugador en un máximo de 7 días por transferencia o DeUna. MatchPoint NO procesa reembolsos automáticos.",
+    body: "Las inscripciones cobradas son no reembolsables salvo cancelación del torneo por parte tuya. Si cancelas, debes devolver el 100% de lo cobrado a cada jugador en un máximo de 7 días por transferencia o DeUna. MATCHPOINT NO procesa reembolsos automáticos.",
   },
   {
     title: "Juego limpio y antitrampas",
@@ -35,12 +35,12 @@ export const TOURNAMENT_TERMS: Array<{ title: string; body: string }> = [
     body: "Los datos personales de los jugadores inscritos (nombre, contacto, rating, historial) solo pueden usarse para la operación del torneo. Está prohibido exportarlos para marketing externo, compartirlos con terceros o usarlos para fines distintos al evento.",
   },
   {
-    title: "Cobro de comisiones MatchPoint",
-    body: "MatchPoint puede retener una comisión sobre la cuota de inscripción, según lo acordado en tu contrato de partner. Las features pagadas como 'Torneo estelar' se cobran aparte y no se reembolsan al cancelar.",
+    title: "Cobro de comisiones MATCHPOINT",
+    body: "MATCHPOINT puede retener una comisión sobre la cuota de inscripción, según lo acordado en tu contrato de partner. Las features pagadas como 'Torneo estelar' se cobran aparte y no se reembolsan al cancelar.",
   },
   {
     title: "Suspensión y descalificación",
-    body: "MatchPoint se reserva el derecho de suspender el torneo, ocultarlo del listado público y revocar privilegios del partner si detecta incumplimiento de estas reglas, fraude, quejas reiteradas de jugadores o uso indebido de la plataforma.",
+    body: "MATCHPOINT se reserva el derecho de suspender el torneo, ocultarlo del listado público y revocar privilegios del partner si detecta incumplimiento de estas reglas, fraude, quejas reiteradas de jugadores o uso indebido de la plataforma.",
   },
 ];
 
@@ -548,7 +548,7 @@ function StepTerms({
           marginBottom: 14,
         }}
       >
-        Antes de publicar un torneo en MatchPoint, lee y acepta las siguientes
+        Antes de publicar un torneo en MATCHPOINT, lee y acepta las siguientes
         reglas. Aplican a todos los partners y administradores. Incumplirlas
         puede suspender el torneo y la cuenta.
       </p>
@@ -630,7 +630,7 @@ function StepTerms({
         />
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "#0a0a0a", lineHeight: 1.5 }}>
           He leído las {TOURNAMENT_TERMS.length} cláusulas y entiendo que soy
-          responsable del cumplimiento. Acepto que MatchPoint pueda suspender
+          responsable del cumplimiento. Acepto que MATCHPOINT pueda suspender
           mi torneo si las incumplo.
         </span>
       </label>

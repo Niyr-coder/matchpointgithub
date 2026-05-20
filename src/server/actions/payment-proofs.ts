@@ -1,7 +1,7 @@
 "use server";
 
 // Flujo de comprobantes de pago (transferencia bancaria o DeUna).
-// MatchPoint no usa PSP. El usuario hace la transferencia fuera de la app,
+// MATCHPOINT no usa PSP. El usuario hace la transferencia fuera de la app,
 // sube el comprobante a Storage (bucket `payment_proofs`). Estados:
 //
 //   pending_proof     → esperando que el usuario suba comprobante

@@ -121,7 +121,7 @@ export function ShopScreenView({
         }}
       >
         <h1 className="font-heading display-md" style={{ margin: 0 }}>
-          Shop <span className="dot">●</span> MatchPoint
+          Shop <span className="dot">●</span> MATCHPOINT
         </h1>
         <button
           onClick={() => openCarrito("mini")}

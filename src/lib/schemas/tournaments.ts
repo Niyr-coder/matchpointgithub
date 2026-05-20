@@ -222,7 +222,7 @@ export const TournamentFeaturedSchema = z
     clubName: z.string().nullable(),
     clubCity: z.string().nullable(),
     registrationsCount: z.number().int(),
-    // true si el equipo MatchPoint marcó el torneo como "Estelar" — se usa
+    // true si el equipo MATCHPOINT marcó el torneo como "Estelar" — se usa
     // para ubicarlo en el banner grande de portada. Los demás van al grid.
     isFeatured: z.boolean().default(false),
   })

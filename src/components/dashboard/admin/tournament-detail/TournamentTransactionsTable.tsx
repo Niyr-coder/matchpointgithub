@@ -6,7 +6,7 @@
 // referencia de transferencia (opcional) y checkbox para cancelar también
 // la inscripción ligada (default true → marca registrations.status='withdrawn').
 //
-// MatchPoint NO usa PSP: el reembolso real lo hace un humano fuera de la
+// MATCHPOINT NO usa PSP: el reembolso real lo hace un humano fuera de la
 // app por transferencia bancaria o DeUna. Esta acción solo marca el estado.
 
 import { useState, useTransition } from "react";

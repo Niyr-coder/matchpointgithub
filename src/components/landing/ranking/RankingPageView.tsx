@@ -1,4 +1,4 @@
-// /ranking — migrado 1:1 desde MatchPoint Public.html (líneas 1234-1301)
+// /ranking — migrado 1:1 desde MATCHPOINT Public.html (líneas 1234-1301)
 "use client";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
@@ -107,7 +107,7 @@ export function RankingPageView({
           marginBottom: 28,
         }}
       >
-        Ranking nacional basado en partidos oficiales registrados en MatchPoint. Actualizado cada lunes.
+        Ranking nacional basado en partidos oficiales registrados en MATCHPOINT. Actualizado cada lunes.
       </p>
 
       {/* Sport + mode tabs */}

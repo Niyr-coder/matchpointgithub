@@ -23,12 +23,12 @@ const ASSETS = [
   },
   {
     title: "Guía de captación",
-    desc: "8 páginas con tácticas que funcionan para conseguir tus primeros 20 alumnos en MatchPoint.",
+    desc: "8 páginas con tácticas que funcionan para conseguir tus primeros 20 alumnos en MATCHPOINT.",
     icon: "book-open",
     badge: "PDF · 8 pág.",
   },
   {
-    title: "Logos MatchPoint",
+    title: "Logos MATCHPOINT",
     desc: "Logos de la plataforma en distintos formatos para que los uses en tus piezas (acreditando).",
     icon: "shield",
     badge: "SVG + PNG",
@@ -50,7 +50,7 @@ export function MaterialPageView() {
           Kit completo para promocionar tus clases<span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="Plantillas, fotos y guías listas para que armes tu marca personal y consigas más alumnos. Gratis para coaches con perfil activo en MatchPoint."
+      lead="Plantillas, fotos y guías listas para que armes tu marca personal y consigas más alumnos. Gratis para coaches con perfil activo en MATCHPOINT."
     >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 36 }}>
         {ASSETS.map((a) => (
@@ -133,7 +133,7 @@ export function MaterialPageView() {
           </h3>
           <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.75)", lineHeight: 1.55, margin: 0 }}>
             Para evitar que cualquiera descargue las plantillas, el kit lo enviamos manualmente a
-            coaches con perfil activo. Escríbenos desde el correo asociado a tu cuenta MatchPoint y
+            coaches con perfil activo. Escríbenos desde el correo asociado a tu cuenta MATCHPOINT y
             lo recibes en menos de 24 h.
           </p>
         </div>
