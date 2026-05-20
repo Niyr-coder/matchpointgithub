@@ -261,8 +261,9 @@ export async function listInactiveThemes(): Promise<ActionResult<string[]>> {
 }
 
 // ── setAllThemesActive ───────────────────────────────────────────────────────
-// Bulk: activa/desactiva TODOS los temas no-default de un golpe. Desactivar es
-// hard-kill (revierte a Clásico a todos los que tengan algún tema).
+// Bulk de los temas INCLUIDOS (mp_plus, no-pack — los que viven en la sección
+// "Temas" del admin). Los temas de pack se gestionan desde su bundle. Desactivar
+// es hard-kill (revierte a Clásico a quien use uno de esos temas).
 const SetAllThemesSchema = z.object({ active: z.boolean() });
 
 export async function setAllThemesActive(input: unknown): Promise<ActionResult<{ ok: true }>> {
@@ -271,16 +272,12 @@ export async function setAllThemesActive(input: unknown): Promise<ActionResult<{
     const admin = getAdminClient();
     await setAuditActor(admin, adminId, "admin");
 
+    const keys = PROFILE_THEMES.filter((t) => t.bundleKey === "mp_plus").map((t) => t.key);
     const now = new Date().toISOString();
-    const rows = PROFILE_THEMES.filter((t) => t.key !== "default").map((t) => ({
-      key: t.key,
-      active,
-      updated_at: now,
-    }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: upErr } = await (admin as any)
       .from("theme_settings")
-      .upsert(rows, { onConflict: "key" });
+      .upsert(keys.map((key) => ({ key, active, updated_at: now })), { onConflict: "key" });
     if (upErr) throw new MpError("COSMETICS.DB_ERROR", upErr.message, 500);
 
     if (!active) {
@@ -289,7 +286,7 @@ export async function setAllThemesActive(input: unknown): Promise<ActionResult<{
         .from("profiles")
         .update({ accent_color: null, card_style: null, banner_preset: null })
         .eq("is_system", false)
-        .not("accent_color", "is", null);
+        .in("accent_color", keys);
       if (revErr) throw new MpError("COSMETICS.DB_ERROR", revErr.message, 500);
     }
     return { ok: true as const };

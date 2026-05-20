@@ -388,8 +388,8 @@ function BundlesAdminSection() {
         Bundles
       </div>
       <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 12px" }}>
-        Edita el precio de cada bundle y actívalo/desactívalo. Desactivar impide otorgarlo a nuevos
-        usuarios.
+        Cada bundle desbloquea un tema de pack. Edita su precio y actívalo/desactívalo — desactivar
+        impide otorgarlo a nuevos usuarios (los que ya lo tienen lo conservan).
       </p>
       {bundles === null ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando bundles…</div>
@@ -508,7 +508,9 @@ function ThemesAdminSection() {
     });
   };
 
-  const themes = PROFILE_THEMES_BY_RARITY.filter((t) => t.key !== "default");
+  // Solo temas INCLUIDOS (mp_plus, sin pack). Los temas de pack se gestionan
+  // desde su bundle en la sección "Bundles" — así no se duplican acá.
+  const themes = PROFILE_THEMES_BY_RARITY.filter((t) => t.bundleKey === "mp_plus");
 
   const toggleAll = async (nextActive: boolean) => {
     if (pending || inactive === null) return;
@@ -527,8 +529,15 @@ function ThemesAdminSection() {
         toast({ icon: "alert-triangle", title: res.error.message });
         return;
       }
-      setInactive(nextActive ? new Set() : new Set(themes.map((t) => t.key)));
-      toast({ icon: "check", title: nextActive ? "Todos los temas activados" : "Todos los temas desactivados" });
+      setInactive((prev) => {
+        const next = new Set(prev ?? []);
+        for (const t of themes) {
+          if (nextActive) next.delete(t.key);
+          else next.add(t.key);
+        }
+        return next;
+      });
+      toast({ icon: "check", title: nextActive ? "Temas incluidos activados" : "Temas incluidos desactivados" });
       router.refresh();
     });
   };
@@ -545,7 +554,7 @@ function ThemesAdminSection() {
             color: "var(--muted-fg)",
           }}
         >
-          Temas
+          Temas incluidos (MATCHPOINT+)
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -567,8 +576,8 @@ function ThemesAdminSection() {
         </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 12px" }}>
-        Activa o desactiva temas del catálogo. Desactivar lo quita del picker y revierte a Clásico a
-        quien lo tenga aplicado.
+        Temas que vienen con MATCHPOINT+ (los de pack se gestionan en la sección Bundles).
+        Desactivar uno lo quita del picker y revierte a Clásico a quien lo tenga aplicado.
       </p>
       {inactive === null ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando temas…</div>
