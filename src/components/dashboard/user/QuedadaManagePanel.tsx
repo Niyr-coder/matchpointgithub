@@ -1468,7 +1468,7 @@ function SlotCell({
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        background: filled ? "var(--primary)" : "transparent",
+        background: filled ? "var(--fg)" : "transparent",
         border: filled ? "0" : "1px dashed var(--border)",
         color: filled ? "#fff" : "var(--muted-fg)",
       }}
