@@ -6,6 +6,7 @@
 import "server-only";
 
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -16,6 +17,15 @@ import {
   InviteToQuedadaSchema,
   SetQuedadaResultsSchema,
   ReportQuedadaSchema,
+  CohostSchema,
+  CreateCategorySchema,
+  UpdateCategorySchema,
+  CategoryIdSchema,
+  AssignPairSchema,
+  RemovePairSchema,
+  SetParticipantPaidSchema,
+  QuedadaLogisticsSchema,
+  JoinByCodeSchema,
 } from "@/lib/schemas/quedadas";
 
 async function requireUserId(): Promise<string> {
@@ -309,5 +319,215 @@ export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: 
       .insert({ quedada_id: quedadaId, reporter_id: userId, reason } as never);
     if (error) throw new MpError("QUEDADAS.REPORT_FAILED", error.message, 500);
     return { ok: true as const };
+  });
+}
+
+// ════════════════ Panel de gestión (v1.x) ════════════════
+// Las policies RLS gatean: categorías/cohosts/logística = solo creador;
+// parejas/slots/paid = creador o co-host (mp_quedada_can_manage). Acá confiamos
+// en RLS y devolvemos el error si la operación no está permitida.
+
+// ── Co-hosts (solo creador) ──────────────────────────────────────────────────
+export async function addCohost(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(CohostSchema, input, async ({ quedadaId, userId }) => {
+    const callerId = await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase
+      .from("quedada_cohosts")
+      .upsert({ quedada_id: quedadaId, user_id: userId, added_by: callerId }, { onConflict: "quedada_id,user_id" });
+    if (error) throw new MpError("QUEDADAS.COHOST_FAILED", error.message, 500);
+    await notify({
+      userId,
+      role: "user",
+      kind: "quedada_cohost_added",
+      title: "Te hicieron co-host de una quedada",
+      payload: { quedadaId },
+    });
+    return { ok: true as const };
+  });
+}
+
+export async function removeCohost(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(CohostSchema, input, async ({ quedadaId, userId }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase
+      .from("quedada_cohosts")
+      .delete()
+      .eq("quedada_id", quedadaId)
+      .eq("user_id", userId);
+    if (error) throw new MpError("QUEDADAS.COHOST_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Categorías (solo creador) ────────────────────────────────────────────────
+export async function createCategory(input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(CreateCategorySchema, input, async (d) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { data, error } = await supabase
+      .from("quedada_categories")
+      .insert({
+        quedada_id: d.quedadaId,
+        name: d.name,
+        level_label: d.levelLabel ?? null,
+        starts_at: d.startsAt ?? null,
+        court_label: d.courtLabel ?? null,
+        max_slots: d.maxSlots ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw new MpError("QUEDADAS.CATEGORY_FAILED", error?.message ?? "error", 500);
+    return { id: data.id as string };
+  });
+}
+
+export async function updateCategory(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(UpdateCategorySchema, input, async (d) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const patch: Record<string, unknown> = {};
+    if (d.name !== undefined) patch.name = d.name;
+    if (d.levelLabel !== undefined) patch.level_label = d.levelLabel;
+    if (d.startsAt !== undefined) patch.starts_at = d.startsAt;
+    if (d.courtLabel !== undefined) patch.court_label = d.courtLabel;
+    if (d.maxSlots !== undefined) patch.max_slots = d.maxSlots;
+    const { error } = await supabase.from("quedada_categories").update(patch).eq("id", d.categoryId);
+    if (error) throw new MpError("QUEDADAS.CATEGORY_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function deleteCategory(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(CategoryIdSchema, input, async ({ categoryId }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase.from("quedada_categories").delete().eq("id", categoryId);
+    if (error) throw new MpError("QUEDADAS.CATEGORY_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Parejas / slots (creador o co-host) ──────────────────────────────────────
+export async function assignPair(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(AssignPairSchema, input, async (d) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase.from("quedada_pairs").upsert(
+      {
+        quedada_id: d.quedadaId,
+        category_id: d.categoryId,
+        slot_no: d.slotNo,
+        player_a_id: d.playerAId,
+        player_b_id: d.playerBId ?? null,
+      },
+      { onConflict: "category_id,slot_no" },
+    );
+    if (error) throw new MpError("QUEDADAS.PAIR_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function removePair(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(RemovePairSchema, input, async ({ pairId }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase.from("quedada_pairs").delete().eq("id", pairId);
+    if (error) throw new MpError("QUEDADAS.PAIR_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Pago por participante (creador o co-host) ────────────────────────────────
+export async function setParticipantPaid(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetParticipantPaidSchema, input, async ({ quedadaId, userId, paid }) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const { error } = await supabase
+      .from("quedada_participants")
+      .update({ paid })
+      .eq("quedada_id", quedadaId)
+      .eq("user_id", userId);
+    if (error) throw new MpError("QUEDADAS.PAID_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Logística + bancarios + premios (solo creador) ───────────────────────────
+export async function updateQuedadaLogistics(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(QuedadaLogisticsSchema, input, async (d) => {
+    await requireUserId();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (d.courtsCount !== undefined) patch.courts_count = d.courtsCount;
+    if (d.hours !== undefined) patch.hours = d.hours;
+    if (d.courtPriceCents !== undefined) patch.court_price_cents = d.courtPriceCents;
+    if (d.paymentInfo !== undefined) patch.payment_info = d.paymentInfo;
+    if (d.prizesText !== undefined) patch.prizes_text = d.prizesText;
+    const { error } = await supabase.from("quedadas").update(patch).eq("id", d.quedadaId);
+    if (error) throw new MpError("QUEDADAS.LOGISTICS_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Unirse por link (invite_code) ────────────────────────────────────────────
+// Resuelve el código con admin client (las privadas están ocultas por RLS al
+// no-miembro); el insert del participante va con el JWT del user (RLS lo permite).
+export async function joinByInviteCode(
+  input: unknown,
+): Promise<ActionResult<{ ok: true; quedadaId: string; transactionId?: string }>> {
+  return runAction(JoinByCodeSchema, input, async ({ code }) => {
+    const userId = await requireUserId();
+    const admin = getAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: q } = await (admin as any)
+      .from("quedadas")
+      .select("id,status,fee_cents,club_id,max_players")
+      .eq("invite_code", code)
+      .maybeSingle();
+    if (!q) throw new MpError("QUEDADAS.CODE_INVALID", "Link inválido", 404);
+    if (q.status !== "registration_open") throw new MpError("QUEDADAS.CLOSED", "Inscripciones cerradas", 409);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabase = (await getServerClient()) as any;
+    let transactionId: string | undefined;
+    const fee = (q.fee_cents as number) ?? 0;
+    if (fee > 0) {
+      const { data: tx, error: txErr } = await supabase
+        .from("transactions")
+        .insert({
+          club_id: (q.club_id as string | null) ?? null,
+          kind: "quedada",
+          ref_id: q.id,
+          customer_user_id: userId,
+          amount_cents: fee,
+          currency: "USD",
+          method: "transfer",
+          status: "pending_proof",
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (txErr || !tx) throw new MpError("QUEDADAS.TX_FAILED", txErr?.message ?? "tx error", 500);
+      transactionId = tx.id as string;
+    }
+    const { error: pErr } = await supabase
+      .from("quedada_participants")
+      .upsert(
+        { quedada_id: q.id, user_id: userId, status: "joined", paid_transaction_id: transactionId ?? null },
+        { onConflict: "quedada_id,user_id" },
+      );
+    if (pErr) throw new MpError("QUEDADAS.JOIN_FAILED", pErr.message, 500);
+    return { ok: true as const, quedadaId: q.id as string, transactionId };
   });
 }

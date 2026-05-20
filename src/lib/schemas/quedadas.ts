@@ -80,6 +80,62 @@ export const QuedadaSchema = z
   })
   .openapi("Quedada");
 
+// ── v1.x panel de gestión ────────────────────────────────────────────────────
+export const CohostSchema = z.object({ quedadaId: UuidSchema, userId: UuidSchema }).openapi("QuedadaCohost");
+
+export const CreateCategorySchema = z
+  .object({
+    quedadaId: UuidSchema,
+    name: z.string().trim().min(1).max(60),
+    levelLabel: z.string().trim().max(40).optional(),
+    startsAt: z.string().datetime({ offset: true }).optional(),
+    courtLabel: z.string().trim().max(40).optional(),
+    maxSlots: z.coerce.number().int().min(1).max(64).optional(),
+  })
+  .openapi("CreateQuedadaCategory");
+
+export const UpdateCategorySchema = z
+  .object({
+    categoryId: UuidSchema,
+    name: z.string().trim().min(1).max(60).optional(),
+    levelLabel: z.string().trim().max(40).nullable().optional(),
+    startsAt: z.string().datetime({ offset: true }).nullable().optional(),
+    courtLabel: z.string().trim().max(40).nullable().optional(),
+    maxSlots: z.coerce.number().int().min(1).max(64).nullable().optional(),
+  })
+  .openapi("UpdateQuedadaCategory");
+
+export const CategoryIdSchema = z.object({ categoryId: UuidSchema }).openapi("QuedadaCategoryId");
+
+export const AssignPairSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    categoryId: UuidSchema,
+    slotNo: z.coerce.number().int().min(1).max(200),
+    playerAId: UuidSchema,
+    playerBId: UuidSchema.nullable().optional(),
+  })
+  .openapi("AssignQuedadaPair");
+
+export const RemovePairSchema = z.object({ pairId: UuidSchema }).openapi("RemoveQuedadaPair");
+
+export const SetParticipantPaidSchema = z
+  .object({ quedadaId: UuidSchema, userId: UuidSchema, paid: z.boolean() })
+  .openapi("SetQuedadaParticipantPaid");
+
+export const QuedadaLogisticsSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    courtsCount: z.coerce.number().int().min(1).max(64).nullable().optional(),
+    hours: z.coerce.number().min(0.5).max(24).nullable().optional(),
+    courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+    paymentInfo: z.string().trim().max(500).nullable().optional(),
+    prizesText: z.string().trim().max(500).nullable().optional(),
+  })
+  .openapi("QuedadaLogistics");
+
+export const JoinByCodeSchema = z.object({ code: z.string().trim().min(4).max(40) }).openapi("JoinQuedadaByCode");
+
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;
 export type QuedadaFormat = z.infer<typeof QuedadaFormatSchema>;

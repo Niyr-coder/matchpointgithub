@@ -2408,6 +2408,17 @@ casuales; ranked + stats por formato×modo + motor en vivo + chat = v2.
   `setAuditActor`). Tablas aún no en tipos generados → cliente `as any` (deuda a
   limpiar regenerando `db/types.ts`).
 
+**Panel de gestión v1.x (mig 133):** `quedada_categories` (nivel/horario/cancha/
+cupo por categoría), `quedada_pairs` (slot_no + player_a/b, jugadores REGISTRADOS,
+unique category+slot), `quedada_cohosts`. `quedadas` +`courts_count`/`hours`/
+`court_price_cents` (costo = canchas×horas×precio), +`payment_info`/`prizes_text`,
++`invite_code` (único, default `gen_quedada_invite_code()` — link de inscripción).
+`quedada_participants` +`paid`. RLS: categorías/cohosts/logística = solo creador;
+parejas/slots/`paid` = creador O co-host (helper `mp_quedada_can_manage`,
+SECURITY DEFINER). Recursión RLS rota con helpers definer (mig 132). Actions de
+gestión en `quedadas.ts` (cohosts/categorías/pairs/paid/logística/joinByInviteCode).
+Notif kind `quedada_cohost_added`.
+
 ---
 
 ## Próximo: `30-rls.md`
