@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-import { SelfChip, selfRingStyle } from "../widgets/SelfBadge";
+import { SelfChip } from "../widgets/SelfBadge";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   cancelInvite,
@@ -2521,7 +2521,6 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                             alignItems: "center",
                             justifyContent: "center",
                             color: "#fff",
-                            ...(isMe ? selfRingStyle : {}),
                           }}
                         >
                           <span className="font-heading" style={{ fontSize: 10.5, fontWeight: 900 }}>

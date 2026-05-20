@@ -260,14 +260,15 @@ server action correspondiente + wire onClick + toast de resultado.
   - Badge de fiabilidad (`reliabilityTier`) en perfil / `AdminUsersScreen`.
   - Incrementar `player_reliability.cancellations` en `cancelMatch` (hoy solo
     no-show mueve el score).
-- [ ] **Multideporte — cola de refactor + admin UI** (ver `product/05-multisport.md`):
-  - Selectores aún hardcoded a pickleball (ya correctos con el flag OFF, default):
-    `CrearJuegoModal`, `CreateTournamentFlow`, filtros de ranking
-    (`RankingScreen`/`RankingPageView`), landing (`ClubesPageView`,
-    `EventosPageView`, `CoachesPageView`), `SolicitarClubScreenView`,
-    métricas/reportes. Pasarlos a `useEnabledSports()` para multisport ON completo.
-  - Falta control visual en `AdminConfigScreen` para el toggle
-    `multisport_enabled` (hoy se cambia por SQL).
+- [ ] **Multideporte — cola de refactor** (ver `product/05-multisport.md`):
+  - ✅ Hecho: busco-partido, onboarding, CrearMatch, **landing /ranking**
+    (`RankingPageView`), **toggle admin** en `AdminConfigScreen` (sección
+    "Deportes"). El ranking del dashboard ya es pickleball-fijo.
+  - Pendiente (filtros de deporte en superficies secundarias):
+    `ClubesPageView`, `EventosPageView`, `CoachesPageView`,
+    `SolicitarClubScreenView`. `CrearJuegoModal` y `CreateTournamentFlow`
+    están pickleball-locked por diseño (correctos con flag OFF; cuando se
+    quiera multisport ON en torneos hay que abrir esos flujos).
 - [ ] **Cosmetics: self-service purchase flow** (Stage 4 de customización).
   Hoy fase 1 es admin grant manual tras pago manual. Falta UI en
   `/dashboard/user/personalizar` para que el user clickee "Comprar pack

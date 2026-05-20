@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { usePaywall } from "@/components/landing/PublicChromeClient";
+import { useEnabledSports } from "@/components/SportsProvider";
 import type { RankingEntry } from "@/lib/schemas/ranking";
 
 const SPORTS = [
@@ -71,6 +72,7 @@ export function RankingPageView({
   entries: RankingEntry[];
 }) {
   const onPaywall = usePaywall();
+  const { sports: enabledSports, single: singleSport } = useEnabledSports();
   const sportLabel = SPORTS.find((s) => s.k === sport)?.l ?? "Pickleball";
   const modeLabel = MODES.find((m) => m.k === mode)?.l ?? "Singles";
   const podium = padPodium(entries);
@@ -110,6 +112,7 @@ export function RankingPageView({
 
       {/* Sport + mode tabs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 32 }}>
+        {!singleSport && (
         <div
           style={{
             display: "flex",
@@ -120,7 +123,7 @@ export function RankingPageView({
             width: "fit-content",
           }}
         >
-          {SPORTS.map((s) => {
+          {SPORTS.filter((s) => enabledSports.includes(s.k)).map((s) => {
             const on = s.k === sport;
             return (
               <Link
@@ -145,6 +148,7 @@ export function RankingPageView({
             );
           })}
         </div>
+        )}
         <div
           style={{
             display: "flex",
