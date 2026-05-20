@@ -434,16 +434,20 @@ function PreviewCard({
               marginBottom: 8,
             }}
           >
-            Card style en listados
+            Cómo te ven en amigos, ranking y roster
           </div>
-          <PreviewCardChip cardObj={cardObj} accentHex={accentHex} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <FriendCardPreview cardObj={cardObj} accentHex={accentHex} />
+            <RosterRowPreview cardObj={cardObj} accentHex={accentHex} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function PreviewCardChip({
+// Mock de la friend card (AmigosScreen) con la card-style del tema.
+function FriendCardPreview({
   cardObj,
   accentHex,
 }: {
@@ -451,25 +455,123 @@ function PreviewCardChip({
   accentHex: string;
 }) {
   const css = cardObj?.css;
+  const fg = css?.color ?? "#0a0a0a";
   return (
     <div
       style={{
-        marginTop: 8,
-        padding: "10px 14px",
-        borderRadius: 10,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 10,
+        width: 200,
+        padding: 14,
+        borderRadius: 14,
         background: css?.background ?? "#fff",
         border: css?.border ?? "1px solid var(--border)",
         boxShadow: css?.boxShadow ?? "none",
         backdropFilter: css?.backdropFilter,
-        color: css?.color ?? "#0a0a0a",
-        transition: "all 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+        color: fg,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
       }}
     >
-      <span style={{ width: 22, height: 22, borderRadius: "50%", background: accentHex, display: "inline-block" }} />
-      <span style={{ fontWeight: 800, fontSize: 12 }}>Tu nombre · MPR 4.20</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 900,
+            fontSize: 14,
+            flexShrink: 0,
+          }}
+        >
+          TN
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>Tu nombre</div>
+          <div style={{ fontSize: 11, opacity: 0.7 }}>Quito · Pickleball</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, opacity: 0.75 }}>MP Rating</span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            padding: "2px 8px",
+            borderRadius: 9999,
+            background: accentHex,
+            color: "#fff",
+          }}
+        >
+          4.20
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Mock de una fila del roster del team con la card-style del tema.
+function RosterRowPreview({
+  cardObj,
+  accentHex,
+}: {
+  cardObj: ReturnType<typeof findCardStyle>;
+  accentHex: string;
+}) {
+  const css = cardObj?.css;
+  const fg = css?.color ?? "#0a0a0a";
+  return (
+    <div
+      style={{
+        width: 240,
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: css?.background ?? "#fafafa",
+        border: css?.border ?? "1px solid var(--border)",
+        backdropFilter: css?.backdropFilter,
+        color: fg,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: "50%",
+          background: `linear-gradient(135deg, ${accentHex}cc, ${accentHex})`,
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 900,
+          fontSize: 11,
+          flexShrink: 0,
+        }}
+      >
+        TN
+      </div>
+      <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>Tu nombre</span>
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 800,
+          padding: "2px 8px",
+          borderRadius: 9999,
+          background: "rgba(16,185,129,0.15)",
+          color: "#10b981",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      >
+        Titular
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 800 }}>4.2</span>
     </div>
   );
 }

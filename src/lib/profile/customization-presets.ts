@@ -254,20 +254,23 @@ export type ProfileTheme = {
   banner: string | null;
 };
 
+// Combos curados con armonía de color. Los temas de pack usan presets de su
+// propio pack (ownership). Los mp_plus usan cards neutras (glass/paper/outline)
+// que combinan con cualquier banner+accent del mismo tono.
 export const PROFILE_THEMES: ProfileTheme[] = [
   { key: "default",    label: "Clásico",     bundleKey: "free",        accent: null,        card: null,           banner: null },
-  // MP+ (6)
-  { key: "esmeralda",  label: "Esmeralda",   bundleKey: "mp_plus",     accent: "emerald",   card: "glass",        banner: "emerald-night" },
-  { key: "oceano",     label: "Océano",      bundleKey: "mp_plus",     accent: "sky",       card: "frosted",      banner: "ocean" },
-  { key: "crepusculo", label: "Crepúsculo",  bundleKey: "mp_plus",     accent: "violet",    card: "soft-shadow",  banner: "twilight" },
-  { key: "bosque",     label: "Bosque",      bundleKey: "mp_plus",     accent: "green",     card: "paper",        banner: "forest" },
-  { key: "rubi",       label: "Rubí",        bundleKey: "mp_plus",     accent: "rose",      card: "soft-shadow",  banner: "ruby" },
-  { key: "pizarra",    label: "Pizarra",     bundleKey: "mp_plus",     accent: "slate",     card: "outline",      banner: "stormy" },
-  // Packs (4)
-  { key: "neon",       label: "Neón",        bundleKey: "pack_neon",   accent: "neon-mint", card: "neon-emerald", banner: "neon-violet" },
-  { key: "oro",        label: "Oro",         bundleKey: "pack_gold",   accent: "amber",     card: "holographic",  banner: "gold-rush" },
-  { key: "carbon",     label: "Carbón",      bundleKey: "pack_carbon", accent: "zinc",      card: "carbon-deck",  banner: "midnight" },
-  { key: "sakura",     label: "Sakura",      bundleKey: "pack_sakura", accent: "pink",      card: "sakura-glass", banner: "sakura" },
+  // MP+ (6) — cada uno una familia de color coherente.
+  { key: "esmeralda",  label: "Esmeralda",   bundleKey: "mp_plus",     accent: "emerald",   card: "glass",        banner: "emerald-night" }, // verdes + negro
+  { key: "oceano",     label: "Océano",      bundleKey: "mp_plus",     accent: "sky",       card: "frosted",      banner: "ocean" },          // azules/cyan
+  { key: "crepusculo", label: "Crepúsculo",  bundleKey: "mp_plus",     accent: "violet",    card: "glass",        banner: "twilight" },       // índigo/violeta
+  { key: "bosque",     label: "Bosque",      bundleKey: "mp_plus",     accent: "green",     card: "paper",        banner: "forest" },         // verdes naturales
+  { key: "rubi",       label: "Rubí",        bundleKey: "mp_plus",     accent: "rose",      card: "soft-shadow",  banner: "ruby" },           // rojos
+  { key: "pizarra",    label: "Pizarra",     bundleKey: "mp_plus",     accent: "slate",     card: "outline",      banner: "stormy" },         // grises/minimal
+  // Packs (4) — armonía dentro de la paleta del pack.
+  { key: "neon",       label: "Neón",        bundleKey: "pack_neon",   accent: "neon-mint", card: "neon-emerald", banner: "aurora" },         // card verde + banner aurora (arranca emerald)
+  { key: "oro",        label: "Oro",         bundleKey: "pack_gold",   accent: "amber",     card: "holographic",  banner: "gold-rush" },      // dorados
+  { key: "carbon",     label: "Carbón",      bundleKey: "pack_carbon", accent: "zinc",      card: "carbon-deck",  banner: "midnight" },       // negros/grises
+  { key: "sakura",     label: "Sakura",      bundleKey: "pack_sakura", accent: "blush",     card: "sakura-glass", banner: "sakura" },         // rosas
 ];
 
 export const THEME_KEYS = new Set(PROFILE_THEMES.map((t) => t.key));
