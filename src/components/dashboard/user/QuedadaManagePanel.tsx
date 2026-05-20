@@ -920,7 +920,7 @@ function PodiumSection({ data }: { data: ManageData }) {
                     <span className="font-heading tabular" style={{ width: 26, fontWeight: 900, color: top ? "var(--primary)" : "var(--muted-fg)" }}>{r}°</span>
                     <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {nameFor(p.player_a_id)}
-                      {p.player_b_id ? <span style={{ color: "var(--muted-fg)" }}> · {nameFor(p.player_b_id)}</span> : null}
+                      {p.player_b_id ? <><span style={{ color: "var(--muted-fg)", fontWeight: 800, margin: "0 4px" }}>+</span>{nameFor(p.player_b_id)}</> : null}
                     </span>
                   </div>
                 );
@@ -1102,7 +1102,7 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
                   />
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {nameFor(p.player_a_id)}
-                    {p.player_b_id ? <span style={{ color: "var(--muted-fg)" }}> · {nameFor(p.player_b_id)}</span> : null}
+                    {p.player_b_id ? <><span style={{ color: "var(--muted-fg)", fontWeight: 800, margin: "0 4px" }}>+</span>{nameFor(p.player_b_id)}</> : null}
                   </span>
                 </div>
               ))}
@@ -1150,7 +1150,7 @@ function usePairLabeler(data: ManageData, categoryId: string) {
     if (!p) return "—";
     const a = nameOf(partById.get(p.player_a_id)?.profiles ?? null);
     const b = p.player_b_id ? nameOf(partById.get(p.player_b_id)?.profiles ?? null) : null;
-    return b ? `${a} · ${b}` : a;
+    return b ? `${a} + ${b}` : a;
   };
 }
 const groupLetter = (n: number): string => String.fromCharCode(64 + n);
