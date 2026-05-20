@@ -512,6 +512,10 @@ function ThemesAdminSection() {
   // desde su bundle en la sección "Bundles" — así no se duplican acá.
   const themes = PROFILE_THEMES_BY_RARITY.filter((t) => t.bundleKey === "mp_plus");
 
+  // Para gatear los botones bulk: ¿ya están todos activos / todos inactivos?
+  const allInactive = inactive !== null && themes.every((t) => inactive.has(t.key));
+  const allActive = inactive !== null && themes.every((t) => !inactive.has(t.key));
+
   const toggleAll = async (nextActive: boolean) => {
     if (pending || inactive === null) return;
     if (!nextActive) {
@@ -559,17 +563,31 @@ function ThemesAdminSection() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={() => toggleAll(true)}
-            disabled={pending || inactive === null}
+            disabled={pending || inactive === null || allActive}
             className="btn"
-            style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 12px", fontSize: 10.5 }}
+            style={{
+              background: "#fff",
+              border: "1px solid var(--border)",
+              padding: "6px 12px",
+              fontSize: 10.5,
+              opacity: allActive ? 0.45 : 1,
+              cursor: allActive ? "not-allowed" : "pointer",
+            }}
           >
             Activar todos
           </button>
           <button
             onClick={() => toggleAll(false)}
-            disabled={pending || inactive === null}
+            disabled={pending || inactive === null || allInactive}
             className="btn"
-            style={{ background: "#0a0a0a", color: "#fff", padding: "6px 12px", fontSize: 10.5 }}
+            style={{
+              background: "#0a0a0a",
+              color: "#fff",
+              padding: "6px 12px",
+              fontSize: 10.5,
+              opacity: allInactive ? 0.45 : 1,
+              cursor: allInactive ? "not-allowed" : "pointer",
+            }}
           >
             Desactivar todo
           </button>
