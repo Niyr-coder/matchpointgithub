@@ -109,6 +109,18 @@ export function EditProfilePanel({ initial }: { initial: EditableProfile }) {
         <Field label="Teléfono">
           <input type="tel" style={inputStyle} value={v(form.phone)} maxLength={30} onChange={(e) => set("phone", e.target.value)} />
         </Field>
+        <Field label="Fecha de nacimiento">
+          <input
+            type="date"
+            disabled
+            value={v(form.birthdate)}
+            title="La fecha de nacimiento no se puede modificar"
+            style={{ ...inputStyle, background: "var(--muted)", color: "var(--muted-fg)", cursor: "not-allowed" }}
+          />
+          <span style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4, display: "block" }}>
+            No editable
+          </span>
+        </Field>
         <Field label="Mano dominante">
           <select style={inputStyle} value={v(form.dominantHand)} onChange={(e) => set("dominantHand", (e.target.value || null) as EditableProfile["dominantHand"])}>
             <option value="">—</option>
