@@ -57,6 +57,7 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("match_seek")) return "swords";
   if (kind === "team_member_kicked") return "user-x";
   if (kind.startsWith("team_")) return "users";
+  if (kind.startsWith("quedada")) return "party-popper";
   return "bell";
 }
 
@@ -117,6 +118,10 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
       ? `/dashboard/user/chat?conv=${convId}`
       : "/dashboard/user/busco-partido";
   }
+  if (kind.startsWith("quedada")) {
+    const qId = typeof payload.quedadaId === "string" ? payload.quedadaId : null;
+    return qId ? `/dashboard/user/quedadas?focus=${qId}` : "/dashboard/user/quedadas";
+  }
   return null;
 }
 
@@ -131,6 +136,7 @@ function colorForKind(kind: string): string {
   if (kind.startsWith("club_application")) return "#0ea5e9";
   if (kind === "team_roster_cap_reached") return "#facc15";
   if (kind.startsWith("team_")) return "#7c3aed";
+  if (kind.startsWith("quedada")) return "#f97316";
   return "#0a0a0a";
 }
 

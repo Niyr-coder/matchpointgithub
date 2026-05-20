@@ -17,7 +17,9 @@ import { AdminTeamScreen } from "@/components/dashboard/admin/AdminTeamScreen";
 import { AdminFlagsScreen } from "@/components/dashboard/admin/AdminFlagsScreen";
 import { AdminBroadcastScreen } from "@/components/dashboard/admin/AdminBroadcastScreen";
 import { AdminCosmeticsScreen } from "@/components/dashboard/admin/AdminCosmeticsScreen";
+import { AdminQuedadasScreen } from "@/components/dashboard/admin/AdminQuedadasScreen";
 import { RankingScreen } from "@/components/dashboard/user/RankingScreen";
+import { QuedadasScreen } from "@/components/dashboard/user/QuedadasScreen";
 import { ProfileScreen } from "@/components/dashboard/user/ProfileScreen";
 import { PersonalizacionScreen } from "@/components/dashboard/user/PersonalizacionScreen";
 import { ClubesScreen } from "@/components/dashboard/user/ClubesScreen";
@@ -84,6 +86,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-flags": () => <AdminFlagsScreen />,
     "admin-broadcast": () => <AdminBroadcastScreen />,
     "admin-cosmetics": () => <AdminCosmeticsScreen />,
+    "admin-quedadas": () => <AdminQuedadasScreen />,
   },
   user: {
     ranking: () => <RankingScreen />,
@@ -97,6 +100,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "solicitar-club": () => <SolicitarClubScreen />,
     team: () => <TeamScreen />,
     "busco-partido": (sp) => <BuscoPartidoScreen searchParams={sp} />,
+    quedadas: () => <QuedadasScreen />,
     academia: () => <AcademiaScreen />,
     "mis-clases": () => <MisClasesScreen />,
     "mi-plan": () => <MiPlanScreen />,

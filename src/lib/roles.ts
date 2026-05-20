@@ -54,6 +54,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "eventos", label: "Eventos", icon: "trophy" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
           { k: "busco-partido", label: "Busco partido", icon: "swords" },
+          { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA" },
         ],
       },
       {
@@ -117,6 +118,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
           { k: "admin-support", label: "Soporte", icon: "life-buoy" },
+          { k: "admin-quedadas", label: "Quedadas", icon: "party-popper" },
           { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
           { k: "admin-broadcast", label: "Comunicaciones", icon: "megaphone" },
         ],
@@ -334,6 +336,7 @@ export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
     "admin-team",
     "admin-flags",
     "admin-broadcast",
+    "admin-quedadas",
   ],
   owner: ["club-reservas", "club-canchas", "club-clientes", "club-finanzas", "club-marketing", "club-config", "club-eventos", "club-staff"],
   manager: ["club-reservas", "club-canchas", "club-clientes", "club-eventos", "club-staff", "club-walkins", "club-reportes"],
