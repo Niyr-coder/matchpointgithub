@@ -75,9 +75,11 @@ export async function setTheme(input: unknown): Promise<ActionResult<{ ok: true 
         ((grantRows ?? []) as Array<{ bundle_key: string }>).map((g) => g.bundle_key),
       );
       if (!canUsePreset(t.bundleKey, { isPremium, myGrants })) {
-        if (t.bundleKey === "mp_plus") {
+        // Cualquier tema no-free requiere MP+ activo primero.
+        if (!isPremium) {
           throw new MpError("PROFILE.PREMIUM_REQUIRED", "Este tema requiere MatchPoint+", 402);
         }
+        // MP+ activo pero falta el grant del pack.
         throw new MpError("PROFILE.PRESET_LOCKED", `Este tema requiere desbloquear ${t.bundleKey}`, 403);
       }
     }

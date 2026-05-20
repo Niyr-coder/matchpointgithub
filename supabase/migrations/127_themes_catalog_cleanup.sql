@@ -14,5 +14,6 @@ set accent_color = null, card_style = null, banner_preset = null
 where is_system = false
   and (accent_color is not null or card_style is not null or banner_preset is not null)
   and coalesce(accent_color, card_style, banner_preset) not in (
-    'esmeralda', 'oceano', 'crepusculo', 'pizarra', 'neon', 'oro', 'carbon', 'sakura'
+    'esmeralda', 'oceano', 'crepusculo', 'pizarra', 'coral', 'medianoche',
+    'neon', 'oro', 'carbon', 'sakura', 'brasa', 'vineta', 'vapor'
   );

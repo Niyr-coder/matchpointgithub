@@ -2150,7 +2150,10 @@ Extiende la customización (§29.15) con tiers de ownership. Cada preset en el
 catálogo (`src/lib/profile/customization-presets.ts`) tiene un `bundleKey`:
 
 - `'mp_plus'` → desbloqueado mientras `plan_tier='premium'`. No requiere fila.
-- `'<bundle_key>'` → requiere fila en `profile_cosmetic_grants` (ownership permanente).
+- `'<bundle_key>'` → requiere `plan_tier='premium'` **Y** fila en
+  `profile_cosmetic_grants`. **La personalización es exclusiva de MP+**: comprar
+  un pack no alcanza si el MP+ se venció (ver `canUsePreset` en `bundles.ts`).
+  El grant es permanente, pero el acceso a usarlo depende del MP+ activo.
 
 **Tablas**:
 

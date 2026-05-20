@@ -118,13 +118,17 @@ export function bodyPatternForBundle(bundleKey: string | null | undefined): stri
 }
 
 // ¿El user puede USAR un preset con este bundleKey?
-//   'mp_plus'      → require MP+ activo
-//   '<bundle_key>' → require grant en myGrants
+// Regla: la personalización (cualquier tema no-default) es exclusiva de MP+.
+//   sin MP+ activo     → nada (solo el tema Clásico/free, que no pasa por acá)
+//   'mp_plus'          → basta MP+ activo
+//   '<bundle_key>'     → MP+ activo Y el grant del pack (comprar no alcanza si
+//                        el MP+ se venció — pierdes acceso a los packs también)
 export function canUsePreset(
   bundleKey: string,
   args: { isPremium: boolean; myGrants: Set<string> },
 ): boolean {
-  if (bundleKey === MP_PLUS_KEY) return args.isPremium;
+  if (!args.isPremium) return false;
+  if (bundleKey === MP_PLUS_KEY) return true;
   return args.myGrants.has(bundleKey);
 }
 

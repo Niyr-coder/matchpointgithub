@@ -74,9 +74,11 @@ export function PersonalizacionScreenClient({
   const applyTheme = (t: ProfileTheme) => {
     if (pending) return;
     if (!themeIsOwned(t, ownArgs)) {
-      if (t.bundleKey === "mp_plus") {
+      if (!isPremium) {
+        // Cualquier tema (MP+ o pack) requiere MP+ activo primero.
         toast({ icon: "lock", title: "Tema MatchPoint+", sub: "Actívalo desde Mi plan" });
       } else {
+        // MP+ activo pero falta el grant del pack.
         const b = bundleByKey.get(t.bundleKey);
         toast({
           icon: "lock",
@@ -568,9 +570,9 @@ function BundleStore({
         <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Compra única · sin expiración</span>
       </div>
       <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "0 0 16px" }}>
-        Cada bundle desbloquea su tema. Para adquirir uno, contacta a soporte vía WhatsApp o mensaje
-        directo a MATCHPOINT — el equipo te confirma datos de transferencia y otorga el bundle al
-        recibir el pago.
+        Cada bundle desbloquea su tema. Para usarlos necesitas <strong>MatchPoint+ activo</strong> además
+        del pack. Para adquirir uno, contacta a soporte vía WhatsApp o mensaje directo a MATCHPOINT — el
+        equipo te confirma datos de transferencia y otorga el bundle al recibir el pago.
       </p>
       <div
         style={{
