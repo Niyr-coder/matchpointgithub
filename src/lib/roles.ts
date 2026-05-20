@@ -98,7 +98,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Plataforma",
         items: [
-          { k: "home", label: "Overview", icon: "layout-dashboard" },
+          { k: "home", label: "Overview", icon: "home" },
           { k: "admin-clubs", label: "Clubes", icon: "building-2" },
           { k: "admin-users", label: "Usuarios", icon: "users" },
           { k: "admin-events", label: "Eventos", icon: "trophy" },
@@ -149,7 +149,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Mi club",
         items: [
-          { k: "home", label: "Overview", icon: "layout-dashboard" },
+          { k: "home", label: "Overview", icon: "home" },
           { k: "club-reservas", label: "Reservas", icon: "calendar-days" },
           { k: "club-canchas", label: "Canchas", icon: "square" },
           { k: "club-eventos", label: "Eventos del club", icon: "trophy" },
@@ -188,7 +188,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Operación",
         items: [
-          { k: "home", label: "Hoy", icon: "layout-dashboard" },
+          { k: "home", label: "Hoy", icon: "home" },
           { k: "club-reservas", label: "Reservas", icon: "calendar-days" },
           { k: "club-canchas", label: "Canchas", icon: "square" },
           { k: "club-walkins", label: "Walk-ins", icon: "user-plus" },
@@ -221,7 +221,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Mis torneos",
         items: [
-          { k: "home", label: "Overview", icon: "layout-dashboard" },
+          { k: "home", label: "Overview", icon: "home" },
           { k: "p-ligas", label: "Mis ligas", icon: "list-ordered" },
           { k: "p-torneos", label: "Mis torneos", icon: "trophy" },
           { k: "p-brackets", label: "Brackets", icon: "git-branch" },
@@ -256,7 +256,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Coaching",
         items: [
-          { k: "home", label: "Hoy", icon: "layout-dashboard" },
+          { k: "home", label: "Hoy", icon: "home" },
           { k: "c-clases", label: "Mis clases", icon: "graduation-cap" },
           { k: "c-alumnos", label: "Alumnos", icon: "users" },
           { k: "c-calendar", label: "Calendario", icon: "calendar" },
@@ -286,7 +286,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Recepción",
         items: [
-          { k: "home", label: "Mi turno", icon: "layout-dashboard" },
+          { k: "home", label: "Mi turno", icon: "home" },
           { k: "e-checkin", label: "Check-in", icon: "user-check" },
           { k: "e-walkins", label: "Walk-ins", icon: "user-plus" },
           { k: "e-reservas", label: "Reservas hoy", icon: "calendar-days" },
