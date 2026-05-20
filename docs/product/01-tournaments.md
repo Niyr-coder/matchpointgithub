@@ -55,7 +55,7 @@ constante `SCORING_PRESETS`:
 **Side-out**: solo el sacador puntúa. **Rally**: cualquiera puntúa cada
 rally. **WinBy**: 2 siempre.
 
-## 3. MPR (MatchPoint Rating)
+## 3. MPR (MATCHPOINT Rating)
 
 Escala **2.0 - 8.0** propia de la plataforma. Cada categoría tiene rango
 opcional `mpr_min/mpr_max`:

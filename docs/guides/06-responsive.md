@@ -13,7 +13,7 @@
 - Design tokens **fijos** (gradients, colores específicos, transforms,
   `letterSpacing` custom, `lineHeight` exactos) → inline styles.
 
-Esta es la convención que ya usaba v1 de MatchPoint, y la que recuperamos
+Esta es la convención que ya usaba v1 de MATCHPOINT, y la que recuperamos
 en v2 después del refactor de mayo 2026.
 
 ### Por qué

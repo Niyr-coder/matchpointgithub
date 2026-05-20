@@ -1,4 +1,4 @@
-# MatchPoint+ (plan premium del jugador)
+# MATCHPOINT+ (plan premium del jugador)
 
 > Antes de tocar cualquier código de planes/billing/activación de premium,
 > leer este doc completo. La activación pasa por flujos manuales que pueden
@@ -77,7 +77,7 @@ grantMatchPointPlusAdmin({ userId, durationMonths, reason })
 ```
 
 Llamado desde `/dashboard/admin/admin-users` → kebab del row → "Activar/
-Extender MatchPoint+".
+Extender MATCHPOINT+".
 
 ### 3.3 · Revocación admin
 
@@ -138,7 +138,7 @@ y `plan_expires_at` puede haber pasado.
 
 ## 6. Sincronía con el landing
 
-- `/` (home landing) muestra MatchPoint+ como CTA. Estática, sin user context.
+- `/` (home landing) muestra MATCHPOINT+ como CTA. Estática, sin user context.
 - Una vez logueado, `UserHomeView.tsx` muestra `<UpgradeBanner>` si tier=free.
   - Banner desaparece automáticamente cuando tier=premium.
   - Click → `/dashboard/user/mi-plan`.
@@ -182,9 +182,9 @@ chequean los caps antes de mutar. Errores específicos:
 
 **Cómo se sienten los gates al user**:
 - Free captain mete miembro #13 → toast "Tu team alcanzó el máximo de
-  12 miembros. Activa MatchPoint+ para subir el límite."
+  12 miembros. Activa MATCHPOINT+ para subir el límite."
 - Free captain manda 4ta invite → toast "Tienes 3 invitaciones pendientes
-  (máximo 3). Cancela alguna o activa MatchPoint+."
+  (máximo 3). Cancela alguna o activa MATCHPOINT+."
 - Free captain renombra una 3ra vez → toast con CTA a MP+.
 
 **Ajustar caps sin redeploy**:

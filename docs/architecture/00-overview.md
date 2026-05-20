@@ -56,7 +56,7 @@ auth.users (gestionada por Supabase)
 
 | Rol | Scope | Notas |
 |---|---|---|
-| `admin` | Global plataforma | Solo MatchPoint staff |
+| `admin` | Global plataforma | Solo MATCHPOINT staff |
 | `partner` | Federación / liga | Owns leagues + tournaments, asigna clubes |
 | `user` | Global (sin tenant) | Default de todo signup |
 | `owner` | `club_id` único | Dueño del club, máxima autoridad dentro del club |

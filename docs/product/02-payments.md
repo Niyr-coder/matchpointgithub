@@ -1,6 +1,6 @@
 # Pagos
 
-> **Punto crítico**: MatchPoint **NO usa PSP** (Stripe/PayPal/etc). Todo
+> **Punto crítico**: MATCHPOINT **NO usa PSP** (Stripe/PayPal/etc). Todo
 > pago es por **transferencia bancaria o DeUna** (wallet ecuatoriano).
 > Cualquier código que asuma "el pago se procesó" es incorrecto — el cobro
 > real lo hace un humano fuera de la app, y nosotros registramos el estado.
@@ -120,7 +120,7 @@ admin/partner abre tabla de transactions (Event/TournamentTransactionsTable)
 automáticos. El partner debe ir tx por tx y marcar manualmente. Las cláusulas
 del T&C que aceptan al crear el torneo lo obligan a hacerlo en 7 días.
 
-## 6. Take rate (comisión MatchPoint)
+## 6. Take rate (comisión MATCHPOINT)
 
 - Stored en `platform_config.take_rate_pct` (default 10).
 - Helper `getTakeRatePct()` en `src/server/queries/platform-config.ts`.

@@ -93,7 +93,7 @@ patrón opacity 0.5 + dashed border que ya está estandarizado.
 ### Cron `cleanup-expired-plans` corre pero no notifica al user
 - **Mig**: 049
 - **Estado**: pasa subs vencidas a `expired` + downgrade del profile. **No
-  envía notif al user** ("Tu MatchPoint+ venció").
+  envía notif al user** ("Tu MATCHPOINT+ venció").
 - **Para activar**: agregar `notification_jobs` insert en el SQL del cron
   para cada user que se downgradeó.
 
@@ -156,13 +156,13 @@ patrón opacity 0.5 + dashed border que ya está estandarizado.
 - **Por qué importa**: hoy editar el copy del welcome requiere PR + deploy.
   Marketing/producto debería poder iterar copy sin pasar por dev.
 
-### Admin "broadcast as MatchPoint" ausente
-- **Estado**: el perfil oficial MatchPoint existe (mig 104) y manda
-  welcome DMs automáticos. Pero admin NO puede usar MatchPoint para
+### Admin "broadcast as MATCHPOINT" ausente
+- **Estado**: el perfil oficial MATCHPOINT existe (mig 104) y manda
+  welcome DMs automáticos. Pero admin NO puede usar MATCHPOINT para
   mandar broadcasts manuales (anuncio plataforma, alerta, etc).
   `AdminBroadcastScreen` actualmente manda como el propio admin user.
 - **Para activar**:
-  1. Toggle en AdminBroadcastScreen: "Enviar como MatchPoint Oficial"
+  1. Toggle en AdminBroadcastScreen: "Enviar como MATCHPOINT Oficial"
      (solo visible para admin).
   2. Server action `sendBroadcastAsSystem(recipientIds, body)` que
      internamente usa `fn_send_system_message` por cada recipient.

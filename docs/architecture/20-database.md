@@ -55,7 +55,7 @@ end $$;
 > adminId, false)`. Limitación PgBouncer: como el setting es por sesión
 > sin `is_local=true`, la conexión puede reciclarse entre requests; es
 > best-effort, no bulletproof. Ya aplicado en `player-subscriptions.ts`
-> (grant/revoke MatchPoint+) y `payment-proofs.ts` (approve/reject).
+> (grant/revoke MATCHPOINT+) y `payment-proofs.ts` (approve/reject).
 > Acciones admin de torneos no necesitan el helper porque usan
 > `getServerClient()` (cookie-auth, sí captura `auth.uid()`).
 
@@ -1899,7 +1899,7 @@ alter table tournament_categories
   );
 ```
 
-**MPR = MatchPoint Rating** (escala 2.0-8.0). Rango abierto = open, sin
+**MPR = MATCHPOINT Rating** (escala 2.0-8.0). Rango abierto = open, sin
 mpr_max = "5.5+", ambos null = sin filtro de nivel. Esto NO es DUPR aunque
 la escala coincida — es naming propio de la plataforma.
 
@@ -2076,7 +2076,7 @@ Primer feature con gating real detrás de MP+. Ver `docs/product/00-matchpoint-p
 
 ### 29.13 · Sistema de mensajes (migs 104-106)
 
-Perfil oficial "MatchPoint" + team chats sincronizados + welcome DMs.
+Perfil oficial "MATCHPOINT" + team chats sincronizados + welcome DMs.
 
 **Cambios de schema (mig 104)**:
 - `profiles.is_system bool not null default false` — flag para el perfil oficial. RLS RESTRICTIVE bloquea edit/delete via JWT (service role bypassa).

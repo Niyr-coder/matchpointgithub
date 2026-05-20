@@ -83,7 +83,7 @@ admin.
 | Comprobante de pago | ✅ propio | ❌ | ❌ | ✅ |
 | Rejection reason | ✅ propio (en notif) | ❌ | ❌ | ✅ |
 
-### MatchPoint+ (subscripciones)
+### MATCHPOINT+ (subscripciones)
 | Dato | Otros users | El propio | Admin |
 |---|---|---|---|
 | Que tiene premium (badge) | ✅ | ✅ | ✅ |

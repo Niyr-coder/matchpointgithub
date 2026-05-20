@@ -164,10 +164,10 @@ const generator = new OpenApiGeneratorV31(registry.definitions);
 const document = generator.generateDocument({
   openapi: '3.1.0',
   info: {
-    title: 'MatchPoint API',
+    title: 'MATCHPOINT API',
     version: process.env.npm_package_version ?? '0.1.0',
     description: 'Pickleball / Tennis / Padel platform — internal + external API.',
-    contact: { name: 'MatchPoint', url: 'https://matchpoint.app' },
+    contact: { name: 'MATCHPOINT', url: 'https://matchpoint.app' },
   },
   servers: [
     { url: 'https://app.matchpoint.dev', description: 'Production' },
@@ -213,7 +213,7 @@ export default function DocsPage() {
         layout: 'modern',
         hideClientButton: false,
         defaultHttpClient: { targetKey: 'javascript', clientKey: 'fetch' },
-        metaData: { title: 'MatchPoint API Docs' },
+        metaData: { title: 'MATCHPOINT API Docs' },
         authentication: {
           preferredSecurityScheme: 'bearerAuth',
           http: { bearer: { token: '' } },

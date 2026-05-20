@@ -11,7 +11,7 @@ Definidos en `src/app/globals.css` (`@theme` y `:root`):
 ### Brand
 | Token | Valor | Uso |
 |---|---|---|
-| `--primary` | `#10b981` | Acento principal (verde MatchPoint), CTAs, success |
+| `--primary` | `#10b981` | Acento principal (verde MATCHPOINT), CTAs, success |
 | `--primary-hover` | `#059669` | Hover de primary |
 | `--bg` | `#fafafa` | Fondo de página |
 | `--card` | `#ffffff` | Fondo de cards |

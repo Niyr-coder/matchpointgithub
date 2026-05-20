@@ -1011,7 +1011,7 @@ en service-role, así que `tg_audit` registraría `actor_id=null,
 actor_role='system'`. Para preservar trazabilidad, llamar el helper
 `setAuditActor(admin, callerId, 'admin')` (en `src/lib/db/client.admin.ts`)
 ANTES de la mutación. Ver `docs/architecture/20-database.md` §0 mig 086
-para el detalle. Aplicado hoy en grant/revoke MatchPoint+ y approve/reject
+para el detalle. Aplicado hoy en grant/revoke MATCHPOINT+ y approve/reject
 payment proof — si agregas un nuevo flujo admin con `getAdminClient`,
 acuérdate de llamarlo o el audit no te va a decir quién hizo qué.
 

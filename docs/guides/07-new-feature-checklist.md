@@ -1,10 +1,10 @@
-# Checklist · nueva feature en MatchPoint v2
+# Checklist · nueva feature en MATCHPOINT v2
 
 > **Definition of done** para cualquier feature nueva. Si saltás un ítem,
 > ahí es donde se va a romper. La skill `matchpoint-feature-plan` te recorre
 > esto interactivamente; este doc es la referencia escrita.
 
-La regla principal: **MatchPoint tiene N superficies por feature** (server
+La regla principal: **MATCHPOINT tiene N superficies por feature** (server
 action, RLS, realtime publication, audit, notif, OpenAPI, UI, docs).
 Tocar 1 sin las otras = el feature parece funcionar pero la sincronía
 muere en silencio.
@@ -54,7 +54,7 @@ Antes de escribir una línea:
   ver §1.10) o se puede mergear directo.
 - [ ] Pensar qué necesita **admin para gestionarla** (listar, override,
   killswitch — ver §1.9). Si el answer es "nada", verificar dos veces:
-  features sin path admin son anti-pattern en MatchPoint.
+  features sin path admin son anti-pattern en MATCHPOINT.
 
 ---
 
@@ -172,7 +172,7 @@ Antes de escribir una línea:
 
 ### 1.9 Admin governance (capacidades y permisos)
 
-Cada feature en MatchPoint debe ser **operable desde /admin**. Si el feature
+Cada feature en MATCHPOINT debe ser **operable desde /admin**. Si el feature
 no tiene path admin, ya naciste con un bug operacional: ni soporte ni el
 fundador pueden investigar/intervenir cuando algo se rompe en producción.
 

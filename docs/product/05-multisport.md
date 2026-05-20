@@ -1,6 +1,6 @@
 # Multideporte (switch global)
 
-Pickleball es el deporte primario de MatchPoint. El switch **multideporte**
+Pickleball es el deporte primario de MATCHPOINT. El switch **multideporte**
 decide si Pádel y Tenis están disponibles en toda la plataforma.
 
 > **Default: OFF** → solo Pickleball en selectores, modales, forms y filtros.

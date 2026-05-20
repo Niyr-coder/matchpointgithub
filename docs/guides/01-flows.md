@@ -55,7 +55,7 @@ Convenciones:
 [Click RoleSwitcher (esquina inferior)]
     │
     ▼
-[Selecciona "Ver como Partner: MatchPoint Ecuador"]
+[Selecciona "Ver como Partner: MATCHPOINT Ecuador"]
     │
     ▼
 < switchRole({ role: 'partner', partnerId }) >
@@ -242,13 +242,13 @@ Página de gestión con banner naranja "BORRADOR · no visible públicamente"
 notif. NO mutar `tournaments` directo desde otras actions o se pierde la
 notif.
 
-## 7. Activación MatchPoint+ (admin)
+## 7. Activación MATCHPOINT+ (admin)
 
 ```
 [Admin en /dashboard/admin/admin-users]
     │
     ▼
-[Click kebab en row de un user → "Activar MatchPoint+"]
+[Click kebab en row de un user → "Activar MATCHPOINT+"]
     │
     ▼
 [Modal pide duración (1/3/12 meses)]

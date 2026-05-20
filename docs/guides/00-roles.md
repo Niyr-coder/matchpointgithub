@@ -17,7 +17,7 @@ Definidos en `src/lib/roles.ts` (`RoleKey`):
 | `employee` | negro | EMPLEADO | Personal de mostrador/caja | Owner invita |
 | `coach` | negro | COACH | Instructor de clases | Owner invita + onboarding propio |
 | `partner` | negro | PARTNER | Organizador de torneos externo (no club) | Admin asigna (CRM) |
-| `admin` | rojo `#dc2626` | ADMIN | Equipo MatchPoint | SQL manual (no UI) |
+| `admin` | rojo `#dc2626` | ADMIN | Equipo MATCHPOINT | SQL manual (no UI) |
 
 ## 2. Asignación: `role_assignments`
 
@@ -141,7 +141,7 @@ lista exacta de qué falta.
 | Aprobar comprobante | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Marcar pago onsite cobrado | ❌ | ✅ su torneo | ✅ su club | ✅ su club | ❌ | ❌ | ✅ |
 | Crear clase | ❌ | ❌ | ✅ | ❌ | ✅ propia | ❌ | ✅ |
-| Activar/revocar MatchPoint+ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Activar/revocar MATCHPOINT+ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Switch entre roles via UI | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 Esta matriz NO está auto-generada — actualizar a mano cuando agreguemos

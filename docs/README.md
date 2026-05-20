@@ -1,4 +1,4 @@
-# MatchPoint · docs
+# MATCHPOINT · docs
 
 > **Para devs (y para Claude)**: leer las secciones relevantes **antes** de
 > implementar/cambiar algo. La mayoría de los bugs vienen de no saber que
@@ -20,7 +20,7 @@ revisar:
 2. **El doc específico del dominio que tocas**:
    - Torneos / scoring / MPR / categorías / cronograma → `product/01-tournaments.md`
    - Pagos / comprobantes / take rate / payouts → `product/02-payments.md`
-   - MatchPoint+ / planes premium / billing → `product/00-matchpoint-plus.md`
+   - MATCHPOINT+ / planes premium / billing → `product/00-matchpoint-plus.md`
    - Roles / permisos / sidebar → `guides/00-roles.md`
    - Notificaciones / dispatcher → `guides/02-notifications.md`
    - Config sin redeploy → `guides/03-platform-config.md`
@@ -191,5 +191,5 @@ implementar GDPR-style endpoints.
 7. **MPR ≠ DUPR**. Naming propio de la plataforma. Aunque la escala 2-8
    coincide, en UI/copy/comentarios siempre MPR.
 
-8. **MatchPoint no usa PSP**. Cualquier código que asuma "el pago se
+8. **MATCHPOINT no usa PSP**. Cualquier código que asuma "el pago se
    procesó automático" es bug. Todo cobro es manual humano.

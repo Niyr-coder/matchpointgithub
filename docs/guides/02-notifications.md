@@ -175,7 +175,7 @@ Si necesitas email para alguna notif crítica (ej. `tournament_cancelled`):
 2. Implementar branch en `dispatchEmailFor(kind, payload)` (no existe hoy).
 3. Encolar también `channel='email'` en notification_jobs aparte del inapp.
 
-## 8. System messages (DMs del perfil oficial "MatchPoint")
+## 8. System messages (DMs del perfil oficial "MATCHPOINT")
 
 Distinto del catálogo de notifs: estos son **mensajes reales** en la tabla
 `messages`, enviados desde el perfil `is_system=true` que vive en

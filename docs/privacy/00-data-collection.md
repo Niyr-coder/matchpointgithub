@@ -1,6 +1,6 @@
 # Datos que recolectamos
 
-> Inventario honesto de qué guarda MatchPoint, dónde, y para qué. Si vas
+> Inventario honesto de qué guarda MATCHPOINT, dónde, y para qué. Si vas
 > a agregar un campo nuevo, revisar aquí si el propósito justifica
 > guardarlo (data minimization). Si no es necesario → no guardarlo.
 
@@ -55,7 +55,7 @@ Tabla `auth.users` (manejada por Supabase Auth) + `profiles` (propia):
 | `coach_commissions` | % por coach-club | Cálculo de pagos a coaches |
 
 ⚠️ **NO guardamos**: números de tarjeta, CVV, datos bancarios completos
-(MatchPoint no usa PSP). Los comprobantes de transferencia van a Storage
+(MATCHPOINT no usa PSP). Los comprobantes de transferencia van a Storage
 bucket privado.
 
 ## 5. Documentos legales (KYC de clubs)
