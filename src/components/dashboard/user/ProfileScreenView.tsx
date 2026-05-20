@@ -256,7 +256,14 @@ export function ProfileScreenView({
                   <Icon name="pencil" size={12} />
                   Editar
                 </button>
-                <button className="btn btn-primary">
+                <button
+                  className={`btn btn-primary${data.accentHex ? " btn-accent" : ""}`}
+                  style={
+                    data.accentHex
+                      ? { background: data.accentHex, borderColor: data.accentHex, color: readableTextOn(data.accentHex) }
+                      : undefined
+                  }
+                >
                   <Icon name="share-2" size={12} />
                   Compartir
                 </button>
