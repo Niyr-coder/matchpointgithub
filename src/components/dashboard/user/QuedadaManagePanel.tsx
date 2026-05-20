@@ -243,6 +243,28 @@ export function QuedadaManagePanel({
     router.refresh();
   }, [reload, router]);
 
+  // Toggle de pago OPTIMISTA: marca al instante en el estado local y guarda en
+  // segundo plano (sin reload ni router.refresh). Solo revierte si falla. Esto
+  // hace el check-in inmediato (antes esperaba un re-fetch completo).
+  const togglePaid = useCallback(
+    (userId: string) => {
+      const cur = data?.participants.find((p) => p.user_id === userId)?.paid ?? false;
+      const next = !cur;
+      setData((d) =>
+        d ? { ...d, participants: d.participants.map((p) => (p.user_id === userId ? { ...p, paid: next } : p)) } : d,
+      );
+      void setParticipantPaid({ quedadaId, userId, paid: next }).then((res) => {
+        if (!res.ok) {
+          setData((d) =>
+            d ? { ...d, participants: d.participants.map((p) => (p.user_id === userId ? { ...p, paid: cur } : p)) } : d,
+          );
+          toast({ icon: "alert-triangle", title: "No se pudo actualizar el pago", sub: res.error.message });
+        }
+      });
+    },
+    [data, quedadaId, toast],
+  );
+
   const isPage = variant === "page";
   const q = data?.quedada ?? null;
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
@@ -412,8 +434,8 @@ export function QuedadaManagePanel({
       {!loading && data && data.canManage && (
         <>
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} />}
-          {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
-          {activeTab === "pagos" && <PagosTab data={data} onChanged={afterMutation} />}
+          {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} onTogglePaid={togglePaid} />}
+          {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} />}
           {activeTab === "config" && data.isCreator && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
               <CategoriesSection data={data} onChanged={afterMutation} />
@@ -639,23 +661,9 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 }
 
 // ── Tab: Pagos (estado de pago + datos bancarios) ────────────────────────────
-function PagosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
-  const toast = useToast();
-  const [pending, start] = useTransition();
+function PagosTab({ data, onTogglePaid }: { data: ManageData; onTogglePaid: (userId: string) => void }) {
   const acct = data.quedada.payment_account;
   const joined = data.participants.filter((p) => p.status === "joined");
-
-  const togglePaid = (userId: string, current: boolean) => {
-    start(async () => {
-      const res = await setParticipantPaid({ quedadaId: data.quedada.id, userId, paid: !current });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo actualizar el pago", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: !current ? "Marcado como pagado" : "Pago desmarcado" });
-      await onChanged();
-    });
-  };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: acct ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
@@ -680,11 +688,11 @@ function PagosTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
             {joined.map((p) => (
               <label
                 key={p.user_id}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "var(--color-mp-primary-light)" : "#fff", cursor: pending ? "default" : "pointer" }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "var(--success-bg)" : "#fff", cursor: "pointer" }}
               >
-                <input type="checkbox" checked={p.paid} disabled={pending} onChange={() => togglePaid(p.user_id, p.paid)} style={{ accentColor: "var(--primary)", cursor: pending ? "default" : "pointer" }} />
+                <input type="checkbox" checked={p.paid} onChange={() => onTogglePaid(p.user_id)} style={{ accentColor: "var(--success-fg)", cursor: "pointer" }} />
                 <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.profiles)}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--success-fg)" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
               </label>
             ))}
           </div>
@@ -1224,7 +1232,7 @@ function CategoryForm({
 }
 
 // ── 5. Slots / Parejas por categoría ─────────────────────────────────────────
-function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+function SlotsSection({ data, onChanged, onTogglePaid }: { data: ManageData; onChanged: () => Promise<void>; onTogglePaid: (userId: string) => void }) {
   return (
     <Section icon="grid-3x3" title="Parejas por categoría" sub="Asigna parejas a cada cupo y marca quién pagó.">
       {data.categories.length === 0 ? (
@@ -1234,7 +1242,7 @@ function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => 
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12, alignItems: "start" }}>
           {data.categories.map((c) => (
-            <CategorySlots key={c.id} data={data} category={c} onChanged={onChanged} />
+            <CategorySlots key={c.id} data={data} category={c} onChanged={onChanged} onTogglePaid={onTogglePaid} />
           ))}
         </div>
       )}
@@ -1246,10 +1254,12 @@ function CategorySlots({
   data,
   category,
   onChanged,
+  onTogglePaid,
 }: {
   data: ManageData;
   category: ManageCategory;
   onChanged: () => Promise<void>;
+  onTogglePaid: (userId: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const slotCount = category.max_slots ?? 0;
@@ -1296,6 +1306,7 @@ function CategorySlots({
                 slotNo={slotNo}
                 pair={pairsBySlot.get(slotNo) ?? null}
                 onChanged={onChanged}
+                onTogglePaid={onTogglePaid}
               />
             ))}
           </div>
@@ -1310,12 +1321,14 @@ function SlotRow({
   slotNo,
   pair,
   onChanged,
+  onTogglePaid,
 }: {
   data: ManageData;
   category: ManageCategory;
   slotNo: number;
   pair: ManagePair | null;
   onChanged: () => Promise<void>;
+  onTogglePaid: (userId: string) => void;
 }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
@@ -1351,18 +1364,6 @@ function SlotRow({
     });
   };
 
-  const togglePaid = (userId: string, current: boolean) => {
-    start(async () => {
-      const res = await setParticipantPaid({ quedadaId: data.quedada.id, userId, paid: !current });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo actualizar el pago", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: !current ? "Marcado como pagado" : "Pago desmarcado" });
-      await onChanged();
-    });
-  };
-
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px" }}>
@@ -1393,8 +1394,7 @@ function SlotRow({
                   ? { id: pair.player_b_id, name: bName ?? "Jugador", paid: playerB?.paid ?? false }
                   : null
               }
-              pending={pending}
-              onTogglePaid={togglePaid}
+              onTogglePaid={onTogglePaid}
             />
           ) : (
             <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cupo libre</span>
@@ -1445,13 +1445,11 @@ function SlotRow({
 function PaidPlayers({
   playerA,
   playerB,
-  pending,
   onTogglePaid,
 }: {
   playerA: { id: string; name: string; paid: boolean };
   playerB: { id: string; name: string; paid: boolean } | null;
-  pending: boolean;
-  onTogglePaid: (userId: string, current: boolean) => void;
+  onTogglePaid: (userId: string) => void;
 }) {
   const renderItem = (p: { id: string; name: string; paid: boolean }) => (
     <label
@@ -1462,16 +1460,15 @@ function PaidPlayers({
         gap: 6,
         fontSize: 12,
         fontWeight: 700,
-        cursor: pending ? "default" : "pointer",
+        cursor: "pointer",
         minWidth: 0,
       }}
     >
       <input
         type="checkbox"
         checked={p.paid}
-        disabled={pending}
-        onChange={() => onTogglePaid(p.id, p.paid)}
-        style={{ accentColor: "var(--primary)", cursor: pending ? "default" : "pointer" }}
+        onChange={() => onTogglePaid(p.id)}
+        style={{ accentColor: "var(--success-fg)", cursor: "pointer" }}
         aria-label={`Marcar pago de ${p.name}`}
       />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
