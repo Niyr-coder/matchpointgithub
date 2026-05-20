@@ -10,6 +10,15 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { createQuedada } from "@/server/actions/quedadas";
+import { DEFAULT_QUEDADA_DESCRIPTION } from "@/lib/quedadas/defaults";
+import {
+  BankAccountFields,
+  EMPTY_BANK,
+  bankDraftToAccount,
+  bankDraftIsIncomplete,
+  type BankDraft,
+} from "./quedada-fields/BankAccountFields";
+import { PrizesEditor, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
 
 type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
 type MatchMode = "singles" | "doubles";
@@ -48,7 +57,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
 
   // Paso 1
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(DEFAULT_QUEDADA_DESCRIPTION);
   const [format, setFormat] = useState<Format>("americano");
   const [matchMode, setMatchMode] = useState<MatchMode>("doubles");
   const [visibility, setVisibility] = useState<Visibility>("open");
@@ -59,9 +68,9 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
   const [courts, setCourts] = useState("");
   const [hours, setHours] = useState("");
   const [courtPriceUsd, setCourtPriceUsd] = useState("");
-  // Paso 3
-  const [paymentInfo, setPaymentInfo] = useState("");
-  const [prizes, setPrizes] = useState("");
+  // Paso 3 — bancarios estructurados + premios estructurados + perks
+  const [bank, setBank] = useState<BankDraft>({ ...EMPTY_BANK });
+  const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>([]);
   const [perks, setPerks] = useState("");
   // Paso 4
   const [categories, setCategories] = useState<CatDraft[]>([]);
@@ -126,6 +135,11 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
     }
     const feeNum = Math.round(parseFloat(feeUsd || "0") * 100);
     const feeCents = Number.isFinite(feeNum) && feeNum > 0 ? feeNum : 0;
+    if (bankDraftIsIncomplete(bank)) {
+      toast({ icon: "alert-triangle", title: "Completa los datos del banco", sub: "Banco, tipo, número y titular, o déjalos vacíos." });
+      setStep(2);
+      return;
+    }
     const courtsN = courts.trim() ? parseInt(courts, 10) : undefined;
     const hoursN = hours.trim() ? parseFloat(hours) : undefined;
     const priceCents = courtPriceUsd.trim() ? Math.round(parseFloat(courtPriceUsd) * 100) : undefined;
@@ -153,8 +167,8 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
         courtsCount: courtsN,
         hours: hoursN,
         courtPriceCents: priceCents,
-        paymentInfo: paymentInfo.trim() || undefined,
-        prizesText: prizes.trim() || undefined,
+        paymentAccount: bankDraftToAccount(bank) ?? undefined,
+        prizes: prizeDraftsToPrizes(prizeRows).length > 0 ? prizeDraftsToPrizes(prizeRows) : undefined,
         categories: cats.length > 0 ? cats : undefined,
       });
       if (!res.ok) {
@@ -381,12 +395,12 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
 
           {step === 2 && (
             <>
-              <Field label="Datos para el pago · opcional">
-                <textarea value={paymentInfo} maxLength={500} onChange={(e) => setPaymentInfo(e.target.value)} placeholder={"Banco Pichincha\nAhorros · 2213691106\nCédula 1312865700\nIvette Ponce M."} style={{ ...inputStyle, minHeight: 90, resize: "vertical", whiteSpace: "pre-wrap" }} />
-                <Hint>Lo verán los inscritos para transferir.</Hint>
+              <Field label="Datos del organizador (para el pago) · opcional">
+                <BankAccountFields value={bank} onChange={setBank} />
+                <Hint>Lo verán los inscritos para transferir la cuota.</Hint>
               </Field>
               <Field label="Premios · opcional">
-                <textarea value={prizes} maxLength={500} onChange={(e) => setPrizes(e.target.value)} placeholder={"🥇 1ro: $20\n🥈 2do: 50% próxima inscripción\n🥉 3ro: media Cañuela"} style={{ ...inputStyle, minHeight: 70, resize: "vertical", whiteSpace: "pre-wrap" }} />
+                <PrizesEditor value={prizeRows} onChange={setPrizeRows} />
               </Field>
               <Field label="Perks · opcional">
                 <textarea value={perks} maxLength={280} onChange={(e) => setPerks(e.target.value)} placeholder="Ej. incluye pelotas, hidratación y snacks" style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} />

@@ -34,6 +34,15 @@ import {
   addCohost,
   removeCohost,
 } from "@/server/actions/quedadas";
+import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
+import {
+  BankAccountFields,
+  accountToBankDraft,
+  bankDraftToAccount,
+  bankDraftIsIncomplete,
+  type BankDraft,
+} from "./quedada-fields/BankAccountFields";
+import { PrizesEditor, prizesToDrafts, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
 
 // ── Tipos del payload (la action devuelve `unknown`) ─────────────────────────
 type ManageQuedada = {
@@ -51,8 +60,10 @@ type ManageQuedada = {
   courts_count: number | null;
   hours: number | null;
   court_price_cents: number | null;
-  payment_info: string | null;
-  prizes_text: string | null;
+  payment_account: PaymentAccount | null;
+  prizes: Prize[] | null;
+  payment_info: string | null; // deprecado
+  prizes_text: string | null; // deprecado
   invite_code: string | null;
 };
 type ManageCategory = {
@@ -557,16 +568,20 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
 function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () => Promise<void> }) {
   const toast = useToast();
   const [pending, start] = useTransition();
-  const [paymentInfo, setPaymentInfo] = useState(data.quedada.payment_info ?? "");
-  const [prizes, setPrizes] = useState(data.quedada.prizes_text ?? "");
+  const [bank, setBank] = useState<BankDraft>(accountToBankDraft(data.quedada.payment_account));
+  const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>(prizesToDrafts(data.quedada.prizes));
 
   const save = () => {
     if (pending) return;
+    if (bankDraftIsIncomplete(bank)) {
+      toast({ icon: "alert-triangle", title: "Completa los datos del banco", sub: "Banco, tipo, número y titular, o déjalos vacíos." });
+      return;
+    }
     start(async () => {
       const res = await updateQuedadaLogistics({
         quedadaId: data.quedada.id,
-        paymentInfo: paymentInfo.trim() ? paymentInfo.trim() : null,
-        prizesText: prizes.trim() ? prizes.trim() : null,
+        paymentAccount: bankDraftToAccount(bank),
+        prizes: prizeDraftsToPrizes(prizeRows),
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
@@ -578,24 +593,12 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
   };
 
   return (
-    <Section icon="banknote" title="Datos bancarios y premios" sub="Para que los jugadores te transfieran y vean qué se juega.">
-      <Field label="Datos para transferencia / DeUna">
-        <textarea
-          value={paymentInfo}
-          onChange={(e) => setPaymentInfo(e.target.value)}
-          placeholder="Banco, número de cuenta, nombre, cédula, número DeUna…"
-          maxLength={500}
-          style={{ ...fieldInput, minHeight: 70, resize: "vertical" }}
-        />
+    <Section icon="banknote" title="Datos del organizador y premios" sub="Para que los jugadores te transfieran y vean qué se juega.">
+      <Field label="Datos del organizador (para el pago)">
+        <BankAccountFields value={bank} onChange={setBank} />
       </Field>
       <Field label="Premios">
-        <textarea
-          value={prizes}
-          onChange={(e) => setPrizes(e.target.value)}
-          placeholder="Ej. 1° lugar: $50 + paletas · 2° lugar: bebidas…"
-          maxLength={500}
-          style={{ ...fieldInput, minHeight: 60, resize: "vertical" }}
-        />
+        <PrizesEditor value={prizeRows} onChange={setPrizeRows} />
       </Field>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={save} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
