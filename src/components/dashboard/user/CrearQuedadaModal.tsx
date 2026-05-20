@@ -25,7 +25,7 @@ const FORMATS: { k: Format; label: string; sub: string }[] = [
   { k: "libre", label: "Libre", sub: "Sin formato fijo" },
 ];
 
-const STEPS = ["Básicos", "Cuota y canchas", "Pago y premios", "Categorías"];
+const STEPS = ["Básicos y categorías", "Cuota y canchas", "Pago y premios"];
 
 function localToIso(local: string): string {
   return new Date(local).toISOString();
@@ -302,6 +302,33 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
                   <input value={locationText} maxLength={140} onChange={(e) => setLocationText(e.target.value)} placeholder="Club, cancha o dirección" style={inputStyle} />
                 </Field>
               </div>
+              <Field label="Categorías · opcional">
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginBottom: 8 }}>
+                  Define las categorías (ej. Suma 6.0 · 7pm, Open Mixto · 8pm). Las parejas y los slots los
+                  llenas después en <strong>Gestionar</strong>.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {categories.map((c, i) => (
+                    <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input value={c.name} placeholder="Nombre (ej. Suma 6.0)" style={{ ...inputStyle, flex: 2 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                        <input value={c.level} placeholder="Nivel" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, level: e.target.value } : x)))} />
+                        <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
+                          <Icon name="trash-2" size={14} />
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                        <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, hour: e.target.value } : x)))} />
+                        <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, court: e.target.value } : x)))} />
+                        <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, slots: e.target.value } : x)))} />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", level: "", hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
+                    <Icon name="plus" size={13} /> Agregar categoría
+                  </button>
+                </div>
+              </Field>
               <Field label="Cupo de jugadores · opcional">
                 <input type="number" min={2} max={64} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} placeholder="Ej. 16" style={inputStyle} />
               </Field>
@@ -347,32 +374,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          {step === 3 && (
-            <>
-              <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
-                Define las categorías (ej. Suma 6.0 · 7pm, Open Mixto · 8pm). Las parejas y los slots los llenas después en <strong>Gestionar</strong>. Opcional.
-              </div>
-              {categories.map((c, i) => (
-                <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input value={c.name} placeholder="Nombre (ej. Suma 6.0)" style={{ ...inputStyle, flex: 2 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-                    <input value={c.level} placeholder="Nivel" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, level: e.target.value } : x)))} />
-                    <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
-                      <Icon name="trash-2" size={14} />
-                    </button>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                    <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, hour: e.target.value } : x)))} />
-                    <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, court: e.target.value } : x)))} />
-                    <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, slots: e.target.value } : x)))} />
-                  </div>
-                </div>
-              ))}
-              <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", level: "", hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
-                <Icon name="plus" size={13} /> Agregar categoría
-              </button>
-            </>
-          )}
         </div>
 
         {/* Footer */}
