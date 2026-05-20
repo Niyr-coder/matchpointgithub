@@ -252,7 +252,7 @@ export function ProfileScreenView({
           <>
             {isMine ? (
               <>
-                <button className="btn btn-outline">
+                <button className="btn btn-outline" onClick={() => setTab("preferencias")}>
                   <Icon name="pencil" size={12} />
                   Editar
                 </button>
@@ -263,6 +263,19 @@ export function ProfileScreenView({
                       ? { background: data.accentHex, borderColor: data.accentHex, color: readableTextOn(data.accentHex) }
                       : undefined
                   }
+                  onClick={async () => {
+                    const url = `${window.location.origin}/dashboard/user/players/${data.username}`;
+                    try {
+                      if (typeof navigator !== "undefined" && navigator.share) {
+                        await navigator.share({ title: data.name, url });
+                      } else {
+                        await navigator.clipboard.writeText(url);
+                        toast({ icon: "check", title: "Link copiado", sub: "Comparte tu perfil" });
+                      }
+                    } catch {
+                      /* el usuario canceló el share nativo */
+                    }
+                  }}
                 >
                   <Icon name="share-2" size={12} />
                   Compartir
