@@ -2522,7 +2522,9 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                         borderRadius: hasCosmetic ? 12 : 0,
                         background: memberCard?.background,
                         border: memberCard?.border,
-                        boxShadow: memberCard?.boxShadow,
+                        // El roster es denso: no renderizamos el boxShadow cosmético
+                        // (algunos presets como neon-* glowean fuerte). Color/fondo del
+                        // preset sí se respetan — la personalización completa va en perfil.
                         color: memberCard?.color,
                         margin: hasCosmetic ? "5px 0" : undefined,
                         borderBottom: hasCosmetic || isLast ? undefined : "1px solid var(--border)",
