@@ -688,13 +688,26 @@ type CalCategory = {
   starts_at: string | null;
   court_label: string | null;
 };
-type CalPair = { category_id: string; slot_no: number; player_a_id: string; player_b_id: string | null };
+type CalPair = { id: string; category_id: string; slot_no: number; player_a_id: string; player_b_id: string | null };
 type CalParticipant = { user_id: string; profiles: { display_name: string | null; username: string | null } | null };
+type CalMatch = {
+  id: string;
+  category_id: string;
+  group_no: number;
+  court_no: number | null;
+  round_no: number;
+  pair_a_id: string;
+  pair_b_id: string | null;
+  points_a: number | null;
+  points_b: number | null;
+  status: string;
+};
 type CalData = {
   meUserId: string;
   categories: CalCategory[];
   pairs: CalPair[];
   participants: CalParticipant[];
+  matches: CalMatch[];
 };
 
 function calHour(iso: string | null): string {
@@ -730,10 +743,21 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
   const nameOf = (p: { display_name: string | null; username: string | null } | null): string =>
     p?.display_name || (p?.username ? `@${p.username}` : "Jugador");
 
+  // Etiqueta de una pareja por su id: "Ana + Luis" (o un solo nombre en singles).
+  const pairLabel = (pairId: string | null): string => {
+    if (!data || !pairId) return "Por definir";
+    const pair = data.pairs.find((p) => p.id === pairId);
+    if (!pair) return "Por definir";
+    const partById = new Map(data.participants.map((p) => [p.user_id, p]));
+    const a = nameOf(partById.get(pair.player_a_id)?.profiles ?? null);
+    const b = pair.player_b_id ? nameOf(partById.get(pair.player_b_id)?.profiles ?? null) : null;
+    return b ? `${a} + ${b}` : a;
+  };
+
   return (
     <ModalShell title="Tu calendario" icon="calendar-days" onClose={onClose}>
       <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Tus categorías en <b style={{ color: "var(--fg)" }}>{quedada.title}</b> con su hora y cancha.
+        Tus categorías en <b style={{ color: "var(--fg)" }}>{quedada.title}</b>: hora, cancha y los partidos que te tocan.
       </p>
 
       {loading && (
@@ -817,6 +841,56 @@ function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: ()
                     Aún no estás asignado en esta categoría.
                   </div>
                 )}
+
+                {mine && (() => {
+                  const myMatches = data.matches
+                    .filter((m) => m.category_id === c.id && (m.pair_a_id === mine.id || m.pair_b_id === mine.id))
+                    .sort((a, b) => a.round_no - b.round_no);
+                  if (myMatches.length === 0) {
+                    return (
+                      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 10, fontStyle: "italic" }}>
+                        El organizador todavía no generó los partidos.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={{ marginTop: 11, borderTop: "1px solid var(--border-subtle)", paddingTop: 9, display: "flex", flexDirection: "column", gap: 7 }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                        Tus partidos
+                      </div>
+                      {myMatches.map((m) => {
+                        const rivalId = m.pair_a_id === mine.id ? m.pair_b_id : m.pair_a_id;
+                        const played = m.status === "played";
+                        const myPts = m.pair_a_id === mine.id ? m.points_a : m.points_b;
+                        const rivalPts = m.pair_a_id === mine.id ? m.points_b : m.points_a;
+                        const won = played && (myPts ?? 0) > (rivalPts ?? 0);
+                        const lost = played && (myPts ?? 0) < (rivalPts ?? 0);
+                        return (
+                          <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px" }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", gap: 7, flexWrap: "wrap" }}>
+                                <span>Ronda {m.round_no}</span>
+                                {m.court_no != null && <span>· Cancha {m.court_no}</span>}
+                              </div>
+                              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                vs {pairLabel(rivalId)}
+                              </div>
+                            </div>
+                            {played ? (
+                              <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900, color: won ? "var(--color-mp-primary-active)" : lost ? "var(--destructive-fg)" : "var(--fg)" }}>
+                                {myPts}–{rivalPts}
+                              </span>
+                            ) : (
+                              <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                Por jugar
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
