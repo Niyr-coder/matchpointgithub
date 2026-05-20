@@ -19,6 +19,7 @@ import {
   type BankDraft,
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
+import { SUMA_MIN, SUMA_MAX, sumaLabel } from "@/lib/quedadas/level";
 
 type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
 type MatchMode = "singles" | "doubles";
@@ -28,8 +29,23 @@ type Visibility = "open" | "private";
 // `noLevel` = categoría sin número (ej. Open Mixto) → oculta el slider.
 type CatDraft = { name: string; suma: number; noLevel: boolean; hour: string; slots: string };
 
-const SUMA_MIN = 2;
-const SUMA_MAX = 14;
+// Config precargable (duplicar / plantilla). Sin fecha (siempre se elige nueva).
+export type QuedadaInitial = {
+  title?: string;
+  description?: string;
+  format?: Format;
+  matchMode?: MatchMode;
+  visibility?: Visibility;
+  locationText?: string;
+  feeUsd?: string;
+  courts?: string;
+  hours?: string;
+  courtPriceUsd?: string;
+  bank?: BankDraft;
+  prizeRows?: PrizeDraft[];
+  perks?: string;
+  categories?: CatDraft[];
+};
 
 const FORMATS: { k: Format; label: string; sub: string }[] = [
   { k: "americano", label: "Americano", sub: "Rotación de parejas" },
@@ -49,31 +65,31 @@ function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
+export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; initial?: QuedadaInitial }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [step, setStep] = useState(0);
 
-  // Paso 1
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState(DEFAULT_QUEDADA_DESCRIPTION);
-  const [format, setFormat] = useState<Format>("americano");
-  const [matchMode, setMatchMode] = useState<MatchMode>("doubles");
-  const [visibility, setVisibility] = useState<Visibility>("open");
-  const [startsLocal, setStartsLocal] = useState("");
-  const [locationText, setLocationText] = useState("");
+  // Paso 1 — se siembran de `initial` (duplicar/plantilla) si viene.
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [description, setDescription] = useState(initial?.description ?? DEFAULT_QUEDADA_DESCRIPTION);
+  const [format, setFormat] = useState<Format>(initial?.format ?? "americano");
+  const [matchMode, setMatchMode] = useState<MatchMode>(initial?.matchMode ?? "doubles");
+  const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? "open");
+  const [startsLocal, setStartsLocal] = useState(""); // nunca se precarga la fecha
+  const [locationText, setLocationText] = useState(initial?.locationText ?? "");
   // Paso 2
-  const [feeUsd, setFeeUsd] = useState("0");
-  const [courts, setCourts] = useState("");
-  const [hours, setHours] = useState("");
-  const [courtPriceUsd, setCourtPriceUsd] = useState("");
+  const [feeUsd, setFeeUsd] = useState(initial?.feeUsd ?? "0");
+  const [courts, setCourts] = useState(initial?.courts ?? "");
+  const [hours, setHours] = useState(initial?.hours ?? "");
+  const [courtPriceUsd, setCourtPriceUsd] = useState(initial?.courtPriceUsd ?? "");
   // Paso 3 — bancarios estructurados + premios estructurados + perks
-  const [bank, setBank] = useState<BankDraft>({ ...EMPTY_BANK });
-  const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>([]);
-  const [perks, setPerks] = useState("");
-  // Paso 4
-  const [categories, setCategories] = useState<CatDraft[]>([]);
+  const [bank, setBank] = useState<BankDraft>(initial?.bank ?? { ...EMPTY_BANK });
+  const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>(initial?.prizeRows ?? []);
+  const [perks, setPerks] = useState(initial?.perks ?? "");
+  // Categorías iniciales
+  const [categories, setCategories] = useState<CatDraft[]>(initial?.categories ?? []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -148,7 +164,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
       .filter((c) => c.name.trim())
       .map((c) => ({
         name: c.name.trim(),
-        levelLabel: c.noLevel ? undefined : `Suma ${c.suma.toFixed(1)}`,
+        levelLabel: c.noLevel ? undefined : sumaLabel(c.suma),
         startsAt: catHourToIso(c.hour),
         maxSlots: c.slots.trim() ? parseInt(c.slots, 10) : undefined,
       }));

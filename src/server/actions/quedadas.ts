@@ -354,7 +354,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
       .select(
-        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,payment_account,prizes,payment_info,prizes_text,invite_code",
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,perks_text,payment_account,prizes,payment_info,prizes_text,invite_code",
       )
       .eq("id", quedadaId)
       .maybeSingle();

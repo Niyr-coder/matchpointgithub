@@ -43,6 +43,7 @@ import {
   type BankDraft,
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizesToDrafts, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
+import { SUMA_MIN, SUMA_MAX, parseSuma, sumaLabel } from "@/lib/quedadas/level";
 
 // ── Tipos del payload (la action devuelve `unknown`) ─────────────────────────
 type ManageQuedada = {
@@ -139,18 +140,6 @@ function hourLabel(iso: string | null): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-// Nivel = "Suma" combinada de la pareja: 2.0–14.0, paso 0.5. `noLevel` = sin
-// número (ej. Open Mixto). Parsea el level_label existente de vuelta a suma.
-const SUMA_MIN = 2;
-const SUMA_MAX = 14;
-function parseSuma(label: string | null): { suma: number; noLevel: boolean } {
-  if (!label) return { suma: 6, noLevel: true };
-  const m = /(\d+(?:\.\d+)?)/.exec(label);
-  if (!m) return { suma: 6, noLevel: true };
-  const n = parseFloat(m[1]);
-  if (!Number.isFinite(n)) return { suma: 6, noLevel: true };
-  return { suma: Math.min(SUMA_MAX, Math.max(SUMA_MIN, Math.round(n * 2) / 2)), noLevel: false };
-}
 
 export function QuedadaManagePanel({
   quedadaId,
@@ -875,14 +864,14 @@ function CategoryForm({
         ? await updateCategory({
             categoryId: category.id,
             name: name.trim(),
-            levelLabel: noLevel ? null : `Suma ${suma.toFixed(1)}`,
+            levelLabel: noLevel ? null : sumaLabel(suma),
             startsAt: hourToIso(hour) ?? null,
             maxSlots: slotsN ?? null,
           })
         : await createCategory({
             quedadaId,
             name: name.trim(),
-            levelLabel: noLevel ? undefined : `Suma ${suma.toFixed(1)}`,
+            levelLabel: noLevel ? undefined : sumaLabel(suma),
             startsAt: hourToIso(hour),
             maxSlots: slotsN,
           });

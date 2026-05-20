@@ -9,7 +9,11 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
-import { CrearQuedadaModal } from "./CrearQuedadaModal";
+import { CrearQuedadaModal, type QuedadaInitial } from "./CrearQuedadaModal";
+import { accountToBankDraft } from "./quedada-fields/BankAccountFields";
+import { prizesToDrafts } from "./quedada-fields/PrizesEditor";
+import { parseSuma } from "@/lib/quedadas/level";
+import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
 import {
   joinQuedada,
   leaveQuedada,
@@ -80,13 +84,27 @@ export function QuedadasScreenView({
   mine: QuedadaLite[];
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("descubrir");
-  const [creating, setCreating] = useState(false);
+  // null = wizard cerrado; {} = nueva; {initial} = duplicada/plantilla.
+  const [wizard, setWizard] = useState<{ initial?: QuedadaInitial } | null>(null);
   // Modales secundarios (invitar / resultados) por quedada.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
   const [resultsFor, setResultsFor] = useState<QuedadaLite | null>(null);
   // El calendario del participante es modal liviano; la gestión es una página.
   const [calendarFor, setCalendarFor] = useState<QuedadaLite | null>(null);
+
+  // Duplicar: trae la config de una quedada propia y abre el wizard precargado
+  // (sin fecha). Usa getQuedadaManageData (requiere ser creador/co-host).
+  const doDuplicate = (id: string) => {
+    getQuedadaManageData({ quedadaId: id }).then((res) => {
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo duplicar", sub: res.error.message });
+        return;
+      }
+      setWizard({ initial: buildInitialFromManage(res.data) });
+    });
+  };
 
   const list = tab === "descubrir" ? discover : mine;
 
@@ -107,7 +125,7 @@ export function QuedadasScreenView({
         </h1>
         <button
           className="btn btn-primary"
-          onClick={() => setCreating(true)}
+          onClick={() => setWizard({})}
           disabled={!meUserId}
           title={meUserId ? undefined : "Inicia sesión para crear una quedada"}
           style={{ opacity: meUserId ? 1 : 0.6 }}
@@ -199,12 +217,13 @@ export function QuedadasScreenView({
               onResults={() => setResultsFor(q)}
               onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
               onCalendar={() => setCalendarFor(q)}
+              onDuplicate={() => doDuplicate(q.id)}
             />
           ))}
         </div>
       )}
 
-      {creating && <CrearQuedadaModal onClose={() => setCreating(false)} />}
+      {wizard && <CrearQuedadaModal initial={wizard.initial} onClose={() => setWizard(null)} />}
       {inviteFor && (
         <InviteModal quedada={inviteFor} meUserId={meUserId} onClose={() => setInviteFor(null)} />
       )}
@@ -216,6 +235,50 @@ export function QuedadasScreenView({
       )}
     </div>
   );
+}
+
+// Construye el QuedadaInitial (precarga del wizard) desde el payload de
+// getQuedadaManageData. Omite fecha e invite_code (se generan nuevos).
+type DupQuedada = {
+  title: string;
+  description: string | null;
+  format: string;
+  match_mode: "singles" | "doubles";
+  visibility: "open" | "private";
+  fee_cents: number;
+  courts_count: number | null;
+  hours: number | null;
+  court_price_cents: number | null;
+  perks_text: string | null;
+  location_text: string | null;
+  payment_account: PaymentAccount | null;
+  prizes: Prize[] | null;
+};
+type DupCategory = { name: string; level_label: string | null; starts_at: string | null; max_slots: number | null };
+
+function buildInitialFromManage(data: unknown): QuedadaInitial {
+  const d = data as { quedada: DupQuedada; categories: DupCategory[] };
+  const q = d.quedada;
+  const centsToStr = (c: number | null): string => (c != null && c > 0 ? String(c / 100) : "");
+  return {
+    title: q.title,
+    description: q.description ?? undefined,
+    format: q.format as QuedadaInitial["format"],
+    matchMode: q.match_mode,
+    visibility: q.visibility,
+    locationText: q.location_text ?? undefined,
+    feeUsd: q.fee_cents > 0 ? String(q.fee_cents / 100) : "0",
+    courts: q.courts_count != null ? String(q.courts_count) : "",
+    hours: q.hours != null ? String(q.hours) : "",
+    courtPriceUsd: centsToStr(q.court_price_cents),
+    bank: accountToBankDraft(q.payment_account),
+    prizeRows: prizesToDrafts(q.prizes),
+    perks: q.perks_text ?? undefined,
+    categories: (d.categories ?? []).map((c) => {
+      const { suma, noLevel } = parseSuma(c.level_label);
+      return { name: c.name, suma, noLevel, hour: calHour(c.starts_at), slots: c.max_slots != null ? String(c.max_slots) : "" };
+    }),
+  };
 }
 
 function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: string }) {
@@ -269,6 +332,7 @@ function QuedadaCard({
   onResults,
   onManage,
   onCalendar,
+  onDuplicate,
 }: {
   q: QuedadaLite;
   meUserId: string | null;
@@ -276,6 +340,7 @@ function QuedadaCard({
   onResults: () => void;
   onManage: () => void;
   onCalendar: () => void;
+  onDuplicate: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -529,6 +594,19 @@ function QuedadaCard({
               Cancelar
             </button>
           </>
+        )}
+
+        {q.iAmCreator && (
+          <button
+            className="btn"
+            onClick={onDuplicate}
+            disabled={pending}
+            title="Duplicar esta quedada"
+            style={{ background: "#fff", border: "1px solid var(--border)", flex: cancelled || finished ? 1 : undefined, justifyContent: "center", padding: "8px 12px" }}
+          >
+            <Icon name="copy" size={12} />
+            Duplicar
+          </button>
         )}
 
         {!q.iAmCreator && (
