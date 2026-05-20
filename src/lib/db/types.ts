@@ -4954,7 +4954,7 @@ export type Database = {
           group_no: number
           id: string
           is_bronze: boolean
-          pair_a_id: string
+          pair_a_id: string | null
           pair_b_id: string | null
           phase: string
           points_a: number | null
@@ -4973,7 +4973,7 @@ export type Database = {
           group_no?: number
           id?: string
           is_bronze?: boolean
-          pair_a_id: string
+          pair_a_id?: string | null
           pair_b_id?: string | null
           phase?: string
           points_a?: number | null
@@ -4992,7 +4992,7 @@ export type Database = {
           group_no?: number
           id?: string
           is_bronze?: boolean
-          pair_a_id?: string
+          pair_a_id?: string | null
           pair_b_id?: string | null
           phase?: string
           points_a?: number | null
