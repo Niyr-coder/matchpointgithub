@@ -16,6 +16,8 @@ import { FriendCard, type FriendLite } from "../widgets/FriendCard";
 import {
   PROFILE_THEMES,
   themeFromState,
+  rarityOf,
+  RARITY_META,
   type ProfileTheme,
   type ThemeCardCss,
 } from "@/lib/profile/customization-presets";
@@ -199,6 +201,7 @@ function ThemeCard({
   const cardBg = theme.cardCss?.background ?? "#fff";
   const cardBorder = theme.cardCss?.border ?? "1px solid var(--border)";
   const cardColor = theme.cardCss?.color ?? "#0a0a0a";
+  const rarity = RARITY_META[rarityOf(theme.key)];
   const locked = !owned;
 
   return (
@@ -224,6 +227,26 @@ function ThemeCard({
     >
       {/* Banner strip */}
       <div style={{ height: 46, background: bannerBg }} />
+      {/* Rareza (chip arriba-izquierda) */}
+      <span
+        style={{
+          position: "absolute",
+          top: 6,
+          left: 6,
+          padding: "2px 7px",
+          borderRadius: 6,
+          background: rarity.color,
+          color: "#fff",
+          fontSize: 8.5,
+          fontWeight: 900,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          pointerEvents: "none",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+        }}
+      >
+        {rarity.label}
+      </span>
       {/* Card-style mini chip flotando sobre el borde */}
       <div style={{ padding: "0 12px 12px", marginTop: -16 }}>
         <div

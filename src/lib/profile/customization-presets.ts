@@ -66,7 +66,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     cardCss: null,
   },
 
-  // ── MatchPoint+ (4) — cards neutras que combinan con cualquier banner del tono.
+  // ── MatchPoint+ — card tintada con el accent, intensidad por rareza.
+  //    Raro (esmeralda/oceano/pizarra): glass con tinte claro del accent + borde
+  //    del accent. Épico (crepusculo/coral/medianoche): tinte más saturado +
+  //    sombra de color. Ver THEME_RARITY + la escalera rareza→intensidad.
   {
     key: "esmeralda",
     label: "Esmeralda",
@@ -74,10 +77,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#10b981",
     bannerCss: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)",
     cardCss: {
-      background: "rgba(255,255,255,0.65)",
-      border: "1px solid rgba(255,255,255,0.4)",
-      backdropFilter: "blur(12px)",
-      boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+      background: "rgba(236,253,245,0.78)",
+      border: "1px solid rgba(16,185,129,0.4)",
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 4px 18px rgba(16,185,129,0.12)",
     },
   },
   {
@@ -87,10 +90,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#0ea5e9",
     bannerCss: "linear-gradient(135deg, #0c4a6e 0%, #0ea5e9 50%, #67e8f9 100%)",
     cardCss: {
-      background: "rgba(241,245,249,0.7)",
-      border: "1px solid rgba(255,255,255,0.5)",
-      backdropFilter: "blur(16px) saturate(140%)",
-      boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
+      background: "rgba(240,249,255,0.78)",
+      border: "1px solid rgba(14,165,233,0.4)",
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 4px 18px rgba(14,165,233,0.12)",
     },
   },
   {
@@ -100,10 +103,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#7c3aed",
     bannerCss: "linear-gradient(135deg, #312e81 0%, #6366f1 50%, #a78bfa 100%)",
     cardCss: {
-      background: "rgba(255,255,255,0.65)",
-      border: "1px solid rgba(196,181,253,0.45)",
+      background: "rgba(245,243,255,0.82)",
+      border: "1px solid rgba(124,58,237,0.45)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 8px 32px rgba(76,29,149,0.12)",
+      boxShadow: "0 6px 24px rgba(124,58,237,0.2)",
     },
   },
   {
@@ -113,9 +116,9 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#64748b",
     bannerCss: "linear-gradient(135deg, #1e293b 0%, #475569 50%, #94a3b8 100%)",
     cardCss: {
-      background: "#fafaf9",
-      border: "1px solid #e7e5e4",
-      boxShadow: "0 1px 0 rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.05)",
+      background: "rgba(248,250,252,0.85)",
+      border: "1px solid rgba(100,116,139,0.4)",
+      boxShadow: "0 4px 16px rgba(71,85,105,0.12)",
     },
   },
 
@@ -180,7 +183,7 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     },
   },
 
-  // ── MatchPoint+ extra (2) — engrosan el tier incluido, sin bundle pago.
+  // ── MatchPoint+ extra (2) — épico: tinte saturado + sombra de color.
   {
     key: "coral",
     label: "Coral",
@@ -188,10 +191,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#f43f5e",
     bannerCss: "linear-gradient(135deg, #9f1239 0%, #fb7185 50%, #fed7aa 100%)",
     cardCss: {
-      background: "rgba(255,255,255,0.7)",
-      border: "1px solid rgba(254,205,211,0.6)",
+      background: "rgba(255,241,242,0.82)",
+      border: "1px solid rgba(244,63,94,0.45)",
       backdropFilter: "blur(12px)",
-      boxShadow: "0 8px 32px rgba(244,63,94,0.1)",
+      boxShadow: "0 6px 24px rgba(244,63,94,0.18)",
     },
   },
   {
@@ -201,10 +204,10 @@ export const PROFILE_THEMES: ProfileTheme[] = [
     accentHex: "#818cf8",
     bannerCss: "linear-gradient(135deg, #020617 0%, #1e293b 55%, #334155 100%)",
     cardCss: {
-      background: "rgba(241,245,249,0.7)",
-      border: "1px solid rgba(148,163,184,0.4)",
-      backdropFilter: "blur(14px)",
-      boxShadow: "0 4px 20px rgba(2,6,23,0.12)",
+      background: "rgba(238,242,255,0.82)",
+      border: "1px solid rgba(129,140,248,0.5)",
+      backdropFilter: "blur(12px)",
+      boxShadow: "0 6px 24px rgba(79,70,229,0.18)",
     },
   },
 
@@ -258,6 +261,61 @@ export const THEME_KEYS = new Set(PROFILE_THEMES.map((t) => t.key));
 export function findTheme(key: string | null | undefined): ProfileTheme | null {
   if (!key) return null;
   return PROFILE_THEMES.find((t) => t.key === key) ?? null;
+}
+
+// ── Rareza ─────────────────────────────────────────────────────────────────
+// Etiqueta visual de coleccionable (estilo juego). Es solo metadata para el
+// badge en el picker — no afecta ownership ni gating (eso lo decide bundleKey).
+// Vive en un mapa aparte para no tocar las 14 entries del catálogo.
+export type Rarity =
+  | "comun"
+  | "raro"
+  | "epico"
+  | "mitico"
+  | "legendario"
+  | "especial"
+  | "unico";
+
+export const RARITY_META: Record<Rarity, { label: string; color: string }> = {
+  comun: { label: "Común", color: "#9ca3af" },
+  raro: { label: "Raro", color: "#3b82f6" },
+  epico: { label: "Épico", color: "#a855f7" },
+  mitico: { label: "Mítico", color: "#ec4899" },
+  legendario: { label: "Legendario", color: "#f59e0b" },
+  especial: { label: "Especial", color: "#14b8a6" },
+  unico: { label: "Único", color: "#ef4444" },
+};
+
+// Escalera rareza → intensidad del card-style (regla de autoría de temas):
+//   comun      → card default (sin tratamiento)
+//   raro       → glass con tinte claro del accent + borde del accent
+//   epico      → tinte más saturado + sombra de color suave
+//   mitico     → card oscura/saturada + borde de color
+//   legendario → card rica + glow de color
+//   especial   → gradiente oscuro + glow
+//   unico      → máximo (outline grueso / gradiente fuerte)
+// Mantener la card de cada tema acorde a su rareza para una progresión coherente.
+const THEME_RARITY: Record<string, Rarity> = {
+  default: "comun",
+  // MP+ incluidos
+  esmeralda: "raro",
+  oceano: "raro",
+  pizarra: "raro",
+  crepusculo: "epico",
+  coral: "epico",
+  medianoche: "epico",
+  // Packs
+  neon: "mitico",
+  vapor: "mitico",
+  oro: "legendario",
+  sakura: "legendario",
+  brasa: "especial",
+  carbon: "especial",
+  vineta: "unico",
+};
+
+export function rarityOf(themeKey: string): Rarity {
+  return THEME_RARITY[themeKey] ?? "comun";
 }
 
 // Dado el estado persistido (accent/card/banner = key del tema en cada faceta),
