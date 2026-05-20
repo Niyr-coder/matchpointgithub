@@ -70,6 +70,7 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `match_cancelled` | matches | resto de participantes | `cancelMatch` | 122 | ✅ |
 | `match_rescheduled` | matches | resto de participantes | `rescheduleMatch` | 122 | ✅ |
 | `match_no_show_reported` | matches | jugador reportado | `reportNoShow` (flag) | 124 | ✅ |
+| `team_member_kicked` | teams | jugador expulsado | `kickTeamMember` (capitán) | 125 | ✅ |
 
 ## 3. Render del dispatcher (cómo derivá title/body/link)
 

@@ -55,6 +55,7 @@ function iconForKind(kind: string): string {
   if (kind === "match_cancelled") return "x-circle";
   if (kind === "match_rescheduled") return "calendar-clock";
   if (kind.startsWith("match_seek")) return "swords";
+  if (kind === "team_member_kicked") return "user-x";
   if (kind.startsWith("team_")) return "users";
   return "bell";
 }
@@ -101,7 +102,7 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   if (kind === "welcome_owner") {
     return "/dashboard/owner";
   }
-  if (kind === "team_roster_cap_reached") {
+  if (kind === "team_roster_cap_reached" || kind === "team_member_kicked") {
     return "/dashboard/user/team";
   }
   if (kind === "match_seek_applied") {
@@ -121,7 +122,7 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
 
 function colorForKind(kind: string): string {
   if (kind === "welcome_owner") return "#10b981";
-  if (kind.includes("rejected") || kind.includes("cancelled")) return "#dc2626";
+  if (kind.includes("rejected") || kind.includes("cancelled") || kind.includes("kicked")) return "#dc2626";
   if (kind.includes("approved")) return "#10b981";
   if (kind.startsWith("reservation")) return "var(--primary)";
   if (kind.startsWith("match")) return "var(--primary)";

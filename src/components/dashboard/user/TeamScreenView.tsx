@@ -16,11 +16,13 @@ import {
   disbandTeam,
   inviteToTeam,
   joinTeamByCode,
+  kickTeamMember,
   leaveTeam,
   requestJoinTeam,
   transferCaptain,
   updateTeam,
 } from "@/server/actions/teams";
+import { TEAM_KICK_REASONS } from "@/lib/teams/kick-reasons";
 
 // Server actions pendientes: createTeam, joinTeamByCode, leaveTeam, inviteToTeam,
 // updateTeam, transferCaptain, disbandTeam, cancelInvite. Mientras tanto, los submits
@@ -2262,25 +2264,45 @@ function RosterMemberMenu({
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [kickMode, setKickMode] = useState(false);
   const [pending, setPending] = useState(false);
 
   const hasProfile = !!member.username;
   const canMakeCaptain = canManage && !isSelf && !isRowCaptain;
+  const canKick = canManage && !isSelf && !isRowCaptain;
+
+  const close = () => {
+    setOpen(false);
+    setKickMode(false);
+  };
 
   const goProfile = () => {
-    setOpen(false);
+    close();
     if (member.username) router.push(`/dashboard/user/players/${member.username}`);
   };
   const makeCaptain = () => {
     setPending(true);
     void transferCaptain({ teamId, newCaptainUserId: member.userId }).then((res) => {
       setPending(false);
-      setOpen(false);
+      close();
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo transferir", sub: res.error.message });
         return;
       }
       toast({ icon: "check-circle-2", title: "Nuevo capitán", sub: member.name });
+      router.refresh();
+    });
+  };
+  const doKick = (reasonKey: string) => {
+    setPending(true);
+    void kickTeamMember({ teamId, userId: member.userId, reason: reasonKey }).then((res) => {
+      setPending(false);
+      close();
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo expulsar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Jugador expulsado", sub: `${member.name} fue notificado del motivo.` });
       router.refresh();
     });
   };
@@ -2322,7 +2344,7 @@ function RosterMemberMenu({
       </button>
       {open && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
           <div
             style={{
               position: "absolute",
@@ -2333,24 +2355,74 @@ function RosterMemberMenu({
               border: "1px solid var(--border)",
               borderRadius: 10,
               boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              minWidth: 168,
+              minWidth: kickMode ? 240 : 168,
               overflow: "hidden",
+              color: "#0a0a0a",
             }}
           >
-            {hasProfile && (
-              <button style={itemStyle} onClick={goProfile}>
-                <Icon name="user" size={13} color="var(--muted-fg)" />
-                Ver perfil
-              </button>
-            )}
-            {canMakeCaptain && (
-              <button style={{ ...itemStyle, borderTop: hasProfile ? "1px solid var(--border)" : 0 }} onClick={makeCaptain} disabled={pending}>
-                <Icon name="crown" size={13} color="#ca8a04" />
-                {pending ? "Transfiriendo…" : "Hacer capitán"}
-              </button>
-            )}
-            {!hasProfile && !canMakeCaptain && (
-              <div style={{ padding: "10px 12px", fontSize: 11.5, color: "var(--muted-fg)" }}>Sin acciones</div>
+            {!kickMode ? (
+              <>
+                {hasProfile && (
+                  <button style={itemStyle} onClick={goProfile}>
+                    <Icon name="user" size={13} color="var(--muted-fg)" />
+                    Ver perfil
+                  </button>
+                )}
+                {canMakeCaptain && (
+                  <button style={{ ...itemStyle, borderTop: hasProfile ? "1px solid var(--border)" : 0 }} onClick={makeCaptain} disabled={pending}>
+                    <Icon name="crown" size={13} color="#ca8a04" />
+                    {pending ? "Transfiriendo…" : "Hacer capitán"}
+                  </button>
+                )}
+                {canKick && (
+                  <button
+                    style={{ ...itemStyle, color: "#dc2626", borderTop: hasProfile || canMakeCaptain ? "1px solid var(--border)" : 0 }}
+                    onClick={() => setKickMode(true)}
+                  >
+                    <Icon name="user-x" size={13} color="#dc2626" />
+                    Expulsar del team
+                  </button>
+                )}
+                {!hasProfile && !canMakeCaptain && !canKick && (
+                  <div style={{ padding: "10px 12px", fontSize: 11.5, color: "var(--muted-fg)" }}>Sin acciones</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "9px 12px",
+                    borderBottom: "1px solid var(--border)",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: "var(--muted-fg)",
+                  }}
+                >
+                  <button
+                    onClick={() => setKickMode(false)}
+                    aria-label="Atrás"
+                    style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", padding: 0 }}
+                  >
+                    <Icon name="arrow-left" size={13} color="var(--muted-fg)" />
+                  </button>
+                  Motivo de expulsión
+                </div>
+                {TEAM_KICK_REASONS.map((r) => (
+                  <button
+                    key={r.key}
+                    style={{ ...itemStyle, fontWeight: 600 }}
+                    onClick={() => doKick(r.key)}
+                    disabled={pending}
+                  >
+                    {pending ? "…" : r.label}
+                  </button>
+                ))}
+              </>
             )}
           </div>
         </>

@@ -5,10 +5,12 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
+import { KICK_REASON_KEYS, kickReasonLabel } from "@/lib/teams/kick-reasons";
 import { getTeamCaps, exceedsCap } from "@/lib/teams/caps";
 import {
   InviteToTeamSchema,
@@ -295,6 +297,66 @@ const TransferCaptainSchema = z.object({
   teamId: UuidSchema,
   newCaptainUserId: UuidSchema,
 });
+
+// ── kickTeamMember ──────────────────────────────────────────────────────
+// El capitán expulsa a un miembro con un motivo predefinido y se le notifica.
+// El borrado lo permite la RLS tm_captain_manage; el trigger
+// fn_team_member_leave_channel (mig 106) lo saca del chat del team.
+const KickMemberSchema = z.object({
+  teamId: UuidSchema,
+  userId: UuidSchema,
+  reason: z.enum(KICK_REASON_KEYS),
+});
+
+export async function kickTeamMember(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(KickMemberSchema, input, async ({ teamId, userId, reason }) => {
+    const callerId = await requireUserId();
+    const supabase = await getServerClient();
+
+    const { data: team, error: tErr } = await supabase
+      .from("teams")
+      .select("id,name,captain_id")
+      .eq("id", teamId)
+      .maybeSingle();
+    if (tErr) throw new MpError("TEAMS.DB_ERROR", tErr.message, 500);
+    if (!team) throw new MpError("TEAMS.NOT_FOUND", "Team no encontrado", 404);
+    if (team.captain_id !== callerId) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el capitán puede expulsar miembros");
+    }
+    if (userId === team.captain_id) {
+      throw new MpError("TEAMS.CANNOT_KICK_CAPTAIN", "No puedes expulsar al capitán", 422);
+    }
+
+    const { data: member } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", teamId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!member) throw new MpError("TEAMS.NOT_MEMBER", "Ese jugador no es del team", 404);
+
+    const { error: delErr } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("user_id", userId);
+    if (delErr) throw new MpError("TEAMS.KICK_FAILED", delErr.message, 500);
+
+    // Notif al expulsado con el motivo (best-effort).
+    const admin = getAdminClient();
+    const { error: jobErr } = await admin.from("notification_jobs").insert({
+      user_id: userId,
+      role: "user",
+      kind: "team_member_kicked",
+      channel: "inapp",
+      payload: { team_name: team.name, reason_label: kickReasonLabel(reason) },
+      status: "pending",
+    } as never);
+    if (jobErr) console.error("[kickTeamMember] enqueue notif failed:", jobErr.message);
+
+    return { ok: true as const };
+  });
+}
 
 export async function transferCaptain(
   input: unknown,
