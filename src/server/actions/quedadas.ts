@@ -33,6 +33,8 @@ import {
   QuedadaTemplateIdSchema,
   GenerateRoundRobinSchema,
   GenerateGroupStageSchema,
+  GenerateMedalFinalSchema,
+  FinishQuedadaSchema,
   AddQuedadaMatchSchema,
   ReportQuedadaMatchSchema,
   QuedadaMatchIdSchema,
@@ -810,6 +812,218 @@ export async function generateGroupStage(input: unknown): Promise<ActionResult<{
   });
 }
 
+// Ordena pairIds (mejor primero) según el estándar de pickleball usando los
+// partidos dados: victorias → enfrentamiento directo (solo si empatan 2) →
+// diferencia de puntos (PF−PC) → puntos a favor. Mismo criterio que la UI.
+type StandingMatchLite = { pair_a_id: string | null; pair_b_id: string | null; points_a: number | null; points_b: number | null; status: string };
+function orderPairsByStandings(matches: StandingMatchLite[], pairIds: string[]): string[] {
+  const stat = new Map<string, { g: number; pf: number; pc: number }>();
+  pairIds.forEach((id) => stat.set(id, { g: 0, pf: 0, pc: 0 }));
+  for (const m of matches) {
+    if (m.status !== "played" || !m.pair_a_id || !m.pair_b_id) continue;
+    const a = stat.get(m.pair_a_id), b = stat.get(m.pair_b_id);
+    if (!a || !b) continue;
+    const pa = m.points_a ?? 0, pb = m.points_b ?? 0;
+    a.pf += pa; a.pc += pb; b.pf += pb; b.pc += pa;
+    if (pa > pb) a.g++; else if (pb > pa) b.g++;
+  }
+  const h2h = (x: string, y: string): number => {
+    let xw = 0, yw = 0;
+    for (const m of matches) {
+      if (m.status !== "played") continue;
+      const xy = m.pair_a_id === x && m.pair_b_id === y;
+      const yx = m.pair_a_id === y && m.pair_b_id === x;
+      if (!xy && !yx) continue;
+      const xp = xy ? (m.points_a ?? 0) : (m.points_b ?? 0);
+      const yp = xy ? (m.points_b ?? 0) : (m.points_a ?? 0);
+      if (xp > yp) xw++; else if (yp > xp) yw++;
+    }
+    return xw - yw;
+  };
+  return [...pairIds].sort((x, y) => {
+    const sx = stat.get(x)!, sy = stat.get(y)!;
+    if (sy.g !== sx.g) return sy.g - sx.g;
+    const tied = pairIds.filter((id) => stat.get(id)!.g === sx.g).length;
+    if (tied === 2) { const h = h2h(x, y); if (h !== 0) return -h; }
+    const dx = sx.pf - sx.pc, dy = sy.pf - sy.pc;
+    if (dy !== dx) return dy - dx;
+    return sy.pf - sx.pf;
+  });
+}
+
+// Fase final de medallas: top 2 de cada grupo → cuadro de eliminación directa
+// (siembra cruzada, semis → final + 3er puesto). El ganador avanza; los
+// perdedores de semifinales juegan el bronce. Requiere la fase de grupos jugada.
+export async function generateMedalFinal(input: unknown): Promise<ActionResult<{ created: number; classified: number }>> {
+  return runAction(GenerateMedalFinalSchema, input, async ({ quedadaId, categoryId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+
+    const { data: gm } = await supabase
+      .from("quedada_matches")
+      .select("group_no,pair_a_id,pair_b_id,points_a,points_b,status")
+      .eq("category_id", categoryId)
+      .eq("phase", "groups");
+    const groupMatches = (gm ?? []) as Array<{ group_no: number } & StandingMatchLite>;
+    if (groupMatches.length === 0) throw new MpError("QUEDADAS.NO_GROUPS", "Primero genera y juega la fase de grupos", 400);
+    if (groupMatches.some((m) => m.status !== "played")) throw new MpError("QUEDADAS.GROUPS_INCOMPLETE", "Termina todos los partidos de la fase de grupos antes de la fase final", 409);
+
+    // Top 2 de cada grupo.
+    const groupNos = Array.from(new Set(groupMatches.map((m) => m.group_no))).sort((a, b) => a - b);
+    const firsts: string[] = [];
+    const seconds: string[] = [];
+    for (const gno of groupNos) {
+      const ms = groupMatches.filter((m) => m.group_no === gno);
+      const pids = Array.from(new Set(ms.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
+      const ordered = orderPairsByStandings(ms, pids);
+      if (ordered[0]) firsts.push(ordered[0]);
+      if (ordered[1]) seconds.push(ordered[1]);
+    }
+    // Siembra cruzada: 1ros en orden, 2dos invertidos (evita revanchas tempranas).
+    const seeds: (string | null)[] = [...firsts, ...seconds.reverse()];
+    const classified = seeds.length;
+    if (classified < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_CLASSIFIED", "No hay suficientes clasificados para la fase final", 400);
+
+    let size = 1;
+    while (size < classified) size *= 2;
+    while (seeds.length < size) seeds.push(null); // byes
+    const rounds = Math.round(Math.log2(size));
+
+    const { data: q } = await supabase.from("quedadas").select("courts_count").eq("id", quedadaId).maybeSingle();
+    const courts = (q?.courts_count as number | null) ?? 0;
+
+    // matrix[ri][pos] = { a, b } por ronda (0-based).
+    type Slot = { a: string | null; b: string | null };
+    const matrix: Slot[][] = [];
+    for (let r = 1; r <= rounds; r++) {
+      const cnt = size / Math.pow(2, r);
+      matrix.push(Array.from({ length: cnt }, () => ({ a: null, b: null }) as Slot));
+    }
+    for (let pos = 0; pos < size / 2; pos++) {
+      matrix[0][pos] = { a: seeds[pos], b: seeds[size - 1 - pos] };
+    }
+    // Resolver byes de ronda 1 (un solo lado) avanzando al presente.
+    for (let pos = 0; pos < matrix[0].length; pos++) {
+      const s = matrix[0][pos];
+      if (s.a && !s.b && rounds >= 2) {
+        const tgt = matrix[1][Math.floor(pos / 2)];
+        if (pos % 2 === 0) tgt.a = s.a; else tgt.b = s.a;
+      }
+    }
+
+    let courtCounter = 0;
+    const nextCourt = (): number | null => {
+      if (courts <= 0) return null;
+      const c = (courtCounter % courts) + 1;
+      courtCounter++;
+      return c;
+    };
+
+    const rows: Record<string, unknown>[] = [];
+    for (let ri = 0; ri < rounds; ri++) {
+      for (let pos = 0; pos < matrix[ri].length; pos++) {
+        const s = matrix[ri][pos];
+        const isBye = ri === 0 && !!s.a && !s.b;
+        rows.push({
+          quedada_id: quedadaId, category_id: categoryId, phase: "final",
+          round_no: ri + 1, bracket_pos: pos, is_bronze: false,
+          pair_a_id: s.a, pair_b_id: s.b,
+          points_a: isBye ? 0 : null, points_b: isBye ? 0 : null,
+          status: isBye ? "played" : "scheduled",
+          court_no: isBye ? null : nextCourt(),
+        });
+      }
+    }
+    if (rounds >= 2) {
+      rows.push({
+        quedada_id: quedadaId, category_id: categoryId, phase: "final",
+        round_no: rounds, bracket_pos: 0, is_bronze: true,
+        pair_a_id: null, pair_b_id: null, status: "scheduled", court_no: nextCourt(),
+      });
+    }
+
+    await supabase.from("quedada_matches").delete().eq("category_id", categoryId).eq("phase", "final");
+    const { error } = await supabase.from("quedada_matches").insert(rows as never);
+    if (error) throw new MpError("QUEDADAS.FINAL_FAILED", error.message, 500);
+    return { created: rows.length, classified };
+  });
+}
+
+// Cierra la quedada: arma el podio por categoría (desde el cuadro final si
+// existe, o desde la tabla general) y la pasa a 'finished'.
+export async function finishQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(FinishQuedadaSchema, input, async ({ quedadaId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+
+    const [{ data: catsData }, { data: matchesData }, { data: pairsData }] = await Promise.all([
+      supabase.from("quedada_categories").select("id").eq("quedada_id", quedadaId),
+      supabase.from("quedada_matches").select("category_id,phase,round_no,is_bronze,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId),
+      supabase.from("quedada_pairs").select("id,category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
+    ]);
+    const cats = (catsData ?? []) as Array<{ id: string }>;
+    const matches = (matchesData ?? []) as Array<{ category_id: string; phase: string; round_no: number; is_bronze: boolean } & StandingMatchLite>;
+    const pairs = (pairsData ?? []) as Array<{ id: string; category_id: string; player_a_id: string; player_b_id: string | null }>;
+    const playersOfPair = (pid: string): string[] => {
+      const p = pairs.find((x) => x.id === pid);
+      if (!p) return [];
+      return [p.player_a_id, p.player_b_id].filter((x): x is string => !!x);
+    };
+
+    // userId → rank (1/2/3). Si un user aparece en varias categorías, gana el mejor.
+    const ranks = new Map<string, number>();
+    const setRank = (pid: string | null | undefined, rank: number) => {
+      if (!pid) return;
+      for (const uid of playersOfPair(pid)) {
+        const prev = ranks.get(uid);
+        if (prev == null || rank < prev) ranks.set(uid, rank);
+      }
+    };
+
+    for (const c of cats) {
+      const cm = matches.filter((m) => m.category_id === c.id);
+      const finals = cm.filter((m) => m.phase === "final");
+      if (finals.length > 0) {
+        const finalRound = Math.max(...finals.filter((m) => !m.is_bronze).map((m) => m.round_no));
+        const finalMatch = finals.find((m) => !m.is_bronze && m.round_no === finalRound);
+        if (!finalMatch || finalMatch.status !== "played") {
+          throw new MpError("QUEDADAS.FINAL_PENDING", "Termina la final antes de cerrar la quedada", 409);
+        }
+        const aWon = (finalMatch.points_a ?? 0) >= (finalMatch.points_b ?? 0);
+        setRank(aWon ? finalMatch.pair_a_id : finalMatch.pair_b_id, 1);
+        setRank(aWon ? finalMatch.pair_b_id : finalMatch.pair_a_id, 2);
+        const bronze = finals.find((m) => m.is_bronze);
+        if (bronze && bronze.status === "played") {
+          const bWon = (bronze.points_a ?? 0) >= (bronze.points_b ?? 0);
+          setRank(bWon ? bronze.pair_a_id : bronze.pair_b_id, 3);
+        }
+      } else {
+        const groups = cm.filter((m) => m.phase === "groups");
+        const pids = Array.from(new Set(groups.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
+        const ordered = orderPairsByStandings(groups, pids);
+        ordered.slice(0, 3).forEach((pid, idx) => setRank(pid, idx + 1));
+      }
+    }
+
+    // Escribir final_rank a los participantes del podio.
+    for (const [uid, rank] of ranks.entries()) {
+      const { error: upErr } = await supabase
+        .from("quedada_participants")
+        .update({ final_rank: rank } as never)
+        .eq("quedada_id", quedadaId)
+        .eq("user_id", uid);
+      if (upErr) throw new MpError("QUEDADAS.FINISH_FAILED", upErr.message, 500);
+    }
+
+    const { error } = await supabase
+      .from("quedadas")
+      .update({ status: "finished", updated_at: new Date().toISOString() } as never)
+      .eq("id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.FINISH_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
 export async function addQuedadaMatch(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(AddQuedadaMatchSchema, input, async (d) => {
     await requireUserId();
@@ -835,11 +1049,61 @@ export async function reportQuedadaMatch(input: unknown): Promise<ActionResult<{
   return runAction(ReportQuedadaMatchSchema, input, async ({ matchId, pointsA, pointsB }) => {
     await requireUserId();
     const supabase = await getServerClient();
+
+    const { data: m } = await supabase
+      .from("quedada_matches")
+      .select("category_id,phase,round_no,bracket_pos,is_bronze,pair_a_id,pair_b_id")
+      .eq("id", matchId)
+      .maybeSingle();
+    if (!m) throw new MpError("QUEDADAS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+
     const { error } = await supabase
       .from("quedada_matches")
       .update({ points_a: pointsA, points_b: pointsB, status: "played", updated_at: new Date().toISOString() } as never)
       .eq("id", matchId);
     if (error) throw new MpError("QUEDADAS.MATCH_REPORT_FAILED", error.message, 500);
+
+    // Fase final: propagar al ganador y mandar al perdedor de semis al bronce.
+    if ((m.phase as string) === "final" && !(m.is_bronze as boolean)) {
+      const categoryId = m.category_id as string;
+      const round = m.round_no as number;
+      const pos = (m.bracket_pos as number | null) ?? 0;
+      const aWon = pointsA >= pointsB;
+      const winner = (aWon ? m.pair_a_id : m.pair_b_id) as string | null;
+      const loser = (aWon ? m.pair_b_id : m.pair_a_id) as string | null;
+
+      const { data: rmax } = await supabase
+        .from("quedada_matches")
+        .select("round_no")
+        .eq("category_id", categoryId)
+        .eq("phase", "final")
+        .eq("is_bronze", false)
+        .order("round_no", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const finalRound = (rmax?.round_no as number | null) ?? round;
+
+      if (round < finalRound && winner) {
+        const slot = pos % 2 === 0 ? "pair_a_id" : "pair_b_id";
+        await supabase
+          .from("quedada_matches")
+          .update({ [slot]: winner } as never)
+          .eq("category_id", categoryId)
+          .eq("phase", "final")
+          .eq("is_bronze", false)
+          .eq("round_no", round + 1)
+          .eq("bracket_pos", Math.floor(pos / 2));
+      }
+      if (round === finalRound - 1 && loser) {
+        const slot = pos % 2 === 0 ? "pair_a_id" : "pair_b_id";
+        await supabase
+          .from("quedada_matches")
+          .update({ [slot]: loser } as never)
+          .eq("category_id", categoryId)
+          .eq("phase", "final")
+          .eq("is_bronze", true);
+      }
+    }
     return { ok: true as const };
   });
 }

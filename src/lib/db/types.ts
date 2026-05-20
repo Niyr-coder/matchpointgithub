@@ -4946,14 +4946,17 @@ export type Database = {
       }
       quedada_matches: {
         Row: {
+          bracket_pos: number | null
           category_id: string
           court_no: number | null
           created_at: string
           created_by: string | null
           group_no: number
           id: string
+          is_bronze: boolean
           pair_a_id: string
           pair_b_id: string | null
+          phase: string
           points_a: number | null
           points_b: number | null
           quedada_id: string
@@ -4962,14 +4965,17 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bracket_pos?: number | null
           category_id: string
           court_no?: number | null
           created_at?: string
           created_by?: string | null
           group_no?: number
           id?: string
+          is_bronze?: boolean
           pair_a_id: string
           pair_b_id?: string | null
+          phase?: string
           points_a?: number | null
           points_b?: number | null
           quedada_id: string
@@ -4978,14 +4984,17 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bracket_pos?: number | null
           category_id?: string
           court_no?: number | null
           created_at?: string
           created_by?: string | null
           group_no?: number
           id?: string
+          is_bronze?: boolean
           pair_a_id?: string
           pair_b_id?: string | null
+          phase?: string
           points_a?: number | null
           points_b?: number | null
           quedada_id?: string

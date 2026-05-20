@@ -240,6 +240,15 @@ export const ReportQuedadaMatchSchema = z
   })
   .openapi("ReportQuedadaMatch");
 export const QuedadaMatchIdSchema = z.object({ matchId: UuidSchema }).openapi("QuedadaMatchId");
+// Fase final de medallas: clasifican los 2 mejores de cada grupo a un cuadro de
+// eliminación directa (semis → final + 3er puesto). El nº de clasificados se
+// calcula solo a partir de los grupos; no se elige a mano (anti-arreglo).
+export const GenerateMedalFinalSchema = z
+  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
+  .openapi("GenerateQuedadaMedalFinal");
+// Cierra la quedada: calcula el podio (desde el cuadro final si existe, o desde
+// la tabla general) y la pasa a 'finished'.
+export const FinishQuedadaSchema = z.object({ quedadaId: UuidSchema }).openapi("FinishQuedada");
 
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;
