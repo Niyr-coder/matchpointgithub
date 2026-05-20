@@ -3,14 +3,13 @@
 // Se renderiza como PÁGINA (variant="page", default de la ruta
 // /dashboard/[role]/quedada/[id]) o como modal (variant="modal"). En página no
 // recibe onClose: el botón "Volver" navega a la lista. Recibe `quedadaId`.
-// Al montar llama `getQuedadaManageData` → estado. Secciones:
-//   1. Logística (solo creador): canchas, horas, precio → costo total + reparto.
-//   2. Datos bancarios + premios (solo creador).
-//   3. Co-hosts (solo creador): lista + agregar (PlayerPicker) + quitar.
-//   4. Categorías (solo creador): crear / editar / borrar.
-//   5. Slots/Parejas por categoría (creador o co-host): asignar/quitar pareja,
-//      marcar pago por jugador.
-//   6. Link de inscripción: copia ${origin}/q/${invite_code}.
+// Al montar llama `getQuedadaManageData` → estado. Header con stats + tabs:
+//   • Resumen  — datos clave, link de inscripción (compartir), premios.
+//   • Parejas  — categorías con "cupos" numerados; asignar pareja (A/B en dobles,
+//                Jugador en singles) + marcar pago inline. Cada categoría contraíble.
+//   • Pagos    — datos bancarios del organizador + lista de inscritos con pago.
+//   • Configurar (solo creador) — categorías, logística, banco/premios, co-hosts.
+// Nota: "cupos" = posiciones numeradas (antes "slots"); en código siguen como slotNo.
 //
 // Las tablas de quedadas aún no están en los tipos generados → la action de
 // lectura devuelve `unknown`, así que tipamos el resultado localmente.
@@ -50,12 +49,14 @@ type ManageQuedada = {
   id: string;
   creator_id: string;
   title: string;
+  description: string | null;
   format: string;
   match_mode: "singles" | "doubles";
   visibility: "open" | "private";
   status: string;
   starts_at: string;
   location_text: string | null;
+  perks_text: string | null;
   fee_cents: number;
   max_players: number | null;
   courts_count: number | null;
@@ -113,6 +114,34 @@ const FORMAT_LABEL: Record<string, string> = {
   libre: "Libre",
 };
 
+type TabKey = "resumen" | "parejas" | "pagos" | "config";
+
+function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
+  switch (status) {
+    case "registration_open":
+      return { label: "Abierta", bg: "rgba(16,185,129,0.22)", fg: "#d1fae5" };
+    case "registration_closed":
+      return { label: "Cerrada", bg: "rgba(251,191,36,0.22)", fg: "#fef3c7" };
+    case "live":
+      return { label: "En curso", bg: "rgba(14,165,233,0.22)", fg: "#e0f2fe" };
+    case "finished":
+      return { label: "Finalizada", bg: "rgba(255,255,255,0.16)", fg: "#fff" };
+    case "cancelled":
+      return { label: "Cancelada", bg: "rgba(239,68,68,0.25)", fg: "#fecaca" };
+    default:
+      return { label: status, bg: "rgba(255,255,255,0.16)", fg: "#fff" };
+  }
+}
+
+function StatChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
+      <div className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: "#fff" }}>{value}</div>
+      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.62)", marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
 function centsToInput(cents: number | null): string {
   if (cents == null) return "";
   const n = cents / 100;
@@ -157,6 +186,7 @@ export function QuedadaManagePanel({
   const [data, setData] = useState<ManageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("resumen");
 
   const reload = useCallback(async () => {
     const res = await getQuedadaManageData({ quedadaId });
@@ -181,12 +211,25 @@ export function QuedadaManagePanel({
   }, [reload, router]);
 
   const isPage = variant === "page";
+  const q = data?.quedada ?? null;
+  const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
+  const paidCount = data ? data.participants.filter((p) => p.paid).length : 0;
+  const sm = q ? quedadaStatusMeta(q.status) : null;
+
+  // Tabs (config solo para el creador). Si el activo no aplica, cae a "parejas".
+  const tabs: { k: TabKey; label: string; icon: string }[] = [
+    { k: "resumen", label: "Resumen", icon: "layout-dashboard" },
+    { k: "parejas", label: "Parejas", icon: "grid-3x3" },
+    { k: "pagos", label: "Pagos", icon: "banknote" },
+    ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar", icon: "settings" }] : []),
+  ];
+  const activeTab: TabKey = tabs.some((t) => t.k === tab) ? tab : "parejas";
 
   const header = (
     <div
       style={{
-        padding: "18px 22px",
-        background: "linear-gradient(135deg,#0a0a0a 0%,#064e3b 70%,#10b981 100%)",
+        padding: "20px 22px 18px",
+        background: "linear-gradient(135deg,#0a0a0a 0%,#064e3b 72%,#10b981 100%)",
         color: "#fff",
         position: "relative",
         flexShrink: 0,
@@ -199,8 +242,8 @@ export function QuedadaManagePanel({
         aria-label={isPage ? "Volver" : "Cerrar"}
         style={{
           position: "absolute",
-          top: 14,
-          right: 14,
+          top: 16,
+          right: 16,
           height: 30,
           borderRadius: 9999,
           padding: isPage ? "0 12px" : 0,
@@ -226,26 +269,73 @@ export function QuedadaManagePanel({
       </div>
       <h2
         className="font-heading"
-        style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 100 : 40 }}
+        style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
       >
-        {data ? data.quedada.title : loading ? "Cargando…" : "Quedada"}
+        {q ? q.title : loading ? "Cargando…" : "Quedada"}
       </h2>
-      {data && (
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
-          {FORMAT_LABEL[data.quedada.format] ?? data.quedada.format} ·{" "}
-          {data.quedada.match_mode === "singles" ? "Singles" : "Dobles"}
-          {data.isCreator ? " · Eres el organizador" : data.canManage ? " · Eres co-host" : ""}
+      {q && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "rgba(255,255,255,0.82)" }}>
+          {sm && (
+            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: sm.bg, color: sm.fg }}>
+              {sm.label}
+            </span>
+          )}
+          <span>
+            {FORMAT_LABEL[q.format] ?? q.format} · {q.match_mode === "singles" ? "Singles" : "Dobles"} ·{" "}
+            {data?.isCreator ? "Organizador" : "Co-host"}
+          </span>
+        </div>
+      )}
+      {q && (
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <StatChip label="Inscritos" value={String(joinedCount)} />
+          <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
+          <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+          <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
         </div>
       )}
     </div>
   );
 
+  const tabsBar =
+    !loading && data && data.canManage ? (
+      <div style={{ display: "flex", gap: 2, padding: "0 12px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0, overflowX: "auto" }}>
+        {tabs.map((t) => {
+          const on = t.k === activeTab;
+          return (
+            <button
+              key={t.k}
+              onClick={() => setTab(t.k)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "13px 13px",
+                border: 0,
+                borderBottom: on ? "2px solid var(--primary)" : "2px solid transparent",
+                background: "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 12.5,
+                fontWeight: on ? 900 : 600,
+                color: on ? "#0a0a0a" : "var(--muted-fg)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name={t.icon} size={14} color={on ? "var(--primary)" : "var(--muted-fg)"} />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
   const body = (
     <div
       style={
         isPage
-          ? { padding: 22, display: "flex", flexDirection: "column", gap: 20 }
-          : { flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 20 }
+          ? { padding: 22, display: "flex", flexDirection: "column", gap: 18 }
+          : { flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 18 }
       }
     >
       {loading && (
@@ -254,32 +344,29 @@ export function QuedadaManagePanel({
         </div>
       )}
       {!loading && loadError && (
-        <div
-          className="card"
-          style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}
-        >
+        <div className="card" style={{ padding: 18, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}>
           No se pudo cargar la gestión: {loadError}
         </div>
       )}
       {!loading && data && !data.canManage && (
-        <div
-          className="card"
-          style={{ padding: 18, background: "#fafafa", color: "var(--muted-fg)", fontSize: 13 }}
-        >
+        <div className="card" style={{ padding: 18, background: "#fafafa", color: "var(--muted-fg)", fontSize: 13 }}>
           No tienes permiso para gestionar esta quedada.
         </div>
       )}
 
       {!loading && data && data.canManage && (
         <>
-          <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} />
-
-          {data.isCreator && <LogisticsSection data={data} onSaved={afterMutation} />}
-          {data.isCreator && <BankPrizesSection data={data} onSaved={afterMutation} />}
-          {data.isCreator && <CohostsSection data={data} onChanged={afterMutation} />}
-          {data.isCreator && <CategoriesSection data={data} onChanged={afterMutation} />}
-
-          <SlotsSection data={data} onChanged={afterMutation} />
+          {activeTab === "resumen" && <ResumenTab data={data} toast={toast} />}
+          {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
+          {activeTab === "pagos" && <PagosTab data={data} onChanged={afterMutation} />}
+          {activeTab === "config" && data.isCreator && (
+            <>
+              <CategoriesSection data={data} onChanged={afterMutation} />
+              <LogisticsSection data={data} onSaved={afterMutation} />
+              <BankPrizesSection data={data} onSaved={afterMutation} />
+              <CohostsSection data={data} onChanged={afterMutation} />
+            </>
+          )}
         </>
       )}
     </div>
@@ -300,6 +387,7 @@ export function QuedadaManagePanel({
         }}
       >
         {header}
+        {tabsBar}
         {body}
       </div>
     );
@@ -342,6 +430,7 @@ export function QuedadaManagePanel({
         }}
       >
         {header}
+        {tabsBar}
         {body}
       </div>
     </div>
@@ -430,6 +519,123 @@ const fieldInput: React.CSSProperties = {
   background: "#fff",
   color: "#0a0a0a",
 };
+
+// ── Tab: Resumen (ver + compartir) ───────────────────────────────────────────
+function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeof useToast> }) {
+  const q = data.quedada;
+  const when = (() => {
+    const d = new Date(q.starts_at);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" }) + " · " + hourLabel(q.starts_at);
+  })();
+  return (
+    <>
+      <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 12 }}>
+          <InfoRow icon="calendar-days" label="Cuándo" value={when} />
+          <InfoRow icon="map-pin" label="Lugar" value={q.location_text || "Sin definir"} />
+          <InfoRow icon="trophy" label="Formato" value={`${FORMAT_LABEL[q.format] ?? q.format} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
+          <InfoRow icon="ticket" label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+        </div>
+        {q.description && (
+          <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.description}</p>
+        )}
+        {q.perks_text && (
+          <div style={{ fontSize: 12, color: "#065f46", background: "#ecfdf5", borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <Icon name="sparkles" size={12} color="#10b981" />
+            <span>{q.perks_text}</span>
+          </div>
+        )}
+      </div>
+
+      <InviteLinkSection inviteCode={q.invite_code} toast={toast} />
+
+      {q.prizes && q.prizes.length > 0 && (
+        <Section icon="award" title="Premios">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {q.prizes.map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: "#fafafa", border: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 11, fontWeight: 900, color: "var(--primary)", minWidth: 44 }}>{p.place}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{p.prize}</span>
+                {p.valueCents != null && <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>{money(p.valueCents)}</span>}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+      <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon name={icon} size={14} color="var(--muted-fg)" />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 2 }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Pagos (estado de pago + datos bancarios) ────────────────────────────
+function PagosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const acct = data.quedada.payment_account;
+  const joined = data.participants.filter((p) => p.status === "joined");
+
+  const togglePaid = (userId: string, current: boolean) => {
+    start(async () => {
+      const res = await setParticipantPaid({ quedadaId: data.quedada.id, userId, paid: !current });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo actualizar el pago", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: !current ? "Marcado como pagado" : "Pago desmarcado" });
+      await onChanged();
+    });
+  };
+
+  return (
+    <>
+      {acct && (
+        <Section icon="banknote" title="Datos del organizador" sub="Lo que ven los inscritos para transferir.">
+          <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
+            <div style={{ fontWeight: 900 }}>{acct.bank}</div>
+            <div style={{ color: "var(--muted-fg)" }}>
+              {acct.accountType === "ahorros" ? "Ahorros" : "Corriente"} · {acct.accountNumber}
+            </div>
+            <div>{acct.holderName}{acct.holderId ? ` · ${acct.holderId}` : ""}</div>
+            {acct.note && <div style={{ color: "var(--muted-fg)" }}>{acct.note}</div>}
+          </div>
+        </Section>
+      )}
+
+      <Section icon="users" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${joined.filter((p) => p.paid).length}/${joined.length}`}>
+        {joined.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay inscritos.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {joined.map((p) => (
+              <label
+                key={p.user_id}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "#ecfdf5" : "#fff", cursor: pending ? "default" : "pointer" }}
+              >
+                <input type="checkbox" checked={p.paid} disabled={pending} onChange={() => togglePaid(p.user_id, p.paid)} style={{ accentColor: "var(--primary)", cursor: pending ? "default" : "pointer" }} />
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.profiles)}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "#065f46" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
 
 // ── 6. Link de inscripción ───────────────────────────────────────────────────
 function InviteLinkSection({
@@ -680,7 +886,7 @@ function CohostsSection({ data, onChanged }: { data: ManageData; onChanged: () =
   };
 
   return (
-    <Section icon="users" title="Co-hosts" sub="Pueden gestionar parejas, slots y marcar pagos.">
+    <Section icon="users" title="Co-hosts" sub="Pueden gestionar parejas, cupos y pagos.">
       {data.cohosts.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {data.cohosts.map((c) => (
@@ -744,7 +950,7 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
   const del = async (c: ManageCategory) => {
     const ok = await confirm({
       title: "Borrar categoría",
-      body: `¿Seguro que quieres borrar “${c.name}”? Se eliminan sus slots y parejas.`,
+      body: `¿Seguro que quieres borrar “${c.name}”? Se eliminan sus cupos y parejas.`,
       confirmLabel: "Borrar categoría",
       cancelLabel: "Cancelar",
       destructive: true,
@@ -762,7 +968,7 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
   };
 
   return (
-    <Section icon="layers" title="Categorías" sub="Cada categoría tiene su hora, cancha y cupo de slots.">
+    <Section icon="layers" title="Categorías" sub="Cada categoría tiene su hora y cupos.">
       {data.categories.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {data.categories.map((c) =>
@@ -943,7 +1149,7 @@ function CategoryForm({
         <Field label="Hora · opcional">
           <input type="time" value={hour} onChange={(e) => setHour(e.target.value)} style={fieldInput} />
         </Field>
-        <Field label="Cupo (slots)">
+        <Field label="Cupos">
           <input type="number" min={1} value={maxSlots} onChange={(e) => setMaxSlots(e.target.value)} placeholder="8" style={fieldInput} />
         </Field>
       </div>
@@ -962,16 +1168,8 @@ function CategoryForm({
 
 // ── 5. Slots / Parejas por categoría ─────────────────────────────────────────
 function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
-  const filled = data.pairs.length;
   return (
-    <Section
-      icon="grid-3x3"
-      title="Parejas y slots"
-      sub="Asigna parejas a cada slot y marca quién pagó."
-      collapsible
-      defaultOpen={data.categories.length > 0}
-      badge={data.categories.length > 0 ? `${filled} pareja${filled === 1 ? "" : "s"}` : undefined}
-    >
+    <Section icon="grid-3x3" title="Parejas por categoría" sub="Asigna parejas a cada cupo y marca quién pagó.">
       {data.categories.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
           Crea al menos una categoría para poder asignar parejas.
@@ -1014,7 +1212,7 @@ function CategorySlots({
             <span className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>{category.name}</span>
             <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
               {category.starts_at ? `${hourLabel(category.starts_at)} · ` : ""}
-              {slotCount} slot(s)
+              {slotCount} cupos
             </span>
           </div>
         </div>
@@ -1026,7 +1224,7 @@ function CategorySlots({
 
       {open &&
         (slots.length === 0 ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define un cupo de slots para esta categoría.</div>
+          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define cuántos cupos tiene esta categoría (en Configurar).</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {slots.map((slotNo) => (
@@ -1075,7 +1273,7 @@ function SlotRow({
     if (!pair) return;
     const ok = await confirm({
       title: "Quitar pareja",
-      body: `¿Quitar la pareja del slot ${slotNo} de “${category.name}”?`,
+      body: `¿Quitar la pareja del cupo ${slotNo} de “${category.name}”?`,
       confirmLabel: "Quitar",
       cancelLabel: "Cancelar",
       destructive: true,
@@ -1138,7 +1336,7 @@ function SlotRow({
               onTogglePaid={togglePaid}
             />
           ) : (
-            <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>Slot vacío</span>
+            <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cupo libre</span>
           )}
         </div>
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -1270,7 +1468,7 @@ function AssignPairForm({
         toast({ icon: "alert-triangle", title: "No se pudo asignar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: `${isDoubles ? "Pareja" : "Jugador"} asignad${isDoubles ? "a" : "o"} al slot ${slotNo}` });
+      toast({ icon: "check-circle-2", title: `${isDoubles ? "Pareja" : "Jugador"} asignad${isDoubles ? "a" : "o"} al cupo ${slotNo}` });
       await onDone();
     });
   };
