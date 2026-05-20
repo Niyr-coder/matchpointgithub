@@ -287,6 +287,7 @@ export function QuedadaManagePanel({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("resumen");
+  const [section, setSection] = useState<"gestion" | "juego">("gestion");
 
   const reload = useCallback(async () => {
     const res = await getQuedadaManageData({ quedadaId });
@@ -410,22 +411,75 @@ export function QuedadaManagePanel({
   const paidCount = data ? data.participants.filter((p) => p.paid).length : 0;
   const sm = q ? quedadaStatusMeta(q.status) : null;
 
-  // Tabs (config solo para el creador). Si el activo no aplica, cae a "parejas".
-  // El tab Resultados aparece para el creador una vez cerradas las inscripciones.
+  // Dos niveles: arriba GESTIÓN vs JUEGO (el motor), abajo los sub-tabs de cada uno.
   const showResultados =
     !!data?.isCreator &&
     !!q &&
     (q.status === "registration_closed" || q.status === "live" || q.status === "finished");
-  const showPartidos = !!data?.isCreator && data.pairs.length > 0;
-  const tabs: { k: TabKey; label: string; icon: string }[] = [
-    { k: "resumen", label: "Resumen", icon: "layout-dashboard" },
-    { k: "parejas", label: "Parejas", icon: "grid-3x3" },
-    ...(showPartidos ? [{ k: "partidos" as TabKey, label: "Partidos", icon: "swords" }] : []),
-    { k: "pagos", label: "Pagos", icon: "banknote" },
-    ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados", icon: "trophy" }] : []),
-    ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar", icon: "settings" }] : []),
+  // Gestión = setup; Juego = el motor (partidos + resultados/podio).
+  const gestionTabs: { k: TabKey; label: string }[] = [
+    { k: "resumen", label: "Resumen" },
+    { k: "parejas", label: "Parejas" },
+    { k: "pagos", label: "Pagos" },
+    ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar" }] : []),
   ];
-  const activeTab: TabKey = tabs.some((t) => t.k === tab) ? tab : "parejas";
+  const juegoTabs: { k: TabKey; label: string }[] = [
+    { k: "partidos", label: "Partidos" },
+    ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados" }] : []),
+  ];
+  const sectionTabs = section === "juego" ? juegoTabs : gestionTabs;
+  const activeTab: TabKey = sectionTabs.some((t) => t.k === tab) ? tab : sectionTabs[0].k;
+  const switchSection = (s: "gestion" | "juego") => {
+    setSection(s);
+    setTab(s === "juego" ? "partidos" : "resumen");
+  };
+
+  const backBtn = (
+    <button
+      onClick={close}
+      aria-label={isPage ? "Volver" : "Cerrar"}
+      style={{
+        height: 30,
+        borderRadius: 9999,
+        padding: isPage ? "0 12px" : 0,
+        width: isPage ? undefined : 30,
+        gap: 6,
+        background: "rgba(255,255,255,0.12)",
+        border: "1px solid rgba(255,255,255,0.2)",
+        color: "#fff",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "inherit",
+        fontSize: 12,
+        fontWeight: 700,
+        flexShrink: 0,
+      }}
+    >
+      <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
+      {isPage ? "Volver" : null}
+    </button>
+  );
+
+  const headerActions =
+    q && data?.isCreator && q.status !== "finished" && q.status !== "cancelled" ? (
+      <>
+        {q.status === "registration_open" && (
+          <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock">Cerrar inscripciones</HeaderBtn>
+        )}
+        {q.status === "registration_closed" && (
+          <>
+            <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play">Iniciar</HeaderBtn>
+            <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" ghost>Reabrir</HeaderBtn>
+          </>
+        )}
+        {q.status === "live" && (
+          <HeaderBtn onClick={() => { setSection("juego"); setTab("resultados"); }} disabled={busy} icon="flag">Finalizar</HeaderBtn>
+        )}
+        <HeaderBtn onClick={doCancel} disabled={busy} icon="x" destructive>Cancelar</HeaderBtn>
+      </>
+    ) : null;
 
   const header = (
     <div
@@ -433,72 +487,41 @@ export function QuedadaManagePanel({
         padding: "20px 22px 18px",
         background: "linear-gradient(135deg,var(--fg) 0%,#064e3b 72%,#10b981 100%)",
         color: "#fff",
-        position: "relative",
         flexShrink: 0,
         borderTopLeftRadius: isPage ? 16 : undefined,
         borderTopRightRadius: isPage ? 16 : undefined,
       }}
     >
-      <button
-        onClick={close}
-        aria-label={isPage ? "Volver" : "Cerrar"}
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 16,
-          height: 30,
-          borderRadius: 9999,
-          padding: isPage ? "0 12px" : 0,
-          width: isPage ? undefined : 30,
-          gap: 6,
-          background: "rgba(255,255,255,0.12)",
-          border: "1px solid rgba(255,255,255,0.2)",
-          color: "#fff",
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "inherit",
-          fontSize: 12,
-          fontWeight: 700,
-        }}
-      >
-        <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
-        {isPage ? "Volver" : null}
-      </button>
-      <div className="label-mp" style={{ color: "var(--primary)" }}>
-        ● Gestión · Quedada
-      </div>
-      {q ? (
-        <h2
-          className="font-heading"
-          style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "8px 0 0", paddingRight: isPage ? 110 : 44 }}
-        >
-          {q.title}
-          <span style={{ color: "#34d399" }}>.</span>
-        </h2>
-      ) : (
-        <div style={{ margin: "10px 0 0" }}>
-          <SkBar w={260} h={24} r={8} dark />
-        </div>
-      )}
-      {q ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "rgba(255,255,255,0.82)" }}>
-          {sm && (
-            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: sm.bg, color: sm.fg }}>
-              {sm.label}
-            </span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="label-mp" style={{ color: "var(--primary)" }}>● Gestión · Quedada</div>
+          {q ? (
+            <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "8px 0 0" }}>
+              {q.title}
+              <span style={{ color: "#34d399" }}>.</span>
+            </h2>
+          ) : (
+            <div style={{ margin: "10px 0 0" }}><SkBar w={260} h={24} r={8} dark /></div>
           )}
-          <span>
-            {FORMAT_LABEL[q.format] ?? q.format} · {q.match_mode === "singles" ? "Singles" : "Dobles"} ·{" "}
-            {data?.isCreator ? "Organizador" : "Co-host"}
-          </span>
+          {q ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "rgba(255,255,255,0.82)" }}>
+              {sm && (
+                <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: sm.bg, color: sm.fg }}>{sm.label}</span>
+              )}
+              <span>
+                {FORMAT_LABEL[q.format] ?? q.format} · {q.match_mode === "singles" ? "Singles" : "Dobles"} · {data?.isCreator ? "Organizador" : "Co-host"}
+              </span>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10 }}><SkBar w={200} h={12} r={6} dark /></div>
+          )}
         </div>
-      ) : (
-        <div style={{ marginTop: 10 }}>
-          <SkBar w={200} h={12} r={6} dark />
+        {/* Derecha: volver + acciones de estado */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+          {backBtn}
+          {headerActions}
         </div>
-      )}
+      </div>
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         {q ? (
           <>
@@ -511,30 +534,11 @@ export function QuedadaManagePanel({
           [0, 1, 2, 3].map((i) => (
             <div key={i} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
               <SkBar w={36} h={18} r={5} dark />
-              <div style={{ marginTop: 6 }}>
-                <SkBar w={54} h={8} r={4} dark />
-              </div>
+              <div style={{ marginTop: 6 }}><SkBar w={54} h={8} r={4} dark /></div>
             </div>
           ))
         )}
       </div>
-      {q && data?.isCreator && q.status !== "finished" && q.status !== "cancelled" && (
-        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-          {q.status === "registration_open" && (
-            <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock">Cerrar inscripciones</HeaderBtn>
-          )}
-          {q.status === "registration_closed" && (
-            <>
-              <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play">Iniciar</HeaderBtn>
-              <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" ghost>Reabrir</HeaderBtn>
-            </>
-          )}
-          {q.status === "live" && (
-            <HeaderBtn onClick={() => setTab("resultados")} disabled={busy} icon="flag">Cargar resultados y finalizar</HeaderBtn>
-          )}
-          <HeaderBtn onClick={doCancel} disabled={busy} icon="x" destructive>Cancelar</HeaderBtn>
-        </div>
-      )}
     </div>
   );
 
@@ -546,7 +550,7 @@ export function QuedadaManagePanel({
     </div>
   ) : data && data.canManage ? (
       <div style={{ display: "flex", gap: 2, padding: "0 12px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0, overflowX: "auto" }}>
-        {tabs.map((t) => {
+        {sectionTabs.map((t) => {
           const on = t.k === activeTab;
           return (
             <button
@@ -569,6 +573,43 @@ export function QuedadaManagePanel({
               }}
             >
               {t.label}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
+  // Switch de nivel superior: Gestión (setup) vs Juego (el motor).
+  const sectionSwitch =
+    !loading && data?.canManage ? (
+      <div style={{ display: "flex", gap: 6, padding: "12px 14px 0", background: "#fff", flexShrink: 0 }}>
+        {([["gestion", "Gestión"], ["juego", "Juego"]] as const).map(([k, label]) => {
+          const on = section === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => switchSection(k)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                borderRadius: 9999,
+                border: on ? "0" : "1px solid var(--border)",
+                background: on ? "var(--fg)" : "transparent",
+                color: on ? "#fff" : "var(--muted-fg)",
+                fontFamily: "inherit",
+                fontWeight: 900,
+                fontSize: 11.5,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                transition: "background 150ms var(--ease-out), color 150ms var(--ease-out)",
+              }}
+            >
+              <Icon name={k === "juego" ? "swords" : "sliders-horizontal"} size={13} color={on ? "#fff" : "var(--muted-fg)"} />
+              {label}
             </button>
           );
         })}
@@ -636,6 +677,7 @@ export function QuedadaManagePanel({
         }}
       >
         {header}
+        {sectionSwitch}
         {tabsBar}
         {body}
       </div>
@@ -679,6 +721,7 @@ export function QuedadaManagePanel({
         }}
       >
         {header}
+        {sectionSwitch}
         {tabsBar}
         {body}
       </div>
@@ -1256,21 +1299,57 @@ function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; la
     });
   };
 
-  const pInput: React.CSSProperties = { width: 42, textAlign: "center", padding: "6px 4px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", background: "#fff", color: "var(--fg)" };
+  const na = parseInt(a, 10);
+  const nb = parseInt(b, 10);
+  const aWins = played && Number.isFinite(na) && Number.isFinite(nb) && na > nb;
+  const bWins = played && Number.isFinite(na) && Number.isFinite(nb) && nb > na;
+
+  const scoreBox = (val: string, set: (v: string) => void, win: boolean, label: string) => (
+    <input
+      value={val}
+      onChange={(e) => set(e.target.value)}
+      type="number"
+      min={0}
+      placeholder="–"
+      aria-label={label}
+      className="font-heading tabular"
+      style={{
+        width: 50,
+        height: 42,
+        flexShrink: 0,
+        textAlign: "center",
+        border: win ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+        borderRadius: 10,
+        fontSize: 18,
+        fontWeight: 900,
+        fontFamily: "inherit",
+        outline: "none",
+        background: "#fff",
+        color: win ? "var(--color-mp-primary-active)" : "var(--fg)",
+      }}
+    />
+  );
+  const nameRow = (name: string, win: boolean, score: React.ReactNode) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: win ? 900 : 700, color: win ? "var(--color-mp-primary-active)" : "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+      {score}
+    </div>
+  );
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border)", background: played ? "var(--success-bg)" : "#fff", flexWrap: "wrap" }}>
-      <span style={{ flex: 1, minWidth: 80, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{labelA}</span>
-      <input value={a} onChange={(e) => setA(e.target.value)} type="number" min={0} placeholder="–" style={pInput} aria-label="Puntos A" />
-      <span style={{ color: "var(--muted-fg)", fontWeight: 800 }}>-</span>
-      <input value={b} onChange={(e) => setB(e.target.value)} type="number" min={0} placeholder="–" style={pInput} aria-label="Puntos B" />
-      <span style={{ flex: 1, minWidth: 80, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labelB}</span>
-      <button type="button" onClick={report} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 10px" }}>
-        <Icon name="check" size={12} /> {played ? "Actualizar" : "Guardar"}
-      </button>
-      <button type="button" onClick={remove} aria-label="Quitar partido" style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}>
-        <Icon name="x" size={13} color="var(--muted-fg)" />
-      </button>
+    <div style={{ borderRadius: 12, border: "1px solid var(--border)", background: played ? "var(--success-bg)" : "#fff", overflow: "hidden" }}>
+      {nameRow(labelA, aWins, scoreBox(a, setA, aWins, "Puntos A"))}
+      <div style={{ borderTop: "1px solid var(--border)" }} />
+      {nameRow(labelB, bWins, scoreBox(b, setB, bWins, "Puntos B"))}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, padding: "8px 10px", borderTop: "1px solid var(--border)", background: played ? "transparent" : "var(--muted)" }}>
+        {played && <span style={{ flex: 1, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--success-fg)" }}>Jugado</span>}
+        <button type="button" onClick={report} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 12px" }}>
+          <Icon name="check" size={12} /> {played ? "Actualizar" : "Guardar"}
+        </button>
+        <button type="button" onClick={remove} aria-label="Quitar partido" style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 4 }}>
+          <Icon name="x" size={14} color="var(--muted-fg)" />
+        </button>
+      </div>
     </div>
   );
 }
