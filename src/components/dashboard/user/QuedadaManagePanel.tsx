@@ -1455,50 +1455,36 @@ function SlotCell({
   onAssign: () => void;
   onRemove?: () => void;
 }) {
-  const chip = (
-    <span
+  // Pestaña de número a la izquierda, de altura completa (ancla los dos pisos).
+  const tab = (
+    <div
       className="font-heading tabular"
       style={{
-        width: 24,
-        height: 24,
-        borderRadius: 6,
+        width: 30,
         flexShrink: 0,
-        fontSize: 11.5,
-        fontWeight: 900,
-        display: "inline-flex",
+        display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: filled ? "var(--fg)" : "transparent",
-        border: filled ? "0" : "1px dashed var(--border)",
+        fontSize: 12,
+        fontWeight: 900,
+        background: filled ? "var(--primary)" : "transparent",
         color: filled ? "#fff" : "var(--muted-fg)",
+        borderRight: filled ? "0" : "1px dashed var(--border)",
       }}
     >
       {slotNo}
-    </span>
+    </div>
   );
 
   const cellStyle: React.CSSProperties = {
     borderRadius: 10,
     border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)",
     background: filled ? "#fff" : "var(--muted)",
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "stretch",
     transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out)",
-    padding: "9px 11px",
   };
-
-  if (!filled) {
-    return (
-      <div style={{ ...cellStyle, display: "flex", alignItems: "center", gap: 8 }}>
-        {chip}
-        <button
-          type="button"
-          onClick={onAssign}
-          style={{ flex: 1, textAlign: "left", background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: 0 }}
-        >
-          <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
-        </button>
-      </div>
-    );
-  }
 
   const nameStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg)" };
   const removeBtn = onRemove ? (
@@ -1512,27 +1498,46 @@ function SlotCell({
     </button>
   ) : null;
 
-  // Singles: un solo piso.
-  if (nameB == null) {
+  if (!filled) {
     return (
-      <div style={{ ...cellStyle, display: "flex", alignItems: "center", gap: 10 }}>
-        {chip}
-        <span style={{ ...nameStyle, flex: 1 }}>{nameA}</span>
-        {removeBtn}
+      <div style={cellStyle}>
+        {tab}
+        <button
+          type="button"
+          onClick={onAssign}
+          style={{ flex: 1, textAlign: "left", background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 11px" }}
+        >
+          <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
+        </button>
       </div>
     );
   }
 
-  // Dobles: chip centrado a la izquierda; A arriba, raya, B abajo.
+  // Singles: un solo piso.
+  if (nameB == null) {
+    return (
+      <div style={cellStyle}>
+        {tab}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "9px 11px" }}>
+          <span style={{ ...nameStyle, flex: 1 }}>{nameA}</span>
+          {removeBtn}
+        </div>
+      </div>
+    );
+  }
+
+  // Dobles: A arriba, raya, B abajo (la pestaña de número los ancla).
   return (
-    <div style={{ ...cellStyle, display: "flex", alignItems: "stretch", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center" }}>{chip}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ ...nameStyle, display: "block" }}>{nameA}</span>
+    <div style={cellStyle}>
+      {tab}
+      <div style={{ flex: 1, minWidth: 0, padding: "8px 11px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ ...nameStyle, flex: 1 }}>{nameA}</span>
+          {removeBtn}
+        </div>
         <div style={{ borderTop: "1px solid var(--border)", margin: "7px 0" }} />
         <span style={{ ...nameStyle, display: "block" }}>{nameB}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-start" }}>{removeBtn}</div>
     </div>
   );
 }
