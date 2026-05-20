@@ -453,7 +453,7 @@ export function QuedadaManagePanel({
 
       {!loading && data && data.canManage && (
         <div key={activeTab} className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {activeTab === "resumen" && <ResumenTab data={data} toast={toast} />}
+          {activeTab === "resumen" && <ResumenTab data={data} toast={toast} onGoToParejas={() => setTab("parejas")} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
           {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
           {activeTab === "config" && data.isCreator && (
@@ -625,13 +625,14 @@ const fieldInput: React.CSSProperties = {
 };
 
 // ── Tab: Resumen (ver + compartir) ───────────────────────────────────────────
-function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeof useToast> }) {
+function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: ReturnType<typeof useToast>; onGoToParejas: () => void }) {
   const q = data.quedada;
   const when = (() => {
     const d = new Date(q.starts_at);
     if (Number.isNaN(d.getTime())) return "—";
     return d.toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" }) + " · " + hourLabel(q.starts_at);
   })();
+  const cohostNames = data.cohosts.map((c) => nameOf(c.profiles));
   return (
     <>
       <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -640,6 +641,7 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
           <InfoRow label="Lugar" value={q.location_text || "Sin definir"} />
           <InfoRow label="Formato" value={`${FORMAT_LABEL[q.format] ?? q.format} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
           <InfoRow label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+          {cohostNames.length > 0 && <InfoRow label="Co-hosts" value={cohostNames.join(", ")} />}
         </div>
         {q.description && (
           <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.description}</p>
@@ -650,6 +652,11 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
             <span>{q.perks_text}</span>
           </div>
         )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={onGoToParejas} className="btn btn-primary">
+            <Icon name="grid-3x3" size={13} color="#fff" /> Gestionar parejas
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: q.prizes && q.prizes.length > 0 ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
