@@ -69,7 +69,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     supabase
       .from("team_members")
       .select(
-        "user_id,role,profiles(display_name,accent_color,card_style,plan_tier,plan_expires_at)",
+        "user_id,role,profiles(display_name,username,accent_color,card_style,plan_tier,plan_expires_at)",
       )
       .eq("team_id", teamId),
     supabase
@@ -160,6 +160,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     const customization = resolveMemberCustomization(m.user_id as string, profile);
     return {
       userId: m.user_id as string,
+      username: (profile?.username as string | undefined) ?? null,
       name: (profile?.display_name as string | undefined) ?? "Jugador",
       role: roleLabel(m.role as string, (m.user_id as string) === captainId),
       level: levelFromRating(s?.current_rating as number | null | undefined),

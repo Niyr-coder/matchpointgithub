@@ -50,6 +50,7 @@ function resolveView(urlView: string | null, hasTeam: boolean): View {
 
 export type TeamMemberLite = {
   userId: string;
+  username: string | null;
   name: string;
   role: string;
   level: number;
@@ -2243,6 +2244,121 @@ function wrColor(wr: number): string {
   return "#dc2626"; // rojo
 }
 
+// Menú "..." de cada jugador del roster. Ícono en color explícito (var(--muted-fg))
+// para que se vea sobre cualquier card. Acciones: ver perfil + (capitán) hacer capitán.
+function RosterMemberMenu({
+  teamId,
+  member,
+  canManage,
+  isSelf,
+  isRowCaptain,
+}: {
+  teamId: string;
+  member: TeamMemberLite;
+  canManage: boolean;
+  isSelf: boolean;
+  isRowCaptain: boolean;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const hasProfile = !!member.username;
+  const canMakeCaptain = canManage && !isSelf && !isRowCaptain;
+
+  const goProfile = () => {
+    setOpen(false);
+    if (member.username) router.push(`/dashboard/user/players/${member.username}`);
+  };
+  const makeCaptain = () => {
+    setPending(true);
+    void transferCaptain({ teamId, newCaptainUserId: member.userId }).then((res) => {
+      setPending(false);
+      setOpen(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo transferir", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Nuevo capitán", sub: member.name });
+      router.refresh();
+    });
+  };
+
+  const itemStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "9px 12px",
+    background: "transparent",
+    border: 0,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#0a0a0a",
+    textAlign: "left",
+  };
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Opciones del jugador"
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 9999,
+          border: "1px solid var(--border)",
+          background: "#fff",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name="more-horizontal" size={12} color="var(--muted-fg)" />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 32,
+              zIndex: 41,
+              background: "#fff",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+              minWidth: 168,
+              overflow: "hidden",
+            }}
+          >
+            {hasProfile && (
+              <button style={itemStyle} onClick={goProfile}>
+                <Icon name="user" size={13} color="var(--muted-fg)" />
+                Ver perfil
+              </button>
+            )}
+            {canMakeCaptain && (
+              <button style={{ ...itemStyle, borderTop: hasProfile ? "1px solid var(--border)" : 0 }} onClick={makeCaptain} disabled={pending}>
+                <Icon name="crown" size={13} color="#ca8a04" />
+                {pending ? "Transfiriendo…" : "Hacer capitán"}
+              </button>
+            )}
+            {!hasProfile && !canMakeCaptain && (
+              <div style={{ padding: "10px 12px", fontSize: 11.5, color: "var(--muted-fg)" }}>Sin acciones</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => void; team: TeamLite; meUserId: string | null }) {
   const ROSTER = TEAM.members;
   const winRate =
@@ -2632,21 +2748,13 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                         <span style={{ fontWeight: 800, minWidth: 28, textAlign: "right" }}>{p.wr}%</span>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <button
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: 9999,
-                            border: "1px solid var(--border)",
-                            background: "#fff",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <Icon name="more-horizontal" size={12} />
-                        </button>
+                        <RosterMemberMenu
+                          teamId={TEAM.id}
+                          member={p}
+                          canManage={!!meUserId && meUserId === TEAM.captainId}
+                          isSelf={isMe}
+                          isRowCaptain={p.userId === TEAM.captainId}
+                        />
                       </div>
                     </div>
                   );
