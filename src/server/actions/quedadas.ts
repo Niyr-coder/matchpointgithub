@@ -47,9 +47,7 @@ async function requireUserId(): Promise<string> {
 export async function createQuedada(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(CreateQuedadaSchema, input, async (d) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data: row, error } = await supabase
       .from("quedadas")
       .insert({
@@ -111,9 +109,7 @@ export async function joinQuedada(
 ): Promise<ActionResult<{ ok: true; transactionId?: string }>> {
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
 
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
@@ -207,9 +203,7 @@ export async function joinQuedada(
 export async function leaveQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase
       .from("quedada_participants")
       .update({ status: "cancelled" } as never)
@@ -224,9 +218,7 @@ export async function leaveQuedada(input: unknown): Promise<ActionResult<{ ok: t
 export async function inviteToQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(InviteToQuedadaSchema, input, async ({ quedadaId, userIds }) => {
     const callerId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data: q } = await supabase
       .from("quedadas")
       .select("creator_id,title")
@@ -263,9 +255,7 @@ export async function inviteToQuedada(input: unknown): Promise<ActionResult<{ ok
 export async function cancelQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data: q } = await supabase
       .from("quedadas")
       .select("creator_id,status")
@@ -308,9 +298,7 @@ export async function cancelQuedada(input: unknown): Promise<ActionResult<{ ok: 
 export async function setQuedadaResults(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(SetQuedadaResultsSchema, input, async ({ quedadaId, results }) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data: q } = await supabase
       .from("quedadas")
       .select("creator_id")
@@ -339,9 +327,7 @@ export async function setQuedadaResults(input: unknown): Promise<ActionResult<{ 
 export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(ReportQuedadaSchema, input, async ({ quedadaId, reason }) => {
     const userId = await requireUserId();
-    // Tablas de quedadas aún no están en los tipos generados → cliente sin tipar.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase
       .from("quedada_reports")
       .insert({ quedada_id: quedadaId, reporter_id: userId, reason } as never);
@@ -354,8 +340,7 @@ export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: 
 export async function getQuedadaManageData(input: unknown): Promise<ActionResult<unknown>> {
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
 
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
@@ -400,8 +385,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
 export async function addCohost(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(CohostSchema, input, async ({ quedadaId, userId }) => {
     const callerId = await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase
       .from("quedada_cohosts")
       .upsert({ quedada_id: quedadaId, user_id: userId, added_by: callerId }, { onConflict: "quedada_id,user_id" });
@@ -420,8 +404,7 @@ export async function addCohost(input: unknown): Promise<ActionResult<{ ok: true
 export async function removeCohost(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(CohostSchema, input, async ({ quedadaId, userId }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase
       .from("quedada_cohosts")
       .delete()
@@ -436,8 +419,7 @@ export async function removeCohost(input: unknown): Promise<ActionResult<{ ok: t
 export async function createCategory(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(CreateCategorySchema, input, async (d) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("quedada_categories")
       .insert({
@@ -458,15 +440,14 @@ export async function createCategory(input: unknown): Promise<ActionResult<{ id:
 export async function updateCategory(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(UpdateCategorySchema, input, async (d) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const patch: Record<string, unknown> = {};
     if (d.name !== undefined) patch.name = d.name;
     if (d.levelLabel !== undefined) patch.level_label = d.levelLabel;
     if (d.startsAt !== undefined) patch.starts_at = d.startsAt;
     if (d.courtLabel !== undefined) patch.court_label = d.courtLabel;
     if (d.maxSlots !== undefined) patch.max_slots = d.maxSlots;
-    const { error } = await supabase.from("quedada_categories").update(patch).eq("id", d.categoryId);
+    const { error } = await supabase.from("quedada_categories").update(patch as never).eq("id", d.categoryId);
     if (error) throw new MpError("QUEDADAS.CATEGORY_FAILED", error.message, 500);
     return { ok: true as const };
   });
@@ -475,8 +456,7 @@ export async function updateCategory(input: unknown): Promise<ActionResult<{ ok:
 export async function deleteCategory(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(CategoryIdSchema, input, async ({ categoryId }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase.from("quedada_categories").delete().eq("id", categoryId);
     if (error) throw new MpError("QUEDADAS.CATEGORY_FAILED", error.message, 500);
     return { ok: true as const };
@@ -487,8 +467,7 @@ export async function deleteCategory(input: unknown): Promise<ActionResult<{ ok:
 export async function assignPair(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(AssignPairSchema, input, async (d) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase.from("quedada_pairs").upsert(
       {
         quedada_id: d.quedadaId,
@@ -510,8 +489,7 @@ export async function assignPair(input: unknown): Promise<ActionResult<{ ok: tru
 export async function autoAssignCategory(input: unknown): Promise<ActionResult<{ assigned: number }>> {
   return runAction(AutoAssignCategorySchema, input, async ({ quedadaId, categoryId }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
 
     const { data: q } = await supabase.from("quedadas").select("match_mode").eq("id", quedadaId).maybeSingle();
     const isDoubles = (q?.match_mode ?? "doubles") === "doubles";
@@ -570,8 +548,7 @@ export async function autoAssignCategory(input: unknown): Promise<ActionResult<{
 export async function removePair(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(RemovePairSchema, input, async ({ pairId }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase.from("quedada_pairs").delete().eq("id", pairId);
     if (error) throw new MpError("QUEDADAS.PAIR_FAILED", error.message, 500);
     return { ok: true as const };
@@ -582,8 +559,7 @@ export async function removePair(input: unknown): Promise<ActionResult<{ ok: tru
 export async function setParticipantPaid(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(SetParticipantPaidSchema, input, async ({ quedadaId, userId, paid }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { error } = await supabase
       .from("quedada_participants")
       .update({ paid })
@@ -598,8 +574,7 @@ export async function setParticipantPaid(input: unknown): Promise<ActionResult<{
 export async function updateQuedadaLogistics(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(QuedadaLogisticsSchema, input, async (d) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (d.courtsCount !== undefined) patch.courts_count = d.courtsCount;
     if (d.hours !== undefined) patch.hours = d.hours;
@@ -608,7 +583,7 @@ export async function updateQuedadaLogistics(input: unknown): Promise<ActionResu
     if (d.prizes !== undefined) patch.prizes = d.prizes;
     if (d.paymentInfo !== undefined) patch.payment_info = d.paymentInfo;
     if (d.prizesText !== undefined) patch.prizes_text = d.prizesText;
-    const { error } = await supabase.from("quedadas").update(patch).eq("id", d.quedadaId);
+    const { error } = await supabase.from("quedadas").update(patch as never).eq("id", d.quedadaId);
     if (error) throw new MpError("QUEDADAS.LOGISTICS_FAILED", error.message, 500);
     return { ok: true as const };
   });
@@ -623,8 +598,7 @@ export async function joinByInviteCode(
   return runAction(JoinByCodeSchema, input, async ({ code }) => {
     const userId = await requireUserId();
     const admin = getAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: q } = await (admin as any)
+    const { data: q } = await admin
       .from("quedadas")
       .select("id,status,fee_cents,club_id,max_players")
       .eq("invite_code", code)
@@ -632,8 +606,7 @@ export async function joinByInviteCode(
     if (!q) throw new MpError("QUEDADAS.CODE_INVALID", "Link inválido", 404);
     if (q.status !== "registration_open") throw new MpError("QUEDADAS.CLOSED", "Inscripciones cerradas", 409);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     let transactionId: string | undefined;
     const fee = (q.fee_cents as number) ?? 0;
     if (fee > 0) {
@@ -673,8 +646,7 @@ type QuedadaTemplateRow = { id: string; name: string; config: unknown; created_a
 export async function listQuedadaTemplates(input: unknown): Promise<ActionResult<QuedadaTemplateRow[]>> {
   return runAction(ListQuedadaTemplatesSchema, input ?? {}, async () => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("quedada_templates")
       .select("id,name,config,created_at")
@@ -687,8 +659,7 @@ export async function listQuedadaTemplates(input: unknown): Promise<ActionResult
 export async function saveQuedadaTemplate(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(SaveQuedadaTemplateSchema, input, async (d) => {
     const userId = await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     const { count } = await supabase
       .from("quedada_templates")
       .select("id", { count: "exact", head: true })
@@ -709,8 +680,7 @@ export async function saveQuedadaTemplate(input: unknown): Promise<ActionResult<
 export async function deleteQuedadaTemplate(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(QuedadaTemplateIdSchema, input, async ({ templateId }) => {
     await requireUserId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase = (await getServerClient()) as any;
+    const supabase = await getServerClient();
     // RLS limita el delete a las plantillas del propio usuario.
     const { error } = await supabase.from("quedada_templates").delete().eq("id", templateId);
     if (error) throw new MpError("QUEDADAS.TEMPLATE_DELETE_FAILED", error.message, 500);

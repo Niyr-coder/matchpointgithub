@@ -548,18 +548,13 @@ export async function getPaymentProofForUser(
           .maybeSingle();
         refLabel = (tn?.name as string | null) ?? null;
       } else if (tx.kind === "quedada") {
-        // quedadas no está en los tipos generados → cliente sin tipar.
-        const { data: qd } = await (supabase as unknown as {
-          from: (t: string) => {
-            select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { title?: string; payment_account?: QuedadaPaymentAccount | null } | null }> } };
-          };
-        })
+        const { data: qd } = await supabase
           .from("quedadas")
           .select("title,payment_account")
           .eq("id", tx.ref_id as string)
           .maybeSingle();
-        refLabel = qd?.title ?? null;
-        paymentAccount = qd?.payment_account ?? null;
+        refLabel = (qd?.title as string | null) ?? null;
+        paymentAccount = (qd?.payment_account as QuedadaPaymentAccount | null) ?? null;
       }
     }
 
