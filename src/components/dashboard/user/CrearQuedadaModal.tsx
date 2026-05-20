@@ -172,7 +172,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -190,7 +189,6 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
       <style>{`@keyframes mp-q-fade{from{opacity:0}to{opacity:1}}
         @keyframes mp-q-pop{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}`}</style>
       <div
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         className="card"
