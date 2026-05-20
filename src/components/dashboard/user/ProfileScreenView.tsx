@@ -11,6 +11,7 @@ import { startConversation } from "@/server/actions/messaging";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { readableTextOn } from "@/lib/profile/customization-presets";
+import { EditProfilePanel } from "./EditProfilePanel";
 
 export type ProfileClub = {
   id: string;
@@ -84,6 +85,24 @@ export type ProfileData = {
     backdropFilter?: string;
     color?: string;
   } | null;
+  // Valores editables del perfil propio (self-scoped; solo presente en Mi Perfil).
+  // Alimenta el formulario de edición del tab Preferencias.
+  editable?: EditableProfile | null;
+};
+
+// Campos que el dueño puede editar (subset de profiles mapeado a updateProfile).
+export type EditableProfile = {
+  firstName: string | null;
+  lastName: string | null;
+  bio: string | null;
+  city: string | null;
+  country: string | null;
+  birthdate: string | null;
+  phone: string | null;
+  dominantHand: "left" | "right" | null;
+  preferredSport: "tennis" | "padel" | "pickleball" | null;
+  skillLevel: "beginner" | "intermediate" | "advanced" | "pro" | null;
+  locale: "es" | "en" | "pt" | null;
 };
 
 type Mode = "mine" | "public";
@@ -498,7 +517,14 @@ export function ProfileScreenView({
           )}
           {tab === "insignias" && <BadgesGrid badges={data.badges ?? []} />}
           {tab === "clubes" && <ClubsList clubs={data.clubs} />}
-          {tab === "preferencias" && <PreferencesPanel />}
+          {tab === "preferencias" &&
+            (data.editable ? (
+              <EditProfilePanel initial={data.editable} />
+            ) : (
+              <div className="card" style={{ padding: 20, fontSize: 13, color: "var(--muted-fg)" }}>
+                No se pudieron cargar tus datos para editar. Recarga la página.
+              </div>
+            ))}
         </div>
       </div>
 
@@ -1293,38 +1319,3 @@ function ClubsList({ clubs }: { clubs: ProfileClub[] }) {
   );
 }
 
-const PREF_FIELDS = [
-  { label: "Mano dominante", value: "Derecha" },
-  { label: "Estilo preferido", value: "Dobles" },
-  { label: "Disponibilidad", value: "Sáb-Dom · Mañanas" },
-  { label: "Notificaciones", value: "Email + Push" },
-  { label: "Visibilidad de perfil", value: "Pública" },
-  { label: "Idioma", value: "Español" },
-];
-
-function PreferencesPanel() {
-  return (
-    <div className="card">
-      {PREF_FIELDS.map((f, i) => (
-        <div
-          key={f.label}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "16px 20px",
-            borderTop: i === 0 ? 0 : "1px solid var(--border)",
-          }}
-        >
-          <div>
-            <div className="label-mp">{f.label}</div>
-            <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{f.value}</div>
-          </div>
-          <button className="btn btn-outline" style={{ padding: "7px 14px" }}>
-            Editar
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}

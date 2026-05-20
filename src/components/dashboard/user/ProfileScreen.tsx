@@ -1,5 +1,7 @@
-// Server: fetch profile + stats + ranking + clubes. Match history + badges +
-// preferences quedan mock hasta tener schema dedicado.
+// Server: fetch profile + stats + ranking + clubes. Match history + badges
+// quedan mock hasta tener schema dedicado. El tab "Preferencias" del perfil
+// propio es edición real (EditProfilePanel → updateProfile); sus valores se
+// cargan self-scoped en `editable` (solo para isOwn, no expone data ajena).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getPlanForUser } from "@/lib/auth/plan";
@@ -249,6 +251,37 @@ export async function loadProfileFor(
   // 'mp_plus' (no bundle pago), no hay pattern temático.
   const bodyPattern = bannerObj ? bodyPatternForBundle(bannerObj.bundleKey) : null;
 
+  // Campos editables: SOLO para el perfil propio. Fetch self-scoped (RLS
+  // profiles_self) — no van en el select compartido para no exponer
+  // phone/birthdate al ver perfiles ajenos.
+  const isOwn = session.authenticated && session.session.userId === userId;
+  let editable: ProfileData["editable"] = null;
+  if (isOwn) {
+    const { data: ed } = await supabase
+      .from("profiles")
+      .select(
+        "first_name,last_name,bio,city,country,birthdate,phone,dominant_hand,preferred_sport,skill_level,locale",
+      )
+      .eq("id", userId)
+      .maybeSingle();
+    if (ed) {
+      const e = ed as Record<string, unknown>;
+      editable = {
+        firstName: (e.first_name as string | null) ?? null,
+        lastName: (e.last_name as string | null) ?? null,
+        bio: (e.bio as string | null) ?? null,
+        city: (e.city as string | null) ?? null,
+        country: (e.country as string | null) ?? null,
+        birthdate: (e.birthdate as string | null) ?? null,
+        phone: (e.phone as string | null) ?? null,
+        dominantHand: (e.dominant_hand as "left" | "right" | null) ?? null,
+        preferredSport: (e.preferred_sport as "tennis" | "padel" | "pickleball" | null) ?? null,
+        skillLevel: (e.skill_level as "beginner" | "intermediate" | "advanced" | "pro" | null) ?? null,
+        locale: (e.locale as "es" | "en" | "pt" | null) ?? null,
+      };
+    }
+  }
+
   return {
     meUserId: userId,
     name: (profile?.display_name as string | undefined) ?? "Jugador",
@@ -275,6 +308,7 @@ export async function loadProfileFor(
     bodyPattern,
     bundleKey: bannerObj?.bundleKey ?? null,
     cardStyleCss: cardStyleObj?.css ?? null,
+    editable,
   };
 }
 
