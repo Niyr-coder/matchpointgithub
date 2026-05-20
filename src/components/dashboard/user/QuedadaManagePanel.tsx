@@ -265,6 +265,25 @@ export function QuedadaManagePanel({
     [data, quedadaId, toast],
   );
 
+  // Marca/desmarca a TODOS los inscritos de una (optimista; best-effort).
+  const setAllPaid = useCallback(
+    (paid: boolean) => {
+      const targets = (data?.participants ?? []).filter((p) => p.status === "joined" && p.paid !== paid);
+      if (targets.length === 0) return;
+      setData((d) =>
+        d ? { ...d, participants: d.participants.map((p) => (p.status === "joined" ? { ...p, paid } : p)) } : d,
+      );
+      let failed = false;
+      Promise.all(targets.map((t) => setParticipantPaid({ quedadaId, userId: t.user_id, paid }))).then((results) => {
+        if (results.some((r) => !r.ok)) failed = true;
+        if (failed) {
+          toast({ icon: "alert-triangle", title: "Algunos pagos no se guardaron", sub: "Recarga para ver el estado real." });
+        }
+      });
+    },
+    [data, quedadaId, toast],
+  );
+
   const isPage = variant === "page";
   const q = data?.quedada ?? null;
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
@@ -389,22 +408,21 @@ export function QuedadaManagePanel({
               key={t.k}
               onClick={() => setTab(t.k)}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "13px 13px",
+                padding: "15px 14px",
                 border: 0,
                 borderBottom: on ? "2px solid var(--primary)" : "2px solid transparent",
                 background: "transparent",
                 cursor: "pointer",
                 fontFamily: "inherit",
-                fontSize: 12.5,
-                fontWeight: on ? 900 : 600,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
                 color: on ? "var(--fg)" : "var(--muted-fg)",
                 whiteSpace: "nowrap",
+                transition: "color 150ms var(--ease-out)",
               }}
             >
-              <Icon name={t.icon} size={14} color={on ? "var(--primary)" : "var(--muted-fg)"} />
               {t.label}
             </button>
           );
@@ -436,7 +454,7 @@ export function QuedadaManagePanel({
         <>
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} onTogglePaid={togglePaid} />}
-          {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} />}
+          {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
           {activeTab === "config" && data.isCreator && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
               <CategoriesSection data={data} onChanged={afterMutation} />
@@ -650,9 +668,19 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 }
 
 // ── Tab: Pagos (estado de pago + datos bancarios) ────────────────────────────
-function PagosTab({ data, onTogglePaid }: { data: ManageData; onTogglePaid: (userId: string) => void }) {
+function PagosTab({
+  data,
+  onTogglePaid,
+  onSetAllPaid,
+}: {
+  data: ManageData;
+  onTogglePaid: (userId: string) => void;
+  onSetAllPaid: (paid: boolean) => void;
+}) {
   const acct = data.quedada.payment_account;
   const joined = data.participants.filter((p) => p.status === "joined");
+  const paidN = joined.filter((p) => p.paid).length;
+  const allPaid = joined.length > 0 && paidN === joined.length;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: acct ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
@@ -669,11 +697,20 @@ function PagosTab({ data, onTogglePaid }: { data: ManageData; onTogglePaid: (use
         </Section>
       )}
 
-      <Section icon="users" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${joined.filter((p) => p.paid).length}/${joined.length}`}>
+      <Section icon="users" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${paidN}/${joined.length}`}>
         {joined.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay inscritos.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => onSetAllPaid(!allPaid)}
+              className="btn"
+              style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid var(--border)", marginBottom: 2 }}
+            >
+              <Icon name={allPaid ? "circle-x" : "check-check"} size={12} />
+              {allPaid ? "Quitar todos" : "Marcar todos como pagado"}
+            </button>
             {joined.map((p) => (
               <label
                 key={p.user_id}
@@ -1362,15 +1399,16 @@ function SlotRow({
   };
 
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 10, background: pair ? "#fff" : "var(--muted)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px" }}>
         <div
-          className="font-heading"
+          className="font-heading tabular"
           style={{
             width: 26,
             height: 26,
             borderRadius: 7,
-            background: pair ? "var(--primary)" : "var(--muted)",
+            background: pair ? "var(--primary)" : "transparent",
+            border: pair ? "0" : "1px dashed var(--border)",
             color: pair ? "#fff" : "var(--muted-fg)",
             display: "inline-flex",
             alignItems: "center",
