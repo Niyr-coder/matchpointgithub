@@ -37,6 +37,10 @@ import {
   setQuedadaStatus,
   setQuedadaResults,
   cancelQuedada,
+  generateRoundRobin,
+  addQuedadaMatch,
+  reportQuedadaMatch,
+  deleteQuedadaMatch,
 } from "@/server/actions/quedadas";
 import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
 import {
@@ -133,7 +137,7 @@ const FORMAT_LABEL: Record<string, string> = {
   libre: "Libre",
 };
 
-type TabKey = "resumen" | "parejas" | "pagos" | "resultados" | "config";
+type TabKey = "resumen" | "parejas" | "partidos" | "pagos" | "resultados" | "config";
 
 function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -412,9 +416,11 @@ export function QuedadaManagePanel({
     !!data?.isCreator &&
     !!q &&
     (q.status === "registration_closed" || q.status === "live" || q.status === "finished");
+  const showPartidos = !!data?.isCreator && data.pairs.length > 0;
   const tabs: { k: TabKey; label: string; icon: string }[] = [
     { k: "resumen", label: "Resumen", icon: "layout-dashboard" },
     { k: "parejas", label: "Parejas", icon: "grid-3x3" },
+    ...(showPartidos ? [{ k: "partidos" as TabKey, label: "Partidos", icon: "swords" }] : []),
     { k: "pagos", label: "Pagos", icon: "banknote" },
     ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados", icon: "trophy" }] : []),
     ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar", icon: "settings" }] : []),
@@ -593,6 +599,7 @@ export function QuedadaManagePanel({
         <div key={activeTab} className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} onGoToParejas={() => setTab("parejas")} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
+          {activeTab === "partidos" && <PartidosTab data={data} onChanged={afterMutation} />}
           {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
           {activeTab === "resultados" && <ResultadosTab data={data} onChanged={afterMutation} />}
           {activeTab === "config" && data.isCreator && (
@@ -1057,6 +1064,214 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
         </div>
       </div>
     </Section>
+  );
+}
+
+// ── Tab: Partidos (motor — rondas, puntos, tabla) ────────────────────────────
+function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const cats = data.categories.filter((c) => data.pairs.some((p) => p.category_id === c.id));
+  return (
+    <Section label="Juego" title="Partidos por categoría" sub="Genera los partidos, carga los puntos y mira la tabla.">
+      {cats.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Asigna parejas (pestaña Parejas) para poder generar partidos.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {cats.map((c) => (
+            <div key={c.id} className="mp-rise">
+              <CategoryMatches data={data} category={c} onChanged={onChanged} />
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function CategoryMatches({ data, category, onChanged }: { data: ManageData; category: ManageCategory; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [, startTx] = useTransition();
+  const [showAdd, setShowAdd] = useState(false);
+  const [addA, setAddA] = useState("");
+  const [addB, setAddB] = useState("");
+  const [addRound, setAddRound] = useState("1");
+
+  const partById = new Map(data.participants.map((p) => [p.user_id, p]));
+  const pairs = data.pairs.filter((p) => p.category_id === category.id);
+  const pairLabel = (pairId: string | null): string => {
+    if (!pairId) return "Bye";
+    const p = pairs.find((x) => x.id === pairId);
+    if (!p) return "—";
+    const a = nameOf(partById.get(p.player_a_id)?.profiles ?? null);
+    const b = p.player_b_id ? nameOf(partById.get(p.player_b_id)?.profiles ?? null) : null;
+    return b ? `${a} · ${b}` : a;
+  };
+  const matches = data.matches.filter((m) => m.category_id === category.id);
+  const rounds = Array.from(new Set(matches.map((m) => m.round_no))).sort((a, b) => a - b);
+  const standings = pairs
+    .map((pair) => {
+      let pj = 0;
+      let pts = 0;
+      for (const m of matches) {
+        if (m.status !== "played") continue;
+        if (m.pair_a_id === pair.id) { pj++; pts += m.points_a ?? 0; }
+        else if (m.pair_b_id === pair.id) { pj++; pts += m.points_b ?? 0; }
+      }
+      return { pair, pj, pts };
+    })
+    .sort((a, b) => b.pts - a.pts || b.pj - a.pj);
+
+  const doGenerate = () => {
+    startTx(async () => {
+      const res = await generateRoundRobin({ quedadaId: data.quedada.id, categoryId: category.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo generar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: `${res.data.created} partido${res.data.created === 1 ? "" : "s"} generado${res.data.created === 1 ? "" : "s"}` });
+      await onChanged();
+    });
+  };
+  const doAdd = () => {
+    if (!addA || !addB || addA === addB) {
+      toast({ icon: "alert-triangle", title: "Elige dos parejas distintas" });
+      return;
+    }
+    startTx(async () => {
+      const res = await addQuedadaMatch({ quedadaId: data.quedada.id, categoryId: category.id, roundNo: parseInt(addRound || "1", 10), pairAId: addA, pairBId: addB });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo agregar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Partido agregado" });
+      setShowAdd(false);
+      setAddA("");
+      setAddB("");
+      await onChanged();
+    });
+  };
+
+  const sel: React.CSSProperties = { ...fieldInput, cursor: "pointer", flex: 1 };
+
+  return (
+    <div className="card" style={{ padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", flex: 1, minWidth: 0 }}>{category.name}</span>
+        {matches.length === 0 && (
+          <button type="button" onClick={doGenerate} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+            <Icon name="shuffle" size={12} /> Generar partidos
+          </button>
+        )}
+        <button type="button" onClick={() => setShowAdd((v) => !v)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+          <Icon name="plus" size={12} /> Partido
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="mp-tab-in" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, padding: 10, background: "var(--muted)", borderRadius: 10 }}>
+          <select value={addA} onChange={(e) => setAddA(e.target.value)} style={sel}>
+            <option value="">Pareja A…</option>
+            {pairs.filter((p) => p.id !== addB).map((p) => <option key={p.id} value={p.id}>{pairLabel(p.id)}</option>)}
+          </select>
+          <select value={addB} onChange={(e) => setAddB(e.target.value)} style={sel}>
+            <option value="">Pareja B…</option>
+            {pairs.filter((p) => p.id !== addA).map((p) => <option key={p.id} value={p.id}>{pairLabel(p.id)}</option>)}
+          </select>
+          <input type="number" min={1} max={99} value={addRound} onChange={(e) => setAddRound(e.target.value)} title="Ronda" style={{ ...fieldInput, width: 64 }} />
+          <button type="button" onClick={doAdd} className="btn btn-primary">Agregar</button>
+        </div>
+      )}
+
+      {matches.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin partidos. Genera el round robin o agrega uno a mano.</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {rounds.map((r) => (
+              <div key={r}>
+                <div className="label-mp" style={{ marginBottom: 6 }}>Ronda {r}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {matches.filter((m) => m.round_no === r).map((m) => (
+                    <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="label-mp" style={{ marginBottom: 6 }}>Tabla de posiciones</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {standings.map((s, i) => (
+                <div key={s.pair.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", borderRadius: 8, background: i === 0 ? "var(--color-mp-primary-light)" : "var(--muted)", fontSize: 12.5 }}>
+                  <span className="font-heading tabular" style={{ width: 20, fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pair.id)}</span>
+                  <span style={{ color: "var(--muted-fg)", fontSize: 11 }}>{s.pj} PJ</span>
+                  <span className="tabular" style={{ fontWeight: 900, minWidth: 40, textAlign: "right" }}>{s.pts} pts</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; labelA: string; labelB: string; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [, startTx] = useTransition();
+  const [a, setA] = useState(match.points_a != null ? String(match.points_a) : "");
+  const [b, setB] = useState(match.points_b != null ? String(match.points_b) : "");
+  const played = match.status === "played";
+
+  const report = () => {
+    const pa = parseInt(a, 10);
+    const pb = parseInt(b, 10);
+    if (!Number.isFinite(pa) || !Number.isFinite(pb)) {
+      toast({ icon: "alert-triangle", title: "Pon los puntos de ambos lados" });
+      return;
+    }
+    startTx(async () => {
+      const res = await reportQuedadaMatch({ matchId: match.id, pointsA: pa, pointsB: pb });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Resultado guardado" });
+      await onChanged();
+    });
+  };
+  const remove = async () => {
+    const ok = await confirm({ title: "Quitar partido", body: "¿Quitar este partido?", confirmLabel: "Quitar", cancelLabel: "Cancelar", destructive: true });
+    if (!ok) return;
+    startTx(async () => {
+      const res = await deleteQuedadaMatch({ matchId: match.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo quitar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Partido quitado" });
+      await onChanged();
+    });
+  };
+
+  const pInput: React.CSSProperties = { width: 42, textAlign: "center", padding: "6px 4px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", background: "#fff", color: "var(--fg)" };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border)", background: played ? "var(--success-bg)" : "#fff", flexWrap: "wrap" }}>
+      <span style={{ flex: 1, minWidth: 80, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{labelA}</span>
+      <input value={a} onChange={(e) => setA(e.target.value)} type="number" min={0} placeholder="–" style={pInput} aria-label="Puntos A" />
+      <span style={{ color: "var(--muted-fg)", fontWeight: 800 }}>-</span>
+      <input value={b} onChange={(e) => setB(e.target.value)} type="number" min={0} placeholder="–" style={pInput} aria-label="Puntos B" />
+      <span style={{ flex: 1, minWidth: 80, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labelB}</span>
+      <button type="button" onClick={report} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 10px" }}>
+        <Icon name="check" size={12} /> {played ? "Actualizar" : "Guardar"}
+      </button>
+      <button type="button" onClick={remove} aria-label="Quitar partido" style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}>
+        <Icon name="x" size={13} color="var(--muted-fg)" />
+      </button>
+    </div>
   );
 }
 
