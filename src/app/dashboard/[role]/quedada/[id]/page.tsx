@@ -12,7 +12,7 @@ export default async function QuedadaManagePage({
 }) {
   const { id } = await params;
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", width: "100%" }}>
+    <div style={{ width: "100%" }}>
       <QuedadaManagePanel quedadaId={id} variant="page" />
     </div>
   );

@@ -229,7 +229,7 @@ export function QuedadaManagePanel({
     <div
       style={{
         padding: "20px 22px 18px",
-        background: "linear-gradient(135deg,#0a0a0a 0%,#064e3b 72%,#10b981 100%)",
+        background: "linear-gradient(135deg,var(--fg) 0%,#064e3b 72%,#10b981 100%)",
         color: "#fff",
         position: "relative",
         flexShrink: 0,
@@ -318,7 +318,7 @@ export function QuedadaManagePanel({
                 fontFamily: "inherit",
                 fontSize: 12.5,
                 fontWeight: on ? 900 : 600,
-                color: on ? "#0a0a0a" : "var(--muted-fg)",
+                color: on ? "var(--fg)" : "var(--muted-fg)",
                 whiteSpace: "nowrap",
               }}
             >
@@ -349,7 +349,7 @@ export function QuedadaManagePanel({
         </div>
       )}
       {!loading && data && !data.canManage && (
-        <div className="card" style={{ padding: 18, background: "#fafafa", color: "var(--muted-fg)", fontSize: 13 }}>
+        <div className="card" style={{ padding: 18, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 13 }}>
           No tienes permiso para gestionar esta quedada.
         </div>
       )}
@@ -360,12 +360,12 @@ export function QuedadaManagePanel({
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
           {activeTab === "pagos" && <PagosTab data={data} onChanged={afterMutation} />}
           {activeTab === "config" && data.isCreator && (
-            <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
               <CategoriesSection data={data} onChanged={afterMutation} />
               <LogisticsSection data={data} onSaved={afterMutation} />
               <BankPrizesSection data={data} onSaved={afterMutation} />
               <CohostsSection data={data} onChanged={afterMutation} />
-            </>
+            </div>
           )}
         </>
       )}
@@ -517,7 +517,7 @@ const fieldInput: React.CSSProperties = {
   fontFamily: "inherit",
   outline: "none",
   background: "#fff",
-  color: "#0a0a0a",
+  color: "var(--fg)",
 };
 
 // ── Tab: Resumen (ver + compartir) ───────────────────────────────────────────
@@ -541,28 +541,30 @@ function ResumenTab({ data, toast }: { data: ManageData; toast: ReturnType<typeo
           <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.description}</p>
         )}
         {q.perks_text && (
-          <div style={{ fontSize: 12, color: "#065f46", background: "#ecfdf5", borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6, alignItems: "flex-start" }}>
+          <div style={{ fontSize: 12, color: "var(--color-mp-primary-active)", background: "var(--color-mp-primary-light)", borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6, alignItems: "flex-start" }}>
             <Icon name="sparkles" size={12} color="#10b981" />
             <span>{q.perks_text}</span>
           </div>
         )}
       </div>
 
-      <InviteLinkSection inviteCode={q.invite_code} toast={toast} />
+      <div style={{ display: "grid", gridTemplateColumns: q.prizes && q.prizes.length > 0 ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
+        <InviteLinkSection inviteCode={q.invite_code} toast={toast} />
 
-      {q.prizes && q.prizes.length > 0 && (
-        <Section icon="award" title="Premios">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {q.prizes.map((p, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: "#fafafa", border: "1px solid var(--border)" }}>
-                <span style={{ fontSize: 11, fontWeight: 900, color: "var(--primary)", minWidth: 44 }}>{p.place}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{p.prize}</span>
-                {p.valueCents != null && <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>{money(p.valueCents)}</span>}
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
+        {q.prizes && q.prizes.length > 0 && (
+          <Section icon="award" title="Premios">
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {q.prizes.map((p, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "var(--primary)", minWidth: 44 }}>{p.place}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{p.prize}</span>
+                  {p.valueCents != null && <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>{money(p.valueCents)}</span>}
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+      </div>
     </>
   );
 }
@@ -601,7 +603,7 @@ function PagosTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
   };
 
   return (
-    <>
+    <div style={{ display: "grid", gridTemplateColumns: acct ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
       {acct && (
         <Section icon="banknote" title="Datos del organizador" sub="Lo que ven los inscritos para transferir.">
           <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
@@ -623,17 +625,17 @@ function PagosTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
             {joined.map((p) => (
               <label
                 key={p.user_id}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "#ecfdf5" : "#fff", cursor: pending ? "default" : "pointer" }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "var(--color-mp-primary-light)" : "#fff", cursor: pending ? "default" : "pointer" }}
               >
                 <input type="checkbox" checked={p.paid} disabled={pending} onChange={() => togglePaid(p.user_id, p.paid)} style={{ accentColor: "var(--primary)", cursor: pending ? "default" : "pointer" }} />
                 <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.profiles)}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "#065f46" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{p.paid ? "Pagado ✅" : "Pendiente"}</span>
               </label>
             ))}
           </div>
         )}
       </Section>
-    </>
+    </div>
   );
 }
 
@@ -673,13 +675,13 @@ function InviteLinkSection({
               padding: "9px 12px",
               border: "1px solid var(--border)",
               borderRadius: 8,
-              background: "#fafafa",
+              background: "var(--muted)",
               fontSize: 12.5,
               fontWeight: 700,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              color: "#0a0a0a",
+              color: "var(--fg)",
             }}
           >
             {link}
@@ -753,7 +755,7 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
         className="card"
         style={{
           padding: 14,
-          background: "#ecfdf5",
+          background: "var(--color-mp-primary-light)",
           border: "1px solid var(--primary)",
           display: "flex",
           flexDirection: "column",
@@ -761,20 +763,20 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
-          <span style={{ color: "#065f46", fontWeight: 700 }}>Costo total estimado</span>
-          <span className="font-heading" style={{ fontWeight: 900, color: "#065f46" }}>
+          <span style={{ color: "var(--color-mp-primary-active)", fontWeight: 700 }}>Costo total estimado</span>
+          <span className="font-heading" style={{ fontWeight: 900, color: "var(--color-mp-primary-active)" }}>
             {totalCents != null ? money(totalCents) : "—"}
           </span>
         </div>
         {totalCents != null && (
-          <div style={{ fontSize: 11, color: "#065f46" }}>
+          <div style={{ fontSize: 11, color: "var(--color-mp-primary-active)" }}>
             {courtsN} cancha(s) × {hoursN} h × {money(priceCents!)} /hora
           </div>
         )}
         {perPlayerCents != null && (
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingTop: 6, borderTop: "1px dashed rgba(6,95,70,0.3)" }}>
-            <span style={{ color: "#065f46" }}>Reparto sugerido · {playerCount} jugador(es)</span>
-            <span style={{ fontWeight: 800, color: "#065f46" }}>{money(perPlayerCents)} c/u</span>
+            <span style={{ color: "var(--color-mp-primary-active)" }}>Reparto sugerido · {playerCount} jugador(es)</span>
+            <span style={{ fontWeight: 800, color: "var(--color-mp-primary-active)" }}>{money(perPlayerCents)} c/u</span>
           </div>
         )}
       </div>
@@ -1121,14 +1123,14 @@ function CategoryForm({
   };
 
   return (
-    <div className="card" style={{ padding: 14, background: "#fafafa", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="card" style={{ padding: 14, background: "var(--muted)", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Nombre">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Suma 6.0 / Open Mixto" maxLength={60} style={fieldInput} />
         </Field>
         <div style={{ gridColumn: "1 / -1" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: noLevel ? "var(--muted-fg)" : "#0a0a0a" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: noLevel ? "var(--muted-fg)" : "var(--fg)" }}>
               Nivel (Suma){noLevel ? "" : <span style={{ color: "var(--primary)", marginLeft: 6 }}>{suma.toFixed(1)}</span>}
             </span>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted-fg)", cursor: "pointer" }}>
@@ -1175,7 +1177,11 @@ function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => 
           Crea al menos una categoría para poder asignar parejas.
         </div>
       ) : (
-        data.categories.map((c) => <CategorySlots key={c.id} data={data} category={c} onChanged={onChanged} />)
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12, alignItems: "start" }}>
+          {data.categories.map((c) => (
+            <CategorySlots key={c.id} data={data} category={c} onChanged={onChanged} />
+          ))}
+        </div>
       )}
     </Section>
   );
@@ -1216,7 +1222,7 @@ function CategorySlots({
             </span>
           </div>
         </div>
-        <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: filled > 0 ? "#ecfdf5" : "var(--muted)", color: filled > 0 ? "#065f46" : "var(--muted-fg)", flexShrink: 0 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: filled > 0 ? "var(--color-mp-primary-light)" : "var(--muted)", color: filled > 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)", flexShrink: 0 }}>
           {filled}/{slotCount || "?"}
         </span>
         <Icon name={open ? "chevron-up" : "chevron-down"} size={16} color="var(--muted-fg)" />
@@ -1474,7 +1480,7 @@ function AssignPairForm({
   };
 
   return (
-    <div style={{ padding: "0 11px 12px", display: "flex", flexDirection: "column", gap: 10, background: "#fafafa", borderTop: "1px solid var(--border)" }}>
+    <div style={{ padding: "0 11px 12px", display: "flex", flexDirection: "column", gap: 10, background: "var(--muted)", borderTop: "1px solid var(--border)" }}>
       <div style={{ paddingTop: 10 }}>
         <PlayerPicker label={isDoubles ? "Jugador A" : "Jugador"} max={1} selected={a} onChange={setA} excludeIds={b[0] ? [b[0].id] : []} />
       </div>
