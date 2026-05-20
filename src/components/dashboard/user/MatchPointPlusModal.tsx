@@ -67,7 +67,6 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
 
   return (
     <div
-      onClick={onCancel}
       style={{
         position: "fixed",
         inset: 0,

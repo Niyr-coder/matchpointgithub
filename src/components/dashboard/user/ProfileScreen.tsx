@@ -63,7 +63,7 @@ export async function loadProfileFor(
     supabase
       .from("profiles")
       .select(
-        "display_name,username,city,bio,avatar_url,created_at,accent_color,banner_preset,card_style" as never,
+        "display_name,username,city,bio,avatar_url,created_at,accent_color,banner_preset,card_style",
       )
       .eq("id", userId)
       .maybeSingle(),
@@ -231,7 +231,7 @@ export async function loadProfileFor(
     getPlanForUser(supabase, userId),
     supabase
       .from("profile_cosmetic_grants")
-      .select("bundle_key" as never)
+      .select("bundle_key")
       .eq("user_id", userId),
   ]);
   const isPremium = targetPlan.tier === "premium";

@@ -1125,7 +1125,6 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 
   return (
     <div
-      onClick={onClose}
       className="mp-modal-overlay"
       style={{
         position: "fixed",

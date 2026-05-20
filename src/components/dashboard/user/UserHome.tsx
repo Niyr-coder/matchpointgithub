@@ -168,14 +168,14 @@ async function loadData(): Promise<UserHomeData> {
   // (badges/player_badges agregadas en mig 108).
   const [{ data: badgeCatalogRaw }, { data: myUnlocksRaw }] = await Promise.all([
     supabase
-      .from("badges" as never)
-      .select("kind,label,icon,sort_order" as never)
+      .from("badges")
+      .select("kind,label,icon,sort_order")
       .eq("active" as never, true as never)
       .order("sort_order" as never, { ascending: true })
       .limit(5),
     supabase
-      .from("player_badges" as never)
-      .select("badge_kind" as never)
+      .from("player_badges")
+      .select("badge_kind")
       .eq("user_id" as never, userId as never),
   ]);
   const catalog = (badgeCatalogRaw ?? []) as unknown as Array<{

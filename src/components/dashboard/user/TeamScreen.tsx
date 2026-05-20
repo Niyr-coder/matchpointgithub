@@ -69,7 +69,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     supabase
       .from("team_members")
       .select(
-        "user_id,role,profiles(display_name,accent_color,card_style,plan_tier,plan_expires_at)" as never,
+        "user_id,role,profiles(display_name,accent_color,card_style,plan_tier,plan_expires_at)",
       )
       .eq("team_id", teamId),
     supabase
@@ -85,7 +85,7 @@ async function loadTeam(): Promise<TeamLite | null> {
   // inference del select principal. Los Database types se regeneran aparte.
   const { data: renameCountRaw } = await supabase
     .from("teams")
-    .select("rename_count" as never)
+    .select("rename_count")
     .eq("id", teamId)
     .maybeSingle();
   const team = teamRaw;
@@ -113,7 +113,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     memberIds.length > 0
       ? await supabase
           .from("profile_cosmetic_grants")
-          .select("user_id,bundle_key" as never)
+          .select("user_id,bundle_key")
           .in("user_id", memberIds)
       : { data: [] };
   const grantsByUser = new Map<string, Set<string>>();

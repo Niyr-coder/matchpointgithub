@@ -61,7 +61,7 @@ async function loadData(activeConvId: string | null) {
     allOtherIds.size > 0
       ? await supabase
           .from("profiles")
-          .select("id,display_name,city,is_system" as never)
+          .select("id,display_name,city,is_system")
           .in("id", [...allOtherIds])
       : { data: [] };
   // Cast por stale types (is_system se agregó en migration 104).

@@ -189,7 +189,6 @@ export function CrearEventoModal() {
 
   return (
     <div
-      onClick={close}
       style={{
         position: "fixed",
         inset: 0,

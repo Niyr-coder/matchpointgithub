@@ -60,7 +60,7 @@ export async function setProfileCustomization(
     // Cargar grants pagos del user (para presets que viven en bundles).
     const { data: grantRows, error: grantErr } = await supabase
       .from("profile_cosmetic_grants")
-      .select("bundle_key" as never)
+      .select("bundle_key")
       .eq("user_id", user.id);
     if (grantErr) throw new MpError("PROFILE.READ_FAILED", grantErr.message, 500);
     const myGrants = new Set(

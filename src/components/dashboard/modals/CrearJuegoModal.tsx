@@ -70,7 +70,6 @@ export function CrearJuegoModal() {
 
   return (
     <div
-      onClick={close}
       style={{
         position: "fixed",
         inset: 0,

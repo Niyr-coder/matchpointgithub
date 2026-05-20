@@ -91,7 +91,7 @@ async function loadData() {
     idsToFetch.length > 0
       ? await supabase
           .from("profile_cosmetic_grants")
-          .select("user_id,bundle_key" as never)
+          .select("user_id,bundle_key")
           .in("user_id", idsToFetch)
       : { data: [] };
 
@@ -158,7 +158,7 @@ async function loadData() {
         cardStyleCss: customization.cardStyleCss,
       };
     })
-    .filter((f): f is FriendLite => f != null);
+    .filter((f): f is NonNullable<typeof f> => f != null);
 
   const requestsList: RequestLite[] = (requests ?? [])
     .map((r) => {
@@ -179,7 +179,7 @@ async function loadData() {
         cardStyleCss: customization.cardStyleCss,
       };
     })
-    .filter((r): r is RequestLite => r != null);
+    .filter((r): r is NonNullable<typeof r> => r != null);
 
   // Sugerencias: profiles en misma city que no estén ya en friends/requests.
   let suggestions: FriendLite[] = [];
@@ -212,7 +212,7 @@ async function loadData() {
       candidateIds.length > 0
         ? await supabase
             .from("profile_cosmetic_grants")
-            .select("user_id,bundle_key" as never)
+            .select("user_id,bundle_key")
             .in("user_id", candidateIds)
         : { data: [] };
     for (const g of (candGrants ?? []) as Array<{ user_id: string; bundle_key: string }>) {

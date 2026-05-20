@@ -32,7 +32,7 @@ export default async function PublicPlayerProfilePage({
   const supabase = await getServerClient();
   const { data: meta } = await supabase
     .from("profiles")
-    .select("id,display_name,username,bio,is_system" as never)
+    .select("id,display_name,username,bio,is_system")
     .ilike("username", username)
     .maybeSingle();
   const profile = meta as {

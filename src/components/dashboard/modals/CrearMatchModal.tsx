@@ -168,7 +168,6 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
 
   return (
     <div
-      onClick={close}
       style={{
         position: "fixed",
         inset: 0,

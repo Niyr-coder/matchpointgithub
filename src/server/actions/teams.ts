@@ -566,7 +566,7 @@ export async function updateTeam(input: unknown): Promise<ActionResult<Team>> {
     // selector queda tipado estrechamente vía `as`.
     const { data: existingRaw } = await supabase
       .from("teams")
-      .select("captain_id,name,rename_count" as never)
+      .select("captain_id,name,rename_count")
       .eq("id", teamId)
       .single();
     const existing = existingRaw as

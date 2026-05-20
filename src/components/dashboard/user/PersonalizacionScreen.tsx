@@ -32,16 +32,16 @@ export async function PersonalizacionScreen() {
     getPlanForUser(supabase, userId),
     supabase
       .from("profiles")
-      .select("accent_color,banner_preset,card_style" as never)
+      .select("accent_color,banner_preset,card_style")
       .eq("id", userId)
       .maybeSingle(),
     supabase
       .from("profile_cosmetic_grants")
-      .select("bundle_key" as never)
+      .select("bundle_key")
       .eq("user_id", userId),
     supabase
       .from("cosmetic_bundles")
-      .select("key,label,description,price_cents,active,sort_order" as never)
+      .select("key,label,description,price_cents,active,sort_order")
       .eq("active", true)
       .order("sort_order", { ascending: true }),
   ]);

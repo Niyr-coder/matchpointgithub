@@ -172,7 +172,6 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
 
   return (
     <div
-      onClick={close}
       style={{
         position: "fixed",
         inset: 0,
