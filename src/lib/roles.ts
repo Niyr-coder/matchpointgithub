@@ -51,9 +51,9 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "home", label: "Inicio", icon: "home" },
           { k: "clubes", label: "Clubes", icon: "building-2" },
+          { k: "eventos", label: "Eventos", icon: "trophy" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
           { k: "busco-partido", label: "Busco partido", icon: "swords" },
-          { k: "eventos", label: "Eventos", icon: "trophy" },
         ],
       },
       {
@@ -61,7 +61,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "chat", label: "Mensajes", icon: "message-square" },
           { k: "amigos", label: "Amigos", icon: "users" },
-          { k: "shop", label: "Shop", icon: "shopping-bag" },
+          { k: "team", label: "Mi Team", icon: "users-round" },
         ],
       },
       {
@@ -72,11 +72,14 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         ],
       },
       {
+        h: "Tienda",
+        items: [{ k: "shop", label: "Shop", icon: "shopping-bag" }],
+      },
+      {
         h: "Mi cuenta",
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
           { k: "personalizar", label: "Personalizar", icon: "palette" },
-          { k: "team", label: "Mi Team", icon: "users-round" },
           { k: "solicitar-club", label: "Solicitar Club", icon: "building" },
         ],
       },
@@ -102,27 +105,27 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         ],
       },
       {
-        h: "Operación",
+        h: "Monetización",
         items: [
           { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
           { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
           { k: "admin-cosmetics", label: "Bundles cosméticos", icon: "palette" },
-          { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
-          { k: "admin-support", label: "Soporte", icon: "life-buoy" },
-          { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
         ],
       },
       {
-        h: "Control",
+        h: "Operación",
         items: [
-          { k: "admin-roles", label: "Permisos & Roles", icon: "shield" },
-          { k: "admin-flags", label: "Feature flags", icon: "flag" },
+          { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
+          { k: "admin-support", label: "Soporte", icon: "life-buoy" },
+          { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
           { k: "admin-broadcast", label: "Comunicaciones", icon: "megaphone" },
         ],
       },
       {
-        h: "Análisis",
+        h: "Control & datos",
         items: [
+          { k: "admin-roles", label: "Permisos & Roles", icon: "shield" },
+          { k: "admin-flags", label: "Feature flags", icon: "flag" },
           { k: "admin-metrics", label: "Métricas", icon: "bar-chart-3" },
           { k: "admin-audit", label: "Audit log", icon: "history" },
         ],
@@ -156,9 +159,14 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Negocio",
         items: [
           { k: "club-finanzas", label: "Finanzas", icon: "wallet" },
+          { k: "club-marketing", label: "Marketing", icon: "megaphone" },
+        ],
+      },
+      {
+        h: "Equipo & clientes",
+        items: [
           { k: "club-clientes", label: "Clientes", icon: "users" },
           { k: "club-staff", label: "Personal", icon: "user-cog" },
-          { k: "club-marketing", label: "Marketing", icon: "megaphone" },
         ],
       },
       {
@@ -252,14 +260,12 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "c-clases", label: "Mis clases", icon: "graduation-cap" },
           { k: "c-alumnos", label: "Alumnos", icon: "users" },
           { k: "c-calendar", label: "Calendario", icon: "calendar" },
+          { k: "c-recursos", label: "Recursos", icon: "book-open" },
         ],
       },
       {
         h: "Negocio",
-        items: [
-          { k: "c-pagos", label: "Pagos", icon: "wallet" },
-          { k: "c-recursos", label: "Recursos", icon: "book-open" },
-        ],
+        items: [{ k: "c-pagos", label: "Pagos", icon: "wallet" }],
       },
       {
         h: "Cuenta",
