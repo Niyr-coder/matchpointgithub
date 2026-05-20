@@ -354,37 +354,67 @@ function Section({
   title,
   sub,
   children,
+  collapsible = false,
+  defaultOpen = true,
+  badge,
 }: {
   icon: string;
   title: string;
   sub?: string;
   children: React.ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+  badge?: string;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = !collapsible || open;
+
+  const head = (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          background: "linear-gradient(135deg,#10b981,#047857)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon name={icon} size={14} color="#fff" />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="font-heading" style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.015em", display: "flex", alignItems: "center", gap: 8 }}>
+          {title}
+          {badge != null && (
+            <span style={{ fontSize: 10, fontWeight: 900, padding: "1px 7px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)" }}>{badge}</span>
+          )}
+        </div>
+        {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>{sub}</div>}
+      </div>
+      {collapsible && (
+        <Icon name={open ? "chevron-up" : "chevron-down"} size={18} color="var(--muted-fg)" />
+      )}
+    </div>
+  );
+
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 9,
-            background: "linear-gradient(135deg,#10b981,#047857)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
         >
-          <Icon name={icon} size={14} color="#fff" />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div className="font-heading" style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.015em" }}>
-            {title}
-          </div>
-          {sub && <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>{sub}</div>}
-        </div>
-      </div>
-      {children}
+          {head}
+        </button>
+      ) : (
+        head
+      )}
+      {expanded && children}
     </section>
   );
 }
@@ -932,8 +962,16 @@ function CategoryForm({
 
 // ── 5. Slots / Parejas por categoría ─────────────────────────────────────────
 function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const filled = data.pairs.length;
   return (
-    <Section icon="grid-3x3" title="Parejas y slots" sub="Asigna parejas a cada slot y marca quién pagó.">
+    <Section
+      icon="grid-3x3"
+      title="Parejas y slots"
+      sub="Asigna parejas a cada slot y marca quién pagó."
+      collapsible
+      defaultOpen={data.categories.length > 0}
+      badge={data.categories.length > 0 ? `${filled} pareja${filled === 1 ? "" : "s"}` : undefined}
+    >
       {data.categories.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
           Crea al menos una categoría para poder asignar parejas.
