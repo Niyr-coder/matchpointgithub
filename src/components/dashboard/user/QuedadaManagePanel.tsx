@@ -15,8 +15,9 @@
 // lectura devuelve `unknown`, así que tipamos el resultado localmente.
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -243,6 +244,26 @@ export function QuedadaManagePanel({
     await reload();
     router.refresh();
   }, [reload, router]);
+
+  // Realtime: si otro (creador / co-host) asigna parejas o marca pagos, el panel
+  // se refetchea solo. Datos son client-side (getQuedadaManageData) → usamos
+  // onChange + reload (no router.refresh), con debounce para ráfagas.
+  const rtTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtimeRefresh(
+    [
+      { table: "quedada_pairs", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_participants", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_categories", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedadas", filter: `id=eq.${quedadaId}` },
+    ],
+    {
+      enabled: !!data?.canManage,
+      onChange: () => {
+        if (rtTimer.current) clearTimeout(rtTimer.current);
+        rtTimer.current = setTimeout(() => void reload(), 400);
+      },
+    },
+  );
 
   // Toggle de pago OPTIMISTA: marca al instante en el estado local y guarda en
   // segundo plano (sin reload ni router.refresh). Solo revierte si falla. Esto

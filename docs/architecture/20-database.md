@@ -2427,6 +2427,13 @@ disponibles y llena los cupos vacíos (2/cupo en dobles, 1 en singles), insertan
 `quedada_pairs`. RLS = `mp_quedada_can_manage` (policies existentes), sin schema
 nuevo.
 
+**Realtime en gestión:** las 4 tablas (`quedadas`, `quedada_participants`,
+`quedada_categories`, `quedada_pairs`) están en `supabase_realtime`. El panel
+(`QuedadaManagePanel`) usa `useRealtimeRefresh` en modo `onChange` (datos
+client-side vía `getQuedadaManageData` → refetchea con `reload()`, no
+`router.refresh`), filtrando por `quedada_id`/`id`, debounce 400ms. Creador +
+co-hosts ven en vivo parejas/cupos/pagos que cambia el otro.
+
 **Datos de organización estructurados (mig 134):** `quedadas` +`payment_account`
 jsonb `{bank, accountType: ahorros|corriente, accountNumber, holderName,
 holderId?, note?}` + `prizes` jsonb `[{place, prize, valueCents?}]`. Reemplazan
