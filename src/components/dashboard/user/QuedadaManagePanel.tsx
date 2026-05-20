@@ -1455,44 +1455,40 @@ function SlotCell({
   onAssign: () => void;
   onRemove?: () => void;
 }) {
-  return (
-    <div
+  const chip = (
+    <span
+      className="font-heading tabular"
       style={{
-        display: "flex",
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        flexShrink: 0,
+        fontSize: 11.5,
+        fontWeight: 900,
+        display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        padding: "8px 10px",
-        borderRadius: 10,
-        border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-        background: filled ? "#fff" : "var(--muted)",
-        transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out)",
+        justifyContent: "center",
+        background: filled ? "var(--primary)" : "transparent",
+        border: filled ? "0" : "1px dashed var(--border)",
+        color: filled ? "#fff" : "var(--muted-fg)",
       }}
     >
-      <span
-        className="font-heading tabular"
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 6,
-          flexShrink: 0,
-          fontSize: 11.5,
-          fontWeight: 900,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: filled ? "var(--primary)" : "transparent",
-          border: filled ? "0" : "1px dashed var(--border)",
-          color: filled ? "#fff" : "var(--muted-fg)",
-        }}
-      >
-        {slotNo}
-      </span>
-      {filled ? (
-        <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {nameA}
-          {nameB ? <span style={{ color: "var(--muted-fg)" }}> · {nameB}</span> : null}
-        </div>
-      ) : (
+      {slotNo}
+    </span>
+  );
+
+  const cellStyle: React.CSSProperties = {
+    borderRadius: 10,
+    border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+    background: filled ? "#fff" : "var(--muted)",
+    transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out)",
+    padding: "9px 11px",
+  };
+
+  if (!filled) {
+    return (
+      <div style={{ ...cellStyle, display: "flex", alignItems: "center", gap: 8 }}>
+        {chip}
         <button
           type="button"
           onClick={onAssign}
@@ -1500,16 +1496,34 @@ function SlotCell({
         >
           <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
         </button>
-      )}
-      {filled && onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Quitar pareja"
-          style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
-        >
-          <Icon name="x" size={13} color="var(--muted-fg)" />
-        </button>
+      </div>
+    );
+  }
+
+  const nameStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg)" };
+
+  // Doble piso: Jugador A arriba, separador horizontal, Jugador B abajo.
+  return (
+    <div style={cellStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {chip}
+        <span style={{ ...nameStyle, flex: 1 }}>{nameA}</span>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Quitar pareja"
+            style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
+          >
+            <Icon name="x" size={13} color="var(--muted-fg)" />
+          </button>
+        )}
+      </div>
+      {nameB != null && (
+        <>
+          <div style={{ borderTop: "1px solid var(--border)", margin: "7px 0" }} />
+          <span style={{ ...nameStyle, display: "block", paddingLeft: 32 }}>{nameB}</span>
+        </>
       )}
     </div>
   );
