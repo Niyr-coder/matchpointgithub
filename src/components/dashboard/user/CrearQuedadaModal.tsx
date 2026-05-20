@@ -1,9 +1,10 @@
-// Modal de creación de una Quedada (juego social). Sigue el patrón de overlay
-// de EditBioModal/RetarModal: overlay fixed rgba(10,10,10,.7) + card centrada,
-// scale-in, cerrar con click afuera o Escape. Guarda con createQuedada.
+// Wizard de creación de una Quedada (juego social). Overlay tipo EditBioModal/
+// RetarModal. 4 pasos: Básicos → Cuota+Logística → Bancarios+Premios →
+// Categorías. Guarda todo con createQuedada (incl. logística, bancarios, premios
+// y categorías iniciales). Los slots/parejas/pagos se llenan luego en gestión.
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
@@ -12,6 +13,8 @@ import { createQuedada } from "@/server/actions/quedadas";
 type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
 type MatchMode = "singles" | "doubles";
 type Visibility = "open" | "private";
+
+type CatDraft = { name: string; level: string; hour: string; court: string; slots: string };
 
 const FORMATS: { k: Format; label: string; sub: string }[] = [
   { k: "americano", label: "Americano", sub: "Rotación de parejas" },
@@ -22,19 +25,22 @@ const FORMATS: { k: Format; label: string; sub: string }[] = [
   { k: "libre", label: "Libre", sub: "Sin formato fijo" },
 ];
 
-// Convierte el valor de un <input type="datetime-local"> (hora local, sin zona)
-// a ISO con offset, que es lo que pide el schema (.datetime({ offset: true })).
+const STEPS = ["Básicos", "Cuota y canchas", "Pago y premios", "Categorías"];
+
 function localToIso(local: string): string {
-  // `local` viene como "2026-05-22T19:30" → new Date lo interpreta en hora local.
-  const d = new Date(local);
-  return d.toISOString();
+  return new Date(local).toISOString();
+}
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
+  const [step, setStep] = useState(0);
 
+  // Paso 1
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [format, setFormat] = useState<Format>("americano");
@@ -43,10 +49,18 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
   const [startsLocal, setStartsLocal] = useState("");
   const [locationText, setLocationText] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
+  // Paso 2
   const [feeUsd, setFeeUsd] = useState("0");
+  const [courts, setCourts] = useState("");
+  const [hours, setHours] = useState("");
+  const [courtPriceUsd, setCourtPriceUsd] = useState("");
+  // Paso 3
+  const [paymentInfo, setPaymentInfo] = useState("");
+  const [prizes, setPrizes] = useState("");
   const [perks, setPerks] = useState("");
+  // Paso 4
+  const [categories, setCategories] = useState<CatDraft[]>([]);
 
-  // Cerrar con Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -55,43 +69,94 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const courtCost = useMemo(() => {
+    const c = parseFloat(courts || "0");
+    const h = parseFloat(hours || "0");
+    const p = parseFloat(courtPriceUsd || "0");
+    if (!Number.isFinite(c) || !Number.isFinite(h) || !Number.isFinite(p)) return 0;
+    return Math.round(c * h * p * 100);
+  }, [courts, hours, courtPriceUsd]);
+
+  const splitHint = useMemo(() => {
+    const players = parseInt(maxPlayers || "0", 10);
+    if (courtCost <= 0 || !players || players < 1) return null;
+    return Math.round(courtCost / players);
+  }, [courtCost, maxPlayers]);
+
+  function catHourToIso(hour: string): string | undefined {
+    if (!hour) return undefined;
+    const base = startsLocal ? startsLocal.split("T")[0] : new Date().toISOString().slice(0, 10);
+    const d = new Date(`${base}T${hour}`);
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+
+  // Validación para avanzar de paso.
+  const canAdvance = (): boolean => {
+    if (step === 0) {
+      if (title.trim().length < 3) {
+        toast({ icon: "alert-triangle", title: "Ponle un título", sub: "Mínimo 3 caracteres." });
+        return false;
+      }
+      if (!startsLocal || Number.isNaN(Date.parse(localToIso(startsLocal)))) {
+        toast({ icon: "alert-triangle", title: "Elige fecha y hora" });
+        return false;
+      }
+      const maxNum = maxPlayers.trim() ? parseInt(maxPlayers, 10) : null;
+      if (maxNum != null && (Number.isNaN(maxNum) || maxNum < 2)) {
+        toast({ icon: "alert-triangle", title: "Cupo inválido", sub: "Mínimo 2." });
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const next = () => {
+    if (!canAdvance()) return;
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
+  const back = () => setStep((s) => Math.max(0, s - 1));
+
   const save = () => {
     if (pending) return;
-    const t = title.trim();
-    if (t.length < 3) {
-      toast({ icon: "alert-triangle", title: "Ponle un título", sub: "Mínimo 3 caracteres." });
+    if (!canAdvance()) {
+      setStep(0);
       return;
     }
-    if (!startsLocal) {
-      toast({ icon: "alert-triangle", title: "Elige fecha y hora" });
-      return;
-    }
-    const startsAt = localToIso(startsLocal);
-    if (Number.isNaN(Date.parse(startsAt))) {
-      toast({ icon: "alert-triangle", title: "Fecha inválida" });
-      return;
-    }
-
     const feeNum = Math.round(parseFloat(feeUsd || "0") * 100);
     const feeCents = Number.isFinite(feeNum) && feeNum > 0 ? feeNum : 0;
-    const maxNum = maxPlayers.trim() ? parseInt(maxPlayers, 10) : null;
-    if (maxNum != null && (Number.isNaN(maxNum) || maxNum < 2)) {
-      toast({ icon: "alert-triangle", title: "Cupo inválido", sub: "El cupo mínimo es 2." });
-      return;
-    }
+    const maxNum = maxPlayers.trim() ? parseInt(maxPlayers, 10) : undefined;
+    const courtsN = courts.trim() ? parseInt(courts, 10) : undefined;
+    const hoursN = hours.trim() ? parseFloat(hours) : undefined;
+    const priceCents = courtPriceUsd.trim() ? Math.round(parseFloat(courtPriceUsd) * 100) : undefined;
+
+    const cats = categories
+      .filter((c) => c.name.trim())
+      .map((c) => ({
+        name: c.name.trim(),
+        levelLabel: c.level.trim() || undefined,
+        startsAt: catHourToIso(c.hour),
+        courtLabel: c.court.trim() || undefined,
+        maxSlots: c.slots.trim() ? parseInt(c.slots, 10) : undefined,
+      }));
 
     startTransition(async () => {
       const res = await createQuedada({
-        title: t,
+        title: title.trim(),
         description: description.trim() || undefined,
         format,
         matchMode,
         visibility,
-        startsAt,
+        startsAt: localToIso(startsLocal),
         locationText: locationText.trim() || undefined,
-        maxPlayers: maxNum ?? undefined,
+        maxPlayers: maxNum,
         feeCents,
         perks: perks.trim() || undefined,
+        courtsCount: courtsN,
+        hours: hoursN,
+        courtPriceCents: priceCents,
+        paymentInfo: paymentInfo.trim() || undefined,
+        prizesText: prizes.trim() || undefined,
+        categories: cats.length > 0 ? cats : undefined,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo crear", sub: res.error.message });
@@ -102,6 +167,8 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
       router.refresh();
     });
   };
+
+  const isLast = step === STEPS.length - 1;
 
   return (
     <div
@@ -141,15 +208,7 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
         }}
       >
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "18px 22px",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
               style={{
@@ -165,214 +224,188 @@ export function CrearQuedadaModal({ onClose }: { onClose: () => void }) {
             >
               <Icon name="party-popper" size={16} color="#fff" />
             </div>
-            <h2
-              className="font-heading"
-              style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}
-            >
-              Crear quedada
-            </h2>
+            <div>
+              <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}>
+                Crear quedada
+              </h2>
+              <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>
+                Paso {step + 1} de {STEPS.length} · {STEPS[step]}
+              </div>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="btn"
-            style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }}
-            aria-label="Cerrar"
-          >
+          <button onClick={onClose} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }} aria-label="Cerrar">
             <Icon name="x" size={18} />
           </button>
         </div>
 
+        {/* Step bar */}
+        <div style={{ display: "flex", gap: 4, padding: "0 22px 12px" }}>
+          {STEPS.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 4, borderRadius: 9999, background: i <= step ? "var(--primary)" : "var(--border)" }} />
+          ))}
+        </div>
+
         {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <div className="label-mp" style={{ marginBottom: 6 }}>Título</div>
-            <input
-              autoFocus
-              value={title}
-              maxLength={80}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ej. Americano del sábado en Cumbayá"
-              style={inputStyle}
-            />
-          </div>
+        <div style={{ flex: 1, overflow: "auto", padding: 22, paddingTop: 8, display: "flex", flexDirection: "column", gap: 16, borderTop: "1px solid var(--border)" }}>
+          {step === 0 && (
+            <>
+              <Field label="Título">
+                <input autoFocus value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Americano del sábado en Cumbayá" style={inputStyle} />
+              </Field>
+              <Field label="Descripción · opcional">
+                <textarea value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} placeholder="Cuéntale a la gente de qué va…" style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+              </Field>
+              <Field label="Formato">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px,1fr))", gap: 8 }}>
+                  {FORMATS.map((f) => {
+                    const on = format === f.k;
+                    return (
+                      <button key={f.k} type="button" onClick={() => setFormat(f.k)} style={{ padding: 11, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "#ecfdf5" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 900, color: on ? "#065f46" : "#0a0a0a" }}>{f.label}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>{f.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Modo">
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {([{ k: "doubles" as const, l: "Dobles", i: "users" }, { k: "singles" as const, l: "Singles", i: "user" }]).map((o) => {
+                      const on = matchMode === o.k;
+                      return (
+                        <button key={o.k} type="button" onClick={() => setMatchMode(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
+                          <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />{o.l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="Visibilidad">
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {([{ k: "open" as const, l: "Abierta", i: "globe" }, { k: "private" as const, l: "Privada", i: "lock" }]).map((o) => {
+                      const on = visibility === o.k;
+                      return (
+                        <button key={o.k} type="button" onClick={() => setVisibility(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
+                          <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />{o.l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Fecha y hora">
+                  <input type="datetime-local" value={startsLocal} onChange={(e) => setStartsLocal(e.target.value)} style={inputStyle} />
+                </Field>
+                <Field label="Lugar · opcional">
+                  <input value={locationText} maxLength={140} onChange={(e) => setLocationText(e.target.value)} placeholder="Club, cancha o dirección" style={inputStyle} />
+                </Field>
+              </div>
+              <Field label="Cupo de jugadores · opcional">
+                <input type="number" min={2} max={64} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} placeholder="Ej. 16" style={inputStyle} />
+              </Field>
+            </>
+          )}
 
-          <div>
-            <div className="label-mp" style={{ marginBottom: 6 }}>Descripción · opcional</div>
-            <textarea
-              value={description}
-              maxLength={500}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Cuéntale a la gente de qué va la quedada…"
-              style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
-            />
-          </div>
+          {step === 1 && (
+            <>
+              <Field label="Cuota de inscripción · USD">
+                <input type="number" min={0} step="0.5" value={feeUsd} onChange={(e) => setFeeUsd(e.target.value)} placeholder="0" style={inputStyle} />
+                <Hint>0 = gratis. Si cobras cuota, el jugador sube comprobante (transferencia).</Hint>
+              </Field>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Canchas"><input type="number" min={1} max={64} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="Ej. 2" style={inputStyle} /></Field>
+                <Field label="Horas"><input type="number" min={0.5} step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Ej. 3" style={inputStyle} /></Field>
+                <Field label="Precio/hora $"><input type="number" min={0} step="0.5" value={courtPriceUsd} onChange={(e) => setCourtPriceUsd(e.target.value)} placeholder="Ej. 10" style={inputStyle} /></Field>
+              </div>
+              {courtCost > 0 && (
+                <div style={{ padding: 12, borderRadius: 10, background: "#f5f5f4", fontSize: 12.5 }}>
+                  <div style={{ fontWeight: 800 }}>Costo de cancha: {money(courtCost)}</div>
+                  {splitHint != null && (
+                    <div style={{ color: "var(--muted-fg)", marginTop: 3 }}>
+                      ≈ {money(splitHint)} por jugador {visibility === "private" ? "(reparto entre el cupo)" : "(referencia para la cuota)"}.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
-          <div>
-            <div className="label-mp" style={{ marginBottom: 8 }}>Formato</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px,1fr))", gap: 8 }}>
-              {FORMATS.map((f) => {
-                const on = format === f.k;
-                return (
-                  <button
-                    key={f.k}
-                    type="button"
-                    onClick={() => setFormat(f.k)}
-                    style={{
-                      padding: 11,
-                      borderRadius: 10,
-                      border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
-                      background: on ? "#ecfdf5" : "#fff",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ fontSize: 12.5, fontWeight: 900, color: on ? "#065f46" : "#0a0a0a" }}>{f.label}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>{f.sub}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {step === 2 && (
+            <>
+              <Field label="Datos para el pago · opcional">
+                <textarea value={paymentInfo} maxLength={500} onChange={(e) => setPaymentInfo(e.target.value)} placeholder={"Banco Pichincha\nAhorros · 2213691106\nCédula 1312865700\nIvette Ponce M."} style={{ ...inputStyle, minHeight: 90, resize: "vertical", whiteSpace: "pre-wrap" }} />
+                <Hint>Lo verán los inscritos para transferir.</Hint>
+              </Field>
+              <Field label="Premios · opcional">
+                <textarea value={prizes} maxLength={500} onChange={(e) => setPrizes(e.target.value)} placeholder={"🥇 1ro: $20\n🥈 2do: 50% próxima inscripción\n🥉 3ro: media Cañuela"} style={{ ...inputStyle, minHeight: 70, resize: "vertical", whiteSpace: "pre-wrap" }} />
+              </Field>
+              <Field label="Perks · opcional">
+                <textarea value={perks} maxLength={280} onChange={(e) => setPerks(e.target.value)} placeholder="Ej. incluye pelotas, hidratación y snacks" style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} />
+              </Field>
+            </>
+          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 8 }}>Modo</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([
-                  { k: "doubles" as const, l: "Dobles", i: "users" },
-                  { k: "singles" as const, l: "Singles", i: "user" },
-                ]).map((o) => {
-                  const on = matchMode === o.k;
-                  return (
-                    <button
-                      key={o.k}
-                      type="button"
-                      onClick={() => setMatchMode(o.k)}
-                      style={{ ...segBtn, ...(on ? segBtnOn : {}) }}
-                    >
-                      <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />
-                      {o.l}
+          {step === 3 && (
+            <>
+              <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
+                Define las categorías (ej. Suma 6.0 · 7pm, Open Mixto · 8pm). Las parejas y los slots los llenas después en <strong>Gestionar</strong>. Opcional.
+              </div>
+              {categories.map((c, i) => (
+                <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input value={c.name} placeholder="Nombre (ej. Suma 6.0)" style={{ ...inputStyle, flex: 2 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                    <input value={c.level} placeholder="Nivel" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, level: e.target.value } : x)))} />
+                    <button type="button" onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))} className="btn" style={{ background: "#fff", border: "1px solid #fecaca", color: "#dc2626", padding: "0 12px" }} aria-label="Quitar categoría">
+                      <Icon name="trash-2" size={14} />
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 8 }}>Visibilidad</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([
-                  { k: "open" as const, l: "Abierta", i: "globe" },
-                  { k: "private" as const, l: "Privada", i: "lock" },
-                ]).map((o) => {
-                  const on = visibility === o.k;
-                  return (
-                    <button
-                      key={o.k}
-                      type="button"
-                      onClick={() => setVisibility(o.k)}
-                      style={{ ...segBtn, ...(on ? segBtnOn : {}) }}
-                    >
-                      <Icon name={o.i} size={12} color={on ? "#065f46" : "#0a0a0a"} />
-                      {o.l}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 6 }}>Fecha y hora</div>
-              <input
-                type="datetime-local"
-                value={startsLocal}
-                onChange={(e) => setStartsLocal(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 6 }}>Lugar · opcional</div>
-              <input
-                value={locationText}
-                maxLength={140}
-                onChange={(e) => setLocationText(e.target.value)}
-                placeholder="Club, cancha o dirección"
-                style={inputStyle}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 6 }}>Cupo · opcional</div>
-              <input
-                type="number"
-                min={2}
-                max={64}
-                value={maxPlayers}
-                onChange={(e) => setMaxPlayers(e.target.value)}
-                placeholder="Ej. 8"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <div className="label-mp" style={{ marginBottom: 6 }}>Cuota · USD</div>
-              <input
-                type="number"
-                min={0}
-                step="0.5"
-                value={feeUsd}
-                onChange={(e) => setFeeUsd(e.target.value)}
-                placeholder="0"
-                style={inputStyle}
-              />
-              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 5 }}>
-                0 = gratis. Si cobras cuota, el jugador sube comprobante.
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="label-mp" style={{ marginBottom: 6 }}>Perks · opcional</div>
-            <textarea
-              value={perks}
-              maxLength={280}
-              onChange={(e) => setPerks(e.target.value)}
-              placeholder="Ej. incluye pelotas, hidratación y snacks"
-              style={{ ...inputStyle, minHeight: 56, resize: "vertical" }}
-            />
-          </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, hour: e.target.value } : x)))} />
+                    <input value={c.court} placeholder="Cancha" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, court: e.target.value } : x)))} />
+                    <input type="number" min={1} value={c.slots} placeholder="Cupos" style={inputStyle} onChange={(e) => setCategories((arr) => arr.map((x, j) => (j === i ? { ...x, slots: e.target.value } : x)))} />
+                  </div>
+                </div>
+              ))}
+              <button type="button" onClick={() => setCategories((arr) => [...arr, { name: "", level: "", hour: "", court: "", slots: "" }])} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
+                <Icon name="plus" size={13} /> Agregar categoría
+              </button>
+            </>
+          )}
         </div>
 
         {/* Footer */}
-        <div
-          style={{
-            padding: "14px 22px",
-            borderTop: "1px solid var(--border)",
-            background: "#fafafa",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-          }}
-        >
-          <button onClick={onClose} className="btn btn-outline" disabled={pending}>
-            Cancelar
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", background: "#fafafa", display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <button onClick={step === 0 ? onClose : back} className="btn btn-outline" disabled={pending}>
+            {step === 0 ? "Cancelar" : "Atrás"}
           </button>
-          <button
-            onClick={save}
-            className="btn btn-primary"
-            disabled={pending}
-            style={{ opacity: pending ? 0.6 : 1 }}
-          >
-            {!pending && <Icon name="party-popper" size={13} color="#fff" />}
-            {pending ? "Creando…" : "Crear quedada"}
-          </button>
+          {isLast ? (
+            <button onClick={save} className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+              {!pending && <Icon name="party-popper" size={13} color="#fff" />}
+              {pending ? "Creando…" : "Crear quedada"}
+            </button>
+          ) : (
+            <button onClick={next} className="btn btn-primary">
+              Siguiente <Icon name="arrow-right" size={13} color="#fff" />
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="label-mp" style={{ marginBottom: 6 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+function Hint({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 5 }}>{children}</div>;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -386,7 +419,6 @@ const inputStyle: React.CSSProperties = {
   background: "#fff",
   color: "#0a0a0a",
 };
-
 const segBtn: React.CSSProperties = {
   flex: 1,
   display: "inline-flex",
@@ -403,7 +435,6 @@ const segBtn: React.CSSProperties = {
   fontWeight: 800,
   color: "#0a0a0a",
 };
-
 const segBtnOn: React.CSSProperties = {
   border: "2px solid var(--primary)",
   background: "#ecfdf5",

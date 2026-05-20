@@ -29,6 +29,25 @@ export const CreateQuedadaSchema = z
     maxPlayers: z.coerce.number().int().min(2).max(64).optional(),
     feeCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
     perks: z.string().trim().max(280).optional(),
+    // Logística + bancarios + premios (capturados al crear; editables luego en gestión).
+    courtsCount: z.coerce.number().int().min(1).max(64).optional(),
+    hours: z.coerce.number().min(0.5).max(24).optional(),
+    courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).optional(),
+    paymentInfo: z.string().trim().max(500).optional(),
+    prizesText: z.string().trim().max(500).optional(),
+    // Categorías iniciales (los slots/parejas se llenan después en gestión).
+    categories: z
+      .array(
+        z.object({
+          name: z.string().trim().min(1).max(60),
+          levelLabel: z.string().trim().max(40).optional(),
+          startsAt: z.string().datetime({ offset: true }).optional(),
+          courtLabel: z.string().trim().max(40).optional(),
+          maxSlots: z.coerce.number().int().min(1).max(64).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
   })
   .openapi("CreateQuedada");
 

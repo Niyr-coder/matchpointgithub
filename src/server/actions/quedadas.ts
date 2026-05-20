@@ -60,6 +60,11 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
         max_players: d.maxPlayers ?? null,
         fee_cents: d.feeCents,
         perks_text: d.perks ?? null,
+        courts_count: d.courtsCount ?? null,
+        hours: d.hours ?? null,
+        court_price_cents: d.courtPriceCents ?? null,
+        payment_info: d.paymentInfo ?? null,
+        prizes_text: d.prizesText ?? null,
         ranked: false, // v1: siempre casual
       } as never)
       .select("id")
@@ -70,6 +75,21 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
     await supabase
       .from("quedada_participants")
       .insert({ quedada_id: row.id, user_id: userId, status: "joined" } as never);
+
+    // Categorías iniciales (opcional).
+    if (d.categories && d.categories.length > 0) {
+      await supabase.from("quedada_categories").insert(
+        d.categories.map((c, i) => ({
+          quedada_id: row.id,
+          name: c.name,
+          level_label: c.levelLabel ?? null,
+          starts_at: c.startsAt ?? null,
+          court_label: c.courtLabel ?? null,
+          max_slots: c.maxSlots ?? null,
+          sort_order: i,
+        })) as never,
+      );
+    }
 
     return { id: row.id as string };
   });
