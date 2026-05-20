@@ -1,18 +1,11 @@
 "use client";
 
-// Distintivo "Tú": marca la fila/avatar del usuario actual en listings
-// (ranking, descubrir, roster) para que no se confunda buscándose.
-// Uso:
-//   import { SelfChip, selfRingStyle } from "@/components/dashboard/widgets/SelfBadge";
-//   <div style={{ ...avatarStyle, ...(isMe ? selfRingStyle : {}) }} />
+// Distintivo "Tú": marca la fila del usuario actual en listings (ranking,
+// roster) con un chip, para que no se confunda buscándose. Decisión de
+// producto: solo chip, sin anillos/bordes (los contornos no calzaban bien
+// con las cards). Uso:
+//   import { SelfChip } from "@/components/dashboard/widgets/SelfBadge";
 //   {isMe && <SelfChip />}
-import type { CSSProperties } from "react";
-
-// Anillo alrededor del avatar (doble: blanco + primary) para que resalte sobre
-// avatares de cualquier color.
-export const selfRingStyle: CSSProperties = {
-  boxShadow: "0 0 0 2px #fff, 0 0 0 4px var(--primary)",
-};
 
 export function SelfChip({ label = "Tú" }: { label?: string }) {
   return (

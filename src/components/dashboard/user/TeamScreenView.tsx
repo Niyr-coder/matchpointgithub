@@ -2505,7 +2505,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                   style={{
                     background: memberCard?.background ?? "#fafafa",
                     color: memberCard?.color,
-                    boxShadow: isMe ? "inset 0 0 0 1.5px var(--primary)" : "inset 0 0 0 1px var(--border)",
+                    boxShadow: "inset 0 0 0 1px var(--border)",
                   }}
                 >
                   <td style={{ padding: "12px 6px 12px 12px", borderRadius: "12px 0 0 12px" }}>

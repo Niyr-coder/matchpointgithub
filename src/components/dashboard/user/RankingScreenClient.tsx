@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { RatingSparkline } from "../widgets/RatingSparkline";
-import { selfRingStyle } from "../widgets/SelfBadge";
 import type { RankingEntry, RankingSnapshot } from "@/lib/schemas/ranking";
 import type { RankingData } from "./RankingScreen";
 
@@ -408,7 +407,6 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                       : `linear-gradient(135deg, hsl(${(p.rank * 47) % 360}, 55%, 45%), hsl(${(p.rank * 47 + 60) % 360}, 60%, 35%))`,
                     flexShrink: 0,
                     border: p.placeholder ? "1px dashed var(--border)" : "0",
-                    ...(isMe ? selfRingStyle : {}),
                   }}
                 />
                 <div>
