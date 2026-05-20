@@ -161,16 +161,21 @@ function HeaderBtn({
   onClick,
   disabled,
   icon,
-  destructive = false,
-  ghost = false,
+  tone = "neutral",
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   icon: string;
-  destructive?: boolean;
-  ghost?: boolean;
+  tone?: "neutral" | "primary" | "danger";
 }) {
+  // Botones sólidos (sin glass) según su función.
+  const palette =
+    tone === "danger"
+      ? { bg: "#dc2626", fg: "#fff", border: "#dc2626" }
+      : tone === "primary"
+        ? { bg: "var(--primary)", fg: "#fff", border: "var(--primary)" }
+        : { bg: "#fff", fg: "var(--fg)", border: "#fff" };
   return (
     <button
       type="button"
@@ -180,20 +185,21 @@ function HeaderBtn({
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "7px 12px",
+        padding: "8px 14px",
         borderRadius: 9999,
         cursor: disabled ? "default" : "pointer",
         fontFamily: "inherit",
         fontSize: 11.5,
-        fontWeight: 800,
-        border: "1px solid rgba(255,255,255,0.22)",
-        background: destructive ? "rgba(239,68,68,0.2)" : ghost ? "transparent" : "rgba(255,255,255,0.15)",
-        color: "#fff",
+        fontWeight: 900,
+        letterSpacing: "0.02em",
+        border: `1px solid ${palette.border}`,
+        background: palette.bg,
+        color: palette.fg,
         opacity: disabled ? 0.6 : 1,
-        transition: "background 150ms var(--ease-out)",
+        transition: "filter 150ms var(--ease-out), transform 120ms var(--ease-out)",
       }}
     >
-      <Icon name={icon} size={12} color="#fff" />
+      <Icon name={icon} size={12} color={palette.fg} />
       {children}
     </button>
   );
@@ -466,18 +472,18 @@ export function QuedadaManagePanel({
     q && data?.isCreator && q.status !== "finished" && q.status !== "cancelled" ? (
       <>
         {q.status === "registration_open" && (
-          <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock">Cerrar inscripciones</HeaderBtn>
+          <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock" tone="neutral">Cerrar inscripciones</HeaderBtn>
         )}
         {q.status === "registration_closed" && (
           <>
-            <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play">Iniciar</HeaderBtn>
-            <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" ghost>Reabrir</HeaderBtn>
+            <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play" tone="primary">Iniciar</HeaderBtn>
+            <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" tone="neutral">Reabrir</HeaderBtn>
           </>
         )}
         {q.status === "live" && (
-          <HeaderBtn onClick={() => { setSection("juego"); setTab("resultados"); }} disabled={busy} icon="flag">Finalizar</HeaderBtn>
+          <HeaderBtn onClick={() => { setSection("juego"); setTab("resultados"); }} disabled={busy} icon="flag" tone="primary">Finalizar</HeaderBtn>
         )}
-        <HeaderBtn onClick={doCancel} disabled={busy} icon="x" destructive>Cancelar</HeaderBtn>
+        <HeaderBtn onClick={doCancel} disabled={busy} icon="x" tone="danger">Cancelar</HeaderBtn>
       </>
     ) : null;
 
@@ -516,28 +522,29 @@ export function QuedadaManagePanel({
             <div style={{ marginTop: 10 }}><SkBar w={200} h={12} r={6} dark /></div>
           )}
         </div>
-        {/* Derecha: volver + acciones de estado */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-          {backBtn}
-          {headerActions}
-        </div>
+        {/* Arriba a la derecha: solo Volver/Cerrar */}
+        <div style={{ flexShrink: 0 }}>{backBtn}</div>
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        {q ? (
-          <>
-            <StatChip label="Inscritos" value={String(joinedCount)} />
-            <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
-            <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
-            <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
-          </>
-        ) : (
-          [0, 1, 2, 3].map((i) => (
-            <div key={i} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
-              <SkBar w={36} h={18} r={5} dark />
-              <div style={{ marginTop: 6 }}><SkBar w={54} h={8} r={4} dark /></div>
-            </div>
-          ))
-        )}
+      {/* Abajo: stats (izq) + acciones de estado (der, lado a lado) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {q ? (
+            <>
+              <StatChip label="Inscritos" value={String(joinedCount)} />
+              <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
+              <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
+              <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
+            </>
+          ) : (
+            [0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
+                <SkBar w={36} h={18} r={5} dark />
+                <div style={{ marginTop: 6 }}><SkBar w={54} h={8} r={4} dark /></div>
+              </div>
+            ))
+          )}
+        </div>
+        {headerActions && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>{headerActions}</div>}
       </div>
     </div>
   );
