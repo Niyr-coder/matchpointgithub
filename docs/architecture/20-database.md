@@ -1200,9 +1200,14 @@ create table ranking_snapshots (
   sport mp_sport not null,
   rating int not null,
   rank_position int,
-  snapshot_at timestamptz default now() not null
+  snapshot_at timestamptz default now() not null,
+  mode mp_match_mode  -- mig 130: serie por modo (singles vs doubles). Nullable.
 );
 create index idx_ranking_snapshots_user_sport on ranking_snapshots (user_id, sport, snapshot_at desc);
+create index idx_ranking_snapshots_user_sport_mode on ranking_snapshots (user_id, sport, mode, snapshot_at desc);
+-- mode-aware (mig 130): el chart de evolución separa singles/dobles. getUserRankingHistory
+-- acepta `mode`; UserHome/RankingScreen piden por modo. El futuro job de snapshots debe
+-- setear mode al insertar.
 
 -- vista materializada para listados rápidos
 create materialized view mv_user_ranking as

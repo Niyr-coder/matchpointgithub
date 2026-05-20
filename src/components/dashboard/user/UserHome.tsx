@@ -77,11 +77,11 @@ async function loadData(): Promise<UserHomeData> {
       .limit(10),
     supabase
       .from("ranking_snapshots")
-      .select("rating,snapshot_at")
+      .select("rating,snapshot_at,mode")
       .eq("user_id", userId)
       .eq("sport", SPORT_PRIMARY)
       .order("snapshot_at", { ascending: true })
-      .limit(8),
+      .limit(120),
   ]);
 
   // Adaptar inscripciones del user a TournamentFeatured. Filtramos a los
@@ -137,10 +137,12 @@ async function loadData(): Promise<UserHomeData> {
     };
   });
 
-  const ratingHistory = (history ?? []).map((h: Record<string, unknown>) => ({
-    rating: h.rating as number,
-    snapshotAt: h.snapshot_at as string,
-  }));
+  // Cast: tipos generados aún no incluyen `mode` en ranking_snapshots (mig 130).
+  const histRows = (history ?? []) as unknown as Array<Record<string, unknown>>;
+  const histByMode = (m: "singles" | "doubles") =>
+    histRows
+      .filter((h) => h.mode === m)
+      .map((h) => ({ rating: h.rating as number, snapshotAt: h.snapshot_at as string }));
 
   // Stats por modo.
   const statsSingles = (statsRows ?? []).find((s) => s.mode === "singles");
@@ -157,9 +159,8 @@ async function loadData(): Promise<UserHomeData> {
   const legacyRank = rankList.find((r) => r.mode === "singles")
     ?? rankList.find((r) => r.mode === "doubles");
 
-  // TODO: ranking_snapshots aún no es mode-aware. Pasamos el mismo array para
-  // ambos modos por ahora; cuando snapshots tenga columna mode, separar aquí.
-  const historiesByMode = { singles: ratingHistory, doubles: ratingHistory };
+  // ranking_snapshots ya es mode-aware (mig 130): cada modo su serie.
+  const historiesByMode = { singles: histByMode("singles"), doubles: histByMode("doubles") };
 
   const { tier: effectiveTier } = isPlanActive(profile);
 
@@ -201,7 +202,7 @@ async function loadData(): Promise<UserHomeData> {
     ratingsByMode,
     reservations: reservationsAdapted,
     tournaments: tournamentsAdapted,
-    ratingHistory,
+    ratingHistory: historiesByMode.singles,
     historiesByMode,
     planTier: effectiveTier,
     planExpiresAt: profile.planExpiresAt,

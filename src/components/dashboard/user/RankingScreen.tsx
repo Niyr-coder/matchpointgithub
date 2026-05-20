@@ -32,14 +32,15 @@ export async function RankingScreen() {
 
   const emptyHistory = Promise.resolve({ ok: true as const, data: [] as RankingSnapshot[] });
 
-  const [singlesRes, doublesRes, historyRes, plan] = await Promise.all([
+  const [singlesRes, doublesRes, singlesHistRes, doublesHistRes, plan] = await Promise.all([
     getRanking({ sport: "pickleball", mode: "singles", pageSize: 30 }),
     getRanking({ sport: "pickleball", mode: "doubles", pageSize: 30 }),
-    // ranking_snapshots aún no tiene columna `mode` (ver 019_ranking.sql); por
-    // ahora ambas tabs comparten el mismo historial. Cuando se split, basta
-    // con duplicar este fetch con .eq("mode", ...).
+    // Historia por modo (ranking_snapshots ya es mode-aware, mig 130).
     meUserId
-      ? getUserRankingHistory({ userId: meUserId, sport: "pickleball", limit: 100 })
+      ? getUserRankingHistory({ userId: meUserId, sport: "pickleball", mode: "singles", limit: 100 })
+      : emptyHistory,
+    meUserId
+      ? getUserRankingHistory({ userId: meUserId, sport: "pickleball", mode: "doubles", limit: 100 })
       : emptyHistory,
     (async () => {
       if (!meUserId) return { tier: "free" as const };
@@ -52,7 +53,8 @@ export async function RankingScreen() {
 
   const singlesEntries = singlesRes.ok ? singlesRes.data : [];
   const doublesEntries = doublesRes.ok ? doublesRes.data : [];
-  const history = historyRes.ok ? historyRes.data : [];
+  const singlesHistory = singlesHistRes.ok ? singlesHistRes.data : [];
+  const doublesHistory = doublesHistRes.ok ? doublesHistRes.data : [];
 
   const singlesMe = findMe(singlesEntries, meUserId);
   const doublesMe = findMe(doublesEntries, meUserId);
@@ -63,13 +65,13 @@ export async function RankingScreen() {
       myRank: singlesMe.rank,
       currentRating: singlesMe.rating,
       // Si no tiene matches en este modo, no mostramos historial sintético.
-      history: singlesMe.rating != null ? history : [],
+      history: singlesMe.rating != null ? singlesHistory : [],
     },
     doubles: {
       entries: doublesEntries,
       myRank: doublesMe.rank,
       currentRating: doublesMe.rating,
-      history: doublesMe.rating != null ? history : [],
+      history: doublesMe.rating != null ? doublesHistory : [],
     },
   };
 

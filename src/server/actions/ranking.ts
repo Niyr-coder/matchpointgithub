@@ -19,7 +19,7 @@ import {
   type MatchResult,
   type RankingEntry,
 } from "@/lib/schemas/ranking";
-import { UuidSchema, MpSportSchema } from "@/lib/schemas/common";
+import { UuidSchema, MpSportSchema, MpMatchModeSchema } from "@/lib/schemas/common";
 
 async function requireUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -92,6 +92,7 @@ export async function getRanking(input: unknown): Promise<ActionResult<RankingEn
 const HistorySchema = z.object({
   userId: UuidSchema,
   sport: MpSportSchema,
+  mode: MpMatchModeSchema.optional(),
   fromDate: z.string().datetime({ offset: true }).optional(),
   limit: z.coerce.number().int().min(1).max(365).default(90),
 });
@@ -99,7 +100,7 @@ const HistorySchema = z.object({
 export async function getUserRankingHistory(
   input: unknown,
 ): Promise<ActionResult<z.infer<typeof RankingSnapshotSchema>[]>> {
-  return runAction(HistorySchema, input, async ({ userId, sport, fromDate, limit }) => {
+  return runAction(HistorySchema, input, async ({ userId, sport, mode, fromDate, limit }) => {
     const supabase = await getServerClient();
     let q = supabase
       .from("ranking_snapshots")
@@ -108,6 +109,8 @@ export async function getUserRankingHistory(
       .eq("sport", sport)
       .order("snapshot_at", { ascending: false })
       .limit(limit);
+    // Cast: tipos generados aún no incluyen `mode` en ranking_snapshots (mig 130).
+    if (mode) q = q.eq("mode" as never, mode as never);
     if (fromDate) q = q.gte("snapshot_at", fromDate);
     const { data, error } = await q;
     if (error) throw new MpError("RANKING.DB_ERROR", error.message, 500);
