@@ -169,7 +169,16 @@ async function loadData(activeConvId: string | null) {
   // Si la conversación activa es de un partido, traemos el estado del match
   // para renderizar el action-bar (cancelar/reprogramar). El user es miembro
   // de la conversación ⇒ participante del match (trigger mig 118).
-  let activeMatch: { matchId: string; status: string; playedAt: string } | null = null;
+  let activeMatch:
+    | {
+        matchId: string;
+        status: string;
+        playedAt: string;
+        reliabilityEnabled: boolean;
+        matchTimePassed: boolean;
+        others: { id: string; name: string }[];
+      }
+    | null = null;
   if (activeConv?.kind === "match" && activeId) {
     // match_id de conversations no está en los Database types (mig 118) → loose.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,10 +192,37 @@ async function loadData(activeConvId: string | null) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: m } = await (supabase as any)
         .from("matches")
-        .select("id,status,played_at")
+        .select("id,status,played_at,team_a_player_ids,team_b_player_ids")
         .eq("id", matchId)
         .maybeSingle();
-      if (m) activeMatch = { matchId: m.id, status: m.status, playedAt: m.played_at };
+      if (m) {
+        const allPlayers: string[] = [
+          ...((m.team_a_player_ids as string[] | null) ?? []),
+          ...((m.team_b_player_ids as string[] | null) ?? []),
+        ];
+        const otherIds = allPlayers.filter((id) => id !== userId);
+        // Nombres de los otros participantes (para el botón de inasistencia).
+        const { data: oProfiles } = otherIds.length
+          ? await supabase.from("profiles").select("id,display_name").in("id", otherIds)
+          : { data: [] as { id: string; display_name: string | null }[] };
+        const nameById = new Map(
+          ((oProfiles ?? []) as { id: string; display_name: string | null }[]).map((p) => [p.id, p.display_name]),
+        );
+        // Flag de fiabilidad (gate del reporte de inasistencias).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: flags } = await (supabase as any).rpc("fn_my_effective_flags");
+        const reliabilityEnabled = ((flags ?? []) as { key: string; enabled: boolean }[]).some(
+          (f) => f.key === "match_reliability_enabled" && f.enabled,
+        );
+        activeMatch = {
+          matchId: m.id,
+          status: m.status,
+          playedAt: m.played_at,
+          reliabilityEnabled,
+          matchTimePassed: new Date(m.played_at as string).getTime() < Date.now(),
+          others: otherIds.map((id) => ({ id, name: nameById.get(id) ?? "Jugador" })),
+        };
+      }
     }
   }
 

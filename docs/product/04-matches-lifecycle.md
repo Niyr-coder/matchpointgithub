@@ -73,10 +73,10 @@ Detrás del flag **`match_reliability_enabled`** (mig 124, default OFF).
 - **Score** — `src/lib/reliability.ts`: `reliabilityScore({noShows,cancellations})`
   = `clamp(100 - noShows*15 - cancellations*3, 0, 100)` + `reliabilityTier()`.
 
-**UI pendiente (sub-stage)**: botón "Marcar inasistencia" en el chat del
-partido (gated por flag + `played_at` pasado + selección del jugador) y badge
-de fiabilidad en perfil / `AdminUsersScreen`. Tracked en `04-placeholders.md`.
-Mientras el flag esté OFF (default), nada de esto se ve.
+**UI**: ✅ fila "¿No apareció?" en el `MatchActionBar` del chat del partido
+(gated por flag + `matchTimePassed` + un botón por cada otro participante →
+`reportNoShow`). Pendiente: **badge de fiabilidad** en perfil / `AdminUsersScreen`.
+Mientras el flag `match_reliability_enabled` esté OFF (default), no se ve.
 
 **Cancelaciones abusivas**: el contador `cancellations` existe pero aún no se
 incrementa en `cancelMatch` (TODO del sub-stage); por ahora solo penaliza no-show.

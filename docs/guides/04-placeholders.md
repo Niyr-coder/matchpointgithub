@@ -252,14 +252,14 @@ server action correspondiente + wire onClick + toast de resultado.
   - Sin pantalla admin dedicada para moderar avisos (solo audit log).
   - `Database` types no incluyen `match_seeks*` (casts `LooseClient`, igual
     que `matches.ts`). Regenerar types es mantenimiento aparte.
-- [ ] **No-show + fiabilidad — UI** (backend listo, mig 124, flag
-  `match_reliability_enabled` OFF; ver `product/04-matches-lifecycle.md`):
-  - Botón "Marcar inasistencia" en el `MatchActionBar` del chat (gated por flag
-    + `played_at` pasado + elegir jugador). Hoy la action `reportNoShow` existe
-    pero no hay UI que la invoque.
-  - Badge de fiabilidad (`reliabilityTier`) en perfil / `AdminUsersScreen`.
-  - Incrementar `player_reliability.cancellations` en `cancelMatch` (hoy solo
-    no-show mueve el score).
+- [ ] **No-show + fiabilidad — UI restante** (flag `match_reliability_enabled`
+  OFF; ver `product/04-matches-lifecycle.md`):
+  - ✅ Botón "¿No apareció?" en el `MatchActionBar` del chat (gated por flag +
+    matchTimePassed + por participante → `reportNoShow`).
+  - Pendiente: badge de fiabilidad (`reliabilityTier`) en perfil /
+    `AdminUsersScreen`.
+  - Pendiente: incrementar `player_reliability.cancellations` en `cancelMatch`
+    (hoy solo no-show mueve el score).
 - [ ] **Multideporte — cola de refactor** (ver `product/05-multisport.md`):
   - ✅ Hecho: busco-partido, onboarding, CrearMatch, **landing /ranking**
     (`RankingPageView`), **toggle admin** en `AdminConfigScreen` (sección

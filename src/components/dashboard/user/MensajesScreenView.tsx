@@ -5,11 +5,18 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { markRead, sendMessage } from "@/server/actions/messaging";
-import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
+import { cancelMatch, rescheduleMatch, reportNoShow } from "@/server/actions/matches";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
-export type ActiveMatch = { matchId: string; status: string; playedAt: string };
+export type ActiveMatch = {
+  matchId: string;
+  status: string;
+  playedAt: string;
+  reliabilityEnabled: boolean;
+  matchTimePassed: boolean;
+  others: { id: string; name: string }[];
+};
 
 export type ConvoLite = {
   id: string;
@@ -265,6 +272,8 @@ export function MensajesScreenView({
                       borderRadius: "50%",
                       background: c.isOfficial
                         ? "#0a0a0a"
+                        : c.kind === "match"
+                        ? "linear-gradient(135deg,#0a0a0a,#7c2d12)"
                         : c.isGroup
                         ? "linear-gradient(135deg,#3730a3,#6366f1)"
                         : c.isSystem
@@ -279,6 +288,8 @@ export function MensajesScreenView({
                     {c.isOfficial ? (
                       // Símbolo oficial del logo MatchPoint: dot verde sobre negro.
                       <span className="dot" style={{ fontSize: 18, lineHeight: 1 }}>●</span>
+                    ) : c.kind === "match" ? (
+                      <Icon name="swords" size={15} color="#fff" />
                     ) : c.isGroup ? (
                       <Icon name="users" size={16} color="#fff" />
                     ) : c.isSystem ? (
@@ -416,6 +427,8 @@ export function MensajesScreenView({
                     borderRadius: "50%",
                     background: activeConv.isOfficial || activeConv.isSystem
                       ? "#0a0a0a"
+                      : activeConv.kind === "match"
+                      ? "linear-gradient(135deg,#0a0a0a,#7c2d12)"
                       : activeConv.isGroup
                       ? "linear-gradient(135deg,#3730a3,#6366f1)"
                       : "linear-gradient(135deg,#10b981,#047857)",
@@ -427,6 +440,8 @@ export function MensajesScreenView({
                 >
                   {activeConv.isOfficial ? (
                     <span className="dot" style={{ fontSize: 18, lineHeight: 1 }}>●</span>
+                  ) : activeConv.kind === "match" ? (
+                    <Icon name="swords" size={14} color="#fff" />
                   ) : activeConv.isGroup ? (
                     <Icon name="users" size={14} color="#fff" />
                   ) : activeConv.isSystem ? (
@@ -477,7 +492,9 @@ export function MensajesScreenView({
                       gap: 5,
                     }}
                   >
-                    {activeConv.isGroup
+                    {activeConv.kind === "match"
+                      ? "Chat del partido"
+                      : activeConv.isGroup
                       ? `${activeConv.memberCount} miembros`
                       : activeConv.isSystem
                       ? "Canal del sistema"
@@ -765,6 +782,22 @@ function MatchActionBar({ match }: { match: ActiveMatch }) {
     });
   };
 
+  const doReportNoShow = (noShowUserId: string, name: string) => {
+    setPending(true);
+    void reportNoShow({ matchId: match.matchId, noShowUserId }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo reportar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Inasistencia reportada", sub: `${name} afecta su fiabilidad.` });
+      router.refresh();
+    });
+  };
+
+  // Reporte de inasistencia: solo si el feature está activo y ya pasó la hora.
+  const showNoShow = match.reliabilityEnabled && match.matchTimePassed && match.others.length > 0;
+
   return (
     <div style={{ ...matchBarStyle, flexDirection: "column", alignItems: "stretch", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -810,6 +843,31 @@ function MatchActionBar({ match }: { match: ActiveMatch }) {
           <button className="btn btn-primary" disabled={pending} onClick={doReschedule} style={{ padding: "7px 14px", fontSize: 11 }}>
             {pending ? "…" : "Guardar"}
           </button>
+        </div>
+      )}
+      {showNoShow && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px dashed var(--border)", paddingTop: 10 }}>
+          <span style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>¿No apareció?</span>
+          {match.others.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => doReportNoShow(o.id, o.name)}
+              disabled={pending}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "#b45309",
+                padding: "5px 11px",
+                borderRadius: 9999,
+                fontSize: 10.5,
+                fontWeight: 800,
+                cursor: pending ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <Icon name="user-x" size={11} color="#b45309" /> {o.name}
+            </button>
+          ))}
         </div>
       )}
     </div>
