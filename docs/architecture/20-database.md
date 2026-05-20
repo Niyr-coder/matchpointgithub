@@ -2419,6 +2419,15 @@ SECURITY DEFINER). Recursión RLS rota con helpers definer (mig 132). Actions de
 gestión en `quedadas.ts` (cohosts/categorías/pairs/paid/logística/joinByInviteCode).
 Notif kind `quedada_cohost_added`.
 
+**Datos de organización estructurados (mig 134):** `quedadas` +`payment_account`
+jsonb `{bank, accountType: ahorros|corriente, accountNumber, holderName,
+holderId?, note?}` + `prizes` jsonb `[{place, prize, valueCents?}]`. Reemplazan
+el texto libre `payment_info`/`prizes_text` (deprecados, quedan por compat). El
+banco se elige de un catálogo estático EC (`src/lib/geo/ec-banks.ts`). Mismos
+editores (`BankAccountFields`/`PrizesEditor`) en wizard de crear y panel de
+gestión. RLS sin cambios (columnas de `quedadas`). "Duplicar" precarga el wizard
+desde una quedada previa; plantillas con nombre (hasta 5) = `quedada_templates`.
+
 ---
 
 ## Próximo: `30-rls.md`

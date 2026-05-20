@@ -63,8 +63,10 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
         courts_count: d.courtsCount ?? null,
         hours: d.hours ?? null,
         court_price_cents: d.courtPriceCents ?? null,
-        payment_info: d.paymentInfo ?? null,
-        prizes_text: d.prizesText ?? null,
+        payment_account: d.paymentAccount ?? null,
+        prizes: d.prizes ?? null,
+        payment_info: d.paymentInfo ?? null, // deprecado (compat)
+        prizes_text: d.prizesText ?? null, // deprecado (compat)
         ranked: false, // v1: siempre casual
       } as never)
       .select("id")
@@ -352,7 +354,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
       .select(
-        "id,creator_id,title,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,payment_info,prizes_text,invite_code",
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,payment_account,prizes,payment_info,prizes_text,invite_code",
       )
       .eq("id", quedadaId)
       .maybeSingle();
@@ -533,6 +535,8 @@ export async function updateQuedadaLogistics(input: unknown): Promise<ActionResu
     if (d.courtsCount !== undefined) patch.courts_count = d.courtsCount;
     if (d.hours !== undefined) patch.hours = d.hours;
     if (d.courtPriceCents !== undefined) patch.court_price_cents = d.courtPriceCents;
+    if (d.paymentAccount !== undefined) patch.payment_account = d.paymentAccount;
+    if (d.prizes !== undefined) patch.prizes = d.prizes;
     if (d.paymentInfo !== undefined) patch.payment_info = d.paymentInfo;
     if (d.prizesText !== undefined) patch.prizes_text = d.prizesText;
     const { error } = await supabase.from("quedadas").update(patch).eq("id", d.quedadaId);

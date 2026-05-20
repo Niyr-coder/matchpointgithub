@@ -15,6 +15,31 @@ export const QuedadaStatusSchema = z
   .enum(["draft", "published", "registration_open", "registration_closed", "live", "finished", "cancelled"])
   .openapi("QuedadaStatus");
 
+// ── Datos de organización estructurados (banco + premios) ────────────────────
+export const QuedadaAccountTypeSchema = z.enum(["ahorros", "corriente"]).openapi("QuedadaAccountType");
+
+// Datos bancarios del organizador (para que los inscritos transfieran).
+export const PaymentAccountSchema = z
+  .object({
+    bank: z.string().trim().min(1).max(60),
+    accountType: QuedadaAccountTypeSchema,
+    accountNumber: z.string().trim().min(3).max(40),
+    holderName: z.string().trim().min(1).max(80),
+    holderId: z.string().trim().max(20).optional(), // cédula/RUC
+    note: z.string().trim().max(140).optional(), // ej. teléfono DeUna
+  })
+  .openapi("QuedadaPaymentAccount");
+
+// Un premio por puesto. `prize` es texto ($20, media docena, etc); `valueCents`
+// es opcional (referencia de valor, no se cobra).
+export const PrizeSchema = z
+  .object({
+    place: z.string().trim().min(1).max(40),
+    prize: z.string().trim().min(1).max(120),
+    valueCents: z.coerce.number().int().min(0).max(10_000_000).optional(),
+  })
+  .openapi("QuedadaPrize");
+
 // ── Crear ────────────────────────────────────────────────────────────────────
 export const CreateQuedadaSchema = z
   .object({
@@ -33,6 +58,10 @@ export const CreateQuedadaSchema = z
     courtsCount: z.coerce.number().int().min(1).max(64).optional(),
     hours: z.coerce.number().min(0.5).max(24).optional(),
     courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).optional(),
+    // Bancarios + premios estructurados (reemplazan paymentInfo/prizesText texto).
+    paymentAccount: PaymentAccountSchema.optional(),
+    prizes: z.array(PrizeSchema).max(10).optional(),
+    // Deprecados (texto libre, mig 133). Se mantienen opcionales por compat.
     paymentInfo: z.string().trim().max(500).optional(),
     prizesText: z.string().trim().max(500).optional(),
     // Categorías iniciales (los slots/parejas se llenan después en gestión).
@@ -148,6 +177,9 @@ export const QuedadaLogisticsSchema = z
     courtsCount: z.coerce.number().int().min(1).max(64).nullable().optional(),
     hours: z.coerce.number().min(0.5).max(24).nullable().optional(),
     courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+    paymentAccount: PaymentAccountSchema.nullable().optional(),
+    prizes: z.array(PrizeSchema).max(10).nullable().optional(),
+    // Deprecados (texto libre, mig 133).
     paymentInfo: z.string().trim().max(500).nullable().optional(),
     prizesText: z.string().trim().max(500).nullable().optional(),
   })
@@ -158,3 +190,5 @@ export const JoinByCodeSchema = z.object({ code: z.string().trim().min(4).max(40
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;
 export type QuedadaFormat = z.infer<typeof QuedadaFormatSchema>;
+export type PaymentAccount = z.infer<typeof PaymentAccountSchema>;
+export type Prize = z.infer<typeof PrizeSchema>;
