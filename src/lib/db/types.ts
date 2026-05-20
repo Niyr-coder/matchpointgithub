@@ -4843,9 +4843,459 @@ export type Database = {
           },
         ]
       }
+      quedada_categories: {
+        Row: {
+          court_label: string | null
+          created_at: string
+          id: string
+          level_label: string | null
+          max_slots: number | null
+          name: string
+          quedada_id: string
+          sort_order: number
+          starts_at: string | null
+        }
+        Insert: {
+          court_label?: string | null
+          created_at?: string
+          id?: string
+          level_label?: string | null
+          max_slots?: number | null
+          name: string
+          quedada_id: string
+          sort_order?: number
+          starts_at?: string | null
+        }
+        Update: {
+          court_label?: string | null
+          created_at?: string
+          id?: string
+          level_label?: string | null
+          max_slots?: number | null
+          name?: string
+          quedada_id?: string
+          sort_order?: number
+          starts_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_categories_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quedada_cohosts: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          quedada_id: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          quedada_id: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          quedada_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_cohosts_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_cohosts_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_cohosts_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_cohosts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_cohosts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quedada_pairs: {
+        Row: {
+          category_id: string
+          created_at: string
+          id: string
+          player_a_id: string
+          player_b_id: string | null
+          quedada_id: string
+          slot_no: number
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          id?: string
+          player_a_id: string
+          player_b_id?: string | null
+          quedada_id: string
+          slot_no: number
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          id?: string
+          player_a_id?: string
+          player_b_id?: string | null
+          quedada_id?: string
+          slot_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_pairs_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "quedada_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_pairs_player_a_id_fkey"
+            columns: ["player_a_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_pairs_player_a_id_fkey"
+            columns: ["player_a_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_pairs_player_b_id_fkey"
+            columns: ["player_b_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_pairs_player_b_id_fkey"
+            columns: ["player_b_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_pairs_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quedada_participants: {
+        Row: {
+          final_rank: number | null
+          joined_at: string
+          paid: boolean
+          paid_transaction_id: string | null
+          points: number | null
+          quedada_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          final_rank?: number | null
+          joined_at?: string
+          paid?: boolean
+          paid_transaction_id?: string | null
+          points?: number | null
+          quedada_id: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          final_rank?: number | null
+          joined_at?: string
+          paid?: boolean
+          paid_transaction_id?: string | null
+          points?: number | null
+          quedada_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_participants_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_participants_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quedada_reports: {
+        Row: {
+          created_at: string
+          id: string
+          quedada_id: string
+          reason: string
+          reporter_id: string
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          quedada_id: string
+          reason: string
+          reporter_id: string
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          quedada_id?: string
+          reason?: string
+          reporter_id?: string
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedada_reports_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_reports_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_reports_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quedada_templates: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          config: Json
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      quedadas: {
+        Row: {
+          club_id: string | null
+          court_price_cents: number | null
+          courts_count: number | null
+          created_at: string
+          creator_id: string
+          description: string | null
+          fee_cents: number
+          format: Database["public"]["Enums"]["mp_quedada_format"]
+          hours: number | null
+          id: string
+          invite_code: string | null
+          location_text: string | null
+          match_mode: Database["public"]["Enums"]["mp_match_mode"]
+          max_players: number | null
+          payment_account: Json | null
+          payment_info: string | null
+          perks_text: string | null
+          prizes: Json | null
+          prizes_text: string | null
+          ranked: boolean
+          reservation_id: string | null
+          starts_at: string
+          status: Database["public"]["Enums"]["mp_event_status"]
+          title: string
+          updated_at: string
+          visibility: string
+        }
+        Insert: {
+          club_id?: string | null
+          court_price_cents?: number | null
+          courts_count?: number | null
+          created_at?: string
+          creator_id: string
+          description?: string | null
+          fee_cents?: number
+          format: Database["public"]["Enums"]["mp_quedada_format"]
+          hours?: number | null
+          id?: string
+          invite_code?: string | null
+          location_text?: string | null
+          match_mode?: Database["public"]["Enums"]["mp_match_mode"]
+          max_players?: number | null
+          payment_account?: Json | null
+          payment_info?: string | null
+          perks_text?: string | null
+          prizes?: Json | null
+          prizes_text?: string | null
+          ranked?: boolean
+          reservation_id?: string | null
+          starts_at: string
+          status?: Database["public"]["Enums"]["mp_event_status"]
+          title: string
+          updated_at?: string
+          visibility?: string
+        }
+        Update: {
+          club_id?: string | null
+          court_price_cents?: number | null
+          courts_count?: number | null
+          created_at?: string
+          creator_id?: string
+          description?: string | null
+          fee_cents?: number
+          format?: Database["public"]["Enums"]["mp_quedada_format"]
+          hours?: number | null
+          id?: string
+          invite_code?: string | null
+          location_text?: string | null
+          match_mode?: Database["public"]["Enums"]["mp_match_mode"]
+          max_players?: number | null
+          payment_account?: Json | null
+          payment_info?: string | null
+          perks_text?: string | null
+          prizes?: Json | null
+          prizes_text?: string | null
+          ranked?: boolean
+          reservation_id?: string | null
+          starts_at?: string
+          status?: Database["public"]["Enums"]["mp_event_status"]
+          title?: string
+          updated_at?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quedadas_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedadas_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedadas_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedadas_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedadas_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ranking_snapshots: {
         Row: {
           id: string
+          mode: Database["public"]["Enums"]["mp_match_mode"] | null
           rank_position: number | null
           rating: number
           snapshot_at: string
@@ -4854,6 +5304,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          mode?: Database["public"]["Enums"]["mp_match_mode"] | null
           rank_position?: number | null
           rating: number
           snapshot_at?: string
@@ -4862,6 +5313,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          mode?: Database["public"]["Enums"]["mp_match_mode"] | null
           rank_position?: number | null
           rating?: number
           snapshot_at?: string
@@ -6393,6 +6845,24 @@ export type Database = {
           },
         ]
       }
+      theme_settings: {
+        Row: {
+          active: boolean
+          key: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          key: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ticket_attachments: {
         Row: {
           id: string
@@ -7543,6 +8013,7 @@ export type Database = {
           unread_count: number
         }[]
       }
+      gen_quedada_invite_code: { Args: never; Returns: string }
       gen_team_invite_code: { Args: never; Returns: string }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
@@ -7672,7 +8143,17 @@ export type Database = {
         Args: { p_partner_id: string }
         Returns: boolean
       }
+      mp_is_quedada_member: {
+        Args: { p_quedada: string; p_user: string }
+        Returns: boolean
+      }
       mp_partner_has_club: { Args: { p_club_id: string }; Returns: boolean }
+      mp_quedada_can_manage: {
+        Args: { p_quedada: string; p_user: string }
+        Returns: boolean
+      }
+      mp_quedada_creator: { Args: { p_quedada: string }; Returns: string }
+      mp_quedada_is_open: { Args: { p_quedada: string }; Returns: boolean }
       mp_set_audit_actor: {
         Args: { _role?: string; _user_id: string }
         Returns: undefined
@@ -8397,6 +8878,13 @@ export type Database = {
         | "failed"
         | "cancelled"
       mp_player_plan: "free" | "premium"
+      mp_quedada_format:
+        | "americano"
+        | "mexicano"
+        | "round_robin"
+        | "kotc"
+        | "canguil"
+        | "libre"
       mp_report_status: "pending" | "reviewing" | "actioned" | "dismissed"
       mp_reservation_status:
         | "booked"
@@ -8647,6 +9135,14 @@ export const Constants = {
         "cancelled",
       ],
       mp_player_plan: ["free", "premium"],
+      mp_quedada_format: [
+        "americano",
+        "mexicano",
+        "round_robin",
+        "kotc",
+        "canguil",
+        "libre",
+      ],
       mp_report_status: ["pending", "reviewing", "actioned", "dismissed"],
       mp_reservation_status: [
         "booked",
