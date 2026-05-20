@@ -1,8 +1,8 @@
-// Panel de customización de perfil (MP+ + bundles pagos).
+// Panel de personalización por TEMAS curados (MP+ + bundles).
 //
-// 3 secciones de presets con badges según ownership (Owned / MP+ / Bundle).
-// Preview en vivo usando ProfileHeaderCard compartido (drift-free).
-// Sección "Bundles disponibles" con instrucciones para adquirir (admin grant).
+// El user elige UN tema cohesivo (no mezcla accent/card/banner). Al clickear un
+// tema desbloqueado se aplica al instante (setTheme). Preview en vivo con
+// ProfileHeaderCard. Sección "Bundles disponibles" igual que antes.
 "use client";
 
 import { useState, useTransition } from "react";
@@ -10,22 +10,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
-import { setProfileCustomization } from "@/server/actions/profile-customization";
+import { setTheme } from "@/server/actions/profile-customization";
 import { ProfileHeaderCard } from "./ProfileHeaderCard";
 import {
-  ACCENT_COLORS,
-  BANNER_PRESETS,
-  CARD_STYLES,
+  PROFILE_THEMES,
   findAccent,
   findBanner,
   findCardStyle,
+  themeFromState,
+  type ProfileTheme,
 } from "@/lib/profile/customization-presets";
 import {
   canUsePreset,
-  lockStateFor,
   priceLabel,
   bodyPatternForBundle,
-  MP_PLUS_KEY,
 } from "@/lib/profile/bundles";
 import type { BundleCatalogRow } from "./PersonalizacionScreen";
 
@@ -36,6 +34,11 @@ type InitialState = {
 };
 
 const DEFAULT_ACCENT = "#10b981";
+
+function themeIsOwned(t: ProfileTheme, args: { isPremium: boolean; myGrants: Set<string> }): boolean {
+  if (t.bundleKey === "free") return true;
+  return canUsePreset(t.bundleKey, args);
+}
 
 export function PersonalizacionScreenClient({
   isPremium,
@@ -51,71 +54,52 @@ export function PersonalizacionScreenClient({
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
-  const [accent, setAccent] = useState<string | null>(initial?.accentColor ?? null);
-  const [banner, setBanner] = useState<string | null>(initial?.bannerPreset ?? null);
-  const [card, setCard] = useState<string | null>(initial?.cardStyle ?? null);
 
   const myGrantsSet = new Set(myGrants);
   const ownArgs = { isPremium, myGrants: myGrantsSet };
-
-  const accentObj = findAccent(accent);
-  const bannerObj = findBanner(banner);
-  const cardObj = findCardStyle(card);
-
-  const accentHex = accentObj?.hex ?? DEFAULT_ACCENT;
-  const bannerCss = bannerObj?.background ?? null;
-
-  const dirty =
-    accent !== (initial?.accentColor ?? null) ||
-    banner !== (initial?.bannerPreset ?? null) ||
-    card !== (initial?.cardStyle ?? null);
-
-  // Mapa de bundles por key (para mostrar precio en tooltips).
   const bundleByKey = new Map(bundles.map((b) => [b.key, b]));
 
-  const handleSave = () => {
-    if (!dirty || pending) return;
-    startTransition(async () => {
-      const res = await setProfileCustomization({
-        accentColor: accent,
-        bannerPreset: banner,
-        cardStyle: card,
-      });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: "Personalización guardada" });
-      router.refresh();
-    });
-  };
+  // Tema activo: matchea el estado actual; si es un combo viejo no-temático
+  // (no debería tras la migración 126), cae a 'default'.
+  const currentKey =
+    themeFromState(initial?.accentColor ?? null, initial?.bannerPreset ?? null, initial?.cardStyle ?? null)?.key ??
+    "default";
+  const [selected, setSelected] = useState<string>(currentKey);
 
-  // Click handler para un preset. Permite clickear locked: si no es owned,
-  // muestra toast con cómo adquirir. Si es owned, lo selecciona/deselecciona.
-  const handlePresetClick = (
-    bundleKey: string,
-    isSelected: boolean,
-    apply: (next: string | null) => void,
-    key: string,
-  ) => {
-    if (canUsePreset(bundleKey, ownArgs)) {
-      apply(isSelected ? null : key);
+  const selectedTheme = PROFILE_THEMES.find((t) => t.key === selected) ?? PROFILE_THEMES[0];
+  const accentObj = findAccent(selectedTheme.accent);
+  const bannerObj = findBanner(selectedTheme.banner);
+  const cardObj = findCardStyle(selectedTheme.card);
+  const accentHex = accentObj?.hex ?? DEFAULT_ACCENT;
+
+  const applyTheme = (t: ProfileTheme) => {
+    if (pending) return;
+    if (!themeIsOwned(t, ownArgs)) {
+      if (t.bundleKey === "mp_plus") {
+        toast({ icon: "lock", title: "Tema MatchPoint+", sub: "Actívalo desde Mi plan" });
+      } else {
+        const b = bundleByKey.get(t.bundleKey);
+        toast({
+          icon: "lock",
+          title: `Requiere ${b?.label ?? t.bundleKey}`,
+          sub: `${priceLabel(b?.priceCents ?? 0)} · pídelo a soporte`,
+        });
+      }
       return;
     }
-    if (bundleKey === MP_PLUS_KEY) {
-      toast({
-        icon: "lock",
-        title: "Requiere MatchPoint+",
-        sub: "Activa el plan desde Mi plan",
-      });
-    } else {
-      const b = bundleByKey.get(bundleKey);
-      toast({
-        icon: "lock",
-        title: `Requiere ${b?.label ?? bundleKey}`,
-        sub: `${priceLabel(b?.priceCents ?? 0)} · contacta a soporte para adquirirlo`,
-      });
-    }
+    if (t.key === selected) return;
+    const prev = selected;
+    setSelected(t.key);
+    startTransition(async () => {
+      const res = await setTheme({ theme: t.key });
+      if (!res.ok) {
+        setSelected(prev);
+        toast({ icon: "alert-triangle", title: "No se pudo aplicar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: `Tema "${t.label}" aplicado` });
+      router.refresh();
+    });
   };
 
   return (
@@ -147,9 +131,10 @@ export function PersonalizacionScreenClient({
           Tu perfil, tu vibe<span style={{ color: accentHex }}>.</span>
         </h1>
         <p style={{ fontSize: 13, color: "var(--muted-fg)", marginTop: 8, maxWidth: 600 }}>
-          Elige el accent color, banner y card style. Los presets con badge
-          <strong style={{ color: "#0a0a0a" }}> MP+</strong> se desbloquean con MatchPoint+; los
-          de <strong style={{ color: "#0a0a0a" }}>bundles</strong> requieren compra única.
+          Elige un <strong style={{ color: "#0a0a0a" }}>tema</strong>: define accent, banner y card de
+          forma cohesiva, sin combinaciones raras. Los <strong style={{ color: "#0a0a0a" }}>MP+</strong> se
+          desbloquean con MatchPoint+; los de <strong style={{ color: "#0a0a0a" }}>bundles</strong>, con
+          compra única.
         </p>
       </header>
 
@@ -157,141 +142,164 @@ export function PersonalizacionScreenClient({
 
       <PreviewCard
         accentHex={accentHex}
-        bannerCss={bannerCss}
-        bannerKey={banner}
+        bannerCss={bannerObj?.background ?? null}
+        bannerKey={selectedTheme.banner}
         bodyPattern={bannerObj ? bodyPatternForBundle(bannerObj.bundleKey) : null}
         bundleKey={bannerObj?.bundleKey ?? null}
         cardObj={cardObj}
       />
 
-      <Section title="Accent color" hint="Tinta acentos del perfil (badges, dots, hovers).">
+      <section style={{ marginBottom: 28 }}>
+        <h2 className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.015em", margin: 0 }}>
+          Temas
+        </h2>
+        <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "4px 0 14px" }}>
+          Un toque y se aplica. Tu fila en ranking, roster y amigos usa el accent + card del tema.
+        </p>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
-            gap: 10,
-          }}
-        >
-          {ACCENT_COLORS.map((c) => {
-            const selected = accent === c.key;
-            const lock = lockStateFor(c.bundleKey, ownArgs);
-            return (
-              <PresetSwatch
-                key={c.key}
-                selected={selected}
-                lock={lock}
-                bundleLabel={bundleByKey.get(c.bundleKey)?.label}
-                onClick={() =>
-                  handlePresetClick(c.bundleKey, selected, setAccent, c.key)
-                }
-                ariaLabel={c.label}
-                background={c.hex}
-              />
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section title="Banner del header" hint="Fondo del header de tu perfil.">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-            gap: 10,
-          }}
-        >
-          {BANNER_PRESETS.map((b) => {
-            const selected = banner === b.key;
-            const lock = lockStateFor(b.bundleKey, ownArgs);
-            return (
-              <BannerSwatch
-                key={b.key}
-                selected={selected}
-                lock={lock}
-                bundleLabel={bundleByKey.get(b.bundleKey)?.label}
-                onClick={() => handlePresetClick(b.bundleKey, selected, setBanner, b.key)}
-                label={b.label}
-                background={b.background}
-              />
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section
-        title="Card style"
-        hint="Aplica a tu card en listados de amigos, roster del team y al wrapper de tus stats."
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
             gap: 12,
           }}
         >
-          {CARD_STYLES.map((s) => {
-            const selected = card === s.key;
-            const lock = lockStateFor(s.bundleKey, ownArgs);
-            return (
-              <CardSwatch
-                key={s.key}
-                selected={selected}
-                lock={lock}
-                bundleLabel={bundleByKey.get(s.bundleKey)?.label}
-                onClick={() => handlePresetClick(s.bundleKey, selected, setCard, s.key)}
-                label={s.label}
-                css={s.css}
-              />
-            );
-          })}
+          {PROFILE_THEMES.map((t) => (
+            <ThemeCard
+              key={t.key}
+              theme={t}
+              selected={t.key === selected}
+              owned={themeIsOwned(t, ownArgs)}
+              bundleLabel={bundleByKey.get(t.bundleKey)?.label}
+              disabled={pending}
+              onClick={() => applyTheme(t)}
+            />
+          ))}
         </div>
-      </Section>
+      </section>
 
       <BundleStore bundles={bundles} myGrants={myGrantsSet} />
-
-      <div
-        style={{
-          position: "sticky",
-          bottom: 16,
-          marginTop: 24,
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: 10,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            setAccent(initial?.accentColor ?? null);
-            setBanner(initial?.bannerPreset ?? null);
-            setCard(initial?.cardStyle ?? null);
-          }}
-          disabled={!dirty || pending}
-          className="btn"
-          style={{
-            background: "#fff",
-            border: "1px solid var(--border)",
-            opacity: !dirty || pending ? 0.5 : 1,
-            cursor: !dirty || pending ? "not-allowed" : "pointer",
-          }}
-        >
-          Descartar
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || pending}
-          className="btn btn-primary"
-          style={{
-            opacity: !dirty || pending ? 0.55 : 1,
-            cursor: !dirty || pending ? "not-allowed" : "pointer",
-          }}
-        >
-          <Icon name="check" size={13} color="#fff" />
-          {pending ? "Guardando..." : "Guardar cambios"}
-        </button>
-      </div>
     </main>
+  );
+}
+
+// ── ThemeCard ──────────────────────────────────────────────────────────
+function ThemeCard({
+  theme,
+  selected,
+  owned,
+  bundleLabel,
+  disabled,
+  onClick,
+}: {
+  theme: ProfileTheme;
+  selected: boolean;
+  owned: boolean;
+  bundleLabel?: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const accentObj = findAccent(theme.accent);
+  const bannerObj = findBanner(theme.banner);
+  const cardObj = findCardStyle(theme.card);
+  const accentHex = accentObj?.hex ?? "#10b981";
+  // Preview del banner: gradiente del tema, o un fondo neutro para "Clásico".
+  const bannerBg = bannerObj?.background ?? "linear-gradient(135deg, #f5f5f5, #e5e5e5)";
+  const cardBg = cardObj?.css.background ?? "#fff";
+  const cardBorder = cardObj?.css.border ?? "1px solid var(--border)";
+  const locked = !owned;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={selected}
+      title={locked ? `${theme.label} — ${theme.bundleKey === "mp_plus" ? "Requiere MP+" : bundleLabel ?? ""}` : theme.label}
+      style={{
+        position: "relative",
+        padding: 0,
+        borderRadius: 14,
+        overflow: "hidden",
+        border: selected ? "2.5px solid #0a0a0a" : "1px solid var(--border)",
+        boxShadow: selected ? "0 6px 18px rgba(0,0,0,0.16)" : "none",
+        cursor: disabled ? "wait" : "pointer",
+        background: "#fff",
+        textAlign: "left",
+        opacity: locked ? 0.62 : 1,
+        transition: "transform 160ms var(--ease-out, ease), opacity 160ms",
+      }}
+    >
+      {/* Banner strip */}
+      <div style={{ height: 46, background: bannerBg }} />
+      {/* Card-style mini chip flotando sobre el borde */}
+      <div style={{ padding: "0 12px 12px", marginTop: -16 }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 11px",
+            borderRadius: 10,
+            background: cardBg,
+            border: cardBorder,
+            color: cardObj?.css.color ?? "#0a0a0a",
+            // glow/boxShadow cosmético omitido en el chip mini para no recargar.
+          }}
+        >
+          <span style={{ width: 16, height: 16, borderRadius: "50%", background: accentHex, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 800 }}>{theme.label}</span>
+        </div>
+      </div>
+      {locked && <LockBadge bundleKey={theme.bundleKey} bundleLabel={bundleLabel} />}
+      {selected && (
+        <span
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            background: "var(--primary)",
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon name="check" size={11} color="#fff" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function LockBadge({ bundleKey, bundleLabel }: { bundleKey: string; bundleLabel?: string }) {
+  const isMpPlus = bundleKey === "mp_plus";
+  const label = isMpPlus ? "MP+" : bundleLabel ?? bundleKey;
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: 6,
+        right: 6,
+        padding: "2px 6px",
+        borderRadius: 6,
+        background: isMpPlus ? "#fbbf24" : "#0a0a0a",
+        color: isMpPlus ? "#0a0a0a" : "#fff",
+        fontSize: 8.5,
+        fontWeight: 900,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        pointerEvents: "none",
+        maxWidth: "85%",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -327,10 +335,10 @@ function UpgradeBanner() {
         </div>
         <div>
           <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em" }}>
-            La mayoría de presets son MatchPoint+
+            Los temas premium son MatchPoint+
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 3 }}>
-            Desbloquea accent colors, banners y card styles premium con la subscription.
+            Desbloquea los temas con la subscription. El tema Clásico es gratis.
           </div>
         </div>
       </div>
@@ -386,15 +394,7 @@ function PreviewCard({
         }}
       >
         <span>Preview</span>
-        <span
-          style={{
-            color: "#a3a3a3",
-            textTransform: "none",
-            letterSpacing: 0,
-            fontSize: 10,
-            fontWeight: 600,
-          }}
-        >
+        <span style={{ color: "#a3a3a3", textTransform: "none", letterSpacing: 0, fontSize: 10, fontWeight: 600 }}>
           1:1 con tu perfil real
         </span>
       </div>
@@ -403,7 +403,7 @@ function PreviewCard({
           name="Tu nombre"
           username="tu_user"
           city="Quito"
-          bio="Esta es la bio que aparece en tu perfil. Cambia los presets de arriba para ver cómo lucirá."
+          bio="Esta es la bio que aparece en tu perfil. Elige un tema arriba para ver cómo lucirá."
           avatarUrl={null}
           primaryClub={{ name: "Tu club" }}
           memberSince={new Date().toISOString()}
@@ -468,289 +468,9 @@ function PreviewCardChip({
         transition: "all 220ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
-      <span
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: accentHex,
-          display: "inline-block",
-        }}
-      />
+      <span style={{ width: 22, height: 22, borderRadius: "50%", background: accentHex, display: "inline-block" }} />
       <span style={{ fontWeight: 800, fontSize: 12 }}>Tu nombre · MPR 4.20</span>
     </div>
-  );
-}
-
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section style={{ marginBottom: 28 }}>
-      <h2
-        className="font-heading"
-        style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.015em", margin: 0 }}
-      >
-        {title}
-      </h2>
-      <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "4px 0 14px" }}>{hint}</p>
-      {children}
-    </section>
-  );
-}
-
-// ── Badges helpers ─────────────────────────────────────────────────────
-type LockState = ReturnType<typeof lockStateFor>;
-
-function LockBadge({ lock, bundleLabel }: { lock: LockState; bundleLabel?: string }) {
-  if (lock.kind === "owned") return null;
-  const isMpPlus = lock.kind === "mp_plus";
-  const label = isMpPlus ? "MP+" : bundleLabel ?? lock.bundleKey;
-  return (
-    <span
-      style={{
-        position: "absolute",
-        top: 5,
-        right: 5,
-        padding: "2px 6px",
-        borderRadius: 6,
-        background: isMpPlus ? "#fbbf24" : "#0a0a0a",
-        color: isMpPlus ? "#0a0a0a" : "#fff",
-        fontSize: 8.5,
-        fontWeight: 900,
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
-        pointerEvents: "none",
-        maxWidth: "90%",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function PresetSwatch({
-  selected,
-  lock,
-  bundleLabel,
-  onClick,
-  ariaLabel,
-  background,
-}: {
-  selected: boolean;
-  lock: LockState;
-  bundleLabel?: string;
-  onClick: () => void;
-  ariaLabel: string;
-  background: string;
-}) {
-  const locked = lock.kind !== "owned";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      aria-pressed={selected}
-      title={locked ? `${ariaLabel} — ${lock.kind === "mp_plus" ? "Requiere MP+" : bundleLabel ?? ""}` : ariaLabel}
-      style={{
-        position: "relative",
-        width: "100%",
-        aspectRatio: "1",
-        borderRadius: 12,
-        background,
-        border: selected ? "3px solid #0a0a0a" : "2px solid var(--border)",
-        boxShadow: selected ? "0 0 0 3px #fff inset, 0 4px 12px rgba(0,0,0,0.18)" : "none",
-        cursor: "pointer",
-        transition: "transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1), border 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms",
-        padding: 0,
-        opacity: locked ? 0.6 : 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "scale(1.06)";
-        if (locked) e.currentTarget.style.opacity = "0.85";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
-        if (locked) e.currentTarget.style.opacity = "0.6";
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.transform = "scale(0.97)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = "scale(1.06)";
-      }}
-    >
-      <LockBadge lock={lock} bundleLabel={bundleLabel} />
-    </button>
-  );
-}
-
-function BannerSwatch({
-  selected,
-  lock,
-  bundleLabel,
-  onClick,
-  label,
-  background,
-}: {
-  selected: boolean;
-  lock: LockState;
-  bundleLabel?: string;
-  onClick: () => void;
-  label: string;
-  background: string;
-}) {
-  const locked = lock.kind !== "owned";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      title={locked ? `${label} — ${lock.kind === "mp_plus" ? "Requiere MP+" : bundleLabel ?? ""}` : label}
-      style={{
-        position: "relative",
-        background,
-        borderRadius: 12,
-        border: selected ? "3px solid #0a0a0a" : "1px solid var(--border)",
-        boxShadow: selected ? "0 4px 16px rgba(0,0,0,0.2)" : "none",
-        cursor: "pointer",
-        padding: 0,
-        height: 80,
-        overflow: "hidden",
-        transition: "transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms",
-        opacity: locked ? 0.6 : 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "scale(1.03)";
-        if (locked) e.currentTarget.style.opacity = "0.85";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
-        if (locked) e.currentTarget.style.opacity = "0.6";
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.transform = "scale(0.97)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = "scale(1.03)";
-      }}
-    >
-      <LockBadge lock={lock} bundleLabel={bundleLabel} />
-      <div
-        style={{
-          position: "absolute",
-          bottom: 6,
-          left: 8,
-          right: 8,
-          fontSize: 10,
-          fontWeight: 800,
-          color: "#fff",
-          textShadow: "0 1px 4px rgba(0,0,0,0.6)",
-          textAlign: "left",
-          letterSpacing: "0.01em",
-          pointerEvents: "none",
-        }}
-      >
-        {label}
-      </div>
-    </button>
-  );
-}
-
-function CardSwatch({
-  selected,
-  lock,
-  bundleLabel,
-  onClick,
-  label,
-  css,
-}: {
-  selected: boolean;
-  lock: LockState;
-  bundleLabel?: string;
-  onClick: () => void;
-  label: string;
-  css: {
-    background: string;
-    border?: string;
-    boxShadow?: string;
-    backdropFilter?: string;
-    color?: string;
-  };
-}) {
-  const locked = lock.kind !== "owned";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      title={locked ? `${label} — ${lock.kind === "mp_plus" ? "Requiere MP+" : bundleLabel ?? ""}` : label}
-      style={{
-        position: "relative",
-        padding: 14,
-        background: css.background,
-        border: selected ? "2px solid #0a0a0a" : css.border ?? "1px solid var(--border)",
-        boxShadow: selected
-          ? "0 8px 24px rgba(0,0,0,0.18)"
-          : css.boxShadow ?? "none",
-        backdropFilter: css.backdropFilter,
-        color: css.color ?? "#0a0a0a",
-        borderRadius: 12,
-        cursor: "pointer",
-        textAlign: "left",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        transition: "transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms",
-        opacity: locked ? 0.6 : 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "scale(1.02)";
-        if (locked) e.currentTarget.style.opacity = "0.85";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
-        if (locked) e.currentTarget.style.opacity = "0.6";
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.transform = "scale(0.97)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = "scale(1.02)";
-      }}
-    >
-      <LockBadge lock={lock} bundleLabel={bundleLabel} />
-      <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em" }}>{label}</div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          fontSize: 11,
-          opacity: 0.8,
-        }}
-      >
-        <span
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            background: "currentColor",
-            opacity: 0.4,
-          }}
-        />
-        Jugador · 4.20
-      </div>
-    </button>
   );
 }
 
@@ -777,24 +497,15 @@ function BundleStore({
       >
         <h2
           className="font-heading"
-          style={{
-            fontSize: 22,
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            margin: 0,
-            textTransform: "uppercase",
-          }}
+          style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, textTransform: "uppercase" }}
         >
           Bundles disponibles<span style={{ color: "#fbbf24" }}>.</span>
         </h2>
-        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-          Compra única · sin expiración
-        </span>
+        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Compra única · sin expiración</span>
       </div>
       <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "0 0 16px" }}>
-        Estos packs desbloquean los presets premium-extra. Para adquirir uno,
-        contacta a soporte vía WhatsApp o mensaje directo a MATCHPOINT — el
-        equipo te confirma datos de transferencia y otorga el bundle al
+        Cada bundle desbloquea su tema. Para adquirir uno, contacta a soporte vía WhatsApp o mensaje
+        directo a MATCHPOINT — el equipo te confirma datos de transferencia y otorga el bundle al
         recibir el pago.
       </p>
       <div
@@ -821,13 +532,7 @@ function BundleStore({
                 gap: 8,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h3
                   className="font-heading"
                   style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em", margin: 0 }}
@@ -850,10 +555,7 @@ function BundleStore({
                     Owned
                   </span>
                 ) : (
-                  <span
-                    className="font-heading"
-                    style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
-                  >
+                  <span className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}>
                     {priceLabel(b.priceCents)}
                   </span>
                 )}
