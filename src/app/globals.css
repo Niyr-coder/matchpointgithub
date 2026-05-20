@@ -192,6 +192,13 @@ body {
 .btn:active { transform: scale(0.97); }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); }
+/* CTA teñido con accent inline del tema: el hover de background no aplica
+   (inline gana), así que el feedback se da con brightness — no lo pisa el
+   inline. Gateado a punteros finos para no disparar en touch. */
+.btn-accent { transition: filter 150ms ease, transform 160ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-accent:hover { filter: brightness(0.93); }
+}
 .btn-outline { background: transparent; color: #0a0a0a; border: 1.5px solid var(--border); padding: 8.5px 16.5px; }
 .btn-outline:hover { border-color: #0a0a0a; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 14.4px; }

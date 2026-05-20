@@ -2180,6 +2180,13 @@ profile_cosmetic_grants (
 - `profile_cosmetic_grants`: self-select del dueño, admin all (path real via
   service-role + `setAuditActor`).
 
+**Bundles temáticos (mig 128)**: +3 packs inspirados con nombre/arte propios
+(sin IP literal) — `pack_brasa` (shōnen: rojos/negro, brasas), `pack_vineta`
+(cómic: halftone, primarios, outline), `pack_vapor` (synthwave: grid retro,
+pink/cyan). Cada uno: fila en `cosmetic_bundles` (seed) + `bodyPattern` en
+`FALLBACK_BUNDLES` (`bundles.ts`) + entry en `PROFILE_THEMES` + key en `Tier`.
+Precio editable por admin (`cb_admin_write`). Catálogo total de packs: 7.
+
 **Seed**: 4 bundles iniciales (`pack_neon`, `pack_gold`, `pack_carbon`,
 `pack_sakura`). Precios editables sin redeploy via SQL update a
 `cosmetic_bundles`.
@@ -2340,6 +2347,15 @@ de mezcla libre sigan funcionando sin cambios. Agregar un tema = una entry nueva
   reales (no mocks).
 - Mig 126 reseteó los combos viejos al tema default (Clásico = los 3 en null).
 - `setProfileCustomization` (mezcla libre) queda para admin/legacy, no para la UI del user.
+
+**CTAs teñidos por accent (mig 128)**: los botones primarios "Agregar amigo"
+(`FriendCard`) y "Retar a match" (`FriendCard` + `ProfileScreenView`) usan el
+`accentHex` del **dueño de la superficie** (perfil/card que se mira), con color
+de texto resuelto por `readableTextOn(hex)` (luminancia WCAG). Botones globales
+sin dueño ("Invitar", "Aceptar/Rechazar") quedan neutros. Feedback de hover vía
+clase `.btn-accent` (`filter: brightness`, gateado a `pointer:fine`) porque el
+`background` inline tapa el `:hover` de `.btn-primary`. Catálogo total de
+temas: 14 (1 free + 6 mp_plus + 7 packs).
 
 ---
 

@@ -10,6 +10,7 @@ import { sendFriendRequest } from "@/server/actions/friends";
 import { startConversation } from "@/server/actions/messaging";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { readableTextOn } from "@/lib/profile/customization-presets";
 
 export type ProfileClub = {
   id: string;
@@ -346,7 +347,12 @@ export function ProfileScreenView({
                   Mensaje
                 </button>
                 <button
-                  className="btn btn-primary"
+                  className={`btn btn-primary${data.accentHex ? " btn-accent" : ""}`}
+                  style={
+                    data.accentHex
+                      ? { background: data.accentHex, borderColor: data.accentHex, color: readableTextOn(data.accentHex) }
+                      : undefined
+                  }
                   onClick={() =>
                     window.dispatchEvent(
                       new CustomEvent("mp-open-retar", {

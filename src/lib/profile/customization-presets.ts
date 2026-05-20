@@ -22,7 +22,15 @@
 // de un pack, su `bundleKey` debe matchear un bundle de FALLBACK_BUNDLES
 // (bundles.ts) para heredar el bodyPattern del banner.
 
-export type Tier = "mp_plus" | "pack_neon" | "pack_gold" | "pack_carbon" | "pack_sakura";
+export type Tier =
+  | "mp_plus"
+  | "pack_neon"
+  | "pack_gold"
+  | "pack_carbon"
+  | "pack_sakura"
+  | "pack_brasa"
+  | "pack_vineta"
+  | "pack_vapor";
 
 // CSS del card-style de un tema (wrapper de stat cards, friend cards, listings).
 export type ThemeCardCss = {
@@ -171,6 +179,78 @@ export const PROFILE_THEMES: ProfileTheme[] = [
       color: "#831843",
     },
   },
+
+  // ── MatchPoint+ extra (2) — engrosan el tier incluido, sin bundle pago.
+  {
+    key: "coral",
+    label: "Coral",
+    bundleKey: "mp_plus",
+    accentHex: "#f43f5e",
+    bannerCss: "linear-gradient(135deg, #9f1239 0%, #fb7185 50%, #fed7aa 100%)",
+    cardCss: {
+      background: "rgba(255,255,255,0.7)",
+      border: "1px solid rgba(254,205,211,0.6)",
+      backdropFilter: "blur(12px)",
+      boxShadow: "0 8px 32px rgba(244,63,94,0.1)",
+    },
+  },
+  {
+    key: "medianoche",
+    label: "Medianoche",
+    bundleKey: "mp_plus",
+    accentHex: "#818cf8",
+    bannerCss: "linear-gradient(135deg, #020617 0%, #1e293b 55%, #334155 100%)",
+    cardCss: {
+      background: "rgba(241,245,249,0.7)",
+      border: "1px solid rgba(148,163,184,0.4)",
+      backdropFilter: "blur(14px)",
+      boxShadow: "0 4px 20px rgba(2,6,23,0.12)",
+    },
+  },
+
+  // ── Packs temáticos inspirados (3) — nombre/arte propios, sin IP literal.
+  {
+    // Shōnen / "demon slayer" vibe: rojos sobre negro, brasas.
+    key: "brasa",
+    label: "Brasa",
+    bundleKey: "pack_brasa",
+    accentHex: "#ef4444",
+    bannerCss: "linear-gradient(135deg, #0a0a0a 0%, #7f1d1d 55%, #f97316 100%)",
+    cardCss: {
+      background: "linear-gradient(135deg, #1c0a0a, #0a0a0a)",
+      border: "1px solid #ef4444",
+      boxShadow: "0 0 24px rgba(239,68,68,0.3)",
+      color: "#fee2e2",
+    },
+  },
+  {
+    // Comic / pop-art: halftone + outline grueso, primarios.
+    key: "vineta",
+    label: "Viñeta",
+    bundleKey: "pack_vineta",
+    accentHex: "#2563eb",
+    bannerCss: "linear-gradient(135deg, #fde047 0%, #f97316 45%, #dc2626 100%)",
+    cardCss: {
+      background: "#ffffff",
+      border: "2.5px solid #0a0a0a",
+      boxShadow: "4px 4px 0 #0a0a0a",
+      color: "#0a0a0a",
+    },
+  },
+  {
+    // Synthwave / vaporwave: pink/cyan/violeta, grid retro.
+    key: "vapor",
+    label: "Vapor",
+    bundleKey: "pack_vapor",
+    accentHex: "#22d3ee",
+    bannerCss: "linear-gradient(135deg, #2e1065 0%, #db2777 55%, #22d3ee 100%)",
+    cardCss: {
+      background: "linear-gradient(135deg, #1e1b4b, #3b0764)",
+      border: "1px solid #f0abfc",
+      boxShadow: "0 0 24px rgba(217,70,239,0.3)",
+      color: "#f5d0fe",
+    },
+  },
 ];
 
 export const THEME_KEYS = new Set(PROFILE_THEMES.map((t) => t.key));
@@ -248,4 +328,25 @@ export function findBanner(key: string | null | undefined): BannerPreset | null 
 export function findCardStyle(key: string | null | undefined): CardStyle | null {
   if (!key) return null;
   return CARD_STYLES.find((c) => c.key === key) ?? null;
+}
+
+// ── Contraste ────────────────────────────────────────────────────────────
+// Dado un color de fondo hex (#rgb o #rrggbb), devuelve el color de texto
+// legible encima (negro o blanco) según luminancia relativa (WCAG). Lo usan
+// los CTAs teñidos con el accent del tema (botón Agregar amigo, Retar a match)
+// para garantizar legibilidad con cualquier accent presente o futuro.
+export function readableTextOn(hex: string | null | undefined): string {
+  if (!hex) return "#fff";
+  let h = hex.trim().replace(/^#/, "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length !== 6) return "#fff";
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  // Umbral perceptual WCAG (~0.179 = donde el contraste de negro y blanco
+  // empata). Por encima → texto negro; debajo → blanco. Maximiza legibilidad
+  // incluso en accents medios/grises (ej. Carbón #a1a1aa → texto negro).
+  return luminance > 0.179 ? "#0a0a0a" : "#fff";
 }

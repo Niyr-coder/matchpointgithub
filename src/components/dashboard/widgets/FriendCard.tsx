@@ -10,6 +10,7 @@ import { useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { startConversation } from "@/server/actions/messaging";
+import { readableTextOn } from "@/lib/profile/customization-presets";
 
 export type FriendLite = {
   id: string;
@@ -94,6 +95,10 @@ export function FriendCard({
   const profileHref = !preview && f.username ? `/dashboard/user/players/${f.username}` : null;
   const cardCss = f.cardStyleCss;
   const accent = f.accentHex;
+  // CTA primario teñido con el accent del dueño de la card (texto por contraste).
+  const ctaStyle = accent
+    ? { background: accent, borderColor: accent, color: readableTextOn(accent) }
+    : undefined;
   const headerBg = accent
     ? `linear-gradient(135deg, ${accent}cc, ${accent})`
     : "linear-gradient(135deg, #064e3b, #10b981)";
@@ -193,7 +198,7 @@ export function FriendCard({
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 12, pointerEvents: preview ? "none" : "auto" }}>
           {isSuggestion ? (
-            <button className="btn btn-primary" style={{ flex: 1, fontSize: 10.5, padding: "8px 10px" }}>
+            <button className={`btn btn-primary${accent ? " btn-accent" : ""}`} style={{ flex: 1, fontSize: 10.5, padding: "8px 10px", ...ctaStyle }}>
               <Icon name="user-plus" size={12} />
               Agregar
             </button>
@@ -228,8 +233,8 @@ export function FriendCard({
                 {msgPending ? "Abriendo..." : "Mensaje"}
               </button>
               <button
-                className="btn btn-primary"
-                style={{ flex: 1, fontSize: 10.5, padding: "8px 10px" }}
+                className={`btn btn-primary${accent ? " btn-accent" : ""}`}
+                style={{ flex: 1, fontSize: 10.5, padding: "8px 10px", ...ctaStyle }}
                 onClick={() => {
                   if (preview) return;
                   window.dispatchEvent(

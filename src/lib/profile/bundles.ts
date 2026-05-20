@@ -76,6 +76,37 @@ export const FALLBACK_BUNDLES: BundleInfo[] = [
     bodyPattern:
       "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cg fill='%23ec4899' fill-opacity='0.32'%3E%3Cellipse cx='30' cy='40' rx='10' ry='5' transform='rotate(35 30 40)'/%3E%3Cellipse cx='150' cy='30' rx='9' ry='4.5' transform='rotate(-20 150 30)' opacity='0.85'/%3E%3Cellipse cx='110' cy='110' rx='8' ry='4' transform='rotate(60 110 110)'/%3E%3Cellipse cx='50' cy='150' rx='10' ry='5' transform='rotate(-45 50 150)' opacity='0.75'/%3E%3Cellipse cx='175' cy='160' rx='9' ry='4.5' transform='rotate(15 175 160)'/%3E%3Cellipse cx='90' cy='60' rx='7' ry='3.5' transform='rotate(110 90 60)' opacity='0.65'/%3E%3C/g%3E%3C/svg%3E\"), radial-gradient(circle at 20% 30%, rgba(236,72,153,0.16), transparent 25%), radial-gradient(circle at 80% 70%, rgba(217,70,239,0.14), transparent 28%)",
   },
+  {
+    key: "pack_brasa",
+    label: "Pack Brasa",
+    description: "Energía shōnen — rojos sobre negro con brasas ardientes.",
+    priceCents: 500,
+    accent: "#ef4444",
+    // Brasas (SVG circles dispersos naranja/rojo) + glow cálido desde abajo.
+    bodyPattern:
+      "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='%23f97316'%3E%3Ccircle cx='30' cy='40' r='3' fill-opacity='0.55'/%3E%3Ccircle cx='120' cy='28' r='2' fill-opacity='0.4'/%3E%3Ccircle cx='80' cy='92' r='2.5' fill-opacity='0.5'/%3E%3Ccircle cx='52' cy='132' r='2' fill-opacity='0.38'/%3E%3Ccircle cx='140' cy='118' r='3' fill-opacity='0.5'/%3E%3Ccircle cx='100' cy='150' r='1.5' fill-opacity='0.3'/%3E%3Ccircle cx='18' cy='90' r='1.5' fill-opacity='0.32'/%3E%3C/g%3E%3C/svg%3E\"), radial-gradient(ellipse at 50% 110%, rgba(249,115,22,0.24), transparent 50%), radial-gradient(circle at 18% 22%, rgba(239,68,68,0.14), transparent 32%)",
+  },
+  {
+    key: "pack_vineta",
+    label: "Pack Viñeta",
+    description: "Estilo cómic — halftone, primarios y outline grueso.",
+    priceCents: 500,
+    accent: "#2563eb",
+    // Halftone clásico: grid regular de puntos negros (tile 18px). Sobre el
+    // banner brillante, el blend multiply lo vuelve un patrón de cómic nítido.
+    bodyPattern:
+      "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Ccircle cx='9' cy='9' r='2.4' fill='%230a0a0a' fill-opacity='0.18'/%3E%3C/svg%3E\")",
+  },
+  {
+    key: "pack_vapor",
+    label: "Pack Vapor",
+    description: "Synthwave — grid retro y neón pink/cyan.",
+    priceCents: 500,
+    accent: "#d946ef",
+    // Grid retro (repeating-linear-gradient se auto-tilea) + glow desde abajo.
+    bodyPattern:
+      "repeating-linear-gradient(0deg, rgba(34,211,238,0.10) 0 1px, transparent 1px 26px), repeating-linear-gradient(90deg, rgba(236,72,153,0.10) 0 1px, transparent 1px 26px), radial-gradient(ellipse at 50% 120%, rgba(217,70,239,0.2), transparent 52%)",
+  },
 ];
 
 // Helper: ¿el bundle de este bannerKey define un body pattern?
