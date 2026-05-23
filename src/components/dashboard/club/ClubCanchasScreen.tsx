@@ -3,7 +3,7 @@
 // + ventana de mantenimiento (maintenance_reason/maintenance_until).
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
-import { ClubCanchasScreenView, type CanchasData, type CourtCard } from "./ClubCanchasScreenView";
+import { ClubCanchasScreenView, type CanchasData, type CourtCard, type PricingBand } from "./ClubCanchasScreenView";
 
 async function loadData(): Promise<CanchasData> {
   const clubId = await resolveActiveClubId();
@@ -35,9 +35,12 @@ async function loadData(): Promise<CanchasData> {
   ] = await Promise.all([
     supabase
       .from("court_pricing")
-      .select("court_id,price_cents,starts_at,ends_at")
+      .select(
+        "id,court_id,day_of_week,starts_at,ends_at,price_cents,duration_minutes,currency,active",
+      )
       .in("court_id", courtIds)
-      .eq("active", true),
+      .order("day_of_week", { ascending: true, nullsFirst: true })
+      .order("starts_at"),
     supabase
       .from("reservations")
       .select("court_id")
@@ -66,9 +69,13 @@ async function loadData(): Promise<CanchasData> {
       .limit(40),
   ]);
 
-  // Min price por cancha.
+  // Min price por cancha + lista completa de bands por cancha (para el tab
+  // Tarifas y la card de Gestión). Las bands se reagrupan por court_id
+  // ordenadas por (day_of_week, starts_at) — el server query ya devuelve un
+  // orden conveniente, pero por seguridad re-ordenamos en cliente.
   const priceByCourt = new Map<string, number>();
   const hoursByCourt = new Map<string, string>();
+  const bandsByCourt = new Map<string, PricingBand[]>();
   for (const p of pricing ?? []) {
     const cId = p.court_id as string;
     const cents = p.price_cents as number;
@@ -78,6 +85,18 @@ async function loadData(): Promise<CanchasData> {
     if (!hoursByCourt.has(cId) && p.starts_at && p.ends_at) {
       hoursByCourt.set(cId, `${(p.starts_at as string).slice(0, 5)} – ${(p.ends_at as string).slice(0, 5)}`);
     }
+    const arr = bandsByCourt.get(cId) ?? [];
+    arr.push({
+      id: p.id as string,
+      dayOfWeek: (p.day_of_week as number | null) ?? null,
+      startsAt: p.starts_at as string,
+      endsAt: p.ends_at as string,
+      priceCents: cents,
+      durationMinutes: (p.duration_minutes as number) ?? 60,
+      currency: p.currency as string,
+      active: (p.active as boolean) ?? true,
+    });
+    bandsByCourt.set(cId, arr);
   }
 
   // Utilización 7d.
@@ -220,6 +239,7 @@ async function loadData(): Promise<CanchasData> {
         notes: s.notes,
       })),
       maintenanceLog: maintByCourt.get(c.id as string) ?? [],
+      pricingBands: bandsByCourt.get(c.id as string) ?? [],
     };
   });
 

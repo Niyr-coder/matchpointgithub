@@ -18,8 +18,21 @@ import {
   createCourt,
   createCourtBlocker,
   setCourtMaintenance,
+  setCourtPricing,
   updateCourt,
 } from "@/server/actions/courts";
+
+// Pricing band para una cancha (court_pricing row). day_of_week null = todos los días.
+export type PricingBand = {
+  id?: string;
+  dayOfWeek: number | null;
+  startsAt: string;
+  endsAt: string;
+  priceCents: number;
+  durationMinutes: number;
+  currency: string;
+  active: boolean;
+};
 
 export type CourtCard = {
   id: string;
@@ -58,6 +71,8 @@ export type CourtCard = {
     expectedUntil: string | null;
     endedAt: string | null;
   }>;
+  // Tarifas activas e inactivas: la edición usa setCourtPricing (replace-all).
+  pricingBands: PricingBand[];
 };
 
 export type CanchasData = {
@@ -65,7 +80,12 @@ export type CanchasData = {
   courts: CourtCard[];
 };
 
-type View = "gallery" | "schedule" | "floorplan";
+// Tabs alineados al UX Kit Ola A (MAT-3 §4): "Vista pública" (preserva el SVG
+// rediseñado), "Gestión" (cards operativas con CRUD inline), "Tarifas" (editor
+// de bands court_pricing). Agenda + Floorplan se mantienen como vistas
+// adicionales del rediseño previo — siguen siendo útiles y no contradicen el
+// UX kit ("no destruir el rediseño").
+type View = "publica" | "gestion" | "tarifas" | "schedule" | "floorplan";
 
 const STATUS_META: Record<CourtCard["status"], { c: string; l: string; bg: string }> = {
   busy: { c: "#dc2626", l: "En juego", bg: "rgba(220,38,38,0.12)" },
@@ -100,7 +120,9 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
-  const [view, setView] = useState<View>("gallery");
+  // Por defecto entramos a Gestión: es donde el owner/manager opera. El que
+  // viene a mostrar el club ve "Vista pública" desde el segundo tab.
+  const [view, setView] = useState<View>("gestion");
   const [openCourt, setOpenCourt] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
@@ -113,12 +135,22 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
   const bookingsToday = courts.reduce((s, c) => s + c.bookingsToday, 0);
 
   // ── Helpers de acción (todos llaman server actions reales) ──
+  // Tarifa inline en el form de creación (UX kit §4.4): el form recoge diurna
+  // + nocturna con franja, y aquí persistimos como 2 bands de court_pricing.
+  // Si el alta falla no se intenta el pricing.
   const handleCreate = (form: {
     code: string;
     sport: "pickleball" | "padel" | "tennis";
     indoor: boolean;
     lights: boolean;
     surface: string;
+    pricing: {
+      currency: string;
+      dayStart: string;
+      dayEnd: string;
+      dayPriceCents: number;
+      nightPriceCents: number;
+    } | null;
   }) => {
     if (!data.clubId) return;
     startTransition(async () => {
@@ -139,8 +171,78 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
         return;
       }
       toast({ icon: "check-circle-2", title: "Cancha creada", sub: r.data.code });
+      // Seed inicial de bandas (best-effort: si falla no rompemos el alta —
+      // el owner puede editar tarifas después desde el tab "Tarifas").
+      if (form.pricing) {
+        const p = form.pricing;
+        const dayBand = {
+          dayOfWeek: null,
+          startsAt: p.dayStart,
+          endsAt: p.dayEnd,
+          priceCents: p.dayPriceCents,
+          durationMinutes: 60,
+          currency: p.currency,
+          active: true,
+        };
+        // Banda nocturna: del fin del diurno hasta justo antes de dayStart del
+        // día siguiente (envuelve la medianoche). Para evitar wrap-around en
+        // SQL time, partimos en 2 fragmentos.
+        const nightBands = [
+          {
+            dayOfWeek: null,
+            startsAt: p.dayEnd,
+            endsAt: "23:59:59",
+            priceCents: p.nightPriceCents,
+            durationMinutes: 60,
+            currency: p.currency,
+            active: true,
+          },
+          {
+            dayOfWeek: null,
+            startsAt: "00:00:00",
+            endsAt: p.dayStart,
+            priceCents: p.nightPriceCents,
+            durationMinutes: 60,
+            currency: p.currency,
+            active: true,
+          },
+        ].filter((b) => b.endsAt > b.startsAt);
+        const pr = await setCourtPricing({
+          courtId: r.data.id,
+          bands: [dayBand, ...nightBands],
+        });
+        if (!pr.ok) {
+          toast({
+            icon: "alert-triangle",
+            title: "Tarifas pendientes",
+            sub: "Cancha creada pero no se pudieron grabar las tarifas. Edítalas desde Tarifas.",
+          });
+        }
+      }
       setShowAdd(false);
       router.refresh();
+    });
+  };
+
+  // Reemplaza todas las bands de una cancha (replace-all transacción lógica).
+  const handleSetPricing = (
+    courtId: string,
+    bands: PricingBand[],
+    onDone?: () => void,
+  ) => {
+    startTransition(async () => {
+      const r = await setCourtPricing({ courtId, bands });
+      if (!r.ok) {
+        const msg =
+          r.error.code === "COURTS.PRICING_OVERLAP"
+            ? "Hay franjas de tarifa que se solapan"
+            : r.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudieron guardar", sub: msg });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Tarifas guardadas" });
+      router.refresh();
+      onDone?.();
     });
   };
 
@@ -394,7 +496,9 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
       >
         {(
           [
-            { k: "gallery", l: "Galería", i: "layout-grid" },
+            { k: "gestion", l: "Gestión", i: "list-checks" },
+            { k: "publica", l: "Vista pública", i: "layout-grid" },
+            { k: "tarifas", l: "Tarifas", i: "dollar-sign" },
             { k: "schedule", l: "Agenda hoy", i: "calendar-days" },
             { k: "floorplan", l: "Plano del club", i: "map" },
           ] as Array<{ k: View; l: string; i: string }>
@@ -432,8 +536,27 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
         <EmptyState onAdd={() => setShowAdd(true)} />
       ) : (
         <>
-          {view === "gallery" && (
-            <GalleryView courts={courts} onOpen={setOpenCourt} onToggleActive={handleToggleActive} />
+          {view === "gestion" && (
+            <ManagementView
+              courts={courts}
+              onOpen={setOpenCourt}
+              onToggleActive={handleToggleActive}
+            />
+          )}
+          {view === "publica" && (
+            <PublicView
+              courts={courts}
+              onOpen={setOpenCourt}
+              onToggleActive={handleToggleActive}
+              onGoToManagement={() => setView("gestion")}
+            />
+          )}
+          {view === "tarifas" && (
+            <PricingTab
+              courts={courts}
+              onSetPricing={handleSetPricing}
+              pending={pending}
+            />
           )}
           {view === "schedule" && <ScheduleView courts={courts} />}
           {view === "floorplan" && <FloorplanView courts={courts} onOpen={setOpenCourt} />}
@@ -2488,6 +2611,13 @@ function AddCourtModal({
     indoor: boolean;
     lights: boolean;
     surface: string;
+    pricing: {
+      currency: string;
+      dayStart: string;
+      dayEnd: string;
+      dayPriceCents: number;
+      nightPriceCents: number;
+    } | null;
   }) => void;
   pending: boolean;
 }) {
@@ -2496,7 +2626,18 @@ function AddCourtModal({
   const [indoor, setIndoor] = useState(false);
   const [lights, setLights] = useState(true);
   const [surface, setSurface] = useState("");
-  const valid = code.trim().length > 0;
+  // UX kit §4.4: tarifa inline diurna/nocturna con franja diurna configurable.
+  // El owner puede saltarse el seed inicial con "Configurar tarifas después".
+  const [seedPricing, setSeedPricing] = useState(true);
+  const [currency, setCurrency] = useState("USD");
+  const [dayStart, setDayStart] = useState("08:00");
+  const [dayEnd, setDayEnd] = useState("18:00");
+  const [dayPrice, setDayPrice] = useState(20);
+  const [nightPrice, setNightPrice] = useState(25);
+  const pricingValid =
+    !seedPricing ||
+    (dayEnd > dayStart && dayPrice >= 0 && nightPrice >= 0);
+  const valid = code.trim().length > 0 && pricingValid;
   return (
     <div
       onClick={close}
@@ -2611,6 +2752,116 @@ function AddCourtModal({
               Tiene luces
             </label>
           </div>
+          <div
+            style={{
+              borderTop: "1px solid var(--border)",
+              marginTop: 6,
+              paddingTop: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={seedPricing}
+                onChange={(e) => setSeedPricing(e.target.checked)}
+                style={{ accentColor: "#10b981" }}
+              />
+              Configurar tarifa diurna/nocturna ahora
+            </label>
+            {seedPricing && (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div className="label-mp" style={{ marginBottom: 6 }}>
+                      Moneda
+                    </div>
+                    <select
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="USD">USD</option>
+                      <option value="ARS">ARS</option>
+                      <option value="MXN">MXN</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="label-mp" style={{ marginBottom: 6 }}>
+                      Franja diurna desde
+                    </div>
+                    <input
+                      type="time"
+                      value={dayStart}
+                      onChange={(e) => setDayStart(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <div className="label-mp" style={{ marginBottom: 6 }}>
+                      hasta
+                    </div>
+                    <input
+                      type="time"
+                      value={dayEnd}
+                      onChange={(e) => setDayEnd(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <div className="label-mp" style={{ marginBottom: 6 }}>
+                      Tarifa diurna ($/h)
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={dayPrice}
+                      onChange={(e) => setDayPrice(Math.max(0, Number(e.target.value)))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <div className="label-mp" style={{ marginBottom: 6 }}>
+                      Tarifa nocturna ($/h)
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={nightPrice}
+                      onChange={(e) => setNightPrice(Math.max(0, Number(e.target.value)))}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+                {!pricingValid && (
+                  <div style={{ color: "#dc2626", fontSize: 12 }}>
+                    El fin de la franja diurna debe ser después del inicio.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
         <div
           style={{
@@ -2630,7 +2881,22 @@ function AddCourtModal({
           </button>
           <button
             onClick={() =>
-              onCreate({ code, sport, indoor, lights, surface })
+              onCreate({
+                code,
+                sport,
+                indoor,
+                lights,
+                surface,
+                pricing: seedPricing
+                  ? {
+                      currency,
+                      dayStart: `${dayStart}:00`,
+                      dayEnd: `${dayEnd}:00`,
+                      dayPriceCents: Math.round(dayPrice * 100),
+                      nightPriceCents: Math.round(nightPrice * 100),
+                    }
+                  : null,
+              })
             }
             disabled={!valid || pending}
             className="btn btn-primary"
@@ -2826,6 +3092,476 @@ function BulkBlockModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// UX Kit Ola A — vistas Vista pública / Gestión / Tarifas
+// ════════════════════════════════════════════════════════════════════════
+
+// Vista pública: reusa GalleryView con banda informativa que redirige a
+// "Gestión" para operar. UX kit §4.2 — single change cosmético sobre el SVG
+// rediseñado.
+function PublicView({
+  courts,
+  onOpen,
+  onToggleActive,
+  onGoToManagement,
+}: {
+  courts: CourtCard[];
+  onOpen: (id: string) => void;
+  onToggleActive: (c: CourtCard) => void;
+  onGoToManagement: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
+        role="note"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+          background: "rgba(59,130,246,0.08)",
+          border: "1px solid rgba(59,130,246,0.25)",
+          borderRadius: 10,
+          color: "#1e3a8a",
+          fontSize: 13,
+        }}
+      >
+        <Icon name="info" size={14} />
+        <span style={{ flex: 1 }}>
+          Vista pública de las canchas. Para editar capacidad, tarifas o bloquear
+          horarios, usá la pestaña <b>Gestión</b>.
+        </span>
+        <button
+          onClick={onGoToManagement}
+          className="btn"
+          style={{
+            background: "#fff",
+            border: "1px solid rgba(59,130,246,0.4)",
+            color: "#1e3a8a",
+            padding: "6px 10px",
+            fontSize: 12,
+          }}
+        >
+          Ir a Gestión
+          <Icon name="chevron-right" size={11} />
+        </button>
+      </div>
+      <GalleryView courts={courts} onOpen={onOpen} onToggleActive={onToggleActive} />
+    </div>
+  );
+}
+
+// Gestión: lista de cards densas con status visible y acciones inline. UX kit
+// §4.3 — cards (no tabla), status pill, acciones Editar / Bloquear / Tarifas.
+function ManagementView({
+  courts,
+  onOpen,
+  onToggleActive,
+}: {
+  courts: CourtCard[];
+  onOpen: (id: string) => void;
+  onToggleActive: (c: CourtCard) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {courts.map((c) => (
+        <ManagementCard
+          key={c.id}
+          c={c}
+          onOpen={() => onOpen(c.id)}
+          onToggleActive={() => onToggleActive(c)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ManagementCard({
+  c,
+  onOpen,
+  onToggleActive,
+}: {
+  c: CourtCard;
+  onOpen: () => void;
+  onToggleActive: () => void;
+}) {
+  const st = STATUS_META[c.status];
+  // Mini-resumen de tarifas: si hay 1+ bands activas mostramos rango de precios
+  // (min–max); si no, mostramos "Sin tarifa configurada" para señalar gap.
+  const activeBands = c.pricingBands.filter((b) => b.active);
+  let pricingSummary: string;
+  if (activeBands.length === 0) {
+    pricingSummary = "Sin tarifa configurada";
+  } else {
+    const prices = activeBands.map((b) => b.priceCents);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    pricingSummary =
+      min === max
+        ? `$${(min / 100).toFixed(0)}/h`
+        : `$${(min / 100).toFixed(0)}–$${(max / 100).toFixed(0)}/h`;
+  }
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 14,
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 12,
+        alignItems: "center",
+        opacity: c.active ? 1 : 0.6,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            className="font-heading"
+            style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em" }}
+          >
+            {c.name}
+          </span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: st.bg,
+              color: st.c,
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: "uppercase",
+            }}
+          >
+            ● {st.l}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+          {c.surf} · {c.lights ? "Con luces" : "Sin luces"} · {c.hours}
+        </div>
+        <div style={{ fontSize: 12, color: "#0a0a0a" }}>
+          <Icon name="dollar-sign" size={11} /> {pricingSummary}
+          {c.status === "maintenance" && c.maintenanceReason ? (
+            <span style={{ color: "#92400e", marginLeft: 10 }}>
+              · {c.maintenanceReason}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={onOpen}
+          className="btn"
+          style={{ background: "#fff", border: "1px solid var(--border)" }}
+        >
+          <Icon name="pencil" size={12} />
+          Editar
+        </button>
+        <button
+          onClick={onToggleActive}
+          className="btn"
+          style={{
+            background: "#fff",
+            border: "1px solid var(--border)",
+            color: c.active ? "#92400e" : "#10b981",
+          }}
+        >
+          <Icon name={c.active ? "ban" : "check-circle-2"} size={12} />
+          {c.active ? "Bloquear" : "Reabrir"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Tarifas: editor de bands por cancha. UX kit §4.6 — alcance mínimo Ola A:
+// permitimos crear/editar bands de court_pricing por cancha. Cada cancha es
+// editable independientemente; se persiste con setCourtPricing (replace-all).
+const DAY_OPTIONS: Array<{ v: number | null; l: string }> = [
+  { v: null, l: "Todos los días" },
+  { v: 1, l: "Lunes" },
+  { v: 2, l: "Martes" },
+  { v: 3, l: "Miércoles" },
+  { v: 4, l: "Jueves" },
+  { v: 5, l: "Viernes" },
+  { v: 6, l: "Sábado" },
+  { v: 0, l: "Domingo" },
+];
+
+function PricingTab({
+  courts,
+  onSetPricing,
+  pending,
+}: {
+  courts: CourtCard[];
+  onSetPricing: (courtId: string, bands: PricingBand[], onDone?: () => void) => void;
+  pending: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
+        style={{
+          fontSize: 13,
+          color: "var(--muted-fg)",
+          padding: "8px 4px",
+        }}
+      >
+        Editá las franjas de tarifa por cancha. Podés definir múltiples franjas
+        por día (ej. diurna/nocturna, fin de semana). Los cambios se aplican al
+        guardar — el calendario de reservas refleja la nueva tarifa al instante.
+      </div>
+      {courts.map((c) => (
+        <PricingCardEditor
+          key={c.id}
+          court={c}
+          onSave={(bands, done) => onSetPricing(c.id, bands, done)}
+          pending={pending}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PricingCardEditor({
+  court,
+  onSave,
+  pending,
+}: {
+  court: CourtCard;
+  onSave: (bands: PricingBand[], onDone?: () => void) => void;
+  pending: boolean;
+}) {
+  // Estado local edita una copia de las bandas; se descarta al guardar/recargar.
+  const initial = court.pricingBands.length
+    ? court.pricingBands.map((b) => ({ ...b }))
+    : [
+        {
+          dayOfWeek: null,
+          startsAt: "08:00:00",
+          endsAt: "18:00:00",
+          priceCents: 2000,
+          durationMinutes: 60,
+          currency: "USD",
+          active: true,
+        },
+      ];
+  const [bands, setBands] = useState<PricingBand[]>(initial);
+  const [open, setOpen] = useState(court.pricingBands.length === 0);
+  const dirty = JSON.stringify(bands) !== JSON.stringify(initial);
+
+  const updateBand = (idx: number, patch: Partial<PricingBand>) => {
+    setBands((b) => b.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  };
+  const addBand = () => {
+    setBands((b) => [
+      ...b,
+      {
+        dayOfWeek: null,
+        startsAt: "18:00:00",
+        endsAt: "22:00:00",
+        priceCents: 2500,
+        durationMinutes: 60,
+        currency: bands[0]?.currency ?? "USD",
+        active: true,
+      },
+    ]);
+  };
+  const removeBand = (idx: number) => {
+    setBands((b) => b.filter((_, i) => i !== idx));
+  };
+  const reset = () => setBands(initial);
+
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+        }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+        <span
+          className="font-heading"
+          style={{ fontSize: 15, fontWeight: 900, flex: 1 }}
+        >
+          {court.name}
+        </span>
+        <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+          {bands.length} {bands.length === 1 ? "franja" : "franjas"}
+          {dirty ? " · sin guardar" : ""}
+        </span>
+      </div>
+      {open && (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr 0.6fr 0.6fr auto",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 11,
+              color: "var(--muted-fg)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontWeight: 700,
+              padding: "0 4px",
+            }}
+          >
+            <span>Día</span>
+            <span>Desde</span>
+            <span>Hasta</span>
+            <span>Precio ($)</span>
+            <span>Slot (min)</span>
+            <span>Activa</span>
+            <span />
+          </div>
+          {bands.map((b, i) => (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr 0.6fr 0.6fr auto",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <select
+                value={b.dayOfWeek === null ? "null" : String(b.dayOfWeek)}
+                onChange={(e) =>
+                  updateBand(i, {
+                    dayOfWeek: e.target.value === "null" ? null : Number(e.target.value),
+                  })
+                }
+                style={inputStyle}
+              >
+                {DAY_OPTIONS.map((d) => (
+                  <option key={d.v === null ? "null" : d.v} value={d.v === null ? "null" : String(d.v)}>
+                    {d.l}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="time"
+                value={b.startsAt.slice(0, 5)}
+                onChange={(e) => updateBand(i, { startsAt: `${e.target.value}:00` })}
+                style={inputStyle}
+              />
+              <input
+                type="time"
+                value={b.endsAt.slice(0, 5)}
+                onChange={(e) => updateBand(i, { endsAt: `${e.target.value}:00` })}
+                style={inputStyle}
+              />
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={(b.priceCents / 100).toFixed(2)}
+                onChange={(e) =>
+                  updateBand(i, {
+                    priceCents: Math.max(0, Math.round(Number(e.target.value) * 100)),
+                  })
+                }
+                style={inputStyle}
+              />
+              <input
+                type="number"
+                min={15}
+                max={240}
+                step={15}
+                value={b.durationMinutes}
+                onChange={(e) =>
+                  updateBand(i, { durationMinutes: Math.max(15, Math.min(240, Number(e.target.value))) })
+                }
+                style={inputStyle}
+              />
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  justifyContent: "center",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={b.active}
+                  onChange={(e) => updateBand(i, { active: e.target.checked })}
+                  style={{ accentColor: "#10b981" }}
+                />
+              </label>
+              <button
+                onClick={() => removeBand(i)}
+                className="btn"
+                title="Eliminar franja"
+                style={{ background: "#fff", border: "1px solid var(--border)" }}
+              >
+                <Icon name="trash" size={12} />
+              </button>
+            </div>
+          ))}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 8,
+              paddingTop: 6,
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <button
+              onClick={addBand}
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)" }}
+            >
+              <Icon name="plus" size={12} />
+              Agregar franja
+            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={reset}
+                disabled={!dirty || pending}
+                className="btn"
+                style={{
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  opacity: !dirty || pending ? 0.6 : 1,
+                }}
+              >
+                Descartar
+              </button>
+              <button
+                onClick={() => onSave(bands)}
+                disabled={!dirty || pending}
+                className="btn btn-primary"
+                style={{ opacity: !dirty || pending ? 0.6 : 1 }}
+              >
+                <Icon name="check" size={12} color="#fff" />
+                Guardar tarifas
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
