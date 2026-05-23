@@ -15,7 +15,10 @@ import {
   CourtMaintenanceSchema,
   CourtSchema,
   CourtUpdateSchema,
+  CourtPricingSchema,
+  SetCourtPricingSchema,
   type Court,
+  type CourtPricing,
 } from "@/lib/schemas/courts";
 import { UuidSchema } from "@/lib/schemas/common";
 
@@ -368,6 +371,117 @@ export async function createCourtBlocker(
       throw new MpError("COURTS.BLOCKER_FAILED", error.message, 500);
     }
     return { id: data.id as string };
+  });
+}
+
+// ── listCourtPricing (public) ───────────────────────────────────────────
+// Lista todos los pricing bands activos de una cancha, ordenados por
+// (day_of_week, starts_at). Devuelve filas inactivas sólo si includeInactive.
+const ListPricingSchema = z.object({
+  courtId: UuidSchema,
+  includeInactive: z.boolean().default(false),
+});
+
+function mapPricing(row: Record<string, unknown>): CourtPricing {
+  return CourtPricingSchema.parse({
+    id: row.id,
+    courtId: row.court_id,
+    dayOfWeek: (row.day_of_week as number | null) ?? null,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    priceCents: row.price_cents,
+    durationMinutes: row.duration_minutes,
+    currency: row.currency,
+    active: row.active,
+  });
+}
+
+export async function listCourtPricing(
+  input: unknown,
+): Promise<ActionResult<CourtPricing[]>> {
+  return runAction(ListPricingSchema, input, async ({ courtId, includeInactive }) => {
+    const supabase = await getServerClient();
+    let q = supabase
+      .from("court_pricing")
+      .select("*")
+      .eq("court_id", courtId)
+      .order("day_of_week", { ascending: true, nullsFirst: true })
+      .order("starts_at");
+    if (!includeInactive) q = q.eq("active", true);
+    const { data, error } = await q;
+    if (error) throw new MpError("COURTS.DB_ERROR", error.message, 500);
+    return (data ?? []).map(mapPricing);
+  });
+}
+
+// ── setCourtPricing (staff) ─────────────────────────────────────────────
+// Reemplaza todas las bands activas de una cancha por las dadas. Strategy:
+// 1) valida solapamientos en la lista nueva (mismo day_of_week + ventana).
+// 2) borra las bands existentes activas (RLS valida staff via court→club).
+// 3) inserta las nuevas en una operación. Si las nuevas vienen vacías = wipe.
+// Validar staff de la cancha antes de mutar.
+function bandsOverlap(
+  a: { dayOfWeek: number | null; startsAt: string; endsAt: string },
+  b: { dayOfWeek: number | null; startsAt: string; endsAt: string },
+): boolean {
+  if (a.dayOfWeek != null && b.dayOfWeek != null && a.dayOfWeek !== b.dayOfWeek) {
+    return false;
+  }
+  return a.startsAt < b.endsAt && b.startsAt < a.endsAt;
+}
+
+export async function setCourtPricing(
+  input: unknown,
+): Promise<ActionResult<CourtPricing[]>> {
+  return runAction(SetCourtPricingSchema, input, async ({ courtId, bands }) => {
+    const supabase = await getServerClient();
+    const { data: court } = await supabase
+      .from("courts")
+      .select("club_id")
+      .eq("id", courtId)
+      .single();
+    if (!court) throw new MpError("COURTS.NOT_FOUND", "Court not found", 404);
+    await requireClubStaff(court.club_id);
+
+    for (let i = 0; i < bands.length; i++) {
+      for (let j = i + 1; j < bands.length; j++) {
+        if (bandsOverlap(bands[i], bands[j])) {
+          throw new MpError(
+            "COURTS.PRICING_OVERLAP",
+            "Dos franjas de tarifa se solapan en el mismo día",
+            422,
+          );
+        }
+      }
+    }
+
+    const { error: delErr } = await supabase
+      .from("court_pricing")
+      .delete()
+      .eq("court_id", courtId);
+    if (delErr) {
+      throw new MpError("COURTS.PRICING_WRITE_FAILED", delErr.message, 500);
+    }
+    if (bands.length === 0) return [];
+
+    const rows = bands.map((b) => ({
+      court_id: courtId,
+      day_of_week: b.dayOfWeek,
+      starts_at: b.startsAt,
+      ends_at: b.endsAt,
+      price_cents: b.priceCents,
+      duration_minutes: b.durationMinutes,
+      currency: b.currency,
+      active: b.active,
+    }));
+    const { data: inserted, error: insErr } = await supabase
+      .from("court_pricing")
+      .insert(rows as never)
+      .select();
+    if (insErr) {
+      throw new MpError("COURTS.PRICING_WRITE_FAILED", insErr.message, 500);
+    }
+    return (inserted ?? []).map(mapPricing);
   });
 }
 

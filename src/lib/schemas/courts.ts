@@ -1,7 +1,7 @@
 // Court schemas: list per club, detail, owner CRUD.
 import { z } from "zod";
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
-import { IsoDateTimeSchema, MpSportSchema, UuidSchema } from "./common";
+import { IsoDateTimeSchema, MpCurrencySchema, MpSportSchema, UuidSchema } from "./common";
 
 extendZodWithOpenApi(z);
 
@@ -88,6 +88,59 @@ export const CourtBlockerSchema = z
   })
   .openapi("CourtBlocker");
 
+// ── court_pricing ────────────────────────────────────────────────────────
+// Pricing band para una cancha: rango horario (starts_at..ends_at) opcionalmente
+// limitado a un día de la semana (day_of_week 0-6 = Dom-Sáb), con precio en
+// cents + moneda + duración del slot. Múltiples bands por cancha permiten
+// diurna/nocturna, weekend, etc. Para Ola A el AddCourt form crea 2 bands
+// (diurna + nocturna) cubriendo el día entero (day_of_week = null = todos).
+const TimeStringSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Hora inválida (HH:MM)")
+  .transform((s) => (s.length === 5 ? `${s}:00` : s));
+
+export const CourtPricingBandSchema = z
+  .object({
+    id: UuidSchema.optional(),
+    dayOfWeek: z.number().int().min(0).max(6).nullable(),
+    startsAt: TimeStringSchema,
+    endsAt: TimeStringSchema,
+    priceCents: z.number().int().min(0),
+    durationMinutes: z.number().int().min(15).max(240).default(60),
+    currency: MpCurrencySchema,
+    active: z.boolean().default(true),
+  })
+  .refine((v) => v.endsAt > v.startsAt, {
+    message: "endsAt debe ser > startsAt",
+    path: ["endsAt"],
+  })
+  .openapi("CourtPricingBand");
+
+export const CourtPricingSchema = z
+  .object({
+    id: UuidSchema,
+    courtId: UuidSchema,
+    dayOfWeek: z.number().int().min(0).max(6).nullable(),
+    startsAt: z.string(),
+    endsAt: z.string(),
+    priceCents: z.number().int().min(0),
+    durationMinutes: z.number().int(),
+    currency: MpCurrencySchema,
+    active: z.boolean(),
+  })
+  .openapi("CourtPricing");
+
+// setCourtPricing reemplaza TODAS las bands activas de la cancha por la lista
+// dada (delete + insert dentro de la misma transacción lógica). Idempotente.
+export const SetCourtPricingSchema = z
+  .object({
+    courtId: UuidSchema,
+    bands: z.array(CourtPricingBandSchema).max(50),
+  })
+  .openapi("SetCourtPricing");
+
 export type Court = z.infer<typeof CourtSchema>;
 export type CourtCreate = z.infer<typeof CourtCreateSchema>;
 export type CourtUpdate = z.infer<typeof CourtUpdateSchema>;
+export type CourtPricing = z.infer<typeof CourtPricingSchema>;
+export type CourtPricingBand = z.infer<typeof CourtPricingBandSchema>;
