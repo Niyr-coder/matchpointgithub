@@ -10,7 +10,9 @@
     "openapi:build": "tsx scripts/build-openapi.ts",
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "seed:reset": "tsx --env-file=.env.local scripts/seed.ts --reset"
+    "seed:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
@@ -26,6 +28,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
