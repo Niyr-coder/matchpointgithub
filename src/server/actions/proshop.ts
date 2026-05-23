@@ -16,8 +16,11 @@ import { AuthError } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import {
+  ProductCreateSchema,
   ProductListParamsSchema,
   ProductSchema,
+  ProductStockAdjustSchema,
+  ProductUpdateSchema,
   SaleCreateSchema,
   SaleSchema,
   type Product,
@@ -120,6 +123,123 @@ export async function getProduct(input: unknown): Promise<ActionResult<Product>>
       .single();
     if (error || !data) throw new MpError("PROSHOP.NOT_FOUND", "Product not found", 404);
     return mapProduct(data);
+  });
+}
+
+// ── createProshopProduct (staff/employee) ──────────────────────────────
+export async function createProshopProduct(input: unknown): Promise<ActionResult<Product>> {
+  return runAction(ProductCreateSchema, input, async (data) => {
+    await requireClubStaff(data.clubId);
+    const supabase = await getServerClient();
+
+    const { data: row, error } = await supabase
+      .from("products")
+      .insert({
+        club_id: data.clubId,
+        category_id: data.categoryId ?? null,
+        sku: data.sku ?? null,
+        name: data.name,
+        description: data.description ?? null,
+        price_cents: data.priceCents,
+        currency: data.currency,
+        stock: data.stock,
+        low_stock_threshold: data.lowStockThreshold,
+        active: data.active,
+        cover_url: data.coverUrl ?? null,
+      } as never)
+      .select()
+      .single();
+    if (error) {
+      if (error.code === "23505") {
+        throw new MpError("PROSHOP.DUPLICATE_SKU", "SKU already exists in this club", 409);
+      }
+      throw new MpError("PROSHOP.CREATE_FAILED", error.message, 500);
+    }
+    return mapProduct(row);
+  });
+}
+
+// ── updateProshopProduct (staff/employee) ──────────────────────────────
+export async function updateProshopProduct(input: unknown): Promise<ActionResult<Product>> {
+  return runAction(ProductUpdateSchema, input, async ({ productId, patch }) => {
+    const supabase = await getServerClient();
+    const { data: existing } = await supabase
+      .from("products")
+      .select("club_id")
+      .eq("id", productId)
+      .single();
+    if (!existing) throw new MpError("PROSHOP.NOT_FOUND", "Product not found", 404);
+    if (existing.club_id) await requireClubStaff(existing.club_id as string);
+    else await requireUserId();
+
+    const payload: Record<string, unknown> = {};
+    if (patch.name !== undefined) payload.name = patch.name;
+    if (patch.sku !== undefined) payload.sku = patch.sku;
+    if (patch.description !== undefined) payload.description = patch.description;
+    if (patch.priceCents !== undefined) payload.price_cents = patch.priceCents;
+    if (patch.currency !== undefined) payload.currency = patch.currency;
+    if (patch.lowStockThreshold !== undefined) payload.low_stock_threshold = patch.lowStockThreshold;
+    if (patch.categoryId !== undefined) payload.category_id = patch.categoryId;
+    if (patch.coverUrl !== undefined) payload.cover_url = patch.coverUrl;
+    if (patch.active !== undefined) payload.active = patch.active;
+
+    const { data, error } = await supabase
+      .from("products")
+      .update(payload as never)
+      .eq("id", productId)
+      .select()
+      .single();
+    if (error) {
+      if (error.code === "23505") {
+        throw new MpError("PROSHOP.DUPLICATE_SKU", "SKU already exists in this club", 409);
+      }
+      throw new MpError("PROSHOP.UPDATE_FAILED", error.message, 400);
+    }
+    return mapProduct(data);
+  });
+}
+
+// ── adjustProshopStock (staff/employee, reason-coded inventory movement) ──
+// Stock change para reposición / ajuste manual / merma. Las ventas usan la
+// RPC `fn_create_sale` con reason='sale' y no pasan por aquí.
+export async function adjustProshopStock(input: unknown): Promise<ActionResult<Product>> {
+  return runAction(ProductStockAdjustSchema, input, async ({ productId, delta, reason }) => {
+    const supabase = await getServerClient();
+    const { data: existing } = await supabase
+      .from("products")
+      .select("club_id,stock")
+      .eq("id", productId)
+      .single();
+    if (!existing) throw new MpError("PROSHOP.NOT_FOUND", "Product not found", 404);
+    const clubId = existing.club_id as string | null;
+    let userId: string;
+    if (clubId) userId = await requireClubStaff(clubId);
+    else userId = await requireUserId();
+
+    const newStock = (existing.stock as number) + delta;
+    if (newStock < 0) {
+      throw new MpError("PROSHOP.OUT_OF_STOCK", "Stock cannot go negative", 422);
+    }
+
+    const { data: row, error } = await supabase
+      .from("products")
+      .update({ stock: newStock } as never)
+      .eq("id", productId)
+      .select()
+      .single();
+    if (error) throw new MpError("PROSHOP.UPDATE_FAILED", error.message, 500);
+
+    const { error: movErr } = await supabase
+      .from("inventory_movements")
+      .insert({
+        product_id: productId,
+        delta,
+        reason,
+        created_by: userId,
+      } as never);
+    if (movErr) console.error("[adjustProshopStock] movement insert failed", movErr);
+
+    return mapProduct(row);
   });
 }
 

@@ -550,22 +550,39 @@ tablas nuevas: turnos/horarios y nómina/sueldos); performance desde métricas
 reales (check-ins, ratings de clases). El descuento de nómina del payout depende
 de modelar payouts (ver finanzas).
 
-### Empleado Pro shop & bar v2 (rediseño) — DEMO
+### Empleado Pro shop & bar v2 (rediseño) — ✅ MERGEADO (real, W4 Ola A)
 
-Section `e-shop` ahora renderiza `EmployeeProShopView.tsx`: PolHero + 4 tabs —
-**POS** (chips de categoría + grid de productos + **carrito interactivo real** con
-subtotal/IVA/total y método de pago) · **Inventario** (stats, bajo stock, tabla) ·
-**Catálogo** (form de alta + grid) · **Movimientos** (ventas del día, best sellers,
-estado de caja). **Es mock**: catálogo/stock/ventas no persisten; el carrito es
-estado local y "Cobrar" solo muestra toast. Reemplaza la real `EmployeeShopScreen`
-+ `EmployeeShopScreenView`, **preservada y des-importada**.
+Section `e-shop` renderiza `EmployeeProShopScreen` (server, lee `products` +
+`product_categories` + `sales` + `cash_sessions` del club activo) → `EmployeeProShopView`
+(client, mismo layout v2). PolHero + 4 tabs:
 
-Ajuste de honestidad: métodos de pago al modelo real (**Efectivo/Transferencia/
-DeUna/Saldo MP** — sin tarjeta/Apple Pay, no hay PSP); KPI "Tarjeta" → "Digital".
+- **POS**: catálogo real (`products` activos del club) con stock visible, búsqueda +
+  chips de categoría reales; carrito local con clamp por stock; cobro real vía
+  `createSale` → RPC `fn_create_sale` (mig 039) — transacción atómica que escribe
+  `transactions(kind='proshop_sale')` + `sales` + `sale_items` + decrementa `products.stock`
+  + registra `inventory_movements` con `select … for update` para serializar concurrentes.
+- **Inventario**: stats reales (SKUs/bajo stock/stock total/valor inventario), bajo
+  stock con "+ Reponer" → `adjustProshopStock` (delta + reason `purchase`), tabla
+  completa con "+ Stock" / ajuste con razón (`adjustment`/`damaged`/`return`).
+- **Catálogo**: form de alta wired a `createProshopProduct` (nombre/SKU/categoría/
+  precio/stock inicial/mínimo); grid con toggle activar/desactivar via
+  `updateProshopProduct`.
+- **Movimientos**: KPIs reales (ventas hoy/efectivo/digital/ticket promedio) +
+  feed de ventas de hoy desde `sales` con join a `sale_items` + `transactions`.
 
-Al re-cablear (merge): catálogo/stock desde una tabla de productos del club +
-acciones CRUD; ventas → registrar transacción + descontar stock + sumar a caja;
-caja/cierre Z desde sesiones de caja. Hoy no existe modelo de pro shop/inventario.
+Permisos: server actions validan staff del club (`requireClubStaff` admin/owner/
+manager/employee), la RPC valida con `mp_club_staff(p_club_id) OR mp_is_employee_of(p_club_id)`.
+Realtime: subscripción a `products`/`inventory_movements`/`sales` refresca el catálogo
+cuando otra caja vende.
+
+Pago: la RPC acepta `cash|card|transfer|wallet`; para `cash` requiere `cash_session`
+abierto (raise `CASH.SESSION_CLOSED` si no hay). El cobro mapea los errores típicos
+(`PROSHOP.OUT_OF_STOCK`, `INACTIVE`, `CURRENCY_MIXED`, `AUTH.ROLE_REQUIRED`) a copy en
+español.
+
+Pendiente (fuera de W4): anular venta dentro de 5min (reverso de stock + tx);
+cierre de día / "Imprimir Z" enchufado a `cash_sessions.close`; carga de imagen
+producto (`cover_url`) desde el form.
 
 ### Admin Comunicaciones v2 — ✅ MERGEADO (mayormente real)
 

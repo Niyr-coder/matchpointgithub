@@ -37,6 +37,49 @@ export const ProductListParamsSchema = z
   })
   .openapi("ProductListParams");
 
+export const ProductCreateSchema = z
+  .object({
+    clubId: UuidSchema,
+    name: z.string().trim().min(1).max(120),
+    sku: z.string().trim().max(64).nullable().optional(),
+    description: z.string().max(500).nullable().optional(),
+    priceCents: z.number().int().min(0),
+    currency: MpCurrencySchema,
+    stock: z.number().int().min(0).default(0),
+    lowStockThreshold: z.number().int().min(0).default(5),
+    categoryId: UuidSchema.nullable().optional(),
+    coverUrl: z.string().url().nullable().optional(),
+    active: z.boolean().default(true),
+  })
+  .openapi("ProductCreate");
+
+export const ProductUpdateSchema = z
+  .object({
+    productId: UuidSchema,
+    patch: z
+      .object({
+        name: z.string().trim().min(1).max(120).optional(),
+        sku: z.string().trim().max(64).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
+        priceCents: z.number().int().min(0).optional(),
+        currency: MpCurrencySchema.optional(),
+        lowStockThreshold: z.number().int().min(0).optional(),
+        categoryId: UuidSchema.nullable().optional(),
+        coverUrl: z.string().url().nullable().optional(),
+        active: z.boolean().optional(),
+      })
+      .refine((p) => Object.keys(p).length > 0, "patch cannot be empty"),
+  })
+  .openapi("ProductUpdate");
+
+export const ProductStockAdjustSchema = z
+  .object({
+    productId: UuidSchema,
+    delta: z.number().int().refine((n) => n !== 0, "delta must be non-zero"),
+    reason: z.enum(["purchase", "adjustment", "return", "damaged"]),
+  })
+  .openapi("ProductStockAdjust");
+
 export const SaleItemInputSchema = z
   .object({
     productId: UuidSchema,
@@ -71,3 +114,5 @@ export const SaleSchema = z
 export type Product = z.infer<typeof ProductSchema>;
 export type Sale = z.infer<typeof SaleSchema>;
 export type SaleCreate = z.infer<typeof SaleCreateSchema>;
+export type ProductCreate = z.infer<typeof ProductCreateSchema>;
+export type ProductUpdate = z.infer<typeof ProductUpdateSchema>;

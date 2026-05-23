@@ -141,10 +141,11 @@ import { CoachRecursosScreen } from "@/components/dashboard/coach/CoachRecursosS
 import { CoachProfileScreen } from "@/components/dashboard/coach/CoachProfileScreen";
 import { EmployeeCheckinScreen } from "@/components/dashboard/employee/EmployeeCheckinScreen";
 import { EmployeeCajaScreen } from "@/components/dashboard/employee/EmployeeCajaScreen";
-// La pantalla real queda preservada en EmployeeShopScreen, des-importada. El
-// section "e-shop" ahora renderiza el rediseño v2 (demo, POS con carrito real).
-// Ver 04-placeholders.md.
-import { EmployeeProShopView } from "@/components/dashboard/employee/EmployeeProShopView";
+// El section "e-shop" renderiza el POS v2 cableado a productos/ventas reales.
+// EmployeeProShopScreen es el server shell (lee catálogo + ventas de hoy) y
+// delega a EmployeeProShopView (client) que maneja carrito + cobro real via
+// `createSale` (RPC `fn_create_sale`, ver mig 039).
+import { EmployeeProShopScreen } from "@/components/dashboard/employee/EmployeeProShopScreen";
 import { EmployeeSoporteScreen } from "@/components/dashboard/employee/EmployeeSoporteScreen";
 
 function isValidRole(r: string): r is RoleKey {
@@ -243,7 +244,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "e-walkins": () => <EmployeeWalkinsScreen />,
     "e-caja": () => <EmployeeCajaScreen />,
     "e-reservas": () => <ClubReservasScreen />,
-    "e-shop": () => <EmployeeProShopView />,
+    "e-shop": () => <EmployeeProShopScreen />,
     "e-soporte": () => <EmployeeSoporteScreen />,
   },
 };
