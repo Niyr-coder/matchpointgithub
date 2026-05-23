@@ -86,6 +86,8 @@ export const TeamCreateSchema = z
   .object({
     name: z.string().min(2).max(80),
     slug: SlugSchema,
+    tag: z.string().min(2).max(5).optional(),
+    color: z.string().max(9).optional(),
     description: z.string().max(500).optional(),
     sport: MpSportSchema.optional(),
     logoUrl: z.string().url().optional(),
@@ -109,6 +111,37 @@ export const TeamUpdateSchema = z
   })
   .openapi("TeamUpdate");
 
+export const TeamSettingsPatchSchema = z
+  .object({
+    captainOnlyInvites: z.boolean().optional(),
+    requireJoinApproval: z.boolean().optional(),
+    showInRanking: z.boolean().optional(),
+    allowExternalChatGuests: z.boolean().optional(),
+  })
+  .openapi("TeamSettingsPatch");
+
+export const TeamAchievementSchema = z
+  .object({
+    id: UuidSchema,
+    teamId: UuidSchema,
+    kind: z.string().min(1).max(64),
+    title: z.string().min(1).max(160),
+    subtitle: z.string().max(280).nullable(),
+    awardedAt: z.string(),
+    awardedBy: UuidSchema.nullable(),
+  })
+  .openapi("TeamAchievement");
+
+export const TeamAchievementGrantSchema = z
+  .object({
+    teamId: UuidSchema,
+    kind: z.string().min(1).max(64),
+    title: z.string().min(1).max(160),
+    subtitle: z.string().max(280).optional(),
+    awardedAt: z.string().datetime().optional(),
+  })
+  .openapi("TeamAchievementGrant");
+
 export const TeamListParamsSchema = z
   .object({
     sport: MpSportSchema.optional(),
@@ -121,5 +154,7 @@ export const TeamListParamsSchema = z
 
 export type Team = z.infer<typeof TeamSchema>;
 export type TeamDetail = z.infer<typeof TeamDetailSchema>;
+export type TeamAchievement = z.infer<typeof TeamAchievementSchema>;
+export type TeamSettingsPatch = z.infer<typeof TeamSettingsPatchSchema>;
 export type Friend = z.infer<typeof FriendSchema>;
 export type FriendRequest = z.infer<typeof FriendRequestSchema>;

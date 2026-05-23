@@ -17,12 +17,14 @@ async function loadData(): Promise<MisReservasData> {
   const userId = session.session.userId;
   const supabase = await getServerClient();
 
+  // Mig 170: incluir reservas donde el user es organizer (creó la reserva) O
+  // for_user_id (alguien la creó PARA él — típicamente staff del club).
   const { data: rows } = await supabase
     .from("reservations")
     .select(
       "id,during,status,sport,notes,created_at,cancelled_at,club_id,court_id,clubs(name,city,slug),courts(code,name)",
     )
-    .eq("organizer_id", userId)
+    .or(`organizer_id.eq.${userId},for_user_id.eq.${userId}`)
     .order("created_at", { ascending: false })
     .limit(100);
 

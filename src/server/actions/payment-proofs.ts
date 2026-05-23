@@ -405,6 +405,9 @@ export async function listPendingProofsAdmin(): Promise<
         "id,amount_cents,currency,kind,ref_id,customer_user_id,customer_name,proof_url,proof_submitted_at,created_at",
       )
       .eq("status", "proof_submitted")
+      // club_membership lo aprueba el owner/manager del club, no el admin de
+      // plataforma (no hay cascada de activación en approvePaymentProofAdmin).
+      .neq("kind", "club_membership")
       .order("proof_submitted_at", { ascending: true })
       .limit(100);
     if (error) throw new MpError("PAYMENT_PROOF.DB_ERROR", error.message, 500);

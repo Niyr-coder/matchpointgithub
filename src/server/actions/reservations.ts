@@ -8,7 +8,9 @@ import "server-only";
 
 import { z } from "zod";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -188,6 +190,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
             max_players: data.maxPlayers,
             notes: data.notes ?? null,
             organizer_id: userId,
+            for_user_id: data.forUserId ?? null,
             source: "app",
             status: "booked",
           } as never)
@@ -205,6 +208,8 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           throw new MpError("RESERVATIONS.CREATE_FAILED", error.message, 500);
         }
         const reservation = mapReservation(row);
+        // Notif al organizer (staff o jugador). Si la reserva es PARA otro
+        // user (mig 170 for_user_id), también notif al cliente.
         await notify({
           userId,
           role: "user",
@@ -213,6 +218,25 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           body: `${reservation.sport} · ${new Date(reservation.startsAt).toLocaleString("es-EC")}`,
           payload: { reservationId: reservation.id, clubId: reservation.clubId, courtId: reservation.courtId },
         });
+        if (data.forUserId && data.forUserId !== userId) {
+          await notify({
+            userId: data.forUserId,
+            role: "user",
+            kind: "reservation_created",
+            title: "Tienes una reserva nueva",
+            body: `${reservation.sport} · ${new Date(reservation.startsAt).toLocaleString("es-EC")} · reservada por el club`,
+            payload: { reservationId: reservation.id, clubId: reservation.clubId, courtId: reservation.courtId },
+          });
+        }
+        // Invalidar el cache de las pantallas que dependen de reservations.
+        // El realtime ya dispara router.refresh() en clientes conectados,
+        // pero esto cubre re-navegaciones server-side y entradas frescas.
+        revalidatePath("/dashboard/owner");
+        revalidatePath("/dashboard/owner/club-reservas");
+        revalidatePath("/dashboard/owner/club-canchas");
+        revalidatePath("/dashboard/manager/club-reservas");
+        revalidatePath("/dashboard/manager/club-canchas");
+        revalidatePath("/dashboard/user/mis-reservas");
         return reservation;
       },
     );
@@ -354,5 +378,76 @@ export async function createWalkin(input: unknown): Promise<ActionResult<Reserva
       } as never);
 
     return mapReservation(rsv);
+  });
+}
+
+// ── searchUsersForBooking (staff) ───────────────────────────────────────
+// Autocomplete del modal de reserva manual: busca clientes de MATCHPOINT
+// por nombre/username/email. Requiere staff del club (ya logueado).
+// Mig 170: alimenta reservations.for_user_id.
+const SearchUsersSchema = z.object({
+  clubId: UuidSchema,
+  q: z.string().min(2).max(80),
+  limit: z.number().int().min(1).max(20).default(8),
+});
+
+export async function searchUsersForBooking(
+  input: unknown,
+): Promise<
+  ActionResult<
+    Array<{
+      id: string;
+      displayName: string;
+      username: string | null;
+      email: string | null;
+      avatarUrl: string | null;
+    }>
+  >
+> {
+  return runAction(SearchUsersSchema, input, async ({ clubId, q, limit }) => {
+    // Reuse staff check del courts module (pero copiamos inline para no
+    // crear dependencia cíclica entre actions).
+    const supabase = await getServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+    const { data: roles } = await supabase
+      .from("role_assignments")
+      .select("role,club_id")
+      .eq("user_id", user.id)
+      .is("revoked_at", null);
+    const staff = (roles ?? []).some(
+      (r) =>
+        r.role === "admin" ||
+        (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
+    );
+    if (!staff) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
+
+    const admin = getAdminClient();
+    const term = `%${q.trim()}%`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin as any)
+      .from("profiles")
+      .select("id,display_name,username,avatar_url,auth_email:users!profiles_id_fkey(email)")
+      .eq("is_system", false)
+      .or(`display_name.ilike.${term},username.ilike.${term}`)
+      .limit(limit);
+    if (error) throw new MpError("USERS.SEARCH_FAILED", error.message, 500);
+    return (
+      (data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+        auth_email: { email: string | null } | null;
+      }>
+    ).map((r) => ({
+      id: r.id,
+      displayName: r.display_name ?? "—",
+      username: r.username ?? null,
+      email: r.auth_email?.email ?? null,
+      avatarUrl: r.avatar_url ?? null,
+    }));
   });
 }

@@ -49,11 +49,8 @@ export function JoinByCodeClient({ code }: { code: string }) {
     (async () => {
       const res = await joinByInviteCode({ code });
       if (res.ok) {
-        if (res.data.transactionId) {
-          router.replace(`/pagos/${res.data.transactionId}`);
-        } else {
-          router.replace(`/dashboard/user/quedadas?focus=${res.data.quedadaId}`);
-        }
+        // Pago offline: no hay pantalla de pago; vamos directo a la quedada.
+        router.replace(`/dashboard/user/quedadas?focus=${res.data.quedadaId}`);
         return;
       }
       setError(res.error.message || "No pudimos unirte a la quedada.");

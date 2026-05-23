@@ -7,6 +7,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
@@ -47,6 +48,18 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
       key: `auth:signup:${await clientIp()}`,
       ...RATE_LIMITS.authSensitive,
     });
+
+    // Feature flag global: signups_open. Lectura con service-role porque el
+    // usuario anónimo no pasa la RLS de feature_flags. Off explícito = cerrado.
+    const { data: signupsFlag } = await getAdminClient()
+      .from("feature_flags")
+      .select("enabled_default")
+      .eq("key", "signups_open")
+      .maybeSingle();
+    if (signupsFlag && signupsFlag.enabled_default === false) {
+      throw new MpError("AUTH.SIGNUPS_CLOSED", "Los registros están cerrados temporalmente. Vuelve a intentarlo más tarde.", 403);
+    }
+
     const supabase = await getServerClient();
 
     const { data: signUpData, error } = await supabase.auth.signUp({

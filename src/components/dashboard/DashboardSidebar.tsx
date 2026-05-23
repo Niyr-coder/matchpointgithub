@@ -18,6 +18,9 @@ type Props = {
   // pill. En desktop estos props son ignorados (la sidebar es sticky lateral).
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  // Flags efectivos del usuario. Un item con `flag` se oculta si su flag está
+  // explícitamente off (ausente o true = visible).
+  flags?: Record<string, boolean>;
 };
 
 // Deriva la sección activa del pathname:
@@ -37,17 +40,20 @@ export function DashboardSidebar({
   badgeOverrides,
   mobileOpen = false,
   onMobileClose,
+  flags,
 }: Props) {
   const cfg = MP_ROLES[role];
-  // Anexamos un grupo "Soporte" con Ayuda para todos los roles, sin tocar
-  // la config estática de roles.ts. /dashboard/[role]/ayuda es global.
-  const groups = [
-    ...cfg.sidebar,
-    {
-      h: "Soporte",
-      items: [{ k: "ayuda", label: "Ayuda y guías", icon: "info" }],
-    },
-  ];
+  const itemVisible = (flag?: string) => !(flag && flags?.[flag] === false);
+  // Anexamos un grupo "Ayuda" global para todos los roles, sin tocar la config
+  // estática de roles.ts. /dashboard/[role]/ayuda es global. Header "Ayuda" (no
+  // "Soporte") para no colisionar con el grupo "Soporte" propio del empleado
+  // (key={g.h} duplicada) y porque el item es "Ayuda y guías". Para el user
+  // sumamos "Soporte" aquí (fusionado desde Mi cuenta; la pantalla soporte solo
+  // existe para user).
+  const helpItems: SidebarItem[] = [{ k: "ayuda", label: "Ayuda y guías", icon: "info" }];
+  if (role === "user") helpItems.push({ k: "soporte", label: "Soporte", icon: "life-buoy" });
+  if (role === "employee") helpItems.push({ k: "e-soporte", label: "Reportar problema", icon: "life-buoy" });
+  const groups = [...cfg.sidebar, { h: "Ayuda", items: helpItems }];
   const pathname = usePathname() || "";
   const active = activeFromPath(pathname, role);
   const displayName = userName ?? "Tu cuenta";
@@ -140,31 +146,35 @@ export function DashboardSidebar({
         )}
       </div>
       <nav style={{ padding: 12, flex: 1, overflowY: "auto" }}>
-        {groups.map((g) => (
-          <div key={g.h} style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                fontSize: 9.5,
-                fontWeight: 900,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: "#71717a",
-                padding: "6px 10px 8px",
-              }}
-            >
-              {g.h}
+        {groups.map((g) => {
+          const items = g.items.filter((it) => itemVisible(it.flag));
+          if (items.length === 0) return null;
+          return (
+            <div key={g.h} style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: "#71717a",
+                  padding: "6px 10px 8px",
+                }}
+              >
+                {g.h}
+              </div>
+              {items.map((it) => (
+                <SidebarLink
+                  key={it.k}
+                  role={role}
+                  item={it}
+                  active={active === it.k}
+                  badgeOverride={badgeOverrides?.[it.k]}
+                />
+              ))}
             </div>
-            {g.items.map((it) => (
-              <SidebarLink
-                key={it.k}
-                role={role}
-                item={it}
-                active={active === it.k}
-                badgeOverride={badgeOverrides?.[it.k]}
-              />
-            ))}
-          </div>
-        ))}
+          );
+        })}
       </nav>
       <div
         ref={menuRef}

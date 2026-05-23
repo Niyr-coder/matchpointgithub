@@ -22,8 +22,12 @@ import {
   requestJoinTeam,
   transferCaptain,
   updateTeam,
+  updateTeamSettings,
 } from "@/server/actions/teams";
+import { reportTeam } from "@/server/actions/team-reports";
 import { TEAM_KICK_REASONS } from "@/lib/teams/kick-reasons";
+import { useEnabledSports } from "@/components/SportsProvider";
+import { sportLabel as sportLabelOf, PRIMARY_SPORT } from "@/lib/sports";
 
 // Server actions pendientes: createTeam, joinTeamByCode, leaveTeam, inviteToTeam,
 // updateTeam, transferCaptain, disbandTeam, cancelInvite. Mientras tanto, los submits
@@ -77,11 +81,27 @@ export type TeamCapsLite = {
   renamesMax: number;
 };
 
+export type TeamSettingsLite = {
+  captainOnlyInvites: boolean;
+  requireJoinApproval: boolean;
+  showInRanking: boolean;
+  allowExternalChatGuests: boolean;
+};
+
+export type AchievementLite = {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string | null;
+  awardedAt: string;
+};
+
 export type TeamLite = {
   id: string;
   name: string;
   tag: string;
   sport: string;
+  accentHex: string | null;
   description: string | null;
   inviteCode: string | null;
   captainId: string;
@@ -97,6 +117,11 @@ export type TeamLite = {
   teamMpr: number | null;
   members: TeamMemberLite[];
   pendingInvites: PendingInviteLite[];
+  achievements: AchievementLite[];
+  status: "active" | "suspended" | "archived";
+  isVerified: boolean;
+  isPinned: boolean;
+  settings: TeamSettingsLite;
   // Caps + plan info: gating de UI (badges, banners, stats split).
   renameCount: number;
   captainPlanTier: "free" | "premium";
@@ -117,6 +142,8 @@ export type PublicTeamLite = {
   city: string | null;
   members: number;
   privacy: "public" | "invite" | "private";
+  isPinned: boolean;
+  isVerified: boolean;
 };
 
 export type FriendLite = {
@@ -173,7 +200,7 @@ export function TeamScreenView({
   if (view === "create") return <TeamCreate onBack={() => setView("empty")} onSubmit={() => setView("team")} />;
   if (view === "join") return <TeamJoin onBack={() => setView("empty")} onJoined={() => setView("team")} publicTeams={publicTeams} />;
   if (view === "settings" && team)
-    return <TeamSettings team={team} onBack={() => setView("team")} onLeave={() => setView("empty")} />;
+    return <TeamSettings team={team} onBack={() => setView("team")} onLeave={() => setView("empty")} meUserId={meUserId} />;
   if (view === "invite" && team) return <TeamInvite team={team} friends={friends} onBack={() => setView("team")} />;
   if (team) return <TeamHome setView={setView} team={team} meUserId={meUserId} />;
   return <TeamEmpty onCreate={() => setView("create")} onJoin={() => setView("join")} />;
@@ -535,7 +562,8 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
   const [name, setName] = useState("");
   const [tag, setTag] = useState("");
   const [color, setColor] = useState("#10b981");
-  const [sport, setSport] = useState("padel");
+  const { sports, single } = useEnabledSports();
+  const [sport, setSport] = useState<string>(PRIMARY_SPORT);
   const [privacy, setPrivacy] = useState("public");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -561,6 +589,8 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
       const res = await createTeam({
         name: trimmed,
         slug: baseSlug,
+        tag: tag.trim().toUpperCase(),
+        color,
         description: description.trim() || undefined,
         sport: mapSportToDb(sport),
       });
@@ -586,8 +616,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
     }
   };
 
-  const sportLabel =
-    sport === "padel" ? "Pádel" : sport === "tenis" ? "Tenis" : sport === "pickleball" ? "Pickleball" : "Multi-deporte";
+  const sportDisplay = sport === "multi" ? "Multi-deporte" : sportLabelOf(sport);
 
   return (
     <div
@@ -630,13 +659,17 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
                 maxLength={3}
               />
             </Field>
-            <Field label="Deporte principal" required>
-              <select style={inp} value={sport} onChange={(e) => setSport(e.target.value)}>
-                <option value="padel">Pádel</option>
-                <option value="tenis">Tenis</option>
-                <option value="pickleball">Pickleball</option>
-                <option value="multi">Multi-deporte</option>
-              </select>
+            <Field label="Deporte principal" required hint={single ? "Multideporte desactivado · solo Pickleball" : undefined}>
+              {single ? (
+                <input style={{ ...inp, opacity: 0.7 }} value={sportLabelOf(sports[0])} disabled />
+              ) : (
+                <select style={inp} value={sport} onChange={(e) => setSport(e.target.value)}>
+                  {sports.map((s) => (
+                    <option key={s} value={s}>{sportLabelOf(s)}</option>
+                  ))}
+                  <option value="multi">Multi-deporte</option>
+                </select>
+              )}
             </Field>
           </div>
           <Field label="Color del equipo" hint="Define el accent del logo y banner">
@@ -742,7 +775,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
                     <span style={{ color }}>.</span>
                   </div>
                   <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", marginTop: 6 }}>
-                    {sportLabel} · 1 miembro
+                    {sportDisplay} · 1 miembro
                   </div>
                 </div>
               </div>
@@ -841,6 +874,7 @@ function TeamJoin({
   const [busy, setBusy] = useState(false);
   const [requesting, setRequesting] = useState<string | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
+  const [reportTarget, setReportTarget] = useState<PublicTeamLite | null>(null);
 
   const handleRequestJoin = async (teamId: string, name: string) => {
     if (requesting) return;
@@ -1079,9 +1113,16 @@ function TeamJoin({
                       fontWeight: 900,
                       letterSpacing: "-0.01em",
                       lineHeight: 1.15,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
                     {t.name}
+                    {t.isVerified && (
+                      <Icon name="badge-check" size={13} color="#0ea5e9" />
+                    )}
+                    {t.isPinned && <Icon name="pin" size={12} color="#b45309" />}
                   </div>
                   <div
                     style={{
@@ -1145,11 +1186,195 @@ function TeamJoin({
                       </>
                     )}
                   </button>
+                  <button
+                    onClick={() => setReportTarget(t)}
+                    style={{
+                      width: "100%",
+                      marginTop: 6,
+                      padding: "6px 8px",
+                      background: "transparent",
+                      border: 0,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      fontSize: 10.5,
+                      color: "var(--muted-fg)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <Icon name="flag" size={11} color="var(--muted-fg)" />
+                    Reportar este team
+                  </button>
                 </div>
               </div>
             );
           })
         )}
+      </div>
+      {reportTarget && (
+        <ReportTeamModal
+          team={reportTarget}
+          onClose={() => setReportTarget(null)}
+          onDone={() => setReportTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ReportTeamModal — picker + detail para reportTeam ──────────────────
+function ReportTeamModal({
+  team,
+  onClose,
+  onDone,
+}: {
+  team: PublicTeamLite;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [kind, setKind] = useState<"name" | "captain" | "ghost" | "logo" | "other">(
+    "name",
+  );
+  const [detail, setDetail] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const KINDS: Array<{ k: typeof kind; label: string; desc: string }> = [
+    { k: "name", label: "Nombre inapropiado", desc: "Contenido ofensivo, marca registrada o equívoco." },
+    { k: "captain", label: "Capitán inactivo", desc: "El capitán no responde / no juega hace mucho." },
+    { k: "ghost", label: "Team fantasma", desc: "Sin actividad / partidos." },
+    { k: "logo", label: "Logo o imagen", desc: "Logo reportable (IP, ofensivo, etc)." },
+    { k: "other", label: "Otro", desc: "Contanos en el detalle." },
+  ];
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await reportTeam({ teamId: team.id, kind, detail: detail.trim() || undefined });
+      if (res.ok) {
+        toast({ icon: "check", title: "Reporte enviado", sub: `Gracias por avisar.` });
+        onDone();
+      } else {
+        const msg =
+          res.error.code === "TEAMS.REPORT_DUPLICATE"
+            ? "Ya tienes un reporte abierto con este motivo."
+            : res.error.message;
+        toast({ icon: "alert-triangle", title: "No se pudo reportar", sub: msg });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10,10,10,0.55)",
+        backdropFilter: "blur(4px)",
+        zIndex: 920,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          width: "100%",
+          maxWidth: 520,
+          maxHeight: "90vh",
+          overflow: "auto",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+        }}
+      >
+        <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid var(--border)" }}>
+          <div className="label-mp" style={{ color: "#b45309" }}>● Reportar team</div>
+          <h3
+            className="font-heading"
+            style={{
+              margin: "2px 0 0",
+              fontSize: 18,
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
+              textTransform: "uppercase",
+            }}
+          >
+            {team.name}
+            <span className="dot">.</span>
+          </h3>
+        </div>
+        <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {KINDS.map((o) => {
+            const on = kind === o.k;
+            return (
+              <label
+                key={o.k}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
+                  cursor: "pointer",
+                  background: on ? "#ecfdf5" : "#fff",
+                }}
+              >
+                <input
+                  type="radio"
+                  checked={on}
+                  onChange={() => setKind(o.k)}
+                  style={{ marginTop: 2, accentColor: "#10b981" }}
+                />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>{o.label}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>{o.desc}</div>
+                </div>
+              </label>
+            );
+          })}
+          <textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            maxLength={500}
+            placeholder="Cuéntanos más (opcional)…"
+            style={{
+              ...inp,
+              minHeight: 70,
+              resize: "vertical",
+            }}
+          />
+        </div>
+        <div
+          style={{
+            padding: "14px 24px 20px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+          }}
+        >
+          <button onClick={onClose} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy}
+            className="btn btn-primary"
+            style={{ opacity: busy ? 0.6 : 1 }}
+          >
+            <Icon name="flag" size={13} color="#fff" />
+            {busy ? "Enviando…" : "Enviar reporte"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1158,21 +1383,84 @@ function TeamJoin({
 // ══════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════════════════════════════
-const TOGGLES = [
-  { t: "Solo capitán/a puede invitar", d: "Si lo desactivas, los co-capitanes también podrán enviar invitaciones.", on: true },
-  { t: "Aprobar nuevos miembros", d: "Las solicitudes de unirse requieren tu aprobación manual.", on: true },
-  { t: "Mostrar ranking del team", d: "Tu equipo aparecerá en el ranking inter-clubes público.", on: true },
-  { t: "Permitir invitados externos al chat", d: "Otros equipos rivales pueden escribir en el chat de partido.", on: false },
+// Mig 164: 4 settings reales en `teams`. Solo `requireJoinApproval` cambia
+// comportamiento ahora (consumido en requestJoinTeam). Los otros 3 se
+// persisten pero la enforce queda pendiente de feature relacionada
+// (co-capitanes, team ranking, Arena chat) — se renderizan con badge "Pronto".
+type SettingKey =
+  | "captainOnlyInvites"
+  | "requireJoinApproval"
+  | "showInRanking"
+  | "allowExternalChatGuests";
+
+const SETTING_ROWS: Array<{
+  k: SettingKey;
+  t: string;
+  d: string;
+  pending: boolean;
+}> = [
+  {
+    k: "captainOnlyInvites",
+    t: "Solo capitán/a puede invitar",
+    d: "Si lo desactivas, los co-capitanes también podrán enviar invitaciones.",
+    pending: true,
+  },
+  {
+    k: "requireJoinApproval",
+    t: "Aprobar nuevos miembros",
+    d: "Las solicitudes de unirse requieren tu aprobación manual. Si lo desactivas, las solicitudes se aceptan al toque (excepto en teams privados).",
+    pending: false,
+  },
+  {
+    k: "showInRanking",
+    t: "Mostrar ranking del team",
+    d: "Tu equipo aparecerá en el ranking inter-clubes público.",
+    pending: true,
+  },
+  {
+    k: "allowExternalChatGuests",
+    t: "Permitir invitados externos al chat",
+    d: "Otros equipos rivales pueden escribir en el chat de partido.",
+    pending: true,
+  },
 ];
 
-function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () => void; onLeave: () => void }) {
+function TeamSettings({ team, onBack, onLeave, meUserId }: { team: TeamLite; onBack: () => void; onLeave: () => void; meUserId: string | null }) {
   const toast = useToast();
-  const { confirm } = usePromptModal();
+  const router = useRouter();
+  const { confirm, ask } = usePromptModal();
+  const isCaptain = !!meUserId && meUserId === team.captainId;
   const [busy, setBusy] = useState<"leave" | "disband" | "save" | "transfer" | null>(null);
   const [name, setName] = useState(team.name);
   const [description, setDescription] = useState(team.description ?? "");
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState<string>("");
+  // Optimistic UI para toggles: refleja el cambio antes de que vuelva el server.
+  // Si el server rechaza, revertimos al valor previo + toast.
+  const [settings, setSettings] = useState<TeamSettingsLite>(team.settings);
+  const [togglingKey, setTogglingKey] = useState<SettingKey | null>(null);
+
+  const handleToggle = async (key: SettingKey) => {
+    if (!isCaptain || togglingKey) return;
+    const prev = settings[key];
+    const next = !prev;
+    setSettings((s) => ({ ...s, [key]: next }));
+    setTogglingKey(key);
+    try {
+      const res = await updateTeamSettings({ teamId: team.id, patch: { [key]: next } });
+      if (!res.ok) {
+        setSettings((s) => ({ ...s, [key]: prev }));
+        toast({ icon: "x", title: "No se pudo guardar", sub: res.error.message });
+      } else {
+        router.refresh();
+      }
+    } catch (e) {
+      setSettings((s) => ({ ...s, [key]: prev }));
+      toast({ icon: "x", title: "Error", sub: e instanceof Error ? e.message : "Inténtalo de nuevo" });
+    } finally {
+      setTogglingKey(null);
+    }
+  };
 
   const transferableMembers = team.members.filter((m) => m.userId !== team.captainId);
 
@@ -1258,9 +1546,17 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
 
   const handleDisband = async () => {
     if (busy) return;
-    const typed = window.prompt(`Esta acción es irreversible. Escribe "${team.tag}" para confirmar:`);
-    if (typed !== team.tag) {
-      if (typed !== null) toast({ icon: "x", title: "Confirmación incorrecta" });
+    const typed = await ask({
+      title: "Disolver el team",
+      label: `Acción irreversible. Escribe "${team.tag}" para confirmar.`,
+      placeholder: team.tag,
+      required: true,
+      confirmLabel: "Disolver",
+      destructive: true,
+    });
+    if (typed == null) return;
+    if (typed.trim() !== team.tag) {
+      toast({ icon: "x", title: "Confirmación incorrecta", sub: `Escribe "${team.tag}" exactamente.` });
       return;
     }
     setBusy("disband");
@@ -1289,7 +1585,7 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
       }}
     >
       <BackBtn onBack={onBack} label="Volver al team" />
-      <div className="label-mp">Mi Team · Halcones del Norte</div>
+      <div className="label-mp">Mi Team · {team.name}</div>
       <h1 className="font-heading display-md" style={{ margin: 0 }}>
         Ajustes <span className="dot">●</span>
       </h1>
@@ -1327,7 +1623,7 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
           );
         })()}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 12 }}>
-          <Field label="Tag" hint="Derivado del slug, no editable">
+          <Field label="Tag" hint="Elegido al crear el team">
             <input
               style={{ ...inp, textTransform: "uppercase", fontWeight: 900, opacity: 0.6 }}
               value={team.tag}
@@ -1364,50 +1660,80 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
         >
           Roles y permisos
         </h2>
-        {TOGGLES.map((o, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 0",
-              borderTop: i ? "1px solid var(--border)" : "none",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{o.t}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>{o.d}</div>
-            </div>
-            <button
+        {SETTING_ROWS.map((o, i) => {
+          const on = settings[o.k];
+          const isBusy = togglingKey === o.k;
+          const disabled = !isCaptain || isBusy;
+          return (
+            <div
+              key={o.k}
               style={{
-                width: 42,
-                height: 24,
-                borderRadius: 9999,
-                background: o.on ? "var(--primary)" : "#d4d4d8",
-                border: 0,
-                position: "relative",
-                cursor: "pointer",
-                flexShrink: 0,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 0",
+                borderTop: i ? "1px solid var(--border)" : "none",
               }}
             >
-              <span
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span>{o.t}</span>
+                  {o.pending && (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 900,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.14em",
+                        padding: "2px 7px",
+                        borderRadius: 9999,
+                        background: "var(--muted)",
+                        color: "var(--muted-fg)",
+                      }}
+                    >
+                      Pronto
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>{o.d}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggle(o.k)}
+                disabled={disabled}
+                aria-pressed={on}
+                title={!isCaptain ? "Solo el capitán edita los ajustes" : undefined}
                 style={{
-                  position: "absolute",
-                  top: 2,
-                  left: o.on ? 20 : 2,
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: "#fff",
-                  transition: "left 0.15s",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                  width: 42,
+                  height: 24,
+                  borderRadius: 9999,
+                  background: on ? "var(--primary)" : "#d4d4d8",
+                  border: 0,
+                  position: "relative",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  flexShrink: 0,
+                  opacity: disabled ? 0.6 : 1,
+                  transition: "background 0.15s, opacity 0.15s",
                 }}
-              />
-            </button>
-          </div>
-        ))}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: on ? 20 : 2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left 0.15s",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                  }}
+                />
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       <div className="card" style={{ padding: 24, borderColor: "#fecaca" }}>
@@ -1426,21 +1752,27 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
           {[
-            {
-              t: "Transferir capitanía",
-              d: transferableMembers.length === 0
-                ? "Necesitas al menos un miembro más en el team."
-                : "Otorga el rol de capitán a otro miembro del team.",
-              btn: "Transferir",
-              onClick: () => {
-                if (transferableMembers.length === 0) {
-                  toast({ icon: "x", title: "Sin miembros disponibles" });
-                  return;
-                }
-                setTransferPickerOpen((s) => !s);
-              },
-            },
-            { t: "Salir del team", d: "Perderás acceso al chat, partidos y stats grupales.", btn: busy === "leave" ? "Saliendo…" : "Salir", onClick: handleLeave },
+            ...(isCaptain
+              ? [{
+                  t: "Transferir capitanía",
+                  d: transferableMembers.length === 0
+                    ? "Necesitas al menos un miembro más en el team."
+                    : "Otorga el rol de capitán a otro miembro del team.",
+                  btn: "Transferir",
+                  onClick: () => {
+                    if (transferableMembers.length === 0) {
+                      toast({ icon: "x", title: "Sin miembros disponibles" });
+                      return;
+                    }
+                    setTransferPickerOpen((s) => !s);
+                  },
+                }]
+              : []),
+            // El capitán no puede "salir" (debe transferir o disolver); solo se
+            // muestra a miembros no-capitanes.
+            ...(!isCaptain
+              ? [{ t: "Salir del team", d: "Perderás acceso al chat, partidos y stats grupales.", btn: busy === "leave" ? "Saliendo…" : "Salir", onClick: handleLeave }]
+              : []),
           ].map((row) => (
             <div
               key={row.t}
@@ -1521,33 +1853,35 @@ function TeamSettings({ team, onBack, onLeave }: { team: TeamLite; onBack: () =>
               </div>
             </div>
           )}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: 14,
-              background: "#fef2f2",
-              borderRadius: 10,
-              gap: 10,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 13 }}>Disolver el team</div>
-              <div style={{ fontSize: 11.5, color: "#7f1d1d", marginTop: 2 }}>
-                Acción irreversible. Se eliminará el historial completo.
-              </div>
-            </div>
-            <button
-              onClick={handleDisband}
-              disabled={busy !== null}
-              className="btn"
-              style={{ background: "#dc2626", color: "#fff", opacity: busy ? 0.6 : 1 }}
+          {isCaptain && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: 14,
+                background: "#fef2f2",
+                borderRadius: 10,
+                gap: 10,
+              }}
             >
-              <Icon name="trash-2" size={12} color="#fff" />
-              {busy === "disband" ? "Disolviendo…" : "Disolver"}
-            </button>
-          </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>Disolver el team</div>
+                <div style={{ fontSize: 11.5, color: "#7f1d1d", marginTop: 2 }}>
+                  Acción irreversible. Se eliminará el historial completo.
+                </div>
+              </div>
+              <button
+                onClick={handleDisband}
+                disabled={busy !== null}
+                className="btn"
+                style={{ background: "#dc2626", color: "#fff", opacity: busy ? 0.6 : 1 }}
+              >
+                <Icon name="trash-2" size={12} color="#fff" />
+                {busy === "disband" ? "Disolviendo…" : "Disolver"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1731,7 +2065,7 @@ function TeamInvite({
       }}
     >
       <BackBtn onBack={onBack} label="Volver al team" />
-      <div className="label-mp">Halcones del Norte · Invitar miembros</div>
+      <div className="label-mp">{team.name} · Invitar miembros</div>
       <h1 className="font-heading display-md" style={{ margin: 0 }}>
         Invitar al team <span className="dot">●</span>
       </h1>
@@ -1742,7 +2076,9 @@ function TeamInvite({
           padding: 0,
           overflow: "hidden",
           position: "relative",
-          background: "linear-gradient(120deg, #064e3b 0%, #047857 60%, #10b981 100%)",
+          background: team.accentHex
+            ? `linear-gradient(120deg, #0a0a0a 0%, #1f2937 60%, ${team.accentHex} 100%)`
+            : "linear-gradient(120deg, #064e3b 0%, #047857 60%, #10b981 100%)",
           color: "#fff",
         }}
       >
@@ -2449,6 +2785,13 @@ function RosterMemberMenu({
 
 function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => void; team: TeamLite; meUserId: string | null }) {
   const ROSTER = TEAM.members;
+  // Banner con el color elegido del team (mismo gradiente que el preview del
+  // form). Sin color → verde por defecto.
+  const teamBanner = TEAM.accentHex
+    ? `linear-gradient(135deg, #0a0a0a 0%, #1f2937 60%, ${TEAM.accentHex} 100%)`
+    : "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)";
+  const teamAccent = TEAM.accentHex ?? "#fbbf24";
+  const accentText = ["#fbbf24", "#10b981", "#0ea5e9"].includes(teamAccent) ? "#0a0a0a" : "#fff";
   const winRate =
     TEAM.wins + TEAM.losses > 0
       ? Math.round((TEAM.wins / (TEAM.wins + TEAM.losses)) * 100)
@@ -2474,7 +2817,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
           padding: 0,
           overflow: "hidden",
           position: "relative",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)",
+          background: teamBanner,
           color: "#fff",
         }}
       >
@@ -2508,11 +2851,11 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               width: 120,
               height: 120,
               borderRadius: 16,
-              background: "#fbbf24",
+              background: teamAccent,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#0a0a0a",
+              color: accentText,
               boxShadow: "0 12px 24px rgba(0,0,0,0.3)",
             }}
           >
@@ -2549,8 +2892,61 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               }}
             >
               {TEAM.name}
-              <span style={{ color: "#fbbf24" }}>.</span>
+              <span style={{ color: teamAccent }}>.</span>
+              {TEAM.isVerified && (
+                <span
+                  title="Verificado por MATCHPOINT"
+                  style={{
+                    marginLeft: 12,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    verticalAlign: "middle",
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9999,
+                    background: "rgba(14,165,233,0.18)",
+                    color: "#7dd3fc",
+                  }}
+                >
+                  <Icon
+                    name="badge-check"
+                    size={18}
+                    color="#7dd3fc"
+                    style={{ margin: "auto" }}
+                  />
+                </span>
+              )}
             </h1>
+            {TEAM.status !== "active" && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 11px",
+                  background:
+                    TEAM.status === "suspended" ? "rgba(220,38,38,0.18)" : "rgba(255,255,255,0.15)",
+                  border:
+                    TEAM.status === "suspended"
+                      ? "1px solid rgba(248,113,113,0.5)"
+                      : "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 9999,
+                  fontSize: 10.5,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  color: TEAM.status === "suspended" ? "#fecaca" : "#fff",
+                }}
+              >
+                <Icon
+                  name={TEAM.status === "suspended" ? "pause-circle" : "archive"}
+                  size={12}
+                  color={TEAM.status === "suspended" ? "#fecaca" : "#fff"}
+                />
+                {TEAM.status === "suspended" ? "Team suspendido" : "Team archivado"}
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
@@ -2881,36 +3277,72 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               </div>
             </div>
           </div>
-          <div
-            className="card"
-            style={{
-              padding: 20,
-              background: "linear-gradient(135deg, #fef3c7, #fde68a)",
-              borderColor: "#fbbf24",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Icon name="trophy" size={16} color="#92400e" />
-              <div className="label-mp" style={{ color: "#92400e" }}>
-                Logro reciente
+          {TEAM.achievements.length > 0 ? (
+            (() => {
+              const ach = TEAM.achievements[0];
+              return (
+                <div
+                  className="card"
+                  style={{
+                    padding: 20,
+                    background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+                    borderColor: "#fbbf24",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Icon name="trophy" size={16} color="#92400e" />
+                    <div className="label-mp" style={{ color: "#92400e" }}>
+                      Logro reciente
+                    </div>
+                  </div>
+                  <div
+                    className="font-heading"
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 900,
+                      letterSpacing: "-0.02em",
+                      color: "#0a0a0a",
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {ach.title}
+                  </div>
+                  {ach.subtitle && (
+                    <div style={{ fontSize: 11.5, color: "#78350f", marginTop: 4 }}>
+                      {ach.subtitle}
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ) : (
+            <div className="card" style={{ padding: 20 }}>
+              <div className="label-mp" style={{ marginBottom: 8 }}>
+                Logros
+              </div>
+              {/* Los achievements los otorga admin (por ahora manualmente). Cuando
+                  exista Arena/leagues podrían auto-disparar desde un trigger. */}
+              <div
+                style={{
+                  padding: "16px 8px",
+                  textAlign: "center",
+                  color: "var(--muted-fg)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <Icon name="trophy" size={22} color="var(--muted-fg)" />
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0a0a0a" }}>
+                  Sin logros aún
+                </div>
+                <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+                  Los logros se otorgan al ganar torneos y ligas, o por hitos del team.
+                </div>
               </div>
             </div>
-            <div
-              className="font-heading"
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                letterSpacing: "-0.02em",
-                color: "#0a0a0a",
-                lineHeight: 1.15,
-              }}
-            >
-              Top 3 — Liga Inter-Clubes Primavera 2024
-            </div>
-            <div style={{ fontSize: 11.5, color: "#78350f", marginTop: 4 }}>
-              14W · 4L en la temporada regular
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -3018,21 +3450,6 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
-        <button
-          onClick={() => setView("empty")}
-          style={{
-            background: "transparent",
-            border: 0,
-            fontSize: 10.5,
-            color: "var(--muted-fg)",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          ↩ Demo: ver flujo desde &quot;sin team&quot;
-        </button>
-      </div>
     </div>
   );
 }

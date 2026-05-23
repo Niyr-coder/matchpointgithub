@@ -2211,8 +2211,12 @@ Precio editable por admin (`cb_admin_write`). Catálogo total de packs: 7.
   (`cosmetic_bundle_granted` template).
 
 **Pantallas**:
-- `/dashboard/admin/admin-cosmetics` (`AdminCosmeticsScreen`): admin busca
-  user, otorga bundle con nota (memo del pago), revoca si aplica.
+- `/dashboard/admin/admin-cosmetics` (`AdminCosmeticsFlairScreen` server →
+  `AdminFlairUsuariosView` client, rediseño "Flair de usuarios"): adopción +
+  distribución real de temas, grants recientes, otorgar/revocar bundles (busca
+  user, otorga con nota de pago, revoca), editar precio/active de bundles y
+  activar/desactivar temas incluidos. `AdminCosmeticsScreen` (la pantalla previa)
+  queda preservada, des-importada.
 - `/dashboard/user/personalizar`: presets locked muestran badge "MP+" o
   "Pack X" + toast informativo al click. Sección "Bundles disponibles"
   lista catálogo + CTA "Pídelo a soporte".
@@ -2372,11 +2376,12 @@ queda activo sin seed). Lectura pública (el picker oculta los inactivos vía
 (`admin/cosmetics.ts`, con `setAuditActor`): al **desactivar** es hard-kill —
 revierte a Clásico (3 columnas null) a todos los perfiles que lo usen. `setTheme`
 rechaza temas inactivos (`PROFILE.THEME_INACTIVE`). `default` no se desactiva. UI:
-sección "Temas" en `AdminCosmeticsScreen`, con bulk `setAllThemesActive(active)`
+tab "Temas incluidos" del rediseño `AdminFlairUsuariosView` (alimentado por
+`AdminCosmeticsFlairScreen`), con bulk `setAllThemesActive(active)`
 ("Activar todos" / "Desactivar todo" = hard-kill masivo).
 
-**Gestión de bundles desde admin**: `AdminCosmeticsScreen` tiene sección
-"Bundles" que lista `cosmetic_bundles` (`listBundles`) y permite editar
+**Gestión de bundles desde admin**: el rediseño `AdminFlairUsuariosView` tiene tab
+"Bundles" que lista `cosmetic_bundles` (vía `AdminCosmeticsFlairScreen`) y permite editar
 `price_cents` (`setBundlePrice`) y togglear `active` (`setBundleActive`) — admin
 + `setAuditActor`. Desactivar un bundle impide nuevos grants (`grantBundleToUser`
 rechaza `active=false`). Sin cambio de schema (columnas ya existen).
@@ -2438,26 +2443,47 @@ toca MP Rating). Tab **Resultados** (creador, visible cuando status ≥ closed) 
 **podio** en Resumen cuando `finished`. El viejo `ResultsModal` (flujo plano en
 las tarjetas) fue removido; resultados viven en la página de gestión.
 
-**Motor de juego v2 (mig 137, Stage A):** `quedada_matches` (quedada_id,
-category_id, round_no, pair_a_id, pair_b_id?, points_a?, points_b?, status
-scheduled|played). Unificado para todos los formatos: rondas de partidos con
-**puntos por partido**; standings DERIVADOS (append-only) de los partidos played.
-Organizador reporta directo (sin doble confirmación). Actions `generateRoundRobin`
-(método del círculo → rondas balanceadas), `addQuedadaMatch`, `reportQuedadaMatch`,
-`deleteQuedadaMatch`. RLS: read = miembro/abierta/can_manage; write = can_manage.
-En `supabase_realtime`. `getQuedadaManageData` devuelve `matches`. Sin brackets en
-el core (los formatos sociales no tienen eliminatorias). **Fase de grupos (mig
-138):** `quedada_matches` +`group_no` +`court_no`. `generateGroupStage` reparte
-las parejas AL AZAR en N grupos (round robin por grupo, anti-arreglo: no se arman
-a mano) y asigna **cancha por grupo** (1 grupo → 1 cancha, ciclando por
-`courts_count`). **UI:** el panel tiene un switch superior **Gestión | Juego**;
-Gestión = Resumen/Parejas/Pagos/Configurar; **Juego** = sub-tabs **Partidos**
-(grupos × rondas, score grande tipo scoreboard) + **Posiciones** (tabla por grupo:
-#/Pareja/PJ/G/Pts) + Resultados/podio. Acciones de estado (Cerrar/Iniciar/Cancelar)
-abajo a la derecha del header.
+**Motor de juego (rediseño, mig 141 — reemplaza migs 137–140):** se borró el
+motor viejo (molde único `grupos→bracket` con parejas fijas, tabla
+`quedada_matches`) y se reemplazó por un modelo **player-céntrico** + **motor por
+formato**. Stage 1 entrega **AMERICANO**; el resto de formatos muestra "Pronto"
+hasta su motor (`libre` = anotación manual). Tablas nuevas:
+
+- `quedada_rounds` (quedada_id, category_id, round_no, status
+  scheduled|active|done) — orquesta cada ronda de una categoría. unique
+  (category_id, round_no).
+- `quedada_games` (quedada_id, category_id, round_id, round_no, court_no?,
+  **lados a nivel jugador**: side_a_p1, side_a_p2?, side_b_p1, side_b_p2?,
+  points_a?, points_b?, status scheduled|played). p2 null = singles. Un game
+  NO referencia `quedada_pairs` porque la "pareja" es efímera por ronda.
+- `quedadas`/`quedada_categories` +`target_points` (largo del partido a X
+  puntos; fallback categoría → quedada → 24).
+
+**Americano:** unidad individual, rota compañero/rival cada ronda; puntuación =
+**puntos a favor acumulados** (desempate por diferencia PF−PC); ranking
+individual. Standings DERIVADOS (append-only) de los games played
+(`src/lib/quedadas/standings.ts`). Emparejamiento = algoritmo greedy ronda-a-
+ronda + **byes rotativos** (`src/lib/quedadas/americano.ts`): los byes se DERIVAN
+(inscritos de la categoría que no aparecen en ningún game de esa ronda; sin tabla
+extra). Organizador reporta directo (sin doble confirmación). Actions:
+`generateAmericanoRound` (siguiente ronda), `reportGame`, `deleteRound` (regenera),
+`finishQuedada` (podio individual → `final_rank`). RLS: read =
+miembro/abierta/can_manage/admin; write = can_manage/admin (helpers existentes).
+En `supabase_realtime`. `getQuedadaManageData` devuelve `rounds`+`games`+target.
+
+**Vista del jugador (read-only):** la ruta `/dashboard/[role]/quedada/[id]`
+bifurca (client `QuedadaPageRouter` lee `canManage`): organizador →
+`QuedadaManagePanel`; jugador → **`QuedadaDetailView`** (pantalla completa). Ambas
+montan el componente compartido **`QuedadaGameView`** (calendario + tabla general;
+organizador con controles, jugador sin). Lectura del jugador =
+`getQuedadaPlayerView` (anti-leak: sin invite_code/cohosts/payment_account).
+
+**UI panel:** una sola sub-tab **Juego** (`QuedadaGameView` con `canManage`):
+calendario de rondas (scoreboard por cancha, byes) + tabla general individual.
+"Pronto" si el formato no es americano.
 
 **Realtime en gestión:** las tablas (`quedadas`, `quedada_participants`,
-`quedada_categories`, `quedada_pairs`, `quedada_matches`) están en `supabase_realtime`. El panel
+`quedada_categories`, `quedada_pairs`, `quedada_rounds`, `quedada_games`) están en `supabase_realtime`. El panel
 (`QuedadaManagePanel`) usa `useRealtimeRefresh` en modo `onChange` (datos
 client-side vía `getQuedadaManageData` → refetchea con `reload()`, no
 `router.refresh`), filtrando por `quedada_id`/`id`, debounce 400ms. Creador +
@@ -2475,6 +2501,24 @@ inscrito que paga la cuota ve el banco en `/pagos/[txId]`: `getPaymentProofForUs
 resuelve `kind=quedada` → `refLabel` (title) + `paymentAccount`, y `PaymentProofView`
 muestra la tarjeta "Datos para transferir".
 
+**Check-in + aviso de pago (mig 144–145):** `quedada_participants` +`checked_in_at`/
+`checked_in_by` (asistencia informativa, NO bloquea motor ni pago) +`payment_reminded_at`
+(cooldown 30min del aviso). Index parcial `idx_quedada_participants_checked_in`.
+RLS sin cambios (la cubre `qp_update` = self/can_manage/admin). Notif kind
+`quedada_payment_reminder` (mig 145, seed + branch en dispatcher). Actions:
+`setParticipantCheckedIn`/`setAllCheckedIn` (check-in), `remindQuedadaPayment`
+(notif inapp + DM sistema a pendientes, admin+`setAuditActor`),
+`getMyQuedadasFinanceStats`/`getQuedadaPlayerHistory` (stats read-only scoped a
+`creator_id`). Ver `docs/product/06-quedadas.md`.
+
+**Edición de configuración (mig 146):** notif kind `quedada_rescheduled` (seed +
+branch dispatcher). Sin columnas nuevas (title/description/starts_at/location_text/
+visibility/max_players/perks_text/engine_mode/target_points ya existen). Actions:
+`updateQuedadaDetails` (creador; edita generales, NO formato/modo; reprograma →
+notif a joined), `regenerateInviteCode` (creador; RPC `gen_quedada_invite_code`),
+`updateQuedadaLogistics` +`engineMode` (guard `QUEDADAS.ENGINE_LOCKED` si ya hay
+games). Ver `docs/product/06-quedadas.md`.
+
 **Plantillas (mig 135):** `quedada_templates` (user_id, name, config jsonb,
 created_at) — snapshot del wizard (QuedadaInitial sin fecha) para repetir armados.
 Data privada del usuario: RLS = dueño (`user_id = auth.uid()` en select/insert/
@@ -2482,6 +2526,127 @@ update/delete), sin audit/realtime/path admin (config personal, no entidad
 moderable). Cap **5/usuario** validado en `saveQuedadaTemplate`. Actions
 `listQuedadaTemplates`/`saveQuedadaTemplate`/`deleteQuedadaTemplate` + UI en el
 wizard (chips de carga + "Guardar actual").
+
+### 29.22 · Membresías VIP por club (migs 147–150)
+
+Membresías de pago **por club** (distinto de MATCHPOINT+ = premium plataforma, y
+de `club_followers` = seguir gratis). Espejo de `player_subscriptions`.
+
+- `club_membership_tiers` (club_id, name, description, price_cents,
+  duration_months, discount_pct, benefits jsonb, card_design jsonb
+  {templateKey, accent?}, sort_order, is_active). RLS: select activos/staff,
+  write `mp_club_staff`.
+- `club_memberships` (club_id, user_id, tier_id, status
+  pending|active|expired|cancelled|rejected, member_no correlativo por club,
+  starts_at, expires_at, transaction_id, cancelled_reason). **Unique
+  (club_id,user_id)** — una fila por club que se renueva extendiendo expires_at.
+  RLS: select propio/staff, mutación staff (admin client + setAuditActor en
+  aprobación). En `supabase_realtime`. Audit triggers en ambas.
+- `transactions.kind` += `club_membership` (ref_id = membership). El comprobante
+  lo aprueba el **owner/manager** (`approveClubMembership`), no el admin;
+  `listPendingProofsAdmin` excluye este kind.
+- Notif kinds (mig 148): `club_membership_requested/activated/expiring_soon`.
+- Cron (mig 149): `fn_process_club_memberships` (expira + avisa ≤7d).
+- Helper `isClubMembershipActive` + catálogo de tarjetas en
+  `src/lib/clubs/membership.ts`. Ver `docs/product/07-club-memberships.md`.
+
+### 29.24 · Moderación admin de teams (migs 165-166)
+
+Completa el pipeline de governance del admin sobre teams de usuarios. Habilita
+todos los row-actions del rediseño `AdminUserTeamsScreen`.
+
+**Schema mig 165** (status + flags admin):
+
+- `teams.status text not null default 'active' check (active|suspended|archived)` + `idx_teams_status`.
+- `teams.is_verified boolean not null default false` (badge azul).
+- `teams.is_pinned boolean not null default false` + index parcial (pinned va primero en discovery).
+- Trigger `fn_teams_protect_admin_fields` BEFORE UPDATE: revierte cambios de los
+  3 campos cuando `auth.uid() is not null` (cualquier caller con sesión). Solo
+  service-role los puede tocar.
+
+**Schema mig 166** (cola de reportes):
+
+- `team_reports (id, team_id, reporter_user_id, kind in name|captain|ghost|logo|other, detail, status in open|dismissed|actioned, created_at, resolved_at, resolved_by, resolution)`.
+- RLS: `tr_authn_insert` (cualquier authenticated reporta), `tr_own_select` (reporter ve los suyos), mutación admin via service-role.
+- `tg_audit_team_reports` AFTER insert/update/delete.
+
+**Notif kinds nuevos (mig 166)**:
+
+- `team_reported` (admin) — dispatch fan-out al insertar reporte.
+- `team_report_resolved` (reporter).
+- `team_suspended`, `team_archived`, `team_reactivated`, `team_dissolved_by_admin` (a miembros).
+- `team_admin_message` (al captain) — para DM single/bulk del admin.
+
+**Server actions**:
+
+- `src/server/actions/admin/teams.ts`: `setTeamStatusAdmin`, `setTeamVerifiedAdmin`,
+  `setTeamPinnedAdmin`, `forceTransferCaptainAdmin`, `adminDissolveTeam`,
+  `sendAdminDmToCaptain`, `bulkAdminDmToCaptains`, `bulkSetTeamStatusAdmin`. Todas
+  con `setAuditActor("admin")`. `forceTransferCaptainAdmin` valida que el destino
+  sea miembro + no sea captain de otro team (regla 1/1).
+- `src/server/actions/team-reports.ts`: `reportTeam` (user), `resolveTeamReport`
+  (admin), `listOpenTeamReportsServer` (helper para server component).
+
+**Broadcasts**: `TargetFilter` en `src/server/actions/marketing.ts` ahora soporta
+`audience: 'team_captains'` (resuelve via `teams.captain_id` con `status='active'`).
+La pantalla `AdminUserTeamsScreen` lo invoca como bulk DM kind=`team_admin_message`
+(no usa broadcasts directamente; ya tenemos fan-out via notification_jobs).
+
+**Sync cross-superficie**:
+
+- `loadPublicTeams` (TeamScreen.tsx) filtra `status='active'` y ordena `is_pinned desc`.
+- `TeamHome` muestra badge verified en hero + banner status para suspended/archived.
+- `TeamJoin` cards muestran iconos verified+pinned y botón "Reportar este team" (modal `reportTeam`).
+
+### 29.23 · Team settings + achievements (mig 164)
+
+Convierte en funcionales los toggles de "Roles y permisos" del `TeamSettings`
+y la card "Logro reciente" del `TeamHome`, que antes eran 100% hardcoded.
+
+**Schema (mig 164)**:
+
+- `teams` += 4 cols boolean (todas `not null` con defaults que respetan el
+  comportamiento previo):
+  - `captain_only_invites bool default true`
+  - `require_join_approval bool default true`
+  - `show_in_ranking bool default true`
+  - `allow_external_chat_guests bool default false`
+- `team_achievements` (id, team_id, kind, title, subtitle, awarded_at,
+  awarded_by, metadata jsonb). RLS: SELECT cualquier authenticated; sin
+  policy de INSERT/UPDATE/DELETE → solo admin via service-role
+  (`getAdminClient` + `setAuditActor`). Audit trigger `tg_audit_team_achievements`.
+
+**Enforce parcial**: solo `require_join_approval` está cableado hoy. Si está
+en `false` y el team NO es `private`, `requestJoinTeam` auto-inserta a
+`team_members` + dispara notif `team_member_joined` al captain. Los otros 3
+toggles persisten en DB pero NO cambian comportamiento — la UI los marca con
+badge "Pronto" hasta que existan:
+
+- `captain_only_invites` → necesita co-capitanes (rol no existe en el enum `team_members.role`).
+- `show_in_ranking` → necesita ranking de teams (hoy `mv_user_ranking` es solo de users).
+- `allow_external_chat_guests` → necesita chats team-vs-team (Arena).
+
+Ver `docs/guides/04-placeholders.md`.
+
+**Notif kinds nuevos**:
+
+- `team_achievement_awarded` (al captain cuando admin grant un logro).
+- `team_member_joined` (al captain cuando alguien se une via auto-accept).
+
+Ambos seedeados en mig 164 + branches en `fn_dispatch_inapp_notifications`.
+
+**Server actions**:
+
+- `updateTeamSettings(teamId, patch)` — captain only, valida 4 booleans, audit normal.
+- `grantTeamAchievement(...)` / `revokeTeamAchievement(...)` (en
+  `src/server/actions/team-achievements.ts`) — admin only, `getAdminClient`
+  + `setAuditActor("admin")`. Notif a captain on grant.
+- `getTeamAchievementsServer(teamId, limit)` — helper server-side leído desde
+  `TeamScreen.tsx` para mostrar el último en `TeamHome`.
+
+**Path admin**: nuevo item `admin-user-teams` (Sidebar Plataforma) →
+`AdminUserTeamsScreen`. Shell sin contenido a la espera de diseño; cuando
+llegue, cablear las 3 actions de arriba.
 
 ---
 

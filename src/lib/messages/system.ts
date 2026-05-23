@@ -20,7 +20,8 @@ export type SystemMessageKind =
   | "welcome_team_created"
   | "welcome_premium_activated"
   | "welcome_onboarding_completed"
-  | "cosmetic_bundle_granted";
+  | "cosmetic_bundle_granted"
+  | "quedada_payment_reminder";
 // Futuros: team_roster_full_reminder, plan_expiring_soon_reminder.
 
 type Params = {
@@ -76,6 +77,8 @@ export const WELCOME_TEMPLATES = {
     "Ya completaste tu perfil, {firstName}. Te recomendamos empezar explorando los clubes cerca de {city}. ¡Buen juego!",
   cosmetic_bundle_granted:
     "¡{firstName}! Acabamos de desbloquear el {bundleLabel} en tu cuenta. Ya puedes elegir sus presets desde Mi cuenta → Personalizar.",
+  quedada_payment_reminder:
+    'Hola {firstName}, te recordamos completar el pago de la quedada "{quedadaTitle}"{amountClause}. {paymentClause}¡Nos vemos en cancha!',
 } as const satisfies Record<SystemMessageKind, string>;
 
 export function renderTemplate(kind: SystemMessageKind, vars: TemplateVars): string {

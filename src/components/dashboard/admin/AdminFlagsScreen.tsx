@@ -1,12 +1,14 @@
 // Server: feature flags + assignments + clubes para selector.
 import { getServerClient } from "@/lib/db/client.server";
 import {
-  AdminFlagsScreenView,
   type FlagsData,
   type FlagRow,
   type FlagAssignment,
   type ClubLite,
 } from "./AdminFlagsScreenView";
+// Merge: el rediseño v2 (AdminFlagsView) consume los datos reales que carga este
+// server component. AdminFlagsScreenView queda como fuente de tipos + respaldo.
+import { AdminFlagsView } from "./AdminFlagsView";
 
 function titleize(key: string): string {
   return key
@@ -20,7 +22,7 @@ async function loadData(): Promise<FlagsData> {
   const [{ data: flags }, { data: assignments }, { data: clubs }] = await Promise.all([
     supabase
       .from("feature_flags")
-      .select("key,description,enabled_default,rollout_pct,updated_at")
+      .select("key,description,enabled_default,rollout_pct,env,impact,owner,segment,label,updated_at")
       .order("updated_at", { ascending: false }),
     supabase
       .from("feature_flag_assignments")
@@ -53,6 +55,12 @@ async function loadData(): Promise<FlagsData> {
       state,
       enabled,
       rollout,
+      env: ((f.env as string) ?? "prod") as FlagRow["env"],
+      impact: ((f.impact as string) ?? "med") as FlagRow["impact"],
+      owner: (f.owner as string | null) ?? null,
+      segment: (f.segment as string | null) ?? null,
+      label: (f.label as string | null) ?? null,
+      updatedAt: (f.updated_at as string | null) ?? null,
       assignments: assigns,
     };
   });
@@ -76,5 +84,5 @@ async function loadData(): Promise<FlagsData> {
 
 export async function AdminFlagsScreen() {
   const data = await loadData();
-  return <AdminFlagsScreenView data={data} />;
+  return <AdminFlagsView data={data} />;
 }

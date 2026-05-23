@@ -77,6 +77,9 @@ export const ReservationCreateSchema = z
     visibility: ReservationVisibilitySchema.default("private"),
     maxPlayers: z.number().int().min(2).max(8).default(4),
     notes: z.string().max(500).nullable().optional(),
+    // Mig 170: vincula la reserva a un cliente real de MATCHPOINT
+    // (opcional — null = walk-in / sin cuenta, cliente identificado por notes).
+    forUserId: UuidSchema.optional(),
   })
   .refine((d) => new Date(d.endsAt) > new Date(d.startsAt), {
     message: "endsAt must be after startsAt",

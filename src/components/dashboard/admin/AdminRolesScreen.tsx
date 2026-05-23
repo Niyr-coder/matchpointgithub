@@ -1,37 +1,65 @@
 // Server: matriz de roles + miembros por rol + role_requests pendientes + clubes disponibles.
 import { getServerClient } from "@/lib/db/client.server";
 import {
-  AdminRolesScreenView,
   type RolesData,
   type RoleMember,
   type RoleRequest,
   type ClubOption,
 } from "./AdminRolesScreenView";
+// MERGE: el rediseño v2 (AdminRolesView) consume estos datos reales. La view
+// vieja (AdminRolesScreenView) queda como fuente de tipos + respaldo.
+import { AdminRolesView } from "./AdminRolesView";
+
+const ROLE_KEYS = ["admin", "partner", "owner", "manager", "coach", "employee", "user"] as const;
+export const MEMBER_PAGE = 8; // preview corto por rol que precarga el server (el resto se busca)
 
 async function loadData(): Promise<RolesData> {
   const supabase = await getServerClient();
-  const [{ data: assignments }, { data: requests }, { data: clubs }] = await Promise.all([
-    supabase
-      .from("role_assignments")
-      .select("id,user_id,role,club_id,granted_at")
-      .is("revoked_at", null),
+  // counts vía agregado (NO traemos todas las filas de role_assignments: el rol
+  // 'user' tiene miles). Miembros: solo la primera página (MEMBER_PAGE) por rol.
+  const [countRes, { data: requests }, { data: clubs }, { data: caps }, { data: roleCaps }, ...memberRes] = await Promise.all([
+    supabase.rpc("fn_role_member_counts"),
     supabase
       .from("role_requests")
       .select("id,user_id,requested_role,target_club_id,reason,created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: false }),
     supabase.from("clubs").select("id,name").eq("status", "active").order("name"),
+    supabase.from("capabilities").select("key,domain,label,sort").order("sort"),
+    supabase.from("role_capabilities").select("role,cap_key,level"),
+    ...ROLE_KEYS.map((role) =>
+      supabase
+        .from("role_assignments")
+        .select("id,user_id,role,club_id,granted_at")
+        .eq("role", role)
+        .is("revoked_at", null)
+        .order("granted_at", { ascending: false })
+        .limit(MEMBER_PAGE),
+    ),
   ]);
+
+  const counts: Record<string, number> = {};
+  for (const c of (countRes.data ?? []) as { role: string; n: number }[]) counts[c.role] = Number(c.n);
+
+  const memberRows = memberRes.flatMap((q) => q.data ?? []);
+
+  // Matriz RBAC real (mig 158): rol → capKey → nivel.
+  const matrix: Record<string, Record<string, string>> = {};
+  for (const rc of roleCaps ?? []) {
+    const role = rc.role as string;
+    (matrix[role] ||= {})[rc.cap_key as string] = rc.level as string;
+  }
+  const capCatalog = (caps ?? []).map((c) => ({ key: c.key as string, domain: c.domain as string, label: c.label as string }));
 
   const userIds = Array.from(
     new Set([
-      ...(assignments ?? []).map((a) => a.user_id as string),
+      ...memberRows.map((a) => a.user_id as string),
       ...(requests ?? []).map((r) => r.user_id as string),
     ]),
   );
   const clubIds = Array.from(
     new Set([
-      ...(assignments ?? []).map((a) => a.club_id as string | null).filter(Boolean) as string[],
+      ...(memberRows.map((a) => a.club_id as string | null).filter(Boolean) as string[]),
       ...(requests ?? []).map((r) => r.target_club_id as string | null).filter(Boolean) as string[],
     ]),
   );
@@ -54,14 +82,10 @@ async function loadData(): Promise<RolesData> {
   const clubName = new Map<string, string>();
   for (const c of relatedClubs ?? []) clubName.set(c.id as string, c.name as string);
 
-  const counts: Record<string, number> = {};
   const membersByRole = new Map<string, RoleMember[]>();
-  const distinctByRole = new Map<string, Set<string>>();
-  for (const a of assignments ?? []) {
+  for (const a of memberRows) {
     const role = a.role as string;
     const uid = a.user_id as string;
-    if (!distinctByRole.has(role)) distinctByRole.set(role, new Set());
-    distinctByRole.get(role)!.add(uid);
     const prof = profileById.get(uid);
     if (!membersByRole.has(role)) membersByRole.set(role, []);
     membersByRole.get(role)!.push({
@@ -74,7 +98,6 @@ async function loadData(): Promise<RolesData> {
       grantedAt: a.granted_at as string,
     });
   }
-  for (const [role, set] of distinctByRole) counts[role] = set.size;
 
   const pendingRequests: RoleRequest[] = (requests ?? []).map((r) => {
     const prof = profileById.get(r.user_id as string);
@@ -101,10 +124,12 @@ async function loadData(): Promise<RolesData> {
     members: Object.fromEntries(membersByRole),
     requests: pendingRequests,
     clubs: clubOptions,
+    matrix,
+    capCatalog,
   };
 }
 
 export async function AdminRolesScreen() {
   const data = await loadData();
-  return <AdminRolesScreenView data={data} />;
+  return <AdminRolesView data={data} />;
 }

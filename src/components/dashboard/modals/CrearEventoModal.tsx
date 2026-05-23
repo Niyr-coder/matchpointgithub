@@ -166,6 +166,7 @@ export function CrearEventoModal() {
         currency: "USD",
         paymentPolicy: form.fee > 0 ? form.paymentPolicy : undefined,
         visibility: form.visibility,
+        membersOnly: form.membersOnly,
       });
       if (!created.ok) {
         toast({ icon: "alert-triangle", title: "Error al crear", sub: created.error.message });

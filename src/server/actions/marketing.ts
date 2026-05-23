@@ -90,6 +90,62 @@ async function assertCanBroadcast(
   return userId;
 }
 
+// Filtros de audiencia soportados (type-safe contra columnas reales de profiles
+// + role_assignments). Lo que no mapea a datos reales NO se ofrece (sin fakear).
+type TargetFilter = {
+  city?: string;
+  sport?: string;
+  plan?: string;
+  role?: string;
+  audience?: "team_captains";
+};
+
+async function resolvePlatformTargetIds(
+  admin: ReturnType<typeof getAdminClient>,
+  tf: TargetFilter,
+  limit: number,
+): Promise<string[]> {
+  let ownerIds: string[] | null = null;
+  if (tf.role === "owner") {
+    const { data } = await admin.from("role_assignments").select("user_id").eq("role", "owner").is("revoked_at", null);
+    ownerIds = Array.from(new Set((data ?? []).map((r) => r.user_id as string)));
+    if (ownerIds.length === 0) return [];
+  }
+  // audience='team_captains' (mig 164/165 + admin teams) — captains de teams active.
+  let captainIds: string[] | null = null;
+  if (tf.audience === "team_captains") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (admin as any)
+      .from("teams")
+      .select("captain_id")
+      .eq("status", "active");
+    captainIds = Array.from(
+      new Set(
+        ((data ?? []) as Array<{ captain_id: string }>).map((r) => r.captain_id),
+      ),
+    );
+    if (captainIds.length === 0) return [];
+  }
+  let q = admin.from("profiles").select("id").eq("is_system", false);
+  if (tf.city) q = q.ilike("city", tf.city);
+  if (tf.sport) q = q.eq("preferred_sport", tf.sport as never);
+  if (tf.plan === "premium") q = q.eq("plan_tier", "premium");
+  if (ownerIds) q = q.in("id", ownerIds);
+  if (captainIds) q = q.in("id", captainIds);
+  const { data } = await q.limit(limit);
+  return (data ?? []).map((r) => r.id as string);
+}
+
+// Conteo real de alcance para un target_filter (composer de Comunicaciones).
+export async function countAudience(input: unknown): Promise<ActionResult<{ count: number }>> {
+  return runAction(z.object({ targetFilter: z.record(z.string(), z.unknown()).default({}) }), input, async ({ targetFilter }) => {
+    await assertCanBroadcast("platform");
+    const admin = getAdminClient();
+    const ids = await resolvePlatformTargetIds(admin, targetFilter as TargetFilter, 100000);
+    return { count: ids.length };
+  });
+}
+
 export async function listBroadcasts(input: unknown): Promise<ActionResult<Broadcast[]>> {
   return runAction(BroadcastListParamsSchema, input, async (params) => {
     const supabase = await getServerClient();
@@ -175,7 +231,7 @@ export async function dispatchBroadcast(
     const supabase = await getServerClient();
     const { data: bc } = await supabase
       .from("broadcasts")
-      .select("id,scope,club_id,partner_id,title,body,status,channels")
+      .select("id,scope,club_id,partner_id,title,body,status,channels,target_filter")
       .eq("id", id)
       .single();
     if (!bc) throw new MpError("BROADCASTS.NOT_FOUND", "Broadcast not found", 404);
@@ -198,11 +254,9 @@ export async function dispatchBroadcast(
 
     let targets: string[] = [];
     if (bc.scope === "platform") {
-      const { data } = await admin
-        .from("profiles")
-        .select("id")
-        .limit(BATCH_LIMIT);
-      targets = (data ?? []).map((r) => r.id as string);
+      // Aplica el target_filter real (ciudad/deporte/plan/owner) en vez de
+      // mandar a todos. Filtro vacío = todos los usuarios no-sistema.
+      targets = await resolvePlatformTargetIds(admin, (bc.target_filter ?? {}) as TargetFilter, BATCH_LIMIT);
     } else if (bc.scope === "club") {
       // Clientes del club = organizers de reservations + members si existieran.
       const { data } = await admin
@@ -248,7 +302,7 @@ export async function dispatchBroadcast(
 
     // Fan-out: notify() por cada user, registra recipient. Errores
     // individuales no rompen el batch (notify ya no lanza).
-    const role: "user" = "user";
+    const role = "user" as const;
     const recipientRows: Array<{ broadcast_id: string; user_id: string; notification_id: string | null }> = [];
     for (const userId of targets) {
       const notifId = await notify({

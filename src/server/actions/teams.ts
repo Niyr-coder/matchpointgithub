@@ -4,6 +4,7 @@
 import "server-only";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
@@ -20,6 +21,7 @@ import {
   TeamListParamsSchema,
   TeamMemberSchema,
   TeamSchema,
+  TeamSettingsPatchSchema,
   TeamUpdateSchema,
   type Team,
   type TeamDetail,
@@ -166,6 +168,8 @@ export async function createTeam(input: unknown): Promise<ActionResult<Team>> {
       .insert({
         name: data.name,
         slug: data.slug,
+        tag: data.tag ? data.tag.toUpperCase() : null,
+        color: data.color ?? null,
         description: data.description ?? null,
         sport: data.sport ?? null,
         logo_url: data.logoUrl ?? null,
@@ -208,6 +212,10 @@ export async function createTeam(input: unknown): Promise<ActionResult<Team>> {
       console.error("[createTeam] welcome message failed", e);
     }
 
+    // Invalida el cache de la pantalla de team para que el router.refresh del
+    // cliente encuentre la membresía recién creada (sin esto el render se queda
+    // en "empty"). Mismo motivo en las otras transiciones de membresía.
+    revalidatePath("/dashboard/user/team");
     return mapTeam(team);
   });
 }
@@ -354,6 +362,7 @@ export async function kickTeamMember(input: unknown): Promise<ActionResult<{ ok:
     } as never);
     if (jobErr) console.error("[kickTeamMember] enqueue notif failed:", jobErr.message);
 
+    revalidatePath("/dashboard/user/team");
     return { ok: true as const };
   });
 }
@@ -413,7 +422,7 @@ const RequestJoinSchema = z.object({
 
 export async function requestJoinTeam(
   input: unknown,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; status: "pending" | "accepted" }>> {
   return runAction(RequestJoinSchema, input, async ({ teamId, message }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
@@ -439,12 +448,34 @@ export async function requestJoinTeam(
       throw new MpError("TEAMS.REQUEST_PENDING", "Ya enviaste una solicitud", 409);
     }
 
+    // Mig 164: si el captain desactivó require_join_approval, la solicitud se
+    // auto-acepta (sigue validando privacy via RLS y roster cap).
+    const { data: teamRow } = await supabase
+      .from("teams")
+      .select("captain_id,name,require_join_approval,privacy")
+      .eq("id", teamId)
+      .maybeSingle();
+    const team = teamRow as
+      | {
+          captain_id: string;
+          name: string;
+          require_join_approval: boolean | null;
+          privacy: string | null;
+        }
+      | null;
+    if (!team) throw new MpError("TEAMS.NOT_FOUND", "Team no encontrado", 404);
+    const autoAccept =
+      team.require_join_approval === false && team.privacy !== "private";
+
     const { data, error } = await supabase
       .from("team_join_requests")
       .insert({
         team_id: teamId,
         user_id: userId,
         message: message ?? null,
+        ...(autoAccept
+          ? { status: "accepted", responded_at: new Date().toISOString() }
+          : {}),
       } as never)
       .select("id")
       .single();
@@ -455,7 +486,55 @@ export async function requestJoinTeam(
       }
       throw new MpError("TEAMS.REQUEST_FAILED", error.message, 500);
     }
-    return { id: data.id as string };
+
+    if (autoAccept) {
+      // Validar roster cap antes de meter al miembro; si falla, marcamos la
+      // request como cancelled para no dejar basura semánticamente "aceptada"
+      // que en realidad no se concretó.
+      try {
+        await assertRosterHasSpace(supabase, teamId, team.captain_id);
+      } catch (e) {
+        await supabase
+          .from("team_join_requests")
+          .update({ status: "cancelled", responded_at: new Date().toISOString() } as never)
+          .eq("id", data.id);
+        throw e;
+      }
+
+      const { error: memErr } = await supabase
+        .from("team_members")
+        .insert(
+          { team_id: teamId, user_id: userId, role: "player" } as never,
+          { defaultToNull: false },
+        );
+      if (memErr && memErr.code !== "23505") {
+        throw new MpError("TEAMS.ADD_MEMBER_FAILED", memErr.message, 500);
+      }
+
+      // Notif al captain — alguien se unió.
+      try {
+        const me = await getProfileSummary(userId);
+        const admin = getAdminClient();
+        await admin.from("notification_jobs").insert({
+          user_id: team.captain_id,
+          role: "user",
+          kind: "team_member_joined",
+          channel: "inapp",
+          payload: {
+            team_name: team.name,
+            member_name: me.displayName ?? "Un jugador",
+          },
+          status: "pending",
+        } as never);
+      } catch (e) {
+        console.error("[requestJoinTeam] enqueue notif failed", e);
+      }
+
+      revalidatePath("/dashboard/user/team");
+      return { id: data.id as string, status: "accepted" as const };
+    }
+
+    return { id: data.id as string, status: "pending" as const };
   });
 }
 
@@ -513,6 +592,7 @@ export async function respondToJoinRequest(
         throw new MpError("TEAMS.ADD_MEMBER_FAILED", memErr.message, 500);
       }
     }
+    revalidatePath("/dashboard/user/team");
     return { ok: true as const };
   });
 }
@@ -584,6 +664,7 @@ export async function joinTeamByCode(input: unknown): Promise<ActionResult<Team>
         defaultToNull: false,
       });
     if (insErr) throw new MpError("TEAMS.JOIN_FAILED", insErr.message, 500);
+    revalidatePath("/dashboard/user/team");
     return mapTeam(team);
   });
 }
@@ -676,6 +757,60 @@ export async function updateTeam(input: unknown): Promise<ActionResult<Team>> {
   });
 }
 
+// ── updateTeamSettings (captain only) ──────────────────────────────────
+// Mig 164: 4 booleans en teams. Solo require_join_approval cambia
+// comportamiento ahora (consumido en requestJoinTeam). Los otros 3
+// (captain_only_invites, show_in_ranking, allow_external_chat_guests) se
+// persisten pero el enforce queda pendiente para cuando exista la feature
+// relacionada (co-capitanes, team ranking, Arena chat). Ver
+// `docs/guides/04-placeholders.md`.
+const UpdateSettingsSchema = z.object({
+  teamId: UuidSchema,
+  patch: TeamSettingsPatchSchema,
+});
+
+export async function updateTeamSettings(
+  input: unknown,
+): Promise<ActionResult<{ ok: true }>> {
+  return runAction(UpdateSettingsSchema, input, async ({ teamId, patch }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: team } = await supabase
+      .from("teams")
+      .select("captain_id")
+      .eq("id", teamId)
+      .maybeSingle();
+    if (!team) throw new MpError("TEAMS.NOT_FOUND", "Team no encontrado", 404);
+    if (team.captain_id !== userId) {
+      throw new AuthError(
+        "AUTH.ROLE_REQUIRED",
+        "Solo el capitán puede editar los ajustes",
+      );
+    }
+    const update: Record<string, unknown> = {};
+    if (patch.captainOnlyInvites !== undefined)
+      update.captain_only_invites = patch.captainOnlyInvites;
+    if (patch.requireJoinApproval !== undefined)
+      update.require_join_approval = patch.requireJoinApproval;
+    if (patch.showInRanking !== undefined)
+      update.show_in_ranking = patch.showInRanking;
+    if (patch.allowExternalChatGuests !== undefined)
+      update.allow_external_chat_guests = patch.allowExternalChatGuests;
+    if (Object.keys(update).length === 0) {
+      throw new MpError("TEAMS.NO_CHANGES", "Sin cambios", 400);
+    }
+    const { error } = await supabase
+      .from("teams")
+      .update(update as never)
+      .eq("id", teamId);
+    if (error) {
+      throw new MpError("TEAMS.SETTINGS_FAILED", error.message, 500);
+    }
+    revalidatePath("/dashboard/user/team");
+    return { ok: true as const };
+  });
+}
+
 // ── leaveTeam ──────────────────────────────────────────────────────────
 // El captain no puede salir sin antes transferir capitanía (regla de negocio
 // para evitar teams huérfanos). Si quiere disolver, usa disbandTeam.
@@ -702,6 +837,7 @@ export async function leaveTeam(input: unknown): Promise<ActionResult<{ ok: true
       .eq("team_id", teamId)
       .eq("user_id", userId);
     if (error) throw new MpError("TEAMS.LEAVE_FAILED", error.message, 500);
+    revalidatePath("/dashboard/user/team");
     return { ok: true as const };
   });
 }
@@ -723,6 +859,7 @@ export async function disbandTeam(input: unknown): Promise<ActionResult<{ ok: tr
     }
     const { error } = await supabase.from("teams").delete().eq("id", teamId);
     if (error) throw new MpError("TEAMS.DISBAND_FAILED", error.message, 500);
+    revalidatePath("/dashboard/user/team");
     return { ok: true as const };
   });
 }
@@ -789,6 +926,7 @@ export async function acceptTeamInvite(input: unknown): Promise<ActionResult<{ o
       .from("team_invites")
       .update({ status: "accepted", responded_at: new Date().toISOString() } as never)
       .eq("id", inviteId);
+    revalidatePath("/dashboard/user/team");
     return { ok: true as const };
   });
 }

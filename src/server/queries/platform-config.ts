@@ -63,3 +63,35 @@ export async function getRefundWindowDays(): Promise<number> {
 export async function getAllPlatformConfig(): Promise<Record<ConfigKey, number>> {
   return loadAll();
 }
+
+// Lectura cruda (sin cache, sin coerción a number) de las keys que la pantalla
+// admin de configuración expone para editar. Devuelve value jsonb tal cual +
+// metadata de auditoría. Solo para uso server-side admin.
+export type RawConfigRow = {
+  key: string;
+  value: unknown;
+  description: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export async function getRawPlatformConfig(keys: readonly string[]): Promise<Record<string, RawConfigRow>> {
+  const admin = getAdminClient();
+  const { data } = await admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .from("platform_config" as any)
+    .select("key,value,description,updated_at,updated_by")
+    .in("key", keys as string[]);
+  type Row = { key: string; value: unknown; description: string | null; updated_at: string | null; updated_by: string | null };
+  const out: Record<string, RawConfigRow> = {};
+  for (const row of (data ?? []) as unknown as Row[]) {
+    out[row.key] = {
+      key: row.key,
+      value: row.value,
+      description: row.description ?? null,
+      updatedAt: row.updated_at ?? null,
+      updatedBy: row.updated_by ?? null,
+    };
+  }
+  return out;
+}

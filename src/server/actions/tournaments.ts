@@ -8,6 +8,7 @@ import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
+import { getActiveClubDiscountPct, applyDiscount } from "@/server/queries/club-membership";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -428,14 +429,18 @@ export async function registerToTournament(
         const admin = getAdminClient();
         let paidTransactionId: string | null = null;
         if (effectiveMode !== "free") {
+          // Descuento de membresía VIP del club organizador (si aplica).
+          const clubId = (t.club_id as string | null) ?? null;
+          const discountPct = clubId ? await getActiveClubDiscountPct(userId, clubId) : 0;
+          const chargeCents = applyDiscount(feeCents, discountPct);
           const { data: tx, error: txErr } = await admin
             .from("transactions")
             .insert({
-              club_id: (t.club_id as string | null) ?? null,
+              club_id: clubId,
               kind: "tournament",
               ref_id: tournamentId,
               customer_user_id: userId,
-              amount_cents: feeCents,
+              amount_cents: chargeCents,
               currency: ((t.currency as string | null) ?? "USD"),
               method: "transfer",
               status: effectiveMode === "online" ? "pending_proof" : "pending",

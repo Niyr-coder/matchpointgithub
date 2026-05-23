@@ -150,12 +150,20 @@ export const TicketReplySchema = z
   .openapi("TicketReply");
 
 // ── feature flags ──────────────────────────────────────────────────────
+export const FlagEnvSchema = z.enum(["prod", "staging", "beta", "dev"]);
+export const FlagImpactSchema = z.enum(["low", "med", "high"]);
+
 export const FeatureFlagSchema = z
   .object({
     key: z.string(),
     description: z.string(),
     enabledDefault: z.boolean(),
     rolloutPct: z.number().int().min(0).max(100),
+    env: FlagEnvSchema,
+    impact: FlagImpactSchema,
+    owner: z.string().nullable(),
+    segment: z.string().nullable(),
+    label: z.string().nullable(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -167,6 +175,13 @@ export const FeatureFlagUpsertSchema = z
     description: z.string().min(2).max(500),
     enabledDefault: z.boolean().default(false),
     rolloutPct: z.number().int().min(0).max(100).default(0),
+    // Metadata opcional: solo se persiste si viene en el input (así un toggle
+    // no pisa env/impact/owner/segment existentes).
+    env: FlagEnvSchema.optional(),
+    impact: FlagImpactSchema.optional(),
+    owner: z.string().max(80).nullable().optional(),
+    segment: z.string().max(200).nullable().optional(),
+    label: z.string().max(80).nullable().optional(),
   })
   .openapi("FeatureFlagUpsert");
 

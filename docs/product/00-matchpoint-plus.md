@@ -227,8 +227,26 @@ panel UI queda oculto y el server action rechaza mutaciones — los presets
 existentes siguen renderizando hasta que el cron de cleanup los limpie (no
 implementado todavía; ver §29.15 de `docs/architecture/20-database.md`).
 
+### 7.3 · Coach AI (sidebar `user` → `coach-ai`)
+
+Pantalla de análisis táctico de video. **Frontend estático con datos mock
+por ahora — no hay backend de procesamiento de video todavía.** Vive en
+`src/components/dashboard/user/CoachAIScreen.tsx` (server, decide `isPremium`
+con `getProfileSummary` + `isPlanActive`) y `CoachAIScreenView.tsx` (client,
+tabs Analizar / Último análisis / Historial / Progreso).
+
+**Lo que el plan gatea**:
+- Free: ve el item en el sidebar (badge `MP+`) y el hero marketing, pero la
+  herramienta se reemplaza por un banner de upsell que dirige a `/mi-plan`.
+- Premium: accede a la herramienta completa (upload + análisis mock).
+
+El gating se aplica en server (qué se renderiza) — no hay mutaciones ni data
+persistida, así que no requiere RLS, audit ni notif. Cuando exista el backend
+real de análisis, sumar tabla + action + (probable) cuota por plan.
+
 ## 8. Cosas pendientes / TODO
 
+- [ ] Backend real de Coach AI (upload de video, pipeline de análisis, persistencia).
 - [ ] Notificación al activarse premium (kind `plan_activated`).
 - [ ] Listado público de beneficios premium (hoy es marketing copy hardcoded).
 - [ ] UI: badge "X/cap" en TeamHome + banner upgrade contextual al

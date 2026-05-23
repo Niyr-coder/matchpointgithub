@@ -87,6 +87,7 @@ export const EventCreateSchema = z
     currency: MpCurrencySchema.optional(),
     paymentPolicy: EventPaymentPolicySchema.optional(),
     visibility: EventVisibilitySchema.default("public"),
+    membersOnly: z.boolean().default(false),
   })
   .openapi("EventCreate");
 

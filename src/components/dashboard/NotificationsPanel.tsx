@@ -58,6 +58,8 @@ function iconForKind(kind: string): string {
   if (kind === "team_member_kicked") return "user-x";
   if (kind.startsWith("team_")) return "users";
   if (kind.startsWith("quedada")) return "party-popper";
+  if (kind.startsWith("club_membership")) return "star";
+  if (kind.startsWith("club_staff")) return "user-cog";
   return "bell";
 }
 
@@ -122,6 +124,17 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
     const qId = typeof payload.quedadaId === "string" ? payload.quedadaId : null;
     return qId ? `/dashboard/user/quedadas?focus=${qId}` : "/dashboard/user/quedadas";
   }
+  if (kind === "club_membership_requested") {
+    // Lo recibe owner/manager → su gestión de membresías (link según rol activo).
+    return `/dashboard/${role}/club-membresias`;
+  }
+  if (kind.startsWith("club_membership")) {
+    return "/dashboard/user/membresias";
+  }
+  if (kind.startsWith("club_staff")) {
+    // Lo recibe el staff (manager/coach/employee) → su dashboard del club.
+    return `/dashboard/${role}/home`;
+  }
   return null;
 }
 
@@ -137,6 +150,9 @@ function colorForKind(kind: string): string {
   if (kind === "team_roster_cap_reached") return "#facc15";
   if (kind.startsWith("team_")) return "#7c3aed";
   if (kind.startsWith("quedada")) return "#f97316";
+  if (kind.startsWith("club_membership")) return "#d4af37";
+  if (kind === "club_staff_removed") return "#dc2626";
+  if (kind.startsWith("club_staff")) return "#0891b2";
   return "#0a0a0a";
 }
 

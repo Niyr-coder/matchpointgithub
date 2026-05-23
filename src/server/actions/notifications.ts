@@ -7,6 +7,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { requireSession, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
@@ -82,6 +83,17 @@ export async function markNotificationRead(
       .select()
       .single();
     if (error || !data) throw new MpError("NOTIFICATIONS.NOT_FOUND", "Notification not found", 404);
+    // Tracking de aperturas: si es una notificación de broadcast, marca opened_at
+    // en broadcast_recipients (service role: la RLS no deja al user escribir ahí).
+    const payload = (data.payload ?? {}) as Record<string, unknown>;
+    if ((data.kind as string) === "broadcast" && typeof payload.broadcastId === "string") {
+      await getAdminClient()
+        .from("broadcast_recipients")
+        .update({ opened_at: new Date().toISOString() } as never)
+        .eq("broadcast_id", payload.broadcastId)
+        .eq("user_id", userId)
+        .is("opened_at", null);
+    }
     return mapNotif(data);
   });
 }

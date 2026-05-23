@@ -1076,3 +1076,25 @@ export async function someAdminOnlyAction(input) {
   });
 }
 ```
+
+## RBAC granular en RLS (mig 158/160)
+
+Defensa en profundidad opcional sobre el modelo por RoleKey: el helper
+`mp_role_can(uid, cap, club?)` (SECURITY DEFINER, mig 158) consulta la matriz
+`role_capabilities`. `admin` siempre devuelve true (inmutable). Para sumar un
+gate de capacidad a una política **sin riesgo**, usar el patrón **aditivo**:
+
+```sql
+using ( mp_is_admin() or (<chequeo_de_rol_existente> and mp_role_can(auth.uid(), '<cap>', club_id)) )
+```
+
+- Sólo **restringe** (el rol pierde acceso si admin apaga la cap en la matriz);
+  **nunca amplía** (sigue exigiendo el chequeo de rol original).
+- `admin` no se ve afectado si tiene su propia política (`*_admin_all`) en OR.
+- Behavior-preserving si la cap está seeded en el nivel que reproduce el acceso
+  actual (ej. `owner.sys.roles='own'`).
+- `mp_role_can` es SECURITY DEFINER (owner con BYPASSRLS) → no recursa aunque la
+  política sea sobre `role_assignments`.
+- Aplicado: `role_assignments` owner grant/revoke staff (`sys.roles`). Convertir
+  más tablas on-demand con el mismo patrón; NO reescribir las ~95 políticas a la
+  vez (riesgo en la capa de seguridad).

@@ -38,11 +38,15 @@ export type RoleRequest = {
   createdAt: string;
 };
 export type ClubOption = { id: string; name: string };
+export type Capability = { key: string; domain: string; label: string };
 export type RolesData = {
   counts: Record<string, number>;
   members: Record<string, RoleMember[]>;
   requests: RoleRequest[];
   clubs: ClubOption[];
+  // Matriz RBAC real (mig 158): rol → capKey → nivel. Ausencia = "none".
+  matrix: Record<string, Record<string, string>>;
+  capCatalog: Capability[];
 };
 
 const ROLES: RoleEntry[] = [

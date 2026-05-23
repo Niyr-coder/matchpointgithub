@@ -7,6 +7,7 @@ import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
+import { getActiveClubDiscountPct, applyDiscount, hasActiveClubMembership } from "@/server/queries/club-membership";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -153,6 +154,7 @@ export async function createEvent(input: unknown): Promise<ActionResult<EventRow
         currency: data.currency ?? null,
         payment_policy: resolvedPolicy,
         visibility: data.visibility,
+        members_only: data.membersOnly ?? false,
       } as never)
       .select()
       .single();
@@ -221,7 +223,7 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
         const supabase = await getServerClient();
         const { data: event } = await supabase
           .from("events")
-          .select("status,capacity,price_cents,currency,club_id,payment_policy")
+          .select("status,capacity,price_cents,currency,club_id,payment_policy,members_only")
           .eq("id", id)
           .single();
         if (!event) throw new MpError("EVENTS.NOT_FOUND", "Event not found", 404);
@@ -231,6 +233,13 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
             `Event status is '${event.status}'`,
             422,
           );
+        }
+        // Acceso solo-miembros: requiere membresía VIP activa del club del evento.
+        if ((event.members_only as boolean) && event.club_id) {
+          const isMember = await hasActiveClubMembership(userId, event.club_id as string);
+          if (!isMember) {
+            throw new MpError("EVENTS.MEMBERS_ONLY", "Este evento es solo para miembros VIP del club.", 403);
+          }
         }
         if (event.capacity != null) {
           const { count } = await supabase
@@ -268,14 +277,18 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
 
         let paidTransactionId: string | null = null;
         if (effectiveMode !== "free") {
+          // Descuento de membresía VIP del club del evento (si aplica).
+          const evClubId = (event.club_id as string | null) ?? null;
+          const evDiscountPct = evClubId ? await getActiveClubDiscountPct(userId, evClubId) : 0;
+          const evChargeCents = applyDiscount(priceCents, evDiscountPct);
           const { data: tx, error: txErr } = await supabase
             .from("transactions")
             .insert({
-              club_id: (event.club_id as string | null) ?? null,
+              club_id: evClubId,
               kind: "event",
               ref_id: id,
               customer_user_id: userId,
-              amount_cents: priceCents,
+              amount_cents: evChargeCents,
               currency: ((event.currency as string | null) ?? "USD"),
               method: "transfer",
               status: effectiveMode === "online" ? "pending_proof" : "pending",

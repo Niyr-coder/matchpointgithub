@@ -16,6 +16,8 @@ export type SidebarItem = {
   label: string;
   icon: string;
   badge?: string;
+  /** Si se setea, el item se oculta cuando ese feature flag está explícitamente off. */
+  flag?: string;
 };
 
 export type SidebarGroup = {
@@ -47,14 +49,20 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
     desc: "Reserva, juega, sube tu ranking.",
     sidebar: [
       {
-        h: "Principal",
+        h: "Jugar",
         items: [
           { k: "home", label: "Inicio", icon: "home" },
-          { k: "clubes", label: "Clubes", icon: "building-2" },
+          { k: "busco-partido", label: "Busco partido", icon: "swords" },
+          { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA", flag: "quedadas_enabled" },
           { k: "eventos", label: "Eventos", icon: "trophy" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
-          { k: "busco-partido", label: "Busco partido", icon: "swords" },
-          { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA" },
+        ],
+      },
+      {
+        h: "Explorar",
+        items: [
+          { k: "clubes", label: "Clubes", icon: "building-2" },
+          { k: "shop", label: "Shop", icon: "shopping-bag" },
         ],
       },
       {
@@ -66,23 +74,25 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         ],
       },
       {
-        h: "Coaching",
+        h: "Mejora tu juego",
         items: [
+          { k: "coach-ai", label: "Coach AI", icon: "sparkles", badge: "MP+", flag: "coach_ai_enabled" },
           { k: "academia", label: "Academia", icon: "graduation-cap" },
           { k: "mis-clases", label: "Mis clases", icon: "list-checks" },
         ],
       },
       {
-        h: "Tienda",
-        items: [{ k: "shop", label: "Shop", icon: "shopping-bag" }],
-      },
-      {
         h: "Mi cuenta",
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
+          { k: "membresias", label: "Mis membresías", icon: "star" },
           { k: "personalizar", label: "Personalizar", icon: "palette" },
           { k: "solicitar-club", label: "Solicitar Club", icon: "building" },
         ],
+      },
+      {
+        h: "MATCHPOINT+",
+        items: [{ k: "mp-plus", label: "MATCHPOINT+", icon: "crown", badge: "MP+" }],
       },
     ],
   },
@@ -97,20 +107,20 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
     desc: "Toda la plataforma. Métricas globales, moderación, configuración.",
     sidebar: [
       {
-        h: "Plataforma",
+        h: "Resumen",
         items: [
           { k: "home", label: "Overview", icon: "home" },
-          { k: "admin-clubs", label: "Clubes", icon: "building-2" },
-          { k: "admin-users", label: "Usuarios", icon: "users" },
-          { k: "admin-events", label: "Eventos", icon: "trophy" },
+          { k: "admin-metrics", label: "Métricas", icon: "bar-chart-3" },
         ],
       },
       {
-        h: "Monetización",
+        h: "Plataforma",
         items: [
-          { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
-          { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
-          { k: "admin-cosmetics", label: "Bundles cosméticos", icon: "palette" },
+          { k: "admin-clubs", label: "Clubes", icon: "building-2" },
+          { k: "admin-users", label: "Usuarios", icon: "users" },
+          { k: "admin-user-teams", label: "Teams", icon: "users-2" },
+          { k: "admin-events", label: "Eventos", icon: "trophy" },
+          { k: "admin-quedadas", label: "Quedadas", icon: "party-popper" },
         ],
       },
       {
@@ -118,23 +128,29 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
           { k: "admin-support", label: "Soporte", icon: "life-buoy" },
-          { k: "admin-quedadas", label: "Quedadas", icon: "party-popper" },
-          { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
           { k: "admin-broadcast", label: "Comunicaciones", icon: "megaphone" },
+          { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
         ],
       },
       {
-        h: "Control & datos",
+        h: "Monetización",
         items: [
-          { k: "admin-roles", label: "Permisos & Roles", icon: "shield" },
-          { k: "admin-flags", label: "Feature flags", icon: "flag" },
-          { k: "admin-metrics", label: "Métricas", icon: "bar-chart-3" },
-          { k: "admin-audit", label: "Audit log", icon: "history" },
+          { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
+          { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
+          { k: "admin-memberships", label: "Membresías clubes", icon: "star" },
+          { k: "admin-sponsors", label: "Patrocinadores", icon: "handshake" },
+          { k: "admin-cosmetics", label: "Flair de usuarios", icon: "palette" },
         ],
       },
       {
         h: "Sistema",
-        items: [{ k: "admin-config", label: "Configuración", icon: "settings" }],
+        items: [
+          { k: "admin-roles", label: "Permisos & Roles", icon: "shield" },
+          { k: "admin-flags", label: "Feature flags", icon: "flag" },
+          { k: "admin-audit", label: "Audit log", icon: "history" },
+          { k: "admin-ayuda-guias", label: "Ayuda y guías", icon: "book-open" },
+          { k: "admin-config", label: "Configuración", icon: "settings" },
+        ],
       },
     ],
   },
@@ -161,6 +177,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Negocio",
         items: [
           { k: "club-finanzas", label: "Finanzas", icon: "wallet" },
+          { k: "club-membresias", label: "Membresías", icon: "star", flag: "club_memberships_v2" },
           { k: "club-marketing", label: "Marketing", icon: "megaphone" },
         ],
       },
@@ -201,6 +218,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "club-eventos", label: "Eventos del club", icon: "trophy" },
           { k: "club-clientes", label: "Clientes", icon: "users" },
+          { k: "club-membresias", label: "Membresías", icon: "star", flag: "club_memberships_v2" },
           { k: "club-staff", label: "Personal", icon: "user-cog" },
         ],
       },
@@ -295,15 +313,11 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         ],
       },
       {
-        h: "Caja",
+        h: "Caja & tienda",
         items: [
           { k: "e-caja", label: "Caja del día", icon: "banknote" },
-          { k: "e-shop", label: "Pro shop", icon: "shopping-bag" },
+          { k: "e-shop", label: "Tienda", icon: "shopping-bag" },
         ],
-      },
-      {
-        h: "Soporte",
-        items: [{ k: "e-soporte", label: "Reportar problema", icon: "life-buoy" }],
       },
     ],
   },
@@ -334,12 +348,17 @@ export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
     "admin-config",
     "admin-roles",
     "admin-team",
+    "admin-user-teams",
+    "admin-ayuda-guias",
     "admin-flags",
     "admin-broadcast",
     "admin-quedadas",
+    "admin-memberships",
+    "admin-sponsors",
+    "admin-theme-designer",
   ],
-  owner: ["club-reservas", "club-canchas", "club-clientes", "club-finanzas", "club-marketing", "club-config", "club-eventos", "club-staff"],
-  manager: ["club-reservas", "club-canchas", "club-clientes", "club-eventos", "club-staff", "club-walkins", "club-reportes"],
+  owner: ["club-reservas", "club-canchas", "club-clientes", "club-finanzas", "club-membresias", "club-marketing", "club-config", "club-eventos", "club-staff"],
+  manager: ["club-reservas", "club-canchas", "club-clientes", "club-membresias", "club-eventos", "club-staff", "club-walkins", "club-reportes"],
   partner: ["p-ligas", "p-torneos", "p-brackets", "p-inscritos", "p-clubes", "p-finanzas", "p-marketing"],
   coach: ["c-clases", "c-alumnos", "c-calendar", "c-pagos", "c-recursos", "c-perfil"],
   employee: ["e-checkin", "e-walkins", "e-caja", "e-reservas", "e-shop", "e-soporte"],

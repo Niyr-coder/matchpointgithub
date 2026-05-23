@@ -25,6 +25,7 @@ import {
   type BankDraft,
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
+import { RulesEditor, ruleDraftsToRules, type RuleDraft } from "./quedada-fields/RulesEditor";
 import { SUMA_MIN, SUMA_MAX, sumaLabel } from "@/lib/quedadas/level";
 
 type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
@@ -49,12 +50,13 @@ export type QuedadaInitial = {
   courtPriceUsd?: string;
   bank?: BankDraft;
   prizeRows?: PrizeDraft[];
+  ruleRows?: RuleDraft[];
   perks?: string;
   categories?: CatDraft[];
 };
 
 const FORMATS: { k: Format; label: string; sub: string }[] = [
-  { k: "americano", label: "Americano", sub: "Rotación de parejas" },
+  { k: "americano", label: "Americano", sub: "Rotas compañero cada ronda" },
   { k: "mexicano", label: "Mexicano", sub: "Emparejas por nivel" },
   { k: "round_robin", label: "Round Robin", sub: "Todos contra todos" },
   { k: "kotc", label: "Rey de Cancha", sub: "El que gana se queda" },
@@ -97,6 +99,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
   // Paso 3 — bancarios estructurados + premios estructurados + perks
   const [bank, setBank] = useState<BankDraft>(initial?.bank ?? { ...EMPTY_BANK });
   const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>(initial?.prizeRows ?? []);
+  const [ruleRows, setRuleRows] = useState<RuleDraft[]>(initial?.ruleRows ?? []);
   const [perks, setPerks] = useState(initial?.perks ?? "");
   // Categorías iniciales
   const [categories, setCategories] = useState<CatDraft[]>(initial?.categories ?? []);
@@ -117,13 +120,15 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     return Math.round(c * h * p * 100);
   }, [courts, hours, courtPriceUsd]);
 
-  // El cupo es POR CATEGORÍA: jugadores estimados = suma de cupos × (2 dobles / 1 singles).
+  // El cupo es POR CATEGORÍA. En americano cada cupo = 1 jugador (el compañero
+  // rota); en parejas fijas cada cupo = 2 (dobles) o 1 (singles).
+  const individualRoster = format === "americano" || matchMode === "singles";
   const splitHint = useMemo(() => {
-    const perSlot = matchMode === "doubles" ? 2 : 1;
+    const perSlot = individualRoster ? 1 : 2;
     const players = categories.reduce((sum, c) => sum + (parseInt(c.slots || "0", 10) || 0) * perSlot, 0);
     if (courtCost <= 0 || players < 1) return null;
     return Math.round(courtCost / players);
-  }, [courtCost, categories, matchMode]);
+  }, [courtCost, categories, individualRoster]);
 
   function catHourToIso(hour: string): string | undefined {
     if (!hour) return undefined;
@@ -155,6 +160,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     courtPriceUsd,
     bank,
     prizeRows,
+    ruleRows,
     perks,
     categories,
   });
@@ -173,6 +179,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     setCourtPriceUsd(init.courtPriceUsd ?? "");
     setBank(init.bank ?? { ...EMPTY_BANK });
     setPrizeRows(init.prizeRows ?? []);
+    setRuleRows(init.ruleRows ?? []);
     setPerks(init.perks ?? "");
     setCategories(init.categories ?? []);
     setStep(0);
@@ -283,6 +290,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         courtPriceCents: priceCents,
         paymentAccount: bankDraftToAccount(bank) ?? undefined,
         prizes: prizeDraftsToPrizes(prizeRows).length > 0 ? prizeDraftsToPrizes(prizeRows) : undefined,
+        rules: ruleDraftsToRules(ruleRows).length > 0 ? ruleDraftsToRules(ruleRows) : undefined,
         categories: cats.length > 0 ? cats : undefined,
       });
       if (!res.ok) {
@@ -504,7 +512,10 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                     <Icon name="plus" size={13} /> Agregar categoría
                   </button>
                 </div>
-                <Hint>El cupo se define por categoría (cupos de arriba), no global.</Hint>
+                <Hint>
+                  El cupo se define por categoría (cupos de arriba), no global.
+                  {individualRoster ? " En americano cada cupo es un jugador (el compañero rota cada ronda)." : " En parejas fijas cada cupo es una pareja."}
+                </Hint>
               </Field>
             </>
           )}
@@ -541,6 +552,9 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
               </Field>
               <Field label="Premios · opcional">
                 <PrizesEditor value={prizeRows} onChange={setPrizeRows} />
+              </Field>
+              <Field label="Reglas clave · opcional">
+                <RulesEditor value={ruleRows} onChange={setRuleRows} />
               </Field>
               <Field label="Perks · opcional">
                 <textarea value={perks} maxLength={280} onChange={(e) => setPerks(e.target.value)} placeholder="Ej. incluye pelotas, hidratación y snacks" style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} />

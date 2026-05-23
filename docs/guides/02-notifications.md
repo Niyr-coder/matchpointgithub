@@ -71,6 +71,22 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `match_rescheduled` | matches | resto de participantes | `rescheduleMatch` | 122 | ✅ |
 | `match_no_show_reported` | matches | jugador reportado | `reportNoShow` (flag) | 124 | ✅ |
 | `team_member_kicked` | teams | jugador expulsado | `kickTeamMember` (capitán) | 125 | ✅ |
+| `team_member_joined` | teams | capitán | `requestJoinTeam` auto-accept (mig 164) | 164 | ✅ |
+| `team_achievement_awarded` | teams | capitán | `grantTeamAchievement` (admin) | 164 | ✅ |
+| `team_reported` | moderation | admins | `reportTeam` (cualquier user) | 166 | ✅ |
+| `team_report_resolved` | moderation | reporter | `resolveTeamReport` (admin) | 166 | ✅ |
+| `team_suspended` | teams | miembros | `setTeamStatusAdmin` (admin) | 166 | ✅ |
+| `team_archived` | teams | miembros | `setTeamStatusAdmin` (admin) | 166 | ✅ |
+| `team_reactivated` | teams | miembros | `setTeamStatusAdmin` (admin) | 166 | ✅ |
+| `team_dissolved_by_admin` | teams | miembros | `adminDissolveTeam` (admin) | 166 | ✅ |
+| `team_admin_message` | teams | capitán(es) | `sendAdminDmToCaptain` / `bulkAdminDmToCaptains` | 166 | ✅ |
+| `quedada_payment_reminder` | quedadas | inscrito con `paid=false` | `remindQuedadaPayment` (organizador/co-host) | 145 | ✅ |
+| `quedada_rescheduled` | social | inscritos `joined` | `updateQuedadaDetails` con cambio de `starts_at` | 146 | ✅ |
+| `club_membership_requested` | clubs | owner/manager del club | `requestClubMembership` (usuario compra) | 148 | ✅ |
+| `club_membership_activated` | clubs | usuario | `approveClubMembership` (club aprueba pago) | 148 | ✅ |
+| `club_membership_expiring_soon` | clubs | usuario | cron `process-club-memberships-daily` (≤7d) | 148 | ✅ |
+| `club_staff_assigned` | roles | manager/coach/employee asignado | `assignRole` (owner agrega staff) | 165 | ✅ |
+| `club_staff_removed` | roles | manager/coach/employee removido | `revokeRole` (owner quita staff) | 165 | ✅ |
 
 ## 3. Render del dispatcher (cómo derivá title/body/link)
 
@@ -187,6 +203,8 @@ top en la lista de conversaciones.
 - `welcome_team_created` — al `createTeam`.
 - `welcome_onboarding_completed` — al `saveOnboardingStep(step='finish')`.
 - `welcome_premium_activated` — al `approvePlanSubscriptionAdmin`.
+- `quedada_payment_reminder` — al `remindQuedadaPayment` (dual-channel: además
+  de la notif inapp, manda un DM del sistema con los datos de transferencia).
 
 **Cómo funciona**:
 - RPC `fn_send_system_message(recipient_user_id, body, payload)` (mig 105).

@@ -5,6 +5,8 @@ import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
+import { getActiveAnnouncement } from "@/server/queries/announcements";
 
 function isValidRole(r: string): r is RoleKey {
   return Object.prototype.hasOwnProperty.call(MP_ROLES, r);
@@ -271,6 +273,29 @@ export default async function RoleLayout({
             ? [ownerClub.name, ownerClub.city].filter(Boolean).join(" · ")
             : null;
 
+  // Flags efectivos del usuario (para gatear items del sidebar) + banner de
+  // mantenimiento. Una sola lectura de feature_flags para el banner; los flags
+  // efectivos vienen del rpc fn_my_effective_flags (respeta excepciones/rollout).
+  const [{ data: maint }, flagsRes, announcement] = await Promise.all([
+    supabase.from("feature_flags").select("enabled_default,description,impact").eq("key", "maintenance_banner").maybeSingle(),
+    getMyEffectiveFlags(),
+    getActiveAnnouncement(),
+  ]);
+  const flags = flagsRes.ok ? flagsRes.data : {};
+  // Banner global: el anuncio activo (canal Banner de Comunicaciones) tiene
+  // prioridad; si no hay, cae al flag maintenance_banner.
+  const impactToLevel: Record<string, "info" | "warn" | "critical"> = { low: "info", med: "warn", high: "critical" };
+  const banner = announcement
+    ? announcement
+    : maint?.enabled_default
+      ? {
+          message: (maint.description as string) || "Estamos en mantenimiento. Algunas funciones pueden fallar temporalmente.",
+          level: impactToLevel[(maint.impact as string) ?? "high"] ?? "critical",
+          ctaLabel: null,
+          ctaHref: null,
+        }
+      : null;
+
   return (
     <>
       <DashboardChrome
@@ -278,6 +303,8 @@ export default async function RoleLayout({
         userName={userName}
         contextLabel={contextLabel}
         badgeOverrides={badgeOverrides}
+        banner={banner}
+        flags={flags}
       >
         {children}
       </DashboardChrome>

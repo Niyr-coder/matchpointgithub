@@ -8,7 +8,7 @@
 ## 1. Modelo
 
 ### `transactions` (mig 010 + extensiones)
-- `id`, `kind` (`reservation | class | tournament | event | plan | club_featuring`)
+- `id`, `kind` (`reservation | class | tournament | event | plan | club_featuring | quedada | club_membership`)
 - `ref_id` — id de la entidad asociada (reservation, tournament, etc)
 - `amount_cents`, `currency`, `method` (`transfer | deuna | cash`)
 - `status` enum `mp_payment_status`:
@@ -82,6 +82,14 @@ const m = txStatusMeta(tx.status);
 **Crítico**: la auto-captura de `kind='tournament'` está en `submitPaymentProof`
 líneas 119-150 aprox. Si la rompo, las inscripciones de torneo se quedan en
 limbo y los partners reciben quejas. Está documentada en el header del archivo.
+
+### 3.b · Membresías de club (`kind='club_membership'`)
+
+A diferencia de `plan`/`event`/`club_featuring` (aprueba **admin**), el comprobante
+de una membresía VIP lo aprueba el **owner/manager del club** vía
+`approveClubMembership`, NO el admin de plataforma. Por eso `listPendingProofsAdmin`
+**excluye** `kind='club_membership'` (no hay cascada de activación en
+`approvePaymentProofAdmin`). Detalle completo en `docs/product/07-club-memberships.md`.
 
 ## 4. Flujo onsite (pago en club)
 

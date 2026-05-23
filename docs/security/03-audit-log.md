@@ -212,9 +212,28 @@ create trigger tg_audit_<tabla>
 Si la tabla tiene UPDATEs muy frecuentes (ej. estado de juego en vivo),
 considerar **no** auditar UPDATEs (sería ruido). Solo INSERT/DELETE.
 
+## 10b. Hash chain (tamper-evidence) — mig 154
+
+`audit_log` es **tamper-evident** por cadena de hashes:
+
+- Columnas `prev_hash` y `row_hash`. El trigger `tg_audit_chain` (BEFORE INSERT,
+  SECURITY DEFINER, serializado con `pg_advisory_xact_lock`) calcula
+  `row_hash = sha256(prev_hash || contenido)` donde el contenido es
+  `fn_audit_content(row)` (jsonb determinista de actor/role/club/entity/entity_id/
+  action/diff/ip/ua/created_at).
+- Alterar o borrar una fila vieja rompe el `row_hash` esperado de todas las
+  siguientes → detectable.
+- Verificación: `fn_verify_audit_chain()` (admin-only) recorre la cadena y
+  devuelve `{ok, checked, broken_id}`. Action: `verifyAuditChain()`; la UI
+  (`AdminAuditView` → IntegrityCard "Verificar cadena") la expone.
+- La migración hace **backfill** de la cadena sobre el log existente.
+- Alcance: protege contra manipulación de filas existentes; no firma con clave
+  externa (quien tenga escritura total podría recomputar toda la cadena). Para
+  no-repudio fuerte faltaría anclar hashes fuera de la DB.
+
 ## 11. TODOs
 
-- [ ] UI admin para `audit_log` real (hoy stub)
+- [x] UI admin para `audit_log` real (mig 154; AdminAuditView mergeado + hash chain)
 - [ ] Retention policy + archivo a cold storage
 - [ ] Audit de lecturas (no solo mutaciones) para datos súper sensibles
 - [ ] Alertas de detección de patrones (ej. 100 cancelaciones de torneo

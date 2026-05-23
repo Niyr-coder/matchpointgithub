@@ -17,6 +17,7 @@ type Row = {
   visibility: string;
   status: string;
   starts_at: string;
+  created_at: string;
   location_text: string | null;
   max_players: number | null;
   fee_cents: number | null;
@@ -32,7 +33,7 @@ export async function QuedadasScreen() {
 
   const nowIso = new Date().toISOString();
   const SELECT =
-    "id,creator_id,club_id,title,description,format,match_mode,visibility,status,starts_at,location_text,max_players,fee_cents,perks_text,ranked";
+    "id,creator_id,club_id,title,description,format,match_mode,visibility,status,starts_at,created_at,location_text,max_players,fee_cents,perks_text,ranked";
 
   // Descubrir: quedadas abiertas y con inscripción abierta a futuro.
   const discoverPromise = supabase
@@ -101,16 +102,41 @@ export async function QuedadasScreen() {
     }
   }
 
+  // Cupo por categorías: suma de max_slots por quedada. El cupo MÁXIMO efectivo
+  // sale de aquí cuando hay categorías (× jugadores por cupo, según formato);
+  // si no hay categorías, se usa el max_players global de la quedada.
+  const slotsByQuedada = new Map<string, number>();
+  if (allIds.length) {
+    const { data: catRows } = await supabase
+      .from("quedada_categories")
+      .select("quedada_id,max_slots")
+      .in("quedada_id", allIds);
+    for (const cr of (catRows ?? []) as { quedada_id: string; max_slots: number | null }[]) {
+      if (cr.max_slots == null) continue;
+      slotsByQuedada.set(cr.quedada_id, (slotsByQuedada.get(cr.quedada_id) ?? 0) + cr.max_slots);
+    }
+  }
+
   // Nombres de los creadores.
   const creatorIds = Array.from(new Set(rowList.map((r) => r.creator_id)));
   const nameById = new Map<string, string>();
+  const premiumById = new Map<string, boolean>();
   if (creatorIds.length) {
     const { data: profs } = await supabase
       .from("profiles")
-      .select("user_id,display_name")
-      .in("user_id", creatorIds);
-    for (const p of (profs ?? []) as { user_id: string; display_name: string | null }[]) {
-      if (p.display_name) nameById.set(p.user_id, p.display_name);
+      .select("id,display_name,plan_tier,plan_expires_at")
+      .in("id", creatorIds);
+    const nowMs = new Date(nowIso).getTime();
+    for (const p of (profs ?? []) as {
+      id: string;
+      display_name: string | null;
+      plan_tier: string | null;
+      plan_expires_at: string | null;
+    }[]) {
+      if (p.display_name) nameById.set(p.id, p.display_name);
+      // MP+ activo: premium y no expirado (mismo criterio que isPlanActive).
+      const premium = p.plan_tier === "premium" && (p.plan_expires_at === null || new Date(p.plan_expires_at).getTime() > nowMs);
+      premiumById.set(p.id, premium);
     }
   }
 
@@ -132,14 +158,21 @@ export async function QuedadasScreen() {
     visibility: r.visibility === "private" ? "private" : "open",
     status: r.status,
     startsAt: r.starts_at,
+    createdAt: r.created_at,
     locationText: r.location_text,
-    maxPlayers: r.max_players,
+    // Cupo efectivo: categorías (suma de cupos × jugadores/cupo) o max_players global.
+    maxPlayers: (() => {
+      const perSlot = r.format === "americano" || r.match_mode === "singles" ? 1 : 2;
+      const catSlots = slotsByQuedada.get(r.id) ?? 0;
+      return catSlots > 0 ? catSlots * perSlot : r.max_players;
+    })(),
     feeCents: r.fee_cents ?? 0,
     perks: r.perks_text,
     participantCount: countByQuedada.get(r.id) ?? 0,
     iAmCreator: r.creator_id === meUserId,
     iAmJoined: joinedIds.has(r.id),
     iAmInvited: invitedIds.has(r.id),
+    creatorIsPremium: premiumById.get(r.creator_id) ?? false,
   });
 
   const discover = discoverRows

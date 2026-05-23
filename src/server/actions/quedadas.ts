@@ -6,7 +6,7 @@
 import "server-only";
 
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -14,6 +14,7 @@ import { notify } from "@/server/notifications/dispatch";
 import {
   CreateQuedadaSchema,
   QuedadaIdSchema,
+  JoinQuedadaSchema,
   InviteToQuedadaSchema,
   SetQuedadaResultsSchema,
   SetQuedadaStatusSchema,
@@ -26,19 +27,59 @@ import {
   AutoAssignCategorySchema,
   RemovePairSchema,
   SetParticipantPaidSchema,
+  SetParticipantCheckedInSchema,
+  SetAllCheckedInSchema,
+  RemindQuedadaPaymentSchema,
+  QuedadaPlayerHistorySchema,
+  MyQuedadasFinanceStatsSchema,
+  UpdateQuedadaDetailsSchema,
   QuedadaLogisticsSchema,
   JoinByCodeSchema,
   ListQuedadaTemplatesSchema,
   SaveQuedadaTemplateSchema,
   QuedadaTemplateIdSchema,
-  GenerateRoundRobinSchema,
-  GenerateGroupStageSchema,
-  GenerateMedalFinalSchema,
+  GenerateAmericanoRoundSchema,
+  ReportGameSchema,
+  RoundIdSchema,
   FinishQuedadaSchema,
-  AddQuedadaMatchSchema,
-  ReportQuedadaMatchSchema,
-  QuedadaMatchIdSchema,
 } from "@/lib/schemas/quedadas";
+import { planAmericanoRound, pickNextCourtMatch, type PriorGame, type AmericanoMode } from "@/lib/quedadas/americano";
+import { individualStandings, type GameForStandings } from "@/lib/quedadas/standings";
+import { sendSystemMessage } from "@/lib/messages/system";
+
+// Cooldown del aviso de pago: no reenviar a la misma persona en < 30 min.
+const PAYMENT_REMINDER_COOLDOWN_MS = 30 * 60 * 1000;
+
+function moneyLabel(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+// Valida que el caller pueda gestionar la quedada (creador o co-host) y devuelve
+// los datos pedidos. Necesario para actions que mutan vía admin client (saltan RLS).
+async function assertCanManageQuedada(
+  quedadaId: string,
+  userId: string,
+  columns = "id,creator_id",
+): Promise<Record<string, unknown>> {
+  const supabase = await getServerClient();
+  const { data: q, error } = await supabase
+    .from("quedadas")
+    .select(columns)
+    .eq("id", quedadaId)
+    .maybeSingle();
+  if (error) throw new MpError("QUEDADAS.READ_FAILED", error.message, 500);
+  if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+  const row = q as unknown as Record<string, unknown>;
+  if (row.creator_id === userId) return row;
+  const { data: co } = await supabase
+    .from("quedada_cohosts")
+    .select("user_id")
+    .eq("quedada_id", quedadaId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!co) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o co-host gestiona pagos");
+  return row;
+}
 
 const MAX_QUEDADA_TEMPLATES = 5;
 
@@ -75,8 +116,10 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
         courts_count: d.courtsCount ?? null,
         hours: d.hours ?? null,
         court_price_cents: d.courtPriceCents ?? null,
+        target_points: d.targetPoints ?? null,
         payment_account: d.paymentAccount ?? null,
         prizes: d.prizes ?? null,
+        rules: d.rules ?? [],
         payment_info: d.paymentInfo ?? null, // deprecado (compat)
         prizes_text: d.prizesText ?? null, // deprecado (compat)
         ranked: false, // v1: siempre casual
@@ -100,6 +143,7 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
           starts_at: c.startsAt ?? null,
           court_label: c.courtLabel ?? null,
           max_slots: c.maxSlots ?? null,
+          target_points: c.targetPoints ?? null,
           sort_order: i,
         })) as never,
       );
@@ -114,14 +158,14 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
 // Si hay cuota → crea transaction kind='quedada' (comprobante) y devuelve txId.
 export async function joinQuedada(
   input: unknown,
-): Promise<ActionResult<{ ok: true; transactionId?: string }>> {
-  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+): Promise<ActionResult<{ ok: true }>> {
+  return runAction(JoinQuedadaSchema, input, async ({ quedadaId, categoryId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
-      .select("id,creator_id,visibility,status,max_players,fee_cents,club_id")
+      .select("id,creator_id,visibility,status,max_players,fee_cents,club_id,format,match_mode")
       .eq("id", quedadaId)
       .maybeSingle();
     if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
@@ -144,8 +188,34 @@ export async function joinQuedada(
       throw new MpError("QUEDADAS.INVITE_ONLY", "Esta quedada es por invitación", 403);
     }
 
-    // Cupo (cuenta solo 'joined').
-    if (q.max_players != null) {
+    // Cupo. Si hay categorías, el jugador elige una y se le asigna un cupo libre
+    // (americano = 1 jugador por slot). Si no hay categorías, se usa el cupo
+    // global (max_players).
+    const { data: catRows } = await supabase
+      .from("quedada_categories")
+      .select("id,max_slots")
+      .eq("quedada_id", quedadaId);
+    const categories = (catRows ?? []) as Array<{ id: string; max_slots: number | null }>;
+    let assignSlot: { categoryId: string; slotNo: number } | null = null;
+
+    if (categories.length > 0) {
+      if (!categoryId) throw new MpError("QUEDADAS.CATEGORY_REQUIRED", "Elige una categoría", 400);
+      const cat = categories.find((c) => c.id === categoryId);
+      if (!cat) throw new MpError("QUEDADAS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
+      const maxSlots = cat.max_slots ?? 0;
+      const { data: occ } = await supabase.from("quedada_pairs").select("slot_no").eq("category_id", categoryId);
+      const taken = new Set(((occ ?? []) as Array<{ slot_no: number }>).map((p) => p.slot_no));
+      let free = 0;
+      const cap = maxSlots > 0 ? maxSlots : 999;
+      for (let n = 1; n <= cap; n++) {
+        if (!taken.has(n)) {
+          free = n;
+          break;
+        }
+      }
+      if (free === 0) throw new MpError("QUEDADAS.CATEGORY_FULL", "Esa categoría está llena", 409);
+      assignSlot = { categoryId, slotNo: free };
+    } else if (q.max_players != null) {
       const { count } = await supabase
         .from("quedada_participants")
         .select("user_id", { count: "exact", head: true })
@@ -156,41 +226,31 @@ export async function joinQuedada(
       }
     }
 
-    // Cuota → transaction por comprobante (sin payout; el organizador maneja el dinero).
-    let transactionId: string | undefined;
-    const fee = (q.fee_cents as number) ?? 0;
-    if (fee > 0) {
-      const { data: tx, error: txErr } = await supabase
-        .from("transactions")
-        .insert({
-          club_id: (q.club_id as string | null) ?? null,
-          kind: "quedada",
-          ref_id: quedadaId,
-          customer_user_id: userId,
-          amount_cents: fee,
-          currency: "USD",
-          method: "transfer",
-          status: "pending_proof",
-          created_by: userId,
-        } as never)
-        .select("id")
-        .single();
-      if (txErr || !tx) throw new MpError("QUEDADAS.TX_FAILED", txErr?.message ?? "tx error", 500);
-      transactionId = tx.id as string;
-    }
-
+    // Inscripción. El pago es OFFLINE (transferencia / en sitio); el organizador
+    // marca 'paid' en la pestaña Pagos. No se crea transacción ni se cobra acá.
     const { error: pErr } = await supabase
       .from("quedada_participants")
       .upsert(
-        {
-          quedada_id: quedadaId,
-          user_id: userId,
-          status: "joined",
-          paid_transaction_id: transactionId ?? null,
-        } as never,
+        { quedada_id: quedadaId, user_id: userId, status: "joined" } as never,
         { onConflict: "quedada_id,user_id" },
       );
     if (pErr) throw new MpError("QUEDADAS.JOIN_FAILED", pErr.message, 500);
+
+    // Asignar el cupo en la categoría elegida. La RLS de quedada_pairs solo deja
+    // mutar a can_manage, así que el insert va con admin client POST-validación
+    // (ya validamos visibilidad + cupo libre) + setAuditActor para atribuir al jugador.
+    if (assignSlot) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "user");
+      const { error: prErr } = await admin.from("quedada_pairs").insert({
+        quedada_id: quedadaId,
+        category_id: assignSlot.categoryId,
+        slot_no: assignSlot.slotNo,
+        player_a_id: userId,
+        player_b_id: null,
+      } as never);
+      if (prErr) throw new MpError("QUEDADAS.CATEGORY_FULL", "Ese cupo se acaba de ocupar, intenta de nuevo", 409);
+    }
 
     // Avisar al organizador (si no es él mismo).
     if (q.creator_id !== userId) {
@@ -203,7 +263,7 @@ export async function joinQuedada(
       });
     }
 
-    return { ok: true as const, transactionId };
+    return { ok: true as const };
   });
 }
 
@@ -302,6 +362,29 @@ export async function cancelQuedada(input: unknown): Promise<ActionResult<{ ok: 
   });
 }
 
+// ── deleteQuedada (creador) — solo si está cancelada (limpieza de la lista) ───
+// Borrado duro: las tablas hijas (participants/categories/pairs/rounds/games/
+// cohosts/reports) caen por `on delete cascade`. Se restringe a status
+// 'cancelled' para no borrar por accidente una quedada activa.
+export async function deleteQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: q } = await supabase
+      .from("quedadas")
+      .select("creator_id,status")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if (q.creator_id !== userId) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador borra la quedada");
+    if (q.status !== "cancelled") throw new MpError("QUEDADAS.DELETE_BLOCKED", "Solo puedes borrar quedadas canceladas. Cancélala primero.", 409);
+
+    const { error } = await supabase.from("quedadas").delete().eq("id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.DELETE_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
 // ── setQuedadaResults (creador, casual — no toca MP Rating en v1) ─────────────
 export async function setQuedadaResults(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(SetQuedadaResultsSchema, input, async ({ quedadaId, results }) => {
@@ -377,19 +460,20 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
       .select(
-        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,perks_text,payment_account,prizes,payment_info,prizes_text,invite_code",
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,courts_count,hours,court_price_cents,target_points,perks_text,payment_account,prizes,rules,payment_info,prizes_text,invite_code,engine_mode",
       )
       .eq("id", quedadaId)
       .maybeSingle();
     if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
-    const [cats, pairs, parts, cohosts, matches] = await Promise.all([
-      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
+    const [cats, pairs, parts, cohosts, rounds, games] = await Promise.all([
+      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,target_points,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
-      supabase.from("quedada_participants").select("user_id,status,paid,points,final_rank,profiles(display_name,username)").eq("quedada_id", quedadaId),
-      supabase.from("quedada_cohosts").select("user_id,profiles(display_name,username)").eq("quedada_id", quedadaId),
-      supabase.from("quedada_matches").select("id,category_id,group_no,court_no,round_no,phase,bracket_pos,is_bronze,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
+      supabase.from("quedada_participants").select("user_id,status,paid,checked_in_at,payment_reminded_at,points,final_rank,profiles!quedada_participants_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_cohosts").select("user_id,profiles!quedada_cohosts_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
+      supabase.from("quedada_games").select("id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
     ]);
 
     const canManage =
@@ -405,7 +489,8 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       pairs: pairs.data ?? [],
       participants: parts.data ?? [],
       cohosts: cohosts.data ?? [],
-      matches: matches.data ?? [],
+      rounds: rounds.data ?? [],
+      games: games.data ?? [],
     };
   });
 }
@@ -463,6 +548,7 @@ export async function createCategory(input: unknown): Promise<ActionResult<{ id:
         starts_at: d.startsAt ?? null,
         court_label: d.courtLabel ?? null,
         max_slots: d.maxSlots ?? null,
+        target_points: d.targetPoints ?? null,
       })
       .select("id")
       .single();
@@ -481,6 +567,7 @@ export async function updateCategory(input: unknown): Promise<ActionResult<{ ok:
     if (d.startsAt !== undefined) patch.starts_at = d.startsAt;
     if (d.courtLabel !== undefined) patch.court_label = d.courtLabel;
     if (d.maxSlots !== undefined) patch.max_slots = d.maxSlots;
+    if (d.targetPoints !== undefined) patch.target_points = d.targetPoints;
     const { error } = await supabase.from("quedada_categories").update(patch as never).eq("id", d.categoryId);
     if (error) throw new MpError("QUEDADAS.CATEGORY_FAILED", error.message, 500);
     return { ok: true as const };
@@ -525,8 +612,11 @@ export async function autoAssignCategory(input: unknown): Promise<ActionResult<{
     await requireUserId();
     const supabase = await getServerClient();
 
-    const { data: q } = await supabase.from("quedadas").select("match_mode").eq("id", quedadaId).maybeSingle();
-    const isDoubles = (q?.match_mode ?? "doubles") === "doubles";
+    const { data: q } = await supabase.from("quedadas").select("match_mode,format").eq("id", quedadaId).maybeSingle();
+    // En americano el roster es individual (1 por cupo): el compañero rota cada
+    // ronda, así que no se arman parejas fijas. Round_robin/otros = parejas según mode.
+    const individualRoster = (q?.format ?? "") === "americano" || (q?.match_mode ?? "doubles") === "singles";
+    const isDoubles = !individualRoster && (q?.match_mode ?? "doubles") === "doubles";
 
     const { data: cat } = await supabase.from("quedada_categories").select("max_slots").eq("id", categoryId).maybeSingle();
     const maxSlots = (cat?.max_slots as number | null) ?? 0;
@@ -604,6 +694,112 @@ export async function setParticipantPaid(input: unknown): Promise<ActionResult<{
   });
 }
 
+// ── Check-in de asistencia (informativo; creador/co-host) ────────────────────
+// No bloquea el motor ni el pago: solo registra quién llegó. RLS qp_update cubre
+// el acceso (self/can_manage/admin); el organizador setea checked_in_by = él.
+export async function setParticipantCheckedIn(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetParticipantCheckedInSchema, input, async ({ quedadaId, userId, checkedIn }) => {
+    const callerId = await requireUserId();
+    const supabase = await getServerClient();
+    const { error } = await supabase
+      .from("quedada_participants")
+      .update({ checked_in_at: checkedIn ? new Date().toISOString() : null, checked_in_by: checkedIn ? callerId : null })
+      .eq("quedada_id", quedadaId)
+      .eq("user_id", userId);
+    if (error) throw new MpError("QUEDADAS.CHECKIN_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function setAllCheckedIn(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetAllCheckedInSchema, input, async ({ quedadaId, checkedIn }) => {
+    const callerId = await requireUserId();
+    const supabase = await getServerClient();
+    const { error } = await supabase
+      .from("quedada_participants")
+      .update({ checked_in_at: checkedIn ? new Date().toISOString() : null, checked_in_by: checkedIn ? callerId : null })
+      .eq("quedada_id", quedadaId)
+      .eq("status", "joined");
+    if (error) throw new MpError("QUEDADAS.CHECKIN_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Aviso de pago a los pendientes (creador/co-host) ─────────────────────────
+// Envía notif inapp + DM del sistema a los inscritos joined con paid=false.
+// Cooldown de 30min por persona (payment_reminded_at). Devuelve cuántos se
+// notificaron y cuántos se saltaron por cooldown. Best-effort por canal.
+export async function remindQuedadaPayment(
+  input: unknown,
+): Promise<ActionResult<{ sent: number; skipped: number }>> {
+  return runAction(RemindQuedadaPaymentSchema, input, async ({ quedadaId, userIds }) => {
+    const callerId = await requireUserId();
+    const q = await assertCanManageQuedada(quedadaId, callerId, "id,title,fee_cents,payment_account,status");
+    const title = (q.title as string) ?? "una quedada";
+    const fee = (q.fee_cents as number) ?? 0;
+    const acct = q.payment_account as { bank?: string; accountNumber?: string } | null;
+
+    const admin = getAdminClient();
+    let query = admin
+      .from("quedada_participants")
+      .select("user_id,paid,payment_reminded_at,profiles!quedada_participants_user_id_fkey(display_name,username)")
+      .eq("quedada_id", quedadaId)
+      .eq("status", "joined")
+      .eq("paid", false);
+    if (userIds && userIds.length > 0) query = query.in("user_id", userIds);
+    const { data: pend, error: pErr } = await query;
+    if (pErr) throw new MpError("QUEDADAS.READ_FAILED", pErr.message, 500);
+
+    const now = Date.now();
+    const targets = (pend ?? []).filter((p) => {
+      const last = p.payment_reminded_at ? new Date(p.payment_reminded_at as string).getTime() : 0;
+      return now - last >= PAYMENT_REMINDER_COOLDOWN_MS;
+    });
+    const skipped = (pend ?? []).length - targets.length;
+    if (targets.length === 0) return { sent: 0, skipped };
+
+    const amountLabel = fee > 0 ? moneyLabel(fee) : "";
+    const amountClause = amountLabel ? ` de ${amountLabel}` : "";
+    const paymentClause = acct?.bank
+      ? `Transfiere a ${acct.bank}${acct.accountNumber ? ` · ${acct.accountNumber}` : ""}. `
+      : "";
+
+    await setAuditActor(admin, callerId, "user");
+    await Promise.all(
+      targets.map(async (p) => {
+        const uid = p.user_id as string;
+        const prof = p.profiles as { display_name?: string; username?: string } | null;
+        const firstName = (prof?.display_name ?? prof?.username ?? "jugador").split(" ")[0];
+        // Notif inapp (campanita).
+        await notify({
+          userId: uid,
+          role: "user",
+          kind: "quedada_payment_reminder",
+          title: "Recordatorio de pago",
+          // quedada_id → branch del dispatcher (DB link); quedadaId → hrefForKind del panel (click in-app).
+          payload: { quedada_id: quedadaId, quedadaId, quedada_title: title, amount_label: amountLabel },
+        });
+        // DM del sistema (chat).
+        await sendSystemMessage({
+          recipientUserId: uid,
+          kind: "quedada_payment_reminder",
+          body: `Hola ${firstName}, te recordamos completar el pago de la quedada "${title}"${amountClause}. ${paymentClause}¡Nos vemos en cancha!`,
+          payload: { quedada_id: quedadaId },
+        });
+      }),
+    );
+    // Marca el cooldown.
+    const { error: upErr } = await admin
+      .from("quedada_participants")
+      .update({ payment_reminded_at: new Date().toISOString() })
+      .eq("quedada_id", quedadaId)
+      .in("user_id", targets.map((t) => t.user_id as string));
+    if (upErr) console.error("[remindQuedadaPayment] cooldown update failed:", upErr.message);
+
+    return { sent: targets.length, skipped };
+  });
+}
+
 // ── Logística + bancarios + premios (solo creador) ───────────────────────────
 export async function updateQuedadaLogistics(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(QuedadaLogisticsSchema, input, async (d) => {
@@ -613,13 +809,111 @@ export async function updateQuedadaLogistics(input: unknown): Promise<ActionResu
     if (d.courtsCount !== undefined) patch.courts_count = d.courtsCount;
     if (d.hours !== undefined) patch.hours = d.hours;
     if (d.courtPriceCents !== undefined) patch.court_price_cents = d.courtPriceCents;
+    if (d.targetPoints !== undefined) patch.target_points = d.targetPoints;
     if (d.paymentAccount !== undefined) patch.payment_account = d.paymentAccount;
     if (d.prizes !== undefined) patch.prizes = d.prizes;
+    if (d.rules !== undefined) patch.rules = d.rules ?? [];
     if (d.paymentInfo !== undefined) patch.payment_info = d.paymentInfo;
     if (d.prizesText !== undefined) patch.prizes_text = d.prizesText;
+    // engine_mode (rondas/rolling): solo se puede cambiar si aún NO hay games
+    // (cambiarlo en vivo rompe el modelo de rondas/canchas).
+    if (d.engineMode !== undefined) {
+      const { count } = await supabase
+        .from("quedada_games")
+        .select("id", { count: "exact", head: true })
+        .eq("quedada_id", d.quedadaId);
+      if ((count ?? 0) > 0) throw new MpError("QUEDADAS.ENGINE_LOCKED", "No puedes cambiar el motor con partidos ya generados.", 409);
+      patch.engine_mode = d.engineMode;
+    }
     const { error } = await supabase.from("quedadas").update(patch as never).eq("id", d.quedadaId);
     if (error) throw new MpError("QUEDADAS.LOGISTICS_FAILED", error.message, 500);
     return { ok: true as const };
+  });
+}
+
+// ── Editar datos generales (solo creador) ────────────────────────────────────
+// Título, descripción, fecha, sede, visibilidad, cupo, perks. Formato y modo NO
+// se editan. Si cambia la fecha → avisa a los inscritos (quedada_rescheduled).
+export async function updateQuedadaDetails(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(UpdateQuedadaDetailsSchema, input, async (d) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: q, error: qErr } = await supabase
+      .from("quedadas")
+      .select("creator_id,title,starts_at")
+      .eq("id", d.quedadaId)
+      .maybeSingle();
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if ((q.creator_id as string) !== userId) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador edita los datos");
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (d.title !== undefined) patch.title = d.title;
+    if (d.description !== undefined) patch.description = d.description;
+    if (d.startsAt !== undefined) patch.starts_at = d.startsAt;
+    if (d.locationText !== undefined) patch.location_text = d.locationText;
+    if (d.visibility !== undefined) patch.visibility = d.visibility;
+    if (d.maxPlayers !== undefined) patch.max_players = d.maxPlayers;
+    if (d.perks !== undefined) patch.perks_text = d.perks;
+
+    const { error } = await supabase.from("quedadas").update(patch as never).eq("id", d.quedadaId);
+    if (error) throw new MpError("QUEDADAS.DETAILS_FAILED", error.message, 500);
+
+    // Reprogramación: si cambió la fecha, avisa a los inscritos joined.
+    const dateChanged = d.startsAt !== undefined && d.startsAt !== (q.starts_at as string);
+    if (dateChanged) {
+      const admin = getAdminClient();
+      const title = (d.title ?? (q.title as string)) || "una quedada";
+      const startsLabel = new Date(d.startsAt as string).toLocaleString("es-EC", {
+        weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+      });
+      const { data: parts } = await admin
+        .from("quedada_participants")
+        .select("user_id")
+        .eq("quedada_id", d.quedadaId)
+        .eq("status", "joined");
+      const recipients = ((parts ?? []) as Array<{ user_id: string }>).filter((p) => p.user_id !== userId);
+      if (recipients.length > 0) {
+        await setAuditActor(admin, userId, "user");
+        await Promise.all(
+          recipients.map((p) =>
+            notify({
+              userId: p.user_id,
+              role: "user",
+              kind: "quedada_rescheduled",
+              title: "Una quedada cambió de fecha",
+              payload: { quedada_id: d.quedadaId, quedadaId: d.quedadaId, quedada_title: title, starts_label: startsLabel },
+            }),
+          ),
+        );
+      }
+    }
+    return { ok: true as const };
+  });
+}
+
+// ── Regenerar el link de invitación (solo creador) ───────────────────────────
+// Invalida el link viejo (`/q/[code]`) generando un invite_code nuevo.
+export async function regenerateInviteCode(input: unknown): Promise<ActionResult<{ inviteCode: string }>> {
+  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: q, error: qErr } = await supabase
+      .from("quedadas")
+      .select("creator_id")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if ((q.creator_id as string) !== userId) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador regenera el link");
+
+    // gen_quedada_invite_code() vive en DB (mig 133); lo invocamos vía RPC.
+    const admin = getAdminClient();
+    const { data: code, error: rpcErr } = await admin.rpc("gen_quedada_invite_code");
+    if (rpcErr || !code) throw new MpError("QUEDADAS.INVITE_FAILED", rpcErr?.message ?? "No se pudo generar el código", 500);
+    const { error } = await supabase.from("quedadas").update({ invite_code: code } as never).eq("id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.INVITE_FAILED", error.message, 500);
+    return { inviteCode: code as string };
   });
 }
 
@@ -628,48 +922,26 @@ export async function updateQuedadaLogistics(input: unknown): Promise<ActionResu
 // no-miembro); el insert del participante va con el JWT del user (RLS lo permite).
 export async function joinByInviteCode(
   input: unknown,
-): Promise<ActionResult<{ ok: true; quedadaId: string; transactionId?: string }>> {
+): Promise<ActionResult<{ ok: true; quedadaId: string }>> {
   return runAction(JoinByCodeSchema, input, async ({ code }) => {
     const userId = await requireUserId();
     const admin = getAdminClient();
     const { data: q } = await admin
       .from("quedadas")
-      .select("id,status,fee_cents,club_id,max_players")
+      .select("id,status")
       .eq("invite_code", code)
       .maybeSingle();
     if (!q) throw new MpError("QUEDADAS.CODE_INVALID", "Link inválido", 404);
     if (q.status !== "registration_open") throw new MpError("QUEDADAS.CLOSED", "Inscripciones cerradas", 409);
 
+    // Pago offline (transferencia / en sitio); el organizador marca 'paid'. Sin
+    // transacción. La asignación de categoría se hace luego desde la quedada.
     const supabase = await getServerClient();
-    let transactionId: string | undefined;
-    const fee = (q.fee_cents as number) ?? 0;
-    if (fee > 0) {
-      const { data: tx, error: txErr } = await supabase
-        .from("transactions")
-        .insert({
-          club_id: (q.club_id as string | null) ?? null,
-          kind: "quedada",
-          ref_id: q.id,
-          customer_user_id: userId,
-          amount_cents: fee,
-          currency: "USD",
-          method: "transfer",
-          status: "pending_proof",
-          created_by: userId,
-        })
-        .select("id")
-        .single();
-      if (txErr || !tx) throw new MpError("QUEDADAS.TX_FAILED", txErr?.message ?? "tx error", 500);
-      transactionId = tx.id as string;
-    }
     const { error: pErr } = await supabase
       .from("quedada_participants")
-      .upsert(
-        { quedada_id: q.id, user_id: userId, status: "joined", paid_transaction_id: transactionId ?? null },
-        { onConflict: "quedada_id,user_id" },
-      );
+      .upsert({ quedada_id: q.id, user_id: userId, status: "joined" }, { onConflict: "quedada_id,user_id" });
     if (pErr) throw new MpError("QUEDADAS.JOIN_FAILED", pErr.message, 500);
-    return { ok: true as const, quedadaId: q.id as string, transactionId };
+    return { ok: true as const, quedadaId: q.id as string };
   });
 }
 
@@ -722,290 +994,305 @@ export async function deleteQuedadaTemplate(input: unknown): Promise<ActionResul
   });
 }
 
-// ── Motor de juego (v2): partidos por ronda + puntos ─────────────────────────
-// Programación round-robin (método del círculo): genera rondas balanceadas.
-function roundRobinSchedule(ids: string[]): { round: number; a: string; b: string }[] {
-  const arr = [...ids];
-  if (arr.length % 2 !== 0) arr.push("__BYE__");
-  const n = arr.length;
-  const half = n / 2;
-  let list = arr.slice();
-  const out: { round: number; a: string; b: string }[] = [];
-  for (let r = 0; r < n - 1; r++) {
-    for (let i = 0; i < half; i++) {
-      const a = list[i];
-      const b = list[n - 1 - i];
-      if (a !== "__BYE__" && b !== "__BYE__") out.push({ round: r + 1, a, b });
-    }
-    list = [list[0], list[n - 1], ...list.slice(1, n - 1)];
-  }
-  return out;
-}
+// ════════════════ Motor de juego (rediseño · player-céntrico) ════════════════
+// Stage 1: AMERICANO. Rondas con rotación de compañero/rival, puntos individuales
+// (ver lib/quedadas/americano.ts + standings.ts). El resto de formatos aún no
+// tiene motor → "Pronto" en la UI. Los games referencian jugadores directo (no
+// quedada_pairs), porque la "pareja" es efímera por ronda.
 
-export async function generateRoundRobin(input: unknown): Promise<ActionResult<{ created: number }>> {
-  return runAction(GenerateRoundRobinSchema, input, async ({ quedadaId, categoryId }) => {
-    await requireUserId();
+// Genera la SIGUIENTE ronda de un americano para una categoría.
+export async function generateAmericanoRound(
+  input: unknown,
+): Promise<ActionResult<{ created: number; roundNo: number; byes: number }>> {
+  return runAction(GenerateAmericanoRoundSchema, input, async ({ quedadaId, categoryId }) => {
+    const userId = await requireUserId();
     const supabase = await getServerClient();
-    const { count } = await supabase
-      .from("quedada_matches")
-      .select("id", { count: "exact", head: true })
-      .eq("category_id", categoryId);
-    if ((count ?? 0) > 0) throw new MpError("QUEDADAS.MATCHES_EXIST", "Ya hay partidos en esta categoría. Bórralos antes de regenerar.", 409);
 
+    const { data: q } = await supabase
+      .from("quedadas")
+      .select("format,match_mode,courts_count")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if ((q.format as string) !== "americano") {
+      throw new MpError("QUEDADAS.FORMAT_UNSUPPORTED", "Este formato todavía no tiene motor de juego", 400);
+    }
+
+    // Jugadores asignados a la categoría (desde los slots de quedada_pairs).
     const { data: pairs } = await supabase
       .from("quedada_pairs")
-      .select("id")
+      .select("player_a_id,player_b_id")
       .eq("category_id", categoryId);
-    const ids = (pairs ?? []).map((p) => p.id as string);
-    if (ids.length < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_PAIRS", "Necesitas al menos 2 parejas asignadas", 400);
+    const players = Array.from(
+      new Set((pairs ?? []).flatMap((p) => [p.player_a_id, p.player_b_id]).filter((x): x is string => !!x)),
+    );
+    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
+    const perGame = mode === "singles" ? 2 : 4;
+    if (players.length < perGame) {
+      throw new MpError("QUEDADAS.NOT_ENOUGH_PLAYERS", `Necesitas al menos ${perGame} jugadores asignados`, 400);
+    }
 
-    const sched = roundRobinSchedule(ids);
-    const rows = sched.map((m) => ({
+    const { data: prevGames } = await supabase
+      .from("quedada_games")
+      .select("round_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2")
+      .eq("category_id", categoryId);
+    const prior = (prevGames ?? []) as PriorGame[];
+
+    const courts = (q.courts_count as number | null) ?? 0;
+    const plan = planAmericanoRound(players, prior, mode, courts);
+    if (!plan) throw new MpError("QUEDADAS.NOT_ENOUGH_PLAYERS", "No alcanza para armar una ronda", 400);
+
+    const { data: roundRow, error: rErr } = await supabase
+      .from("quedada_rounds")
+      .insert({
+        quedada_id: quedadaId,
+        category_id: categoryId,
+        round_no: plan.roundNo,
+        status: "active",
+        created_by: userId,
+      } as never)
+      .select("id")
+      .single();
+    if (rErr || !roundRow) throw new MpError("QUEDADAS.ROUND_FAILED", rErr?.message ?? "No se pudo crear la ronda", 500);
+    const roundId = roundRow.id as string;
+
+    const rows = plan.games.map((g) => ({
       quedada_id: quedadaId,
       category_id: categoryId,
-      round_no: m.round,
-      pair_a_id: m.a,
-      pair_b_id: m.b,
+      round_id: roundId,
+      round_no: plan.roundNo,
+      court_no: g.courtNo,
+      side_a_p1: g.sideA[0],
+      side_a_p2: g.sideA[1] ?? null,
+      side_b_p1: g.sideB[0],
+      side_b_p2: g.sideB[1] ?? null,
       status: "scheduled",
+      created_by: userId,
     }));
-    const { error } = await supabase.from("quedada_matches").insert(rows as never);
-    if (error) throw new MpError("QUEDADAS.MATCHES_FAILED", error.message, 500);
-    return { created: rows.length };
+    const { error: gErr } = await supabase.from("quedada_games").insert(rows as never);
+    if (gErr) {
+      await supabase.from("quedada_rounds").delete().eq("id", roundId); // rollback de la ronda vacía
+      throw new MpError("QUEDADAS.GAMES_FAILED", gErr.message, 500);
+    }
+    return { created: rows.length, roundNo: plan.roundNo, byes: plan.byes.length };
   });
 }
 
-export async function generateGroupStage(input: unknown): Promise<ActionResult<{ created: number; groups: number }>> {
-  return runAction(GenerateGroupStageSchema, input, async ({ quedadaId, categoryId }) => {
+// Reporta el marcador de un game (organizador, directo, sin doble confirmación).
+export async function reportGame(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(ReportGameSchema, input, async ({ gameId, pointsA, pointsB }) => {
     await requireUserId();
     const supabase = await getServerClient();
-    const { data: q } = await supabase.from("quedadas").select("courts_count").eq("id", quedadaId).maybeSingle();
-    const courts = (q?.courts_count as number | null) ?? 0;
-
-    const { data: pairs } = await supabase.from("quedada_pairs").select("id").eq("category_id", categoryId);
-    const ids = (pairs ?? []).map((p) => p.id as string);
-    if (ids.length < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_PAIRS", "Necesitas al menos 2 parejas asignadas", 400);
-
-    // Nº de grupos = matemático: 1 grupo por cancha, pero cada grupo con ≥2
-    // parejas (floor(parejas/2)). Sin canchas definidas → un solo grupo.
-    const ng = Math.max(1, Math.min(courts > 0 ? courts : 1, Math.floor(ids.length / 2)));
-    // Shuffle (al azar — anti-arreglo de partidos).
-    for (let i = ids.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [ids[i], ids[j]] = [ids[j], ids[i]];
-    }
-    const groups: string[][] = Array.from({ length: ng }, () => []);
-    ids.forEach((id, idx) => groups[idx % ng].push(id));
-
-    const rows: Record<string, unknown>[] = [];
-    groups.forEach((gids, gi) => {
-      const courtNo = courts > 0 ? (gi % courts) + 1 : gi + 1;
-      for (const m of roundRobinSchedule(gids)) {
-        rows.push({ quedada_id: quedadaId, category_id: categoryId, group_no: gi + 1, court_no: courtNo, round_no: m.round, pair_a_id: m.a, pair_b_id: m.b, status: "scheduled" });
-      }
-    });
-    if (rows.length === 0) throw new MpError("QUEDADAS.TOO_MANY_GROUPS", "Demasiados grupos para las parejas que hay", 400);
-
-    await supabase.from("quedada_matches").delete().eq("category_id", categoryId);
-    const { error } = await supabase.from("quedada_matches").insert(rows as never);
-    if (error) throw new MpError("QUEDADAS.MATCHES_FAILED", error.message, 500);
-    return { created: rows.length, groups: ng };
+    const { error } = await supabase
+      .from("quedada_games")
+      .update({ points_a: pointsA, points_b: pointsB, status: "played", updated_at: new Date().toISOString() } as never)
+      .eq("id", gameId);
+    if (error) throw new MpError("QUEDADAS.GAME_REPORT_FAILED", error.message, 500);
+    return { ok: true as const };
   });
 }
 
-// Ordena pairIds (mejor primero) según el estándar de pickleball usando los
-// partidos dados: victorias → enfrentamiento directo (solo si empatan 2) →
-// diferencia de puntos (PF−PC) → puntos a favor. Mismo criterio que la UI.
-type StandingMatchLite = { pair_a_id: string | null; pair_b_id: string | null; points_a: number | null; points_b: number | null; status: string };
-function orderPairsByStandings(matches: StandingMatchLite[], pairIds: string[]): string[] {
-  const stat = new Map<string, { g: number; pf: number; pc: number }>();
-  pairIds.forEach((id) => stat.set(id, { g: 0, pf: 0, pc: 0 }));
-  for (const m of matches) {
-    if (m.status !== "played" || !m.pair_a_id || !m.pair_b_id) continue;
-    const a = stat.get(m.pair_a_id), b = stat.get(m.pair_b_id);
-    if (!a || !b) continue;
-    const pa = m.points_a ?? 0, pb = m.points_b ?? 0;
-    a.pf += pa; a.pc += pb; b.pf += pb; b.pc += pa;
-    if (pa > pb) a.g++; else if (pb > pa) b.g++;
-  }
-  const h2h = (x: string, y: string): number => {
-    let xw = 0, yw = 0;
-    for (const m of matches) {
-      if (m.status !== "played") continue;
-      const xy = m.pair_a_id === x && m.pair_b_id === y;
-      const yx = m.pair_a_id === y && m.pair_b_id === x;
-      if (!xy && !yx) continue;
-      const xp = xy ? (m.points_a ?? 0) : (m.points_b ?? 0);
-      const yp = xy ? (m.points_b ?? 0) : (m.points_a ?? 0);
-      if (xp > yp) xw++; else if (yp > xp) yw++;
-    }
-    return xw - yw;
-  };
-  return [...pairIds].sort((x, y) => {
-    const sx = stat.get(x)!, sy = stat.get(y)!;
-    if (sy.g !== sx.g) return sy.g - sx.g;
-    const tied = pairIds.filter((id) => stat.get(id)!.g === sx.g).length;
-    if (tied === 2) { const h = h2h(x, y); if (h !== 0) return -h; }
-    const dx = sx.pf - sx.pc, dy = sy.pf - sy.pc;
-    if (dy !== dx) return dy - dx;
-    return sy.pf - sx.pf;
-  });
+// ── Motor ROLLING (continuo por cancha) ──────────────────────────────────────
+// Asigna el SIGUIENTE partido en una cancha (rolling). Devuelve true si asignó,
+// false si conviene esperar (sin banca) o no alcanzan jugadores. Calcula solo el
+// pool libre (jugadores no ocupados en otras canchas) a partir de los games.
+async function assignCourtMatch(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+  args: { quedadaId: string; categoryId: string; courtNo: number; mode: AmericanoMode; userId: string; justFinished: string[] },
+): Promise<boolean> {
+  const { quedadaId, categoryId, courtNo, mode, userId, justFinished } = args;
+
+  const { data: pairs } = await supabase
+    .from("quedada_pairs")
+    .select("player_a_id,player_b_id")
+    .eq("category_id", categoryId);
+  const players = Array.from(
+    new Set((pairs ?? []).flatMap((p) => [p.player_a_id, p.player_b_id]).filter((x): x is string => !!x)),
+  );
+
+  const { data: allGames } = await supabase
+    .from("quedada_games")
+    .select("round_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,court_no,court_match_no,status")
+    .eq("category_id", categoryId);
+  const games = allGames ?? [];
+  const prior: PriorGame[] = games.map((g) => ({
+    round_no: (g.round_no as number | null) ?? 0,
+    side_a_p1: g.side_a_p1,
+    side_a_p2: g.side_a_p2,
+    side_b_p1: g.side_b_p1,
+    side_b_p2: g.side_b_p2,
+  }));
+
+  // Ocupados = jugadores en partidos EN JUEGO de OTRAS canchas.
+  const scheduledOther = games.filter((g) => g.status === "scheduled" && g.court_no !== courtNo);
+  const busy = scheduledOther
+    .flatMap((g) => [g.side_a_p1, g.side_a_p2, g.side_b_p1, g.side_b_p2])
+    .filter((x): x is string => !!x);
+  const otherCourtsActive = scheduledOther.length > 0;
+
+  const draft = pickNextCourtMatch(players, prior, busy, justFinished, mode, otherCourtsActive);
+  if (!draft) return false;
+
+  const courtMatchNo =
+    games.filter((g) => g.court_no === courtNo).reduce((m, g) => Math.max(m, (g.court_match_no as number | null) ?? 0), 0) + 1;
+
+  const { error } = await supabase.from("quedada_games").insert({
+    quedada_id: quedadaId,
+    category_id: categoryId,
+    round_id: null,
+    round_no: null,
+    court_no: courtNo,
+    court_match_no: courtMatchNo,
+    side_a_p1: draft.sideA[0],
+    side_a_p2: draft.sideA[1] ?? null,
+    side_b_p1: draft.sideB[0],
+    side_b_p2: draft.sideB[1] ?? null,
+    status: "scheduled",
+    created_by: userId,
+  } as never);
+  if (error) throw new MpError("QUEDADAS.GAMES_FAILED", error.message, 500);
+  return true;
 }
 
-// Fase final de medallas: top 2 de cada grupo → cuadro de eliminación directa
-// (siembra cruzada, semis → final + 3er puesto). El ganador avanza; los
-// perdedores de semifinales juegan el bronce. Requiere la fase de grupos jugada.
-export async function generateMedalFinal(input: unknown): Promise<ActionResult<{ created: number; classified: number }>> {
-  return runAction(GenerateMedalFinalSchema, input, async ({ quedadaId, categoryId }) => {
-    await requireUserId();
+// Inicia el motor rolling: marca la quedada como 'rolling' y LLENA todas las
+// canchas libres con un partido inicial (cada cancha = una ranura).
+export async function startAmericanoRolling(
+  input: unknown,
+): Promise<ActionResult<{ filled: number }>> {
+  return runAction(GenerateAmericanoRoundSchema, input, async ({ quedadaId, categoryId }) => {
+    const userId = await requireUserId();
     const supabase = await getServerClient();
 
-    const { data: gm } = await supabase
-      .from("quedada_matches")
-      .select("group_no,pair_a_id,pair_b_id,points_a,points_b,status")
+    const { data: q } = await supabase
+      .from("quedadas")
+      .select("format,match_mode,courts_count,engine_mode")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+    if ((q.format as string) !== "americano") {
+      throw new MpError("QUEDADAS.FORMAT_UNSUPPORTED", "Este formato todavía no tiene motor de juego", 400);
+    }
+    if ((q.engine_mode as string) !== "rolling") {
+      await supabase.from("quedadas").update({ engine_mode: "rolling", updated_at: new Date().toISOString() } as never).eq("id", quedadaId);
+    }
+    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
+    const courts = Math.max(1, (q.courts_count as number | null) ?? 1);
+
+    const { data: sched } = await supabase
+      .from("quedada_games")
+      .select("court_no")
       .eq("category_id", categoryId)
-      .eq("phase", "groups");
-    const groupMatches = (gm ?? []) as Array<{ group_no: number } & StandingMatchLite>;
-    if (groupMatches.length === 0) throw new MpError("QUEDADAS.NO_GROUPS", "Primero genera y juega la fase de grupos", 400);
-    if (groupMatches.some((m) => m.status !== "played")) throw new MpError("QUEDADAS.GROUPS_INCOMPLETE", "Termina todos los partidos de la fase de grupos antes de la fase final", 409);
+      .eq("status", "scheduled");
+    const occupied = new Set((sched ?? []).map((g) => g.court_no).filter((x): x is number => x != null));
 
-    // Top 2 de cada grupo.
-    const groupNos = Array.from(new Set(groupMatches.map((m) => m.group_no))).sort((a, b) => a - b);
-    const firsts: string[] = [];
-    const seconds: string[] = [];
-    for (const gno of groupNos) {
-      const ms = groupMatches.filter((m) => m.group_no === gno);
-      const pids = Array.from(new Set(ms.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
-      const ordered = orderPairsByStandings(ms, pids);
-      if (ordered[0]) firsts.push(ordered[0]);
-      if (ordered[1]) seconds.push(ordered[1]);
+    let filled = 0;
+    for (let court = 1; court <= courts; court++) {
+      if (occupied.has(court)) continue;
+      const ok = await assignCourtMatch(supabase, { quedadaId, categoryId, courtNo: court, mode, userId, justFinished: [] });
+      if (!ok) break; // ya no alcanzan jugadores libres
+      occupied.add(court);
+      filled++;
     }
-    // Siembra cruzada: 1ros en orden, 2dos invertidos (evita revanchas tempranas).
-    const seeds: (string | null)[] = [...firsts, ...seconds.reverse()];
-    const classified = seeds.length;
-    if (classified < 2) throw new MpError("QUEDADAS.NOT_ENOUGH_CLASSIFIED", "No hay suficientes clasificados para la fase final", 400);
-
-    let size = 1;
-    while (size < classified) size *= 2;
-    while (seeds.length < size) seeds.push(null); // byes
-    const rounds = Math.round(Math.log2(size));
-
-    const { data: q } = await supabase.from("quedadas").select("courts_count").eq("id", quedadaId).maybeSingle();
-    const courts = (q?.courts_count as number | null) ?? 0;
-
-    // matrix[ri][pos] = { a, b } por ronda (0-based).
-    type Slot = { a: string | null; b: string | null };
-    const matrix: Slot[][] = [];
-    for (let r = 1; r <= rounds; r++) {
-      const cnt = size / Math.pow(2, r);
-      matrix.push(Array.from({ length: cnt }, () => ({ a: null, b: null }) as Slot));
-    }
-    for (let pos = 0; pos < size / 2; pos++) {
-      matrix[0][pos] = { a: seeds[pos], b: seeds[size - 1 - pos] };
-    }
-    // Resolver byes de ronda 1 (un solo lado) avanzando al presente.
-    for (let pos = 0; pos < matrix[0].length; pos++) {
-      const s = matrix[0][pos];
-      if (s.a && !s.b && rounds >= 2) {
-        const tgt = matrix[1][Math.floor(pos / 2)];
-        if (pos % 2 === 0) tgt.a = s.a; else tgt.b = s.a;
-      }
-    }
-
-    let courtCounter = 0;
-    const nextCourt = (): number | null => {
-      if (courts <= 0) return null;
-      const c = (courtCounter % courts) + 1;
-      courtCounter++;
-      return c;
-    };
-
-    const rows: Record<string, unknown>[] = [];
-    for (let ri = 0; ri < rounds; ri++) {
-      for (let pos = 0; pos < matrix[ri].length; pos++) {
-        const s = matrix[ri][pos];
-        const isBye = ri === 0 && !!s.a && !s.b;
-        rows.push({
-          quedada_id: quedadaId, category_id: categoryId, phase: "final",
-          round_no: ri + 1, bracket_pos: pos, is_bronze: false,
-          pair_a_id: s.a, pair_b_id: s.b,
-          points_a: isBye ? 0 : null, points_b: isBye ? 0 : null,
-          status: isBye ? "played" : "scheduled",
-          court_no: isBye ? null : nextCourt(),
-        });
-      }
-    }
-    if (rounds >= 2) {
-      rows.push({
-        quedada_id: quedadaId, category_id: categoryId, phase: "final",
-        round_no: rounds, bracket_pos: 0, is_bronze: true,
-        pair_a_id: null, pair_b_id: null, status: "scheduled", court_no: nextCourt(),
-      });
-    }
-
-    await supabase.from("quedada_matches").delete().eq("category_id", categoryId).eq("phase", "final");
-    const { error } = await supabase.from("quedada_matches").insert(rows as never);
-    if (error) throw new MpError("QUEDADAS.FINAL_FAILED", error.message, 500);
-    return { created: rows.length, classified };
+    return { filled };
   });
 }
 
-// Cierra la quedada: arma el podio por categoría (desde el cuadro final si
-// existe, o desde la tabla general) y la pasa a 'finished'.
+// Reporta el marcador de un partido (rolling) Y asigna el siguiente en esa cancha.
+export async function reportRollingGame(
+  input: unknown,
+): Promise<ActionResult<{ advanced: boolean }>> {
+  return runAction(ReportGameSchema, input, async ({ gameId, pointsA, pointsB }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+
+    const { data: game } = await supabase
+      .from("quedada_games")
+      .select("id,quedada_id,category_id,court_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2")
+      .eq("id", gameId)
+      .maybeSingle();
+    if (!game) throw new MpError("QUEDADAS.NOT_FOUND", "Partido no encontrado", 404);
+
+    const { error: upErr } = await supabase
+      .from("quedada_games")
+      .update({ points_a: pointsA, points_b: pointsB, status: "played", updated_at: new Date().toISOString() } as never)
+      .eq("id", gameId);
+    if (upErr) throw new MpError("QUEDADAS.GAME_REPORT_FAILED", upErr.message, 500);
+
+    const { data: q } = await supabase
+      .from("quedadas")
+      .select("format,match_mode,engine_mode")
+      .eq("id", game.quedada_id)
+      .maybeSingle();
+    // Fuera de rolling americano (o sin cancha) no se auto-asigna.
+    if (!q || (q.engine_mode as string) !== "rolling" || (q.format as string) !== "americano" || game.court_no == null) {
+      return { advanced: false };
+    }
+    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
+    const justFinished = [game.side_a_p1, game.side_a_p2, game.side_b_p1, game.side_b_p2].filter((x): x is string => !!x);
+
+    const advanced = await assignCourtMatch(supabase, {
+      quedadaId: game.quedada_id,
+      categoryId: game.category_id,
+      courtNo: game.court_no as number,
+      mode,
+      userId,
+      justFinished,
+    });
+    return { advanced };
+  });
+}
+
+// Borra una ronda completa (sus games caen por ON DELETE CASCADE). Para regenerar.
+export async function deleteRound(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(RoundIdSchema, input, async ({ roundId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    const { error } = await supabase.from("quedada_rounds").delete().eq("id", roundId);
+    if (error) throw new MpError("QUEDADAS.ROUND_DELETE_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// Cierra la quedada: arma el podio individual por categoría (ranking por puntos a
+// favor) y la pasa a 'finished'. final_rank se escribe a los 3 primeros.
 export async function finishQuedada(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(FinishQuedadaSchema, input, async ({ quedadaId }) => {
     await requireUserId();
     const supabase = await getServerClient();
 
-    const [{ data: catsData }, { data: matchesData }, { data: pairsData }] = await Promise.all([
+    const [{ data: catsData }, { data: gamesData }, { data: pairsData }] = await Promise.all([
       supabase.from("quedada_categories").select("id").eq("quedada_id", quedadaId),
-      supabase.from("quedada_matches").select("category_id,phase,round_no,is_bronze,pair_a_id,pair_b_id,points_a,points_b,status").eq("quedada_id", quedadaId),
-      supabase.from("quedada_pairs").select("id,category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
+      supabase
+        .from("quedada_games")
+        .select("category_id,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status")
+        .eq("quedada_id", quedadaId),
+      supabase.from("quedada_pairs").select("category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
     ]);
     const cats = (catsData ?? []) as Array<{ id: string }>;
-    const matches = (matchesData ?? []) as Array<{ category_id: string; phase: string; round_no: number; is_bronze: boolean } & StandingMatchLite>;
-    const pairs = (pairsData ?? []) as Array<{ id: string; category_id: string; player_a_id: string; player_b_id: string | null }>;
-    const playersOfPair = (pid: string): string[] => {
-      const p = pairs.find((x) => x.id === pid);
-      if (!p) return [];
-      return [p.player_a_id, p.player_b_id].filter((x): x is string => !!x);
-    };
+    const games = (gamesData ?? []) as Array<{ category_id: string } & GameForStandings>;
+    const pairs = (pairsData ?? []) as Array<{ category_id: string; player_a_id: string; player_b_id: string | null }>;
 
-    // userId → rank (1/2/3). Si un user aparece en varias categorías, gana el mejor.
+    // userId → mejor rank entre sus categorías.
     const ranks = new Map<string, number>();
-    const setRank = (pid: string | null | undefined, rank: number) => {
-      if (!pid) return;
-      for (const uid of playersOfPair(pid)) {
-        const prev = ranks.get(uid);
-        if (prev == null || rank < prev) ranks.set(uid, rank);
-      }
-    };
-
     for (const c of cats) {
-      const cm = matches.filter((m) => m.category_id === c.id);
-      const finals = cm.filter((m) => m.phase === "final");
-      if (finals.length > 0) {
-        const finalRound = Math.max(...finals.filter((m) => !m.is_bronze).map((m) => m.round_no));
-        const finalMatch = finals.find((m) => !m.is_bronze && m.round_no === finalRound);
-        if (!finalMatch || finalMatch.status !== "played") {
-          throw new MpError("QUEDADAS.FINAL_PENDING", "Termina la final antes de cerrar la quedada", 409);
-        }
-        const aWon = (finalMatch.points_a ?? 0) >= (finalMatch.points_b ?? 0);
-        setRank(aWon ? finalMatch.pair_a_id : finalMatch.pair_b_id, 1);
-        setRank(aWon ? finalMatch.pair_b_id : finalMatch.pair_a_id, 2);
-        const bronze = finals.find((m) => m.is_bronze);
-        if (bronze && bronze.status === "played") {
-          const bWon = (bronze.points_a ?? 0) >= (bronze.points_b ?? 0);
-          setRank(bWon ? bronze.pair_a_id : bronze.pair_b_id, 3);
-        }
-      } else {
-        const groups = cm.filter((m) => m.phase === "groups");
-        const pids = Array.from(new Set(groups.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
-        const ordered = orderPairsByStandings(groups, pids);
-        ordered.slice(0, 3).forEach((pid, idx) => setRank(pid, idx + 1));
-      }
+      const cgames = games.filter((g) => g.category_id === c.id);
+      const players = Array.from(
+        new Set(
+          pairs
+            .filter((p) => p.category_id === c.id)
+            .flatMap((p) => [p.player_a_id, p.player_b_id])
+            .filter((x): x is string => !!x),
+        ),
+      );
+      if (players.length === 0) continue;
+      const standings = individualStandings(cgames, players);
+      standings.slice(0, 3).forEach((row, idx) => {
+        const rank = idx + 1;
+        const prev = ranks.get(row.userId);
+        if (prev == null || rank < prev) ranks.set(row.userId, rank);
+      });
     }
 
-    // Escribir final_rank a los participantes del podio.
     for (const [uid, rank] of ranks.entries()) {
       const { error: upErr } = await supabase
         .from("quedada_participants")
@@ -1024,96 +1311,243 @@ export async function finishQuedada(input: unknown): Promise<ActionResult<{ ok: 
   });
 }
 
-export async function addQuedadaMatch(input: unknown): Promise<ActionResult<{ id: string }>> {
-  return runAction(AddQuedadaMatchSchema, input, async (d) => {
-    await requireUserId();
+// Lectura read-only para el JUGADOR inscrito (pantalla de detalle). No expone
+// datos de gestión (invite_code, cohosts, payment_account) → anti-leak.
+export async function getQuedadaPlayerView(input: unknown): Promise<ActionResult<unknown>> {
+  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+    const userId = await requireUserId();
     const supabase = await getServerClient();
-    const { data, error } = await supabase
-      .from("quedada_matches")
-      .insert({
-        quedada_id: d.quedadaId,
-        category_id: d.categoryId,
-        round_no: d.roundNo,
-        pair_a_id: d.pairAId,
-        pair_b_id: d.pairBId,
-        status: "scheduled",
-      } as never)
-      .select("id")
-      .single();
-    if (error || !data) throw new MpError("QUEDADAS.MATCH_FAILED", error?.message ?? "No se pudo crear el partido", 500);
-    return { id: data.id as string };
+
+    const { data: q, error: qErr } = await supabase
+      .from("quedadas")
+      .select(
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,perks_text,prizes,target_points",
+      )
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+
+    const [cats, pairs, parts, rounds, games] = await Promise.all([
+      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,target_points,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
+      supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
+      supabase.from("quedada_participants").select("user_id,status,final_rank,profiles!quedada_participants_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
+      supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
+      supabase.from("quedada_games").select("id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
+    ]);
+
+    const isMember =
+      (q.creator_id as string) === userId ||
+      ((parts.data ?? []) as Array<{ user_id: string }>).some((p) => p.user_id === userId);
+
+    return {
+      quedada: q,
+      meUserId: userId,
+      isMember,
+      categories: cats.data ?? [],
+      pairs: pairs.data ?? [],
+      participants: parts.data ?? [],
+      rounds: rounds.data ?? [],
+      games: games.data ?? [],
+    };
   });
 }
 
-export async function reportQuedadaMatch(input: unknown): Promise<ActionResult<{ ok: true }>> {
-  return runAction(ReportQuedadaMatchSchema, input, async ({ matchId, pointsA, pointsB }) => {
-    await requireUserId();
+// Lectura para el MODAL de detalles (preview desde la tarjeta). Devuelve datos
+// públicos de la quedada + reglas + premios + inscritos con su MPR y tag de team.
+// El MPR/team son data pública (ranking/teams); se leen con admin client DESPUÉS
+// de validar que el caller puede ver la quedada (RLS de quedadas), para no
+// depender de la RLS por-fila de player_stats/team_members. Solo lectura → sin audit.
+export async function getQuedadaDetails(input: unknown): Promise<ActionResult<unknown>> {
+  return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
+    const userId = await requireUserId();
     const supabase = await getServerClient();
 
-    const { data: m } = await supabase
-      .from("quedada_matches")
-      .select("category_id,phase,round_no,bracket_pos,is_bronze,pair_a_id,pair_b_id")
-      .eq("id", matchId)
+    const { data: q, error: qErr } = await supabase
+      .from("quedadas")
+      .select(
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,max_players,perks_text,prizes,rules,target_points",
+      )
+      .eq("id", quedadaId)
       .maybeSingle();
-    if (!m) throw new MpError("QUEDADAS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
-    const { error } = await supabase
-      .from("quedada_matches")
-      .update({ points_a: pointsA, points_b: pointsB, status: "played", updated_at: new Date().toISOString() } as never)
-      .eq("id", matchId);
-    if (error) throw new MpError("QUEDADAS.MATCH_REPORT_FAILED", error.message, 500);
+    const [{ data: partsData }, { data: catsData }, { data: pairsData }] = await Promise.all([
+      supabase.from("quedada_participants").select("user_id,status,profiles!quedada_participants_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId).eq("status", "joined"),
+      supabase.from("quedada_categories").select("id,name,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
+      supabase.from("quedada_pairs").select("category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
+    ]);
+    const parts = (partsData ?? []) as Array<{
+      user_id: string;
+      profiles: { display_name: string | null; username: string | null } | null;
+    }>;
+    const userIds = parts.map((p) => p.user_id);
 
-    // Fase final: propagar al ganador y mandar al perdedor de semis al bronce.
-    if ((m.phase as string) === "final" && !(m.is_bronze as boolean)) {
-      const categoryId = m.category_id as string;
-      const round = m.round_no as number;
-      const pos = (m.bracket_pos as number | null) ?? 0;
-      const aWon = pointsA >= pointsB;
-      const winner = (aWon ? m.pair_a_id : m.pair_b_id) as string | null;
-      const loser = (aWon ? m.pair_b_id : m.pair_a_id) as string | null;
-
-      const { data: rmax } = await supabase
-        .from("quedada_matches")
-        .select("round_no")
-        .eq("category_id", categoryId)
-        .eq("phase", "final")
-        .eq("is_bronze", false)
-        .order("round_no", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const finalRound = (rmax?.round_no as number | null) ?? round;
-
-      if (round < finalRound && winner) {
-        const slot = pos % 2 === 0 ? "pair_a_id" : "pair_b_id";
-        await supabase
-          .from("quedada_matches")
-          .update({ [slot]: winner } as never)
-          .eq("category_id", categoryId)
-          .eq("phase", "final")
-          .eq("is_bronze", false)
-          .eq("round_no", round + 1)
-          .eq("bracket_pos", Math.floor(pos / 2));
-      }
-      if (round === finalRound - 1 && loser) {
-        const slot = pos % 2 === 0 ? "pair_a_id" : "pair_b_id";
-        await supabase
-          .from("quedada_matches")
-          .update({ [slot]: loser } as never)
-          .eq("category_id", categoryId)
-          .eq("phase", "final")
-          .eq("is_bronze", true);
+    // Ocupación por categoría (nº de cupos tomados = filas en quedada_pairs).
+    const takenByCat = new Map<string, number>();
+    const catsByUser = new Map<string, Set<string>>();
+    for (const pr of (pairsData ?? []) as Array<{ category_id: string; player_a_id: string; player_b_id: string | null }>) {
+      takenByCat.set(pr.category_id, (takenByCat.get(pr.category_id) ?? 0) + 1);
+      for (const uid of [pr.player_a_id, pr.player_b_id]) {
+        if (!uid) continue;
+        const set = catsByUser.get(uid) ?? new Set<string>();
+        set.add(pr.category_id);
+        catsByUser.set(uid, set);
       }
     }
-    return { ok: true as const };
+    const categories = ((catsData ?? []) as Array<{ id: string; name: string; max_slots: number | null }>).map((c) => ({
+      id: c.id,
+      name: c.name,
+      maxSlots: c.max_slots,
+      taken: takenByCat.get(c.id) ?? 0,
+    }));
+
+    // MPR (máx current_rating por jugador) + tag (3 letras del slug) del primer team.
+    const mprById = new Map<string, number>();
+    const teamTagById = new Map<string, string>();
+    if (userIds.length > 0) {
+      const admin = getAdminClient();
+      const [{ data: stats }, { data: tms }] = await Promise.all([
+        admin.from("player_stats").select("user_id,current_rating").in("user_id", userIds),
+        admin
+          .from("team_members")
+          .select("user_id,joined_at,teams(slug)")
+          .in("user_id", userIds)
+          .order("joined_at", { ascending: true }),
+      ]);
+      for (const s of (stats ?? []) as Array<{ user_id: string; current_rating: number | null }>) {
+        if (s.current_rating == null) continue;
+        const prev = mprById.get(s.user_id);
+        if (prev == null || s.current_rating > prev) mprById.set(s.user_id, s.current_rating);
+      }
+      for (const tm of (tms ?? []) as Array<{ user_id: string; teams: { slug: string | null } | null }>) {
+        const slug = tm.teams?.slug;
+        if (!teamTagById.has(tm.user_id) && slug) teamTagById.set(tm.user_id, slug.slice(0, 3).toUpperCase());
+      }
+    }
+
+    const nameOf = (p: { display_name: string | null; username: string | null } | null): string =>
+      p?.display_name || (p?.username ? `@${p.username}` : "Jugador");
+
+    return {
+      quedada: q,
+      meUserId: userId,
+      isMember: (q.creator_id as string) === userId || userIds.includes(userId),
+      joinedCount: parts.length,
+      categories,
+      participants: parts.map((p) => ({
+        userId: p.user_id,
+        name: nameOf(p.profiles),
+        mpr: mprById.get(p.user_id) ?? null,
+        teamTag: teamTagById.get(p.user_id) ?? null,
+        categoryIds: [...(catsByUser.get(p.user_id) ?? [])],
+      })),
+    };
   });
 }
 
-export async function deleteQuedadaMatch(input: unknown): Promise<ActionResult<{ ok: true }>> {
-  return runAction(QuedadaMatchIdSchema, input, async ({ matchId }) => {
-    await requireUserId();
+// ── Stats financieras del organizador (todas SUS quedadas) ───────────────────
+// Read-only, scoped a creator_id = caller (RLS de quedadas lo permite). El
+// recaudado es estimado: paidCount × fee_cents (pago offline, sin transacción).
+export async function getMyQuedadasFinanceStats(input: unknown): Promise<ActionResult<{
+  quedadasCount: number;
+  totalCollectedCents: number;
+  totalExpectedCents: number;
+  pendingCents: number;
+  totalJoined: number;
+  totalPaid: number;
+  payRatePct: number;
+  avgAttendance: number;
+}>> {
+  return runAction(MyQuedadasFinanceStatsSchema, input ?? {}, async () => {
+    const userId = await requireUserId();
     const supabase = await getServerClient();
-    const { error } = await supabase.from("quedada_matches").delete().eq("id", matchId);
-    if (error) throw new MpError("QUEDADAS.MATCH_DELETE_FAILED", error.message, 500);
-    return { ok: true as const };
+    const { data: qs, error: qErr } = await supabase
+      .from("quedadas")
+      .select("id,fee_cents")
+      .eq("creator_id", userId);
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    const quedadas = (qs ?? []) as Array<{ id: string; fee_cents: number }>;
+    if (quedadas.length === 0) {
+      return { quedadasCount: 0, totalCollectedCents: 0, totalExpectedCents: 0, pendingCents: 0, totalJoined: 0, totalPaid: 0, payRatePct: 0, avgAttendance: 0 };
+    }
+    const feeById = new Map(quedadas.map((q) => [q.id, q.fee_cents ?? 0]));
+    const { data: parts, error: pErr } = await supabase
+      .from("quedada_participants")
+      .select("quedada_id,paid")
+      .in("quedada_id", quedadas.map((q) => q.id))
+      .eq("status", "joined");
+    if (pErr) throw new MpError("QUEDADAS.READ_FAILED", pErr.message, 500);
+
+    let totalCollectedCents = 0, totalExpectedCents = 0, totalJoined = 0, totalPaid = 0;
+    for (const p of (parts ?? []) as Array<{ quedada_id: string; paid: boolean }>) {
+      const fee = feeById.get(p.quedada_id) ?? 0;
+      totalJoined += 1;
+      totalExpectedCents += fee;
+      if (p.paid) { totalPaid += 1; totalCollectedCents += fee; }
+    }
+    return {
+      quedadasCount: quedadas.length,
+      totalCollectedCents,
+      totalExpectedCents,
+      pendingCents: totalExpectedCents - totalCollectedCents,
+      totalJoined,
+      totalPaid,
+      payRatePct: totalJoined ? Math.round((totalPaid / totalJoined) * 100) : 0,
+      avgAttendance: quedadas.length ? Math.round((totalJoined / quedadas.length) * 10) / 10 : 0,
+    };
+  });
+}
+
+// ── Ficha de un jugador en MIS quedadas (historial relacional) ───────────────
+// Cuántas veces participó, cuánto pagó y % de veces que pagó, solo en las
+// quedadas del caller. Read-only scoped a creator_id = caller.
+export async function getQuedadaPlayerHistory(input: unknown): Promise<ActionResult<{
+  appearances: number;
+  timesPaid: number;
+  totalPaidCents: number;
+  payRatePct: number;
+  attendanceRatePct: number;
+  lastJoinedAt: string | null;
+}>> {
+  return runAction(QuedadaPlayerHistorySchema, input, async ({ playerUserId }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const { data: qs, error: qErr } = await supabase
+      .from("quedadas")
+      .select("id,fee_cents")
+      .eq("creator_id", userId);
+    if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
+    const quedadas = (qs ?? []) as Array<{ id: string; fee_cents: number }>;
+    if (quedadas.length === 0) {
+      return { appearances: 0, timesPaid: 0, totalPaidCents: 0, payRatePct: 0, attendanceRatePct: 0, lastJoinedAt: null };
+    }
+    const feeById = new Map(quedadas.map((q) => [q.id, q.fee_cents ?? 0]));
+    const { data: parts, error: pErr } = await supabase
+      .from("quedada_participants")
+      .select("quedada_id,paid,checked_in_at,joined_at")
+      .in("quedada_id", quedadas.map((q) => q.id))
+      .eq("user_id", playerUserId)
+      .eq("status", "joined");
+    if (pErr) throw new MpError("QUEDADAS.READ_FAILED", pErr.message, 500);
+    const rows = (parts ?? []) as Array<{ quedada_id: string; paid: boolean; checked_in_at: string | null; joined_at: string }>;
+
+    let timesPaid = 0, totalPaidCents = 0, attended = 0;
+    let lastJoinedAt: string | null = null;
+    for (const r of rows) {
+      if (r.paid) { timesPaid += 1; totalPaidCents += feeById.get(r.quedada_id) ?? 0; }
+      if (r.checked_in_at) attended += 1;
+      if (!lastJoinedAt || r.joined_at > lastJoinedAt) lastJoinedAt = r.joined_at;
+    }
+    const appearances = rows.length;
+    return {
+      appearances,
+      timesPaid,
+      totalPaidCents,
+      payRatePct: appearances ? Math.round((timesPaid / appearances) * 100) : 0,
+      attendanceRatePct: appearances ? Math.round((attended / appearances) * 100) : 0,
+      lastJoinedAt,
+    };
   });
 }

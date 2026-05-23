@@ -21,32 +21,49 @@ async function loadData(): Promise<OwnerHomeData> {
   todayEnd.setHours(23, 59, 59, 999);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const nowIso = new Date().toISOString();
+
+  // Necesito courtIds antes para pricing — fetch courts primero, luego el resto en paralelo.
+  const { data: courts } = await supabase
+    .from("courts")
+    .select("id,code,name")
+    .eq("club_id", clubId)
+    .eq("active", true)
+    .order("ordinal");
+  const courtIds = (courts ?? []).map((c) => c.id as string);
 
   const [
     { data: profile },
     { data: club },
-    { data: courts },
     { data: todayResv },
     { data: weekResv },
     { data: monthResv },
     { data: tournaments },
     { data: staffRoles },
+    { data: pricing },
+    { data: reviews },
+    { data: membershipsActive },
+    { data: membershipsPending },
   ] = await Promise.all([
     supabase.from("profiles").select("display_name,username").eq("id", userId).maybeSingle(),
     supabase.from("clubs").select("id,name,city").eq("id", clubId).maybeSingle(),
-    supabase.from("courts").select("id,code,name").eq("club_id", clubId).eq("active", true).order("ordinal"),
     supabase
       .from("reservations")
-      .select("id,court_id,during,organizer_id,status")
+      .select("id,court_id,during,organizer_id,status,kind")
       .eq("club_id", clubId)
-      .gte("during", todayStart.toISOString())
-      .lt("during", todayEnd.toISOString())
+      .overlaps(
+        "during",
+        `[${todayStart.toISOString()},${todayEnd.toISOString()})`,
+      )
       .neq("status", "cancelled"),
     supabase
       .from("reservations")
       .select("id,during")
       .eq("club_id", clubId)
-      .gte("during", weekAgo.toISOString())
+      .overlaps(
+        "during",
+        `[${weekAgo.toISOString()},${new Date().toISOString()})`,
+      )
       .neq("status", "cancelled"),
     supabase
       .from("reservations")
@@ -69,11 +86,53 @@ async function loadData(): Promise<OwnerHomeData> {
       .is("revoked_at", null)
       .neq("user_id", userId)
       .limit(4),
+    courtIds.length > 0
+      ? supabase
+          .from("court_pricing")
+          .select("court_id,price_cents")
+          .in("court_id", courtIds)
+          .eq("active", true)
+      : Promise.resolve({ data: [] as { court_id: string; price_cents: number }[] }),
+    supabase.from("club_reviews").select("rating").eq("club_id", clubId),
+    supabase
+      .from("club_memberships")
+      .select("id,expires_at", { count: "exact", head: false })
+      .eq("club_id", clubId)
+      .eq("status", "active")
+      .or(`expires_at.gt.${nowIso},expires_at.is.null`),
+    supabase
+      .from("club_memberships")
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("status", "pending"),
   ]);
 
-  // Revenue hoy: cuento reservas * precio promedio simple (sin court_pricing detallado).
+  // Revenue hoy: min price activo por cancha; reservas en canchas sin pricing se omiten.
   const todayCount = (todayResv ?? []).length;
-  const revenueHoy = todayCount * 18 * 100; // $18 promedio por reserva — placeholder
+  const minPriceByCourt = new Map<string, number>();
+  for (const p of (pricing ?? []) as { court_id: string; price_cents: number }[]) {
+    const prev = minPriceByCourt.get(p.court_id);
+    if (prev == null || p.price_cents < prev) {
+      minPriceByCourt.set(p.court_id, p.price_cents);
+    }
+  }
+  let revenueHoy = 0;
+  for (const r of todayResv ?? []) {
+    const price = minPriceByCourt.get(r.court_id as string);
+    if (price != null) revenueHoy += price;
+  }
+
+  // Rating club: avg + count.
+  const ratingRows = (reviews ?? []) as { rating: number }[];
+  const ratingCount = ratingRows.length;
+  const ratingAvg =
+    ratingCount > 0
+      ? ratingRows.reduce((acc, r) => acc + Number(r.rating ?? 0), 0) / ratingCount
+      : null;
+
+  // Membresías VIP.
+  const membersVipCount = (membershipsActive ?? []).length;
+  const membersVipPending = (membershipsPending ?? []).length;
 
   // Ocupación: cuántas horas reservadas / total horas (cuántas canchas × ~16 horas operación).
   const courtsCount = (courts ?? []).length;
@@ -96,8 +155,8 @@ async function loadData(): Promise<OwnerHomeData> {
   const revenueBars = dailyCounts.map((c) => Math.round((c / maxBar) * 110));
   const revenueWeekTotal = dailyCounts.reduce((a, b) => a + b, 0) * 18;
 
-  // Calendar today: matriz courts × horas [07,09,11,17,19,21].
-  const hours = ["07", "09", "11", "17", "19", "21"];
+  // Calendar today: matriz courts × horas (morning → night, evenly spaced).
+  const hours = ["08", "10", "12", "14", "16", "18", "20"];
   const calendarCourts = (courts ?? []).slice(0, 4).map((c) => (c.code as string) ?? (c.name as string) ?? "C");
   const cellState: Record<string, "reserved" | "event" | "class" | "free"> = {};
   for (const r of todayResv ?? []) {
@@ -106,7 +165,10 @@ async function loadData(): Promise<OwnerHomeData> {
     if (!hours.includes(h)) continue;
     const courtIdx = (courts ?? []).findIndex((c) => c.id === r.court_id);
     if (courtIdx === -1 || courtIdx >= 4) continue;
-    cellState[`${h}-${courtIdx}`] = "reserved";
+    // kind (mig 167): booking → reserved, event → event, class → class.
+    const kind = (r.kind as string | null) ?? "booking";
+    cellState[`${h}-${courtIdx}`] =
+      kind === "event" ? "event" : kind === "class" ? "class" : "reserved";
   }
 
   // Staff con iniciales.
@@ -157,6 +219,10 @@ async function loadData(): Promise<OwnerHomeData> {
     revenueWeekCents: revenueWeekTotal * 100,
     events,
     staff,
+    ratingAvg,
+    ratingCount,
+    membersVipCount,
+    membersVipPending,
   };
 }
 
@@ -173,12 +239,16 @@ function emptyData(): OwnerHomeData {
     sociosCount: 0,
     courtsCount: 0,
     calendarCourts: ["C1", "C2", "C3", "C4"],
-    calendarHours: ["07", "09", "11", "17", "19", "21"],
+    calendarHours: ["08", "10", "12", "14", "16", "18", "20"],
     cellState: {},
     revenueBars: [0, 0, 0, 0, 0, 0, 0],
     revenueWeekCents: 0,
     events: [],
     staff: [],
+    ratingAvg: null,
+    ratingCount: 0,
+    membersVipCount: 0,
+    membersVipPending: 0,
   };
 }
 

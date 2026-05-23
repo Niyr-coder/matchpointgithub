@@ -23,6 +23,8 @@ export type FlagAssignment = {
   enabled: boolean;
   reason: string | null;
 };
+export type FlagEnv = "prod" | "staging" | "beta" | "dev";
+export type FlagImpact = "low" | "med" | "high";
 export type FlagRow = {
   k: string;
   t: string;
@@ -30,6 +32,12 @@ export type FlagRow = {
   state: FlagState;
   enabled: boolean;
   rollout: number;
+  env: FlagEnv;
+  impact: FlagImpact;
+  owner: string | null;
+  segment: string | null;
+  label: string | null;
+  updatedAt: string | null;
   assignments: FlagAssignment[];
 };
 export type ClubLite = { id: string; name: string };

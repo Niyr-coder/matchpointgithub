@@ -216,6 +216,38 @@ body {
 .display-md { font-family: var(--font-heading); font-weight: 900; font-size: 36px; line-height: 0.95; letter-spacing: -0.03em; text-transform: uppercase; }
 .tabular { font-variant-numeric: tabular-nums; }
 .dot { color: var(--primary); }
+/* Oculta las flechas (spinners) de inputs number. */
+.mp-no-spin { -moz-appearance: textfield; appearance: textfield; }
+.mp-no-spin::-webkit-outer-spin-button,
+.mp-no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Columna derecha del panel de Quedadas: fija 340px en desktop; ancho completo en
+   móvil (evita el overflow horizontal). Solo responsive — desktop intacto. */
+.mp-quedada-side { flex: 0 0 340px; }
+@media (max-width: 760px) {
+  .mp-quedada-side { flex: 1 1 100%; }
+  /* Red de seguridad: en móvil recorta el desborde horizontal SIN crear un scroll
+     propio (clip no fuerza overflow-y:auto como sí lo hace hidden). */
+  .mp-quedada-root { overflow-x: clip; }
+}
+
+/* Lapicito para editar el marcador: cambia de color y crece un poco al hover. */
+.mp-edit-pencil { color: var(--muted-fg); transition: color 150ms var(--ease-out), transform 150ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .mp-edit-pencil:hover { color: var(--fg); transform: translateY(-50%) scale(1.18); }
+}
+.mp-edit-pencil:active { transform: translateY(-50%) scale(0.94); }
+
+/* Entrada del partido en el carrusel al actualizarse (swap viejo→nuevo). */
+@keyframes mpMatchIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.mp-match-in { animation: mpMatchIn 240ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes mpMatchIn { from { opacity: 0; } to { opacity: 1; } }
+  .mp-match-in { animation: mpMatchIn 160ms ease; }
+}
 .chip-green {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
   border-radius: 9999px; background: rgba(16,185,129,0.1); color: var(--primary);
@@ -416,6 +448,10 @@ body {
   }
 }
 
+/* Oculta la scrollbar en filas con scroll horizontal (ej. tabs slide en móvil). */
+.mp-noscroll { scrollbar-width: none; -ms-overflow-style: none; }
+.mp-noscroll::-webkit-scrollbar { display: none; }
+
 /* ── Motion utilities (Emil-style polish) ─────────────────────
    Solo transform + opacity = GPU, off-main-thread, no repaint.
    Hover gated a `hover: hover` para no triggear en touch. */
@@ -464,6 +500,198 @@ body {
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.09);
     border-color: rgba(10, 10, 10, 0.3);
   }
+}
+
+/* Modal de crear plan (club membresías): fade del overlay + pop del panel.
+   Entrada con scale 0.96 (Emil: mínimo 0.95), respeta reduced-motion. */
+@keyframes mpFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mpPop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-modal-overlay, .mp-modal-panel { animation: none !important; }
+}
+
+/* Pro shop empleado v2: POS (productos+carrito) colapsa, grid 4→2, stats 4→2,
+   catálogo y movimientos colapsan. */
+@media (max-width: 1000px) {
+  .mp-shop-pos, .mp-shop-cat, .mp-shop-mov { grid-template-columns: 1fr !important; }
+  .mp-shop-cart { position: static !important; top: auto !important; }
+  .mp-shop-grid, .mp-shop-stats, .mp-shop-catgrid { grid-template-columns: repeat(2, 1fr) !important; }
+  .mp-shop-low { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 560px) {
+  .mp-shop-grid, .mp-shop-stats, .mp-shop-catgrid, .mp-shop-low { grid-template-columns: 1fr !important; }
+}
+
+/* Comunicaciones admin v2: KPIs 5→3→2, composer 2-col→1, canales 4→2. */
+@media (max-width: 1100px) {
+  .mp-bcast-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+  .mp-bcast-composer { grid-template-columns: 1fr !important; }
+  .mp-bcast-form { border-right: 0 !important; border-bottom: 1px solid var(--border) !important; }
+}
+@media (max-width: 560px) {
+  .mp-bcast-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  .mp-bcast-channels { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* Personal club v2: KPIs 4→2→1, cards de staff 2→1, bottom split 2→1. */
+@media (max-width: 980px) {
+  .mp-stf-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  .mp-stf-cards, .mp-stf-bottom { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 560px) {
+  .mp-stf-kpis { grid-template-columns: 1fr !important; }
+}
+
+/* Config club v2: rail (260px)+contenido colapsa; secciones internas 2-col→1. */
+@media (max-width: 980px) {
+  .mp-ccfg-grid { grid-template-columns: 1fr !important; }
+  .mp-ccfg-rail { position: static !important; top: auto !important; }
+  .mp-ccfg-ident, .mp-ccfg-pagos, .mp-ccfg-banks { grid-template-columns: 1fr !important; }
+  .mp-ccfg-preview { position: static !important; top: auto !important; }
+  .mp-ccfg-tiers, .mp-ccfg-reglas { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 560px) {
+  .mp-ccfg-tiers, .mp-ccfg-reglas { grid-template-columns: 1fr !important; }
+}
+
+/* Finanzas club v2: hero+KPIs y splits 2-col colapsan; fuentes 4→2→1. */
+@media (max-width: 1000px) {
+  .mp-fin-hero, .mp-fin-split { grid-template-columns: 1fr !important; }
+  .mp-fin-sources { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 520px) {
+  .mp-fin-sources { grid-template-columns: 1fr !important; }
+  .mp-fin-kpis { grid-template-rows: auto !important; }
+}
+
+/* Canchas club v2: KPI strip 4→2→1, galería 2→1; card resalta en hover (gated). */
+@media (max-width: 1000px) {
+  .mp-cch-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  .mp-cch-gallery { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 560px) {
+  .mp-cch-kpis { grid-template-columns: 1fr !important; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-cch-card { transition: transform 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1); }
+  .mp-cch-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+}
+
+/* Theme designer: 3 columnas (lista/editor/preview). En <1200px el preview se
+   apila bajo el editor; en <860px también la lista. */
+@media (max-width: 1200px) {
+  .mp-td-grid { grid-template-columns: 260px 1fr !important; }
+  .mp-td-preview { grid-column: 1 / -1 !important; position: static !important; top: auto !important; }
+}
+@media (max-width: 860px) {
+  .mp-td-grid { grid-template-columns: 1fr !important; }
+  .mp-td-list { position: static !important; top: auto !important; }
+}
+
+/* Flair de usuarios v2: grids de analytics/words 2-col colapsan; filas de
+   reporte apilan en móvil. */
+@media (max-width: 820px) {
+  .mp-flair-an, .mp-flair-words { grid-template-columns: 1fr !important; }
+  .mp-flair-report { grid-template-columns: 1fr !important; }
+}
+
+/* Configuración v2: sidebar (260px) + contenido colapsan; sidebar deja de ser
+   sticky; cada fila de setting apila label/control en móvil. */
+@media (max-width: 900px) {
+  .mp-config-grid { grid-template-columns: 1fr !important; }
+  .mp-config-side { position: static !important; top: auto !important; }
+  .mp-config-row { grid-template-columns: 1fr !important; }
+}
+
+/* Feature flags v2: lista + right rail colapsan; KPIs 4→2; fila resalta. */
+@media (max-width: 980px) {
+  .mp-flags-grid { grid-template-columns: 1fr !important; }
+  .mp-flags-rail { position: static !important; top: auto !important; }
+}
+@media (max-width: 640px) {
+  .mp-flags-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-flag-row:hover { background: #fafafa !important; }
+}
+
+/* Permisos & Roles v2: lista (290px) + detalle colapsan; lista deja de ser
+   sticky en móvil. */
+@media (max-width: 860px) {
+  .mp-roles-grid { grid-template-columns: 1fr !important; }
+  .mp-roles-list { position: static !important; top: auto !important; }
+}
+
+/* Audit log v2: grid stream+side colapsa; fila del stream resalta en hover
+   (gated a pointer fino); opción del menú de export resalta. */
+@media (max-width: 980px) {
+  .mp-audit-grid { grid-template-columns: 1fr !important; }
+  .mp-audit-side { position: static !important; top: auto !important; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-audit-row:hover { background: rgba(255, 255, 255, 0.025) !important; }
+  .mp-export-opt:hover { background: var(--muted); }
+}
+
+/* Métricas admin v2: filas asimétricas (chart 1.7fr + lateral 1fr) colapsan. */
+@media (max-width: 900px) {
+  .mp-metrics-split { grid-template-columns: 1fr !important; }
+}
+
+/* Editor de plan y wizard del club: grids de 2 columnas que colapsan en móvil. */
+@media (max-width: 720px) {
+  .mp-plan-editor-body { grid-template-columns: 1fr !important; }
+  .mp-create-step2 { grid-template-columns: 1fr !important; }
+}
+
+/* Match destacado de Buscar Match: 3 columnas (info/slots/cta) en desktop;
+   apila en una sola columna en pantallas chicas. !important: grid va inline. */
+@media (max-width: 820px) {
+  .mp-bm-featured { grid-template-columns: 1fr !important; }
+}
+
+/* KPIs de Patrocinadores (admin): 5 columnas fijas en desktop; colapsa a 2 y
+   luego 1 en pantallas chicas. !important porque el grid va inline. */
+@media (max-width: 1100px) {
+  .mp-spon-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 560px) {
+  .mp-spon-kpis { grid-template-columns: 1fr !important; }
+}
+
+/* Editor de personalización (flair): el grid preview-sticky + secciones colapsa
+   a una sola columna en pantallas angostas; el preview deja de ser sticky y se
+   apila arriba. !important porque el grid-template va inline en el componente. */
+@media (max-width: 860px) {
+  .mp-perso-grid { grid-template-columns: 1fr !important; }
+  .mp-perso-preview { position: static !important; top: auto !important; }
+}
+
+/* Card de categoría del centro de ayuda. Hover = lift sutil (-2px) + borde
+   negro + sombra suave, según el spec del prototipo. Gateado a pointer fino
+   para no dispararse en touch; :active da feedback de presión. */
+.mp-help-cat {
+  border: 1px solid var(--border);
+  transition:
+    transform 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out),
+    border-color 150ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-help-cat:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border-color: #0a0a0a;
+  }
+}
+.mp-help-cat:active { transform: scale(0.99); }
+@media (prefers-reduced-motion: reduce) {
+  .mp-help-cat { transition: none; }
+  .mp-help-cat:hover,
+  .mp-help-cat:active { transform: none; }
 }
 
 /* Stagger: aplica delay incremental a hijos directos del contenedor.

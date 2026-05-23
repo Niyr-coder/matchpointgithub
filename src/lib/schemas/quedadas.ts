@@ -40,6 +40,15 @@ export const PrizeSchema = z
   })
   .openapi("QuedadaPrize");
 
+// Una "regla clave" del modal de detalles. warn=true → advertencia (⚠);
+// warn=false → informativa (✓).
+export const QuedadaRuleSchema = z
+  .object({
+    text: z.string().trim().min(1).max(120),
+    warn: z.boolean().default(false),
+  })
+  .openapi("QuedadaRule");
+
 // ── Crear ────────────────────────────────────────────────────────────────────
 export const CreateQuedadaSchema = z
   .object({
@@ -58,9 +67,12 @@ export const CreateQuedadaSchema = z
     courtsCount: z.coerce.number().int().min(1).max(64).optional(),
     hours: z.coerce.number().min(0.5).max(24).optional(),
     courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).optional(),
+    // Largo del partido a X puntos (motor de juego). Fallback por categoría → quedada → 24.
+    targetPoints: z.coerce.number().int().min(1).max(999).optional(),
     // Bancarios + premios estructurados (reemplazan paymentInfo/prizesText texto).
     paymentAccount: PaymentAccountSchema.optional(),
     prizes: z.array(PrizeSchema).max(10).optional(),
+    rules: z.array(QuedadaRuleSchema).max(12).optional(),
     // Deprecados (texto libre, mig 133). Se mantienen opcionales por compat.
     paymentInfo: z.string().trim().max(500).optional(),
     prizesText: z.string().trim().max(500).optional(),
@@ -73,6 +85,7 @@ export const CreateQuedadaSchema = z
           startsAt: z.string().datetime({ offset: true }).optional(),
           courtLabel: z.string().trim().max(40).optional(),
           maxSlots: z.coerce.number().int().min(1).max(64).optional(),
+          targetPoints: z.coerce.number().int().min(1).max(999).optional(),
         }),
       )
       .max(20)
@@ -82,6 +95,12 @@ export const CreateQuedadaSchema = z
 
 // ── Acciones sobre una quedada ───────────────────────────────────────────────
 export const QuedadaIdSchema = z.object({ quedadaId: UuidSchema }).openapi("QuedadaId");
+
+// Inscribirse: opcionalmente a una categoría (si la quedada tiene). El pago es
+// offline (transferencia / en sitio) → no crea transacción.
+export const JoinQuedadaSchema = z
+  .object({ quedadaId: UuidSchema, categoryId: UuidSchema.nullable().optional() })
+  .openapi("JoinQuedada");
 
 export const InviteToQuedadaSchema = z
   .object({ quedadaId: UuidSchema, userIds: z.array(UuidSchema).min(1).max(50) })
@@ -148,6 +167,7 @@ export const CreateCategorySchema = z
     startsAt: z.string().datetime({ offset: true }).optional(),
     courtLabel: z.string().trim().max(40).optional(),
     maxSlots: z.coerce.number().int().min(1).max(64).optional(),
+    targetPoints: z.coerce.number().int().min(1).max(999).optional(),
   })
   .openapi("CreateQuedadaCategory");
 
@@ -159,6 +179,7 @@ export const UpdateCategorySchema = z
     startsAt: z.string().datetime({ offset: true }).nullable().optional(),
     courtLabel: z.string().trim().max(40).nullable().optional(),
     maxSlots: z.coerce.number().int().min(1).max(64).nullable().optional(),
+    targetPoints: z.coerce.number().int().min(1).max(999).nullable().optional(),
   })
   .openapi("UpdateQuedadaCategory");
 
@@ -186,14 +207,58 @@ export const SetParticipantPaidSchema = z
   .object({ quedadaId: UuidSchema, userId: UuidSchema, paid: z.boolean() })
   .openapi("SetQuedadaParticipantPaid");
 
+// Check-in de asistencia (informativo). El organizador/co-host marca quién llegó.
+export const SetParticipantCheckedInSchema = z
+  .object({ quedadaId: UuidSchema, userId: UuidSchema, checkedIn: z.boolean() })
+  .openapi("SetQuedadaParticipantCheckedIn");
+
+// Marca/desmarca el check-in de TODOS los inscritos joined.
+export const SetAllCheckedInSchema = z
+  .object({ quedadaId: UuidSchema, checkedIn: z.boolean() })
+  .openapi("SetAllQuedadaCheckedIn");
+
+// Aviso de pago a los pendientes. Sin userIds → a todos los pendientes; con
+// userIds → solo a esos (subset de pendientes). Cooldown de 30min por persona.
+export const RemindQuedadaPaymentSchema = z
+  .object({ quedadaId: UuidSchema, userIds: z.array(UuidSchema).max(64).optional() })
+  .openapi("RemindQuedadaPayment");
+
+// Ficha de un jugador en MIS quedadas (historial relacional organizador↔jugador).
+export const QuedadaPlayerHistorySchema = z
+  .object({ playerUserId: UuidSchema })
+  .openapi("QuedadaPlayerHistory");
+
+// Resumen financiero agregado del organizador (todas sus quedadas).
+export const MyQuedadasFinanceStatsSchema = z.object({}).openapi("MyQuedadasFinanceStats");
+
+export const QuedadaEngineModeSchema = z.enum(["rounds", "rolling"]).openapi("QuedadaEngineMode");
+
+// Edición de datos generales tras crear (creador). Formato y modo (singles/dobles)
+// NO se editan: cambiarlos rompe games/standings existentes.
+export const UpdateQuedadaDetailsSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    title: z.string().trim().min(3).max(80).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    startsAt: z.string().datetime({ offset: true }).optional(),
+    locationText: z.string().trim().max(140).nullable().optional(),
+    visibility: QuedadaVisibilitySchema.optional(),
+    maxPlayers: z.coerce.number().int().min(2).max(64).nullable().optional(),
+    perks: z.string().trim().max(280).nullable().optional(),
+  })
+  .openapi("UpdateQuedadaDetails");
+
 export const QuedadaLogisticsSchema = z
   .object({
     quedadaId: UuidSchema,
     courtsCount: z.coerce.number().int().min(1).max(64).nullable().optional(),
     hours: z.coerce.number().min(0.5).max(24).nullable().optional(),
     courtPriceCents: z.coerce.number().int().min(0).max(1_000_000).nullable().optional(),
+    targetPoints: z.coerce.number().int().min(1).max(999).nullable().optional(),
+    engineMode: QuedadaEngineModeSchema.optional(),
     paymentAccount: PaymentAccountSchema.nullable().optional(),
     prizes: z.array(PrizeSchema).max(10).nullable().optional(),
+    rules: z.array(QuedadaRuleSchema).max(12).nullable().optional(),
     // Deprecados (texto libre, mig 133).
     paymentInfo: z.string().trim().max(500).nullable().optional(),
     prizesText: z.string().trim().max(500).nullable().optional(),
@@ -214,40 +279,25 @@ export const SaveQuedadaTemplateSchema = z
   .openapi("SaveQuedadaTemplate");
 export const QuedadaTemplateIdSchema = z.object({ templateId: UuidSchema }).openapi("QuedadaTemplateId");
 
-// ── Motor de juego (v2): partidos por ronda + puntos ─────────────────────────
-export const GenerateRoundRobinSchema = z
+// ── Motor de juego (rediseño): rondas player-céntricas + puntos ──────────────
+// Americano: genera la siguiente ronda emparejando inscritos (rota compañero/
+// rival, byes rotativos). El nº de ronda lo calcula la action (siguiente libre).
+export const GenerateAmericanoRoundSchema = z
   .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
-  .openapi("GenerateQuedadaRoundRobin");
-// Fase de grupos: reparte las parejas al AZAR. El nº de grupos se CALCULA solo
-// (1 grupo por cancha, cada grupo con ≥2 parejas), no se elige a mano.
-export const GenerateGroupStageSchema = z
-  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
-  .openapi("GenerateQuedadaGroupStage");
-export const AddQuedadaMatchSchema = z
+  .openapi("GenerateQuedadaAmericanoRound");
+// Reporta el marcador de un game (organizador, directo, sin doble confirmación).
+export const ReportGameSchema = z
   .object({
-    quedadaId: UuidSchema,
-    categoryId: UuidSchema,
-    roundNo: z.coerce.number().int().min(1).max(99).default(1),
-    pairAId: UuidSchema,
-    pairBId: UuidSchema,
-  })
-  .openapi("AddQuedadaMatch");
-export const ReportQuedadaMatchSchema = z
-  .object({
-    matchId: UuidSchema,
+    gameId: UuidSchema,
     pointsA: z.coerce.number().int().min(0).max(999),
     pointsB: z.coerce.number().int().min(0).max(999),
   })
-  .openapi("ReportQuedadaMatch");
-export const QuedadaMatchIdSchema = z.object({ matchId: UuidSchema }).openapi("QuedadaMatchId");
-// Fase final de medallas: clasifican los 2 mejores de cada grupo a un cuadro de
-// eliminación directa (semis → final + 3er puesto). El nº de clasificados se
-// calcula solo a partir de los grupos; no se elige a mano (anti-arreglo).
-export const GenerateMedalFinalSchema = z
-  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
-  .openapi("GenerateQuedadaMedalFinal");
-// Cierra la quedada: calcula el podio (desde el cuadro final si existe, o desde
-// la tabla general) y la pasa a 'finished'.
+  .openapi("ReportQuedadaGame");
+export const GameIdSchema = z.object({ gameId: UuidSchema }).openapi("QuedadaGameId");
+// Borra una ronda completa (con sus games). Para regenerar un emparejamiento.
+export const RoundIdSchema = z.object({ roundId: UuidSchema }).openapi("QuedadaRoundId");
+// Cierra la quedada: calcula el podio individual (ranking por puntos a favor) y
+// la pasa a 'finished'.
 export const FinishQuedadaSchema = z.object({ quedadaId: UuidSchema }).openapi("FinishQuedada");
 
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
@@ -255,3 +305,4 @@ export type Quedada = z.infer<typeof QuedadaSchema>;
 export type QuedadaFormat = z.infer<typeof QuedadaFormatSchema>;
 export type PaymentAccount = z.infer<typeof PaymentAccountSchema>;
 export type Prize = z.infer<typeof PrizeSchema>;
+export type QuedadaRule = z.infer<typeof QuedadaRuleSchema>;

@@ -5,6 +5,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import type { RoleKey } from "@/lib/roles";
+import { Icon } from "@/components/Icon";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { TopBar } from "./TopBar";
 import { MobileBottomNav } from "./MobileBottomNav";
@@ -14,6 +15,10 @@ type Props = {
   userName: string;
   contextLabel: string | null;
   badgeOverrides?: Record<string, number | string>;
+  /** Banner global (anuncio activo o mantenimiento). null = sin banner. Lo ven todos los roles. */
+  banner?: { message: string; level: "info" | "warn" | "critical"; ctaLabel?: string | null; ctaHref?: string | null } | null;
+  /** Flags efectivos del usuario, para gatear items del sidebar. */
+  flags?: Record<string, boolean>;
   children: ReactNode;
 };
 
@@ -22,9 +27,12 @@ export function DashboardChrome({
   userName,
   contextLabel,
   badgeOverrides,
+  banner,
+  flags,
   children,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const pathname = usePathname();
 
   // Cerrar drawer cuando cambia la ruta (user tapeó un link adentro).
@@ -58,6 +66,7 @@ export function DashboardChrome({
         badgeOverrides={badgeOverrides}
         mobileOpen={drawerOpen}
         onMobileClose={() => setDrawerOpen(false)}
+        flags={flags}
       />
       <div
         style={{
@@ -68,6 +77,21 @@ export function DashboardChrome({
         }}
       >
         <TopBar role={role} contextLabel={contextLabel} />
+        {banner && !bannerDismissed && (() => {
+          const lvl = { info: { bg: "#dbeafe", bd: "#93c5fd", fg: "#1e3a8a", ic: "info" }, warn: { bg: "#fef3c7", bd: "#fcd34d", fg: "#78350f", ic: "alert-triangle" }, critical: { bg: "#fee2e2", bd: "#fca5a5", fg: "#7f1d1d", ic: "alert-octagon" } }[banner.level];
+          return (
+            <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: lvl.bg, borderBottom: `1px solid ${lvl.bd}`, color: lvl.fg }}>
+              <Icon name={lvl.ic} size={15} color={lvl.fg} />
+              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, lineHeight: 1.4 }}>{banner.message}</span>
+              {banner.ctaLabel && banner.ctaHref && (
+                <a href={banner.ctaHref} style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 800, color: lvl.fg, textDecoration: "underline", whiteSpace: "nowrap" }}>{banner.ctaLabel}</a>
+              )}
+              <button onClick={() => setBannerDismissed(true)} aria-label="Cerrar aviso" style={{ background: "transparent", border: 0, color: lvl.fg, cursor: "pointer", display: "inline-flex", padding: 2, flexShrink: 0 }}>
+                <Icon name="x" size={14} color={lvl.fg} />
+              </button>
+            </div>
+          );
+        })()}
         <main className="flex flex-col flex-1 gap-4 md:gap-5 p-4 md:p-7 pb-24 md:pb-7">
           {children}
         </main>

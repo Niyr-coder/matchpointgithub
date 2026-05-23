@@ -6,13 +6,25 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { assertCapability } from "@/lib/auth/capabilities";
 import { notify } from "@/server/notifications/dispatch";
 
 const ROLE = z.enum(["admin", "partner", "owner", "manager", "coach", "employee", "user"]);
 const CLUB_SCOPED_ROLES = new Set(["owner", "manager", "coach", "employee"]);
+
+export type RoleMemberDTO = {
+  assignmentId: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  clubId: string | null;
+  clubName: string | null;
+  grantedAt: string;
+};
 
 async function requireAdmin(): Promise<string> {
   const supabase = await getServerClient();
@@ -86,6 +98,24 @@ export async function searchUsers(input: unknown): Promise<ActionResult<{ id: st
 // Roles que un owner puede asignar dentro de su propio club.
 const OWNER_ASSIGNABLE_ROLES = new Set(["manager", "coach", "employee"]);
 
+const ROLE_LABEL_ES: Record<string, string> = { manager: "Manager", coach: "Coach", employee: "Empleado", owner: "Owner", partner: "Partner", admin: "Admin", user: "Usuario" };
+
+// Notifica al staff cuando lo agregan/quitan de un club (cubre gap coach/employee/manager).
+async function notifyStaffEvent(kind: "club_staff_assigned" | "club_staff_removed", userId: string, role: string, clubId: string): Promise<void> {
+  const supabase = await getServerClient();
+  const { data: club } = await supabase.from("clubs").select("name").eq("id", clubId).maybeSingle();
+  const clubName = (club?.name as string) ?? "el club";
+  const label = ROLE_LABEL_ES[role] ?? role;
+  await notify({
+    userId,
+    role: role as "manager" | "coach" | "employee", // recipient_role = el rol otorgado
+    kind,
+    title: kind === "club_staff_assigned" ? `Te agregaron a ${clubName}` : `Te quitaron de ${clubName}`,
+    body: kind === "club_staff_assigned" ? `Ahora eres ${label} del club.` : `Ya no eres ${label} de ${clubName}.`,
+    payload: { clubId, role },
+  });
+}
+
 export async function assignRole(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(
     z.object({
@@ -93,9 +123,10 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
       role: ROLE,
       clubId: z.string().uuid().nullable().optional(),
       notes: z.string().max(500).optional(),
+      termsVersion: z.string().max(64).optional(),
     }),
     input,
-    async ({ userId, role, clubId, notes }) => {
+    async ({ userId, role, clubId, notes, termsVersion }) => {
       if (CLUB_SCOPED_ROLES.has(role) && !clubId) {
         throw new MpError("ROLES.CLUB_REQUIRED", `Role '${role}' requires a club`, 422);
       }
@@ -103,13 +134,43 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
         throw new MpError("ROLES.CLUB_FORBIDDEN", `Role '${role}' cannot be scoped to a club`, 422);
       }
       // Autorización: admin global, o owner del club si asigna staff del club.
+      // RBAC (mig 158): además de ser owner del club, debe tener la capacidad
+      // sys.roles (nivel own). Admin siempre pasa (mp_role_can admin=true). Así
+      // editar owner.sys.roles en la matriz controla de verdad esta acción.
       let actorId: string;
       if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) {
         actorId = await requireAdminOrClubOwner(clubId);
+        await assertCapability("sys.roles", { clubId });
       } else {
         actorId = await requireAdmin();
       }
       const supabase = await getServerClient();
+
+      // Términos (Stage 2): si quien asigna es un OWNER (no admin) y es un rol de
+      // club, debe aceptar la versión vigente de los términos. Se registra.
+      let acceptedTerms: string | null = null;
+      if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) {
+        const { data: adminRow } = await supabase
+          .from("role_assignments")
+          .select("id")
+          .eq("user_id", actorId)
+          .eq("role", "admin")
+          .is("revoked_at", null)
+          .maybeSingle();
+        if (!adminRow) {
+          const { data: cfg } = await supabase
+            .from("platform_config")
+            .select("value")
+            .eq("key", "role_grant_terms_version")
+            .maybeSingle();
+          const currentVersion = cfg?.value ? String(cfg.value) : null;
+          if (!termsVersion || !currentVersion || termsVersion !== currentVersion) {
+            throw new MpError("ROLES.TERMS_REQUIRED", "Debes aceptar los términos vigentes para asignar este rol.", 422);
+          }
+          acceptedTerms = termsVersion;
+        }
+      }
+
       const { data, error } = await supabase
         .from("role_assignments")
         .insert({
@@ -118,6 +179,7 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
           club_id: clubId ?? null,
           granted_by: actorId,
           notes: notes ?? null,
+          terms_version: acceptedTerms,
         } as never)
         .select("id")
         .single();
@@ -126,17 +188,19 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
           // Unique violation: reactivate revoked existing.
           let q = supabase
             .from("role_assignments")
-            .update({ revoked_at: null, granted_by: actorId, granted_at: new Date().toISOString() } as never)
+            .update({ revoked_at: null, granted_by: actorId, granted_at: new Date().toISOString(), terms_version: acceptedTerms } as never)
             .eq("user_id", userId)
             .eq("role", role);
           q = clubId ? q.eq("club_id", clubId) : q.is("club_id", null);
           const { data: updated, error: upErr } = await q.select("id").single();
           if (upErr) throw new MpError("ROLES.ASSIGN_FAILED", upErr.message, 500);
+          if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
           revalidatePath("/dashboard/admin/admin-roles");
           return { id: updated.id as string };
         }
         throw new MpError("ROLES.ASSIGN_FAILED", error.message, 500);
       }
+      if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
       revalidatePath("/dashboard/admin/admin-roles");
       return { id: data.id as string };
     },
@@ -145,16 +209,111 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
 
 export async function revokeRole(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(z.object({ assignmentId: z.string().uuid() }), input, async ({ assignmentId }) => {
-    await requireAdmin();
     const supabase = await getServerClient();
+    // Simetría con assignRole: admin global, o owner del club para roles
+    // club-scoped de SU club (con capacidad sys.roles). Mig 158/159.
+    const { data: asg } = await supabase
+      .from("role_assignments")
+      .select("club_id,role,user_id")
+      .eq("id", assignmentId)
+      .maybeSingle();
+    if (!asg) throw new MpError("ROLES.NOT_FOUND", "Asignación no encontrada", 404);
+    const asgClub = asg.club_id as string | null;
+    const asgRole = asg.role as string;
+    const asgUser = asg.user_id as string;
+    const isStaff = !!asgClub && OWNER_ASSIGNABLE_ROLES.has(asgRole);
+    if (isStaff) {
+      await requireAdminOrClubOwner(asgClub!);
+      await assertCapability("sys.roles", { clubId: asgClub! });
+    } else {
+      await requireAdmin();
+    }
     const { error } = await supabase
       .from("role_assignments")
       .update({ revoked_at: new Date().toISOString() } as never)
       .eq("id", assignmentId)
       .is("revoked_at", null);
     if (error) throw new MpError("ROLES.REVOKE_FAILED", error.message, 500);
+    if (isStaff) await notifyStaffEvent("club_staff_removed", asgUser, asgRole, asgClub!);
     revalidatePath("/dashboard/admin/admin-roles");
     return { ok: true as const };
+  });
+}
+
+// Página de miembros de un rol (paginado; admin). Evita traer miles de filas.
+export async function listRoleMembers(input: unknown): Promise<ActionResult<RoleMemberDTO[]>> {
+  return runAction(
+    z.object({ role: ROLE, offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(60).default(30), q: z.string().max(80).optional() }),
+    input,
+    async ({ role, offset, limit, q }) => {
+      await requireAdmin();
+      const supabase = await getServerClient();
+      const term = q?.trim();
+      let list: { id: string; user_id: string; club_id: string | null; granted_at: string }[];
+      if (term) {
+        // Búsqueda: primero matchear perfiles por nombre/@username, luego filtrar
+        // a quienes tienen el rol. Evita depender de embed por FK.
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id")
+          .or(`display_name.ilike.%${term}%,username.ilike.%${term}%`)
+          .limit(100);
+        const ids = (profs ?? []).map((p) => p.id as string);
+        if (ids.length === 0) return [];
+        const { data: rows } = await supabase
+          .from("role_assignments")
+          .select("id,user_id,club_id,granted_at")
+          .eq("role", role)
+          .is("revoked_at", null)
+          .in("user_id", ids)
+          .order("granted_at", { ascending: false })
+          .limit(limit);
+        list = (rows ?? []) as typeof list;
+      } else {
+        const { data: rows } = await supabase
+          .from("role_assignments")
+          .select("id,user_id,club_id,granted_at")
+          .eq("role", role)
+          .is("revoked_at", null)
+          .order("granted_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+        list = (rows ?? []) as typeof list;
+      }
+      const uids = Array.from(new Set(list.map((r) => r.user_id as string)));
+      const cids = Array.from(new Set(list.map((r) => r.club_id as string | null).filter(Boolean) as string[]));
+      const [{ data: profs }, { data: cl }] = await Promise.all([
+        uids.length ? supabase.from("profiles").select("id,username,display_name").in("id", uids) : Promise.resolve({ data: [] }),
+        cids.length ? supabase.from("clubs").select("id,name").in("id", cids) : Promise.resolve({ data: [] }),
+      ]);
+      const pById = new Map((profs ?? []).map((p) => [p.id as string, p]));
+      const cById = new Map((cl ?? []).map((c) => [c.id as string, c.name as string]));
+      return list.map((a) => ({
+        assignmentId: a.id as string,
+        userId: a.user_id as string,
+        username: (pById.get(a.user_id as string)?.username as string) ?? "—",
+        displayName: (pById.get(a.user_id as string)?.display_name as string) ?? "Sin nombre",
+        clubId: (a.club_id as string | null) ?? null,
+        clubName: a.club_id ? cById.get(a.club_id as string) ?? "—" : null,
+        grantedAt: a.granted_at as string,
+      }));
+    },
+  );
+}
+
+// Términos vigentes de asignación de rol (para mostrar al owner antes de aceptar).
+export async function getRoleGrantTerms(): Promise<ActionResult<{ text: string; version: string }>> {
+  return runAction(z.undefined(), undefined, async () => {
+    await requireUser();
+    const admin = getAdminClient();
+    const { data } = await admin
+      .from("platform_config")
+      .select("key,value")
+      .in("key", ["role_grant_terms", "role_grant_terms_version"]);
+    const map = new Map((data ?? []).map((r) => [r.key as string, r.value]));
+    return {
+      text: map.get("role_grant_terms") ? String(map.get("role_grant_terms")) : "Eres responsable del uso que esta persona haga del rol mientras lo tenga. Puedes revocarlo en cualquier momento.",
+      version: map.get("role_grant_terms_version") ? String(map.get("role_grant_terms_version")) : "2026-05-v1",
+    };
   });
 }
 

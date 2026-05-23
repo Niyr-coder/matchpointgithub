@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MATCHPOINT — Quedadas · Pantalla principal (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  /* ── Design tokens (extraídos de globals.css) ─────────────────────────── */
+  :root{
+    --ease-out:cubic-bezier(0.23,1,0.32,1);
+    --bg:#fafafa; --card:#fff; --border:#e5e5e5; --muted:#f5f5f5;
+    --muted-fg:#737373; --fg:#0a0a0a;
+    --primary:#10b981; --primary-hover:#059669;
+    --color-mp-primary-active:#047857; --color-mp-primary-light:#d1fae5;
+    --success-bg:#f0fdf4; --success-fg:#16a34a; --success-border:#bbf7d0;
+    --destructive-bg:#fef2f2; --destructive-fg:#dc2626; --destructive-border:#fecaca;
+    --radius-mp-card:14.4px;
+    --font-heading:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
+    --font-sans:"Inter",ui-sans-serif,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-sans);font-size:14px;-webkit-font-smoothing:antialiased}
+  .font-heading{font-family:var(--font-heading)}
+  .label-mp{font-size:10px;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted-fg)}
+  .tabular{font-variant-numeric:tabular-nums}
+  .dot{color:var(--primary)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14.4px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:9999px;padding:10px 18px;font-weight:900;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;border:0;white-space:nowrap;cursor:pointer;font-family:var(--font-sans);transition:background 150ms ease,border-color 150ms ease,transform 160ms var(--ease-out)}
+  .btn:active{transform:scale(0.97)}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:var(--primary-hover)}
+  .btn-outline{background:transparent;color:#0a0a0a;border:1.5px solid var(--border);padding:8.5px 16.5px}
+  @keyframes mpRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .mp-rise{animation:mpRise 280ms var(--ease-out) both}
+  .lucide{width:1em;height:1em;stroke-width:2.2}
+  /* layout del mockup */
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 60px}
+  .tabs{display:inline-flex;gap:4px;background:var(--muted);padding:4px;border-radius:9999px;margin:18px 0}
+  .tab{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:9999px;border:0;background:transparent;color:var(--muted-fg);font-weight:600;font-size:13px;font-family:inherit;cursor:pointer}
+  .tab.on{background:#fff;color:var(--fg);font-weight:800;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .tab .n{font-size:11px;font-weight:900;padding:1px 7px;border-radius:9999px;background:transparent;border:1px solid var(--border);color:var(--muted-fg)}
+  .tab.on .n{background:var(--fg);color:#fff;border:0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:9999px;font-size:11px;font-weight:800}
+  .tile{border:1px solid var(--border);border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .tile .k{font-size:9.5px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg)}
+  .tile .v{font-size:18px;font-weight:900;letter-spacing:-.02em}
+  ul{margin:0;padding-left:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="font-heading" style="margin:0;font-size:26px;font-weight:900;letter-spacing:-.02em;text-transform:uppercase">Quedadas<span class="dot">.</span></h1>
+  <p style="margin:6px 0 0;font-size:13px;color:var(--muted-fg)">Juego social: arma una junta, juega y publica resultados.</p>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab"><i data-lucide="party-popper"></i> Descubrir <span class="n">3</span></button>
+    <button class="tab on"><i data-lucide="settings"></i> Organizo <span class="n">2</span></button>
+    <button class="tab"><i data-lucide="calendar-days"></i> Tu calendario <span class="n">1</span></button>
+  </div>
+
+  <!-- OrganizerFinanceCard -->
+  <div class="card mp-rise" style="padding:16px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i data-lucide="wallet" style="color:var(--muted-fg);font-size:15px"></i>
+      <span class="font-heading" style="font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:.02em">Tu actividad como organizador</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+      <div class="tile"><span class="k">Recaudado</span><span class="v tabular" style="color:var(--success-fg)">$84.00</span></div>
+      <div class="tile"><span class="k">Pendiente</span><span class="v tabular" style="color:#b45309">$24.00</span></div>
+      <div class="tile"><span class="k">Quedadas</span><span class="v tabular" style="color:var(--muted-fg)">5</span></div>
+      <div class="tile"><span class="k">Inscritos</span><span class="v tabular" style="color:var(--muted-fg)">36</span></div>
+      <div class="tile"><span class="k">% cobro</span><span class="v tabular">78%</span></div>
+      <div class="tile"><span class="k">Asistencia prom.</span><span class="v tabular" style="color:var(--muted-fg)">7.2</span></div>
+    </div>
+    <span style="font-size:10.5px;color:var(--muted-fg)">Recaudado estimado por cuota × pagados (pago offline). Promedio de inscritos por quedada.</span>
+  </div>
+
+  <!-- Grid de tarjetas -->
+  <div class="grid">
+
+    <!-- Card 1: organizada, en vivo -->
+    <div class="mp-rise" style="height:100%">
+      <div class="card" style="padding:0;height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;cursor:pointer">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="chip" style="background:var(--color-mp-primary-light);color:var(--color-mp-primary-active)">● En vivo</span>
+            <span class="chip" style="background:var(--muted);color:var(--muted-fg)">Americano · Dobles</span>
+            <span class="chip" style="background:#0a0a0a;color:#fff">Organizas</span>
+          </div>
+          <div class="font-heading" style="font-size:17px;font-weight:900;letter-spacing:-.01em">Americano del sábado</div>
+          <div style="background:var(--muted);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:#1f2937">
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="calendar-days" style="color:var(--muted-fg)"></i> Sáb 24 may · 16:00</div>
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="map-pin" style="color:var(--muted-fg)"></i> Club Los Chillos</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:5px">
+                <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="users" style="color:var(--muted-fg)"></i> Cupo 12/16</div>
+                <div style="height:5px;border-radius:9999px;background:rgba(0,0,0,.08);overflow:hidden"><div style="height:100%;width:75%;background:var(--primary);border-radius:9999px"></div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px">
+                <i data-lucide="ticket" style="color:var(--muted-fg)"></i>
+                <span class="font-heading" style="font-size:15px;font-weight:900">$8</span>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:var(--color-mp-primary-active);display:flex;gap:6px;align-items:start">
+            <i data-lucide="sparkles" style="color:#10b981;margin-top:1px"></i><span>Hidratación + premio al campeón</span>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:12px;display:flex;align-items:center;gap:8px;background:var(--muted)">
+          <button class="btn btn-primary" style="flex:1"><i data-lucide="settings"></i> Gestionar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: abierta para unirse -->
+    <div class="mp-rise" style="height:100%">
+      <div class="card" style="padding:0;height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;cursor:pointer">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="chip" style="background:var(--muted);color:var(--muted-fg)">Inscripción abierta</span>
+            <span class="chip" style="background:var(--muted);color:var(--muted-fg)">Mexicano · Dobles</span>
+          </div>
+          <div class="font-heading" style="font-size:17px;font-weight:900;letter-spacing:-.01em">Mexicano nocturno</div>
+          <div style="background:var(--muted);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:#1f2937">
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="calendar-days" style="color:var(--muted-fg)"></i> Vie 30 may · 20:00</div>
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="map-pin" style="color:var(--muted-fg)"></i> Arena Cumbayá</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px;display:flex;flex-direction:column;gap:5px">
+                <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="users" style="color:var(--muted-fg)"></i> Cupo 6/12</div>
+                <div style="height:5px;border-radius:9999px;background:rgba(0,0,0,.08);overflow:hidden"><div style="height:100%;width:50%;background:var(--primary);border-radius:9999px"></div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px">
+                <i data-lucide="ticket" style="color:var(--muted-fg)"></i>
+                <span class="font-heading" style="font-size:15px;font-weight:900;color:var(--color-mp-primary-active)">Gratis</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:12px;display:flex;align-items:center;gap:8px;background:var(--muted)">
+          <button class="btn btn-primary" style="flex:1"><i data-lucide="plus"></i> Inscribirme</button>
+          <button class="btn btn-outline" aria-label="Más"><i data-lucide="more-horizontal"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: cancelada (con X de borrar) -->
+    <div class="mp-rise" style="height:100%">
+      <div class="card" style="padding:0;height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden;opacity:.78">
+        <button aria-label="Borrar" style="position:absolute;top:10px;right:10px;z-index:2;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;border:1px solid var(--destructive-border);background:#fff;color:var(--destructive-fg);cursor:pointer"><i data-lucide="x"></i></button>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:10px;flex:1">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="chip" style="background:var(--destructive-bg);color:var(--destructive-fg)">Cancelada</span>
+            <span class="chip" style="background:var(--muted);color:var(--muted-fg)">Round Robin · Dobles</span>
+            <span class="chip" style="background:#0a0a0a;color:#fff">Organizas</span>
+          </div>
+          <div class="font-heading" style="font-size:17px;font-weight:900;letter-spacing:-.01em">Round robin de prueba</div>
+          <div style="background:var(--muted);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:#1f2937">
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="calendar-days" style="color:var(--muted-fg)"></i> Dom 18 may · 10:00</div>
+            <div style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="users" style="color:var(--muted-fg)"></i> Cupo 4/8</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:12px;display:flex;align-items:center;gap:8px;background:var(--muted)">
+          <button class="btn" style="flex:1;background:#fff;border:1px solid var(--border)"><i data-lucide="copy"></i> Duplicar</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

@@ -1,8 +1,10 @@
 // Panel de gestión del organizador de una Quedada (juego social).
 //
-// Se renderiza como PÁGINA (variant="page", default de la ruta
-// /dashboard/[role]/quedada/[id]) o como modal (variant="modal"). En página no
-// recibe onClose: el botón "Volver" navega a la lista. Recibe `quedadaId`.
+// Se renderiza como PÁGINA bajo /dashboard/[role]/quedada/[id]. El layout es
+// estilo pantalla de rol: un header suelto (degradado) con título + descripción
+// + cards de stats, debajo la barra de navegación (Gestión/Juego + sub-tabs) y
+// el contenido como cards sobre el fondo de página. El botón "Volver" navega a
+// la lista. Recibe `quedadaId`.
 // Al montar llama `getQuedadaManageData` → estado. Header con stats + tabs:
 //   • Resumen  — datos clave, link de inscripción (compartir), premios.
 //   • Parejas  — categorías con "cupos" numerados; asignar pareja (A/B en dobles,
@@ -31,19 +33,28 @@ import {
   autoAssignCategory,
   removePair,
   setParticipantPaid,
+  setParticipantCheckedIn,
+  setAllCheckedIn,
+  remindQuedadaPayment,
+  getQuedadaPlayerHistory,
+  updateQuedadaDetails,
+  regenerateInviteCode,
   updateQuedadaLogistics,
   addCohost,
   removeCohost,
   setQuedadaStatus,
   setQuedadaResults,
   cancelQuedada,
-  generateGroupStage,
-  generateMedalFinal,
+  generateAmericanoRound,
+  reportGame,
+  deleteRound,
   finishQuedada,
-  reportQuedadaMatch,
-  deleteQuedadaMatch,
+  startAmericanoRolling,
+  reportRollingGame,
 } from "@/server/actions/quedadas";
-import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
+import { QuedadaGameView } from "./QuedadaGameView";
+import { individualStandings, type StandingRow, type GameForStandings } from "@/lib/quedadas/standings";
+import type { PaymentAccount, Prize, QuedadaRule } from "@/lib/schemas/quedadas";
 import {
   BankAccountFields,
   accountToBankDraft,
@@ -52,6 +63,7 @@ import {
   type BankDraft,
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizesToDrafts, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
+import { RulesEditor, rulesToDrafts, ruleDraftsToRules, type RuleDraft } from "./quedada-fields/RulesEditor";
 import { SUMA_MIN, SUMA_MAX, parseSuma, sumaLabel } from "@/lib/quedadas/level";
 import { Skeleton as SkBar } from "@/components/ui/Skeleton";
 
@@ -62,6 +74,7 @@ type ManageQuedada = {
   title: string;
   description: string | null;
   format: string;
+  engine_mode: "rounds" | "rolling";
   match_mode: "singles" | "doubles";
   visibility: "open" | "private";
   status: string;
@@ -73,8 +86,10 @@ type ManageQuedada = {
   courts_count: number | null;
   hours: number | null;
   court_price_cents: number | null;
+  target_points: number | null;
   payment_account: PaymentAccount | null;
   prizes: Prize[] | null;
+  rules: QuedadaRule[] | null;
   payment_info: string | null; // deprecado
   prizes_text: string | null; // deprecado
   invite_code: string | null;
@@ -86,6 +101,7 @@ type ManageCategory = {
   starts_at: string | null;
   court_label: string | null;
   max_slots: number | null;
+  target_points: number | null;
   sort_order: number;
 };
 type ManagePair = {
@@ -99,6 +115,8 @@ type ManageParticipant = {
   user_id: string;
   status: string;
   paid: boolean;
+  checked_in_at: string | null;
+  payment_reminded_at: string | null;
   points: number | null;
   final_rank: number | null;
   profiles: { display_name: string | null; username: string | null } | null;
@@ -107,20 +125,28 @@ type ManageCohost = {
   user_id: string;
   profiles: { display_name: string | null; username: string | null } | null;
 };
-type ManageMatch = {
+type ManageRound = {
   id: string;
   category_id: string;
-  group_no: number;
-  court_no: number | null;
   round_no: number;
-  phase: string; // 'groups' | 'final'
-  bracket_pos: number | null;
-  is_bronze: boolean;
-  pair_a_id: string | null;
-  pair_b_id: string | null;
+  status: string; // 'scheduled' | 'active' | 'done'
+};
+type ManageGame = {
+  id: string;
+  category_id: string;
+  round_id: string | null;
+  round_no: number | null;
+  court_no: number | null;
+  court_match_no: number | null;
+  side_a_p1: string;
+  side_a_p2: string | null;
+  side_b_p1: string;
+  side_b_p2: string | null;
   points_a: number | null;
   points_b: number | null;
-  status: string;
+  status: string; // 'scheduled' | 'played'
+  created_at: string;
+  updated_at: string;
 };
 type ManageData = {
   quedada: ManageQuedada;
@@ -131,7 +157,8 @@ type ManageData = {
   pairs: ManagePair[];
   participants: ManageParticipant[];
   cohosts: ManageCohost[];
-  matches: ManageMatch[];
+  rounds: ManageRound[];
+  games: ManageGame[];
 };
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -143,7 +170,7 @@ const FORMAT_LABEL: Record<string, string> = {
   libre: "Libre",
 };
 
-type TabKey = "resumen" | "parejas" | "partidos" | "posiciones" | "pagos" | "resultados" | "config";
+type TabKey = "resumen" | "parejas" | "juego" | "pagos" | "resultados" | "config";
 
 function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -152,13 +179,30 @@ function quedadaStatusMeta(status: string): { label: string; bg: string; fg: str
     case "registration_closed":
       return { label: "Cerrada", bg: "rgba(251,191,36,0.22)", fg: "#fef3c7" };
     case "live":
-      return { label: "En curso", bg: "rgba(14,165,233,0.22)", fg: "#e0f2fe" };
+      return { label: "En vivo", bg: "rgba(14,165,233,0.22)", fg: "#e0f2fe" };
     case "finished":
       return { label: "Finalizada", bg: "rgba(255,255,255,0.16)", fg: "#fff" };
     case "cancelled":
       return { label: "Cancelada", bg: "rgba(239,68,68,0.25)", fg: "var(--destructive-border)" };
     default:
       return { label: status, bg: "rgba(255,255,255,0.16)", fg: "#fff" };
+  }
+}
+
+// Color sólido del estado, legible sobre fondo CLARO (la card de Estado vive
+// fuera del banner). El `fg` de quedadaStatusMeta es para fondo oscuro.
+function quedadaStatusSolid(status: string): string {
+  switch (status) {
+    case "registration_open":
+      return "var(--primary)";
+    case "registration_closed":
+      return "#d97706";
+    case "live":
+      return "#0284c7";
+    case "cancelled":
+      return "#dc2626";
+    default:
+      return "var(--fg)";
   }
 }
 
@@ -173,15 +217,17 @@ function HeaderBtn({
   onClick: () => void;
   disabled?: boolean;
   icon: string;
-  tone?: "neutral" | "primary" | "danger";
+  tone?: "neutral" | "primary" | "danger" | "ghost";
 }) {
-  // Botones sólidos (sin glass) según su función.
+  // Botones sólidos (sin glass) según su función; "ghost" = outline sobre el banner.
   const palette =
     tone === "danger"
       ? { bg: "#dc2626", fg: "#fff", border: "#dc2626" }
       : tone === "primary"
         ? { bg: "var(--primary)", fg: "#fff", border: "var(--primary)" }
-        : { bg: "#fff", fg: "var(--fg)", border: "#fff" };
+        : tone === "ghost"
+          ? { bg: "transparent", fg: "#fff", border: "rgba(255,255,255,0.45)" }
+          : { bg: "#fff", fg: "var(--fg)", border: "#fff" };
   return (
     <button
       type="button"
@@ -211,11 +257,1042 @@ function HeaderBtn({
   );
 }
 
-function StatChip({ label, value }: { label: string; value: string }) {
+// Card de stat para el FONDO DE PÁGINA (claro), fuera del banner. Label arriba,
+// valor grande abajo. Valores numéricos cortos lucen grandes; los de texto
+// (Estado/Formato) bajan un poco para no desbordar.
+function StatCard({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
+  const isText = !/^[\d/.$]+$/.test(value);
   return (
-    <div style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
-      <div className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: "#fff" }}>{value}</div>
-      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.62)", marginTop: 4 }}>{label}</div>
+    <div className="card" style={{ padding: "13px 15px" }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
+      <div className="font-heading" style={{ fontSize: isText ? 18 : 22, fontWeight: 900, lineHeight: 1.15, marginTop: 5, color: valueColor ?? "var(--fg)" }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// Matchup como CANCHA de pickleball (vista superior): equipo A en los cuadrantes
+// izquierdos, equipo B en los derechos, "vs" sobre la red. La cancha se dibuja con
+// líneas vectoriales finas (stroke no-escalable → grosor constante en px).
+function CourtMatchup({ teamA, teamB, nameSize = 12 }: { teamA: string[]; teamB: string[]; nameSize?: number }) {
+  // Centros (% del viewBox 480×224) de los 4 cuadrantes de servicio.
+  const spots = [
+    { x: 18.5, y: 26.5, name: teamA[0] },
+    { x: 18.5, y: 73.5, name: teamA[1] },
+    { x: 81.5, y: 26.5, name: teamB[0] },
+    { x: 81.5, y: 73.5, name: teamB[1] },
+  ].filter((s): s is { x: number; y: number; name: string } => !!s.name);
+  const lineProps = { stroke: "var(--border)", strokeWidth: 1.5, vectorEffect: "non-scaling-stroke" as const };
+  return (
+    <div style={{ position: "relative", marginTop: 10 }}>
+      <svg viewBox="0 0 480 224" width="100%" style={{ display: "block" }}>
+        <g fill="none" strokeLinejoin="miter">
+          {/* perímetro */}
+          <rect x={6} y={6} width={468} height={212} {...lineProps} />
+          {/* red (centro) */}
+          <line x1={240} y1={6} x2={240} y2={218} {...lineProps} />
+          {/* líneas de cocina (a cada lado de la red) */}
+          <line x1={170} y1={6} x2={170} y2={218} {...lineProps} />
+          <line x1={310} y1={6} x2={310} y2={218} {...lineProps} />
+          {/* líneas centrales de servicio (baseline → cocina) */}
+          <line x1={6} y1={112} x2={170} y2={112} {...lineProps} />
+          <line x1={310} y1={112} x2={474} y2={112} {...lineProps} />
+        </g>
+      </svg>
+      {spots.map((s, i) => {
+        const parts = s.name.split(" ");
+        const first = parts[0];
+        const rest = parts.slice(1).join(" ");
+        return (
+          <div
+            key={i}
+            className="font-heading"
+            style={{
+              position: "absolute",
+              left: `${s.x}%`,
+              top: `${s.y}%`,
+              transform: "translate(-50%,-50%)",
+              maxWidth: "28%",
+              textAlign: "center",
+              fontSize: nameSize,
+              fontWeight: 800,
+              lineHeight: 1.2,
+              color: "var(--fg)",
+            }}
+          >
+            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{first}</span>
+            {rest && <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{rest}</span>}
+          </div>
+        );
+      })}
+      {/* "vs" verde sobre la red */}
+      <span
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%,-50%)",
+          fontSize: 10,
+          fontWeight: 900,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "#fff",
+          background: "var(--primary)",
+          padding: "3px 8px",
+          borderRadius: 9999,
+        }}
+      >
+        vs
+      </span>
+    </div>
+  );
+}
+
+type PrevMatch = { seqNo: number; teamA: string[]; teamB: string[]; pointsA: number | null; pointsB: number | null; durationMs: number | null };
+type CourtMatch = {
+  gameId: string;
+  seqNo: number; // round_no (modo rondas) o court_match_no (modo rolling)
+  courtNo: number | null;
+  teamA: string[];
+  teamB: string[];
+  played: boolean;
+  pointsA: number | null;
+  pointsB: number | null;
+  startedAt: string; // created_at del partido (para el cronómetro en vivo)
+  prev: PrevMatch | null; // último partido jugado antes en esa cancha (historial)
+};
+
+// Marcador EDITABLE inline: dos números (0 por defecto) que se editan al clic; al
+// tocar aparece el check para guardar (también Enter). Keyed por gameId en el
+// padre → se reinicia al cambiar de cancha. Sin botón "Cargar marcador".
+const MAX_POINTS = 21; // tope de puntos por lado en el marcador
+
+// Duración como reloj M:SS (o H:MM:SS) para el cronómetro en vivo.
+function fmtClock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+// Duración estática en minutos ("12 min").
+function fmtDurMin(ms: number): string {
+  const min = Math.round(ms / 60000);
+  return min < 1 ? "<1 min" : `${min} min`;
+}
+// Cronómetro en vivo: tiempo transcurrido desde `since` (created_at del partido).
+function LiveTimer({ since }: { since: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const start = Date.parse(since);
+  return <span className="tabular">{fmtClock(Number.isNaN(start) ? 0 : now - start)}</span>;
+}
+
+function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number | null; initialB: number | null; saving: boolean; onSave: (a: number, b: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [a, setA] = useState(String(initialA ?? 0));
+  const [b, setB] = useState(String(initialB ?? 0));
+  const [touched, setTouched] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const na = parseInt(a, 10);
+  const nb = parseInt(b, 10);
+  const valid = Number.isFinite(na) && Number.isFinite(nb) && na >= 0 && nb >= 0 && na <= MAX_POINTS && nb <= MAX_POINTS;
+  const save = () => {
+    if (valid && !saving && !submitted) {
+      setSubmitted(true); // feedback inmediato (baja opacidad) al guardar
+      onSave(na, nb);
+    }
+  };
+  const busy = submitted || saving;
+
+  // Vista por defecto: marcador estático + lapicito (clickeable) a la izquierda,
+  // fuera del flujo para no descentrar el marcador.
+  if (!editing) {
+    return (
+      <div style={{ position: "relative", display: "inline-flex", alignItems: "center", opacity: busy ? 0.45 : 1, transition: "opacity 150ms var(--ease-out)" }}>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={busy}
+          aria-label="Editar marcador"
+          className="mp-edit-pencil"
+          style={{ position: "absolute", right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: 8, border: 0, background: "transparent", padding: 0, lineHeight: 0, cursor: busy ? "default" : "pointer" }}
+        >
+          <Icon name="pencil" size={13} color="currentColor" />
+        </button>
+        <span className="font-heading tabular" style={{ fontSize: 26, fontWeight: 900, lineHeight: 1 }}>
+          {Number.isFinite(na) ? na : 0}
+          <span style={{ color: "var(--primary)", margin: "0 4px" }}>–</span>
+          {Number.isFinite(nb) ? nb : 0}
+        </span>
+      </div>
+    );
+  }
+
+  const cell: React.CSSProperties = {
+    width: 40,
+    textAlign: "center",
+    fontFamily: "var(--font-heading, inherit)",
+    fontSize: 26,
+    fontWeight: 900,
+    lineHeight: 1,
+    color: "var(--fg)",
+    background: "transparent",
+    border: 0,
+    borderBottom: "2px dashed var(--border)",
+    outline: "none",
+    padding: "2px 0",
+    cursor: "text",
+  };
+  // Clamp a 0..MAX_POINTS (no se pueden ingresar más de 21 puntos).
+  const handle = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === "") {
+      set("");
+    } else {
+      const n = parseInt(raw, 10);
+      set(Number.isFinite(n) ? String(Math.max(0, Math.min(MAX_POINTS, n))) : "");
+    }
+    setTouched(true);
+  };
+  // Al salir del editor: guarda si se editó y vuelve a la vista estática. Enter guarda.
+  const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      if (touched) save();
+      setEditing(false);
+    }
+  };
+  return (
+    <div onBlur={onBlur} style={{ display: "inline-flex", alignItems: "center", gap: 2, opacity: busy ? 0.45 : 1, pointerEvents: busy ? "none" : undefined, transition: "opacity 150ms var(--ease-out)" }}>
+      <input type="number" min={0} max={MAX_POINTS} autoFocus className="mp-no-spin" value={a} onChange={handle(setA)} onFocus={(e) => e.currentTarget.select()} onKeyDown={(e) => e.key === "Enter" && save()} aria-label="Puntos lado A" style={{ ...cell, textAlign: "right" }} />
+      <span className="font-heading" style={{ fontSize: 20, fontWeight: 900, color: "var(--primary)" }}>–</span>
+      <input type="number" min={0} max={MAX_POINTS} className="mp-no-spin" value={b} onChange={handle(setB)} onFocus={(e) => e.currentTarget.select()} onKeyDown={(e) => e.key === "Enter" && save()} aria-label="Puntos lado B" style={{ ...cell, textAlign: "left" }} />
+    </div>
+  );
+}
+
+// Card del header con CARRUSEL MANUAL de partidos en cancha (uno por cancha).
+// El organizador navega con flechas/puntos. Cada cancha muestra su estado
+// ("En juego" / "Libre"); en juego el marcador es editable inline (0-0 al clic) →
+// al guardar, el motor rolling asigna el siguiente partido en esa cancha.
+function MatchCarouselCard({
+  matches,
+  emptyTitle,
+  emptySub,
+  seqWord,
+  canReport,
+  reporting,
+  onReport,
+  courtMaxWidth,
+  courtNameSize,
+  showPrev = true,
+}: {
+  matches: CourtMatch[];
+  emptyTitle: string;
+  emptySub: string;
+  seqWord: string;
+  canReport: boolean;
+  reporting: boolean;
+  onReport: (gameId: string, a: number, b: number) => void;
+  courtMaxWidth?: number;
+  courtNameSize?: number;
+  showPrev?: boolean;
+}) {
+  const [idx, setIdx] = useState(0);
+  const n = matches.length;
+  const active = n ? Math.min(idx, n - 1) : 0;
+  const freeCount = matches.filter((m) => m.played).length;
+
+  return (
+    <div className="card" style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden", padding: 20, display: "flex", flexDirection: "column", gap: 10, color: "var(--fg)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+          {n > 1 ? "Partidos en cancha" : "Siguiente partido"}
+        </span>
+        {freeCount > 0 && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--success-fg)", background: "var(--success-bg)", padding: "3px 8px", borderRadius: 9999 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success-fg)" }} />
+            {freeCount} libre{freeCount > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {n === 0 ? (
+        <div style={{ padding: "24px 0" }}>
+          <div className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase" }}>{emptyTitle}</div>
+          <div style={{ fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.5, marginTop: 2 }}>{emptySub}</div>
+        </div>
+      ) : (
+        <>
+          {/* Viewport + track deslizante (un slide por cancha) */}
+          <div style={{ overflow: "hidden", minWidth: 0, width: "100%" }}>
+            <div style={{ display: "flex", alignItems: "stretch", transform: `translateX(-${active * 100}%)`, transition: "transform 300ms var(--ease-out)" }}>
+              {matches.map((m, i) => (
+                <div key={m.courtNo ?? i} inert={i !== active} style={{ flex: "0 0 100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
+                  {/* Contenido del partido actual (re-anima con fade al actualizarse) */}
+                  <div key={m.gameId} className="mp-match-in" style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.01em", minWidth: 0 }}>
+                        {seqWord} {m.seqNo}
+                        {m.courtNo ? <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted-fg)", textTransform: "none", marginLeft: 8 }}>· Cancha {m.courtNo}</span> : null}
+                      </div>
+                      {m.played ? (
+                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--success-fg)", background: "var(--success-bg)", padding: "4px 9px", borderRadius: 9999 }}>
+                          <Icon name="check" size={12} color="var(--success-fg)" /> Libre
+                        </span>
+                      ) : (
+                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", color: "#b45309", background: "rgba(251,191,36,0.18)", padding: "4px 9px", borderRadius: 9999 }}>
+                          <Icon name="clock" size={12} color="#b45309" /> <LiveTimer since={m.startedAt} />
+                        </span>
+                      )}
+                    </div>
+                    <div style={courtMaxWidth ? { maxWidth: courtMaxWidth, margin: "0 auto", width: "100%" } : undefined}>
+                      <CourtMatchup teamA={m.teamA} teamB={m.teamB} nameSize={courtNameSize} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 34 }}>
+                      {m.played ? (
+                        <span className="font-heading tabular" style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>
+                          {m.pointsA ?? 0}
+                          <span style={{ color: "var(--primary)", margin: "0 4px" }}>–</span>
+                          {m.pointsB ?? 0}
+                        </span>
+                      ) : canReport ? (
+                        <ScoreEditor key={m.gameId} initialA={m.pointsA} initialB={m.pointsB} saving={reporting} onSave={(a, b) => onReport(m.gameId, a, b)} />
+                      ) : (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-fg)" }}>Por jugar</span>
+                      )}
+                    </div>
+                    {/* Historial: partido anterior de esta cancha (mini-tabla 2 filas) */}
+                    {showPrev && (
+                    <div style={{ marginTop: "auto", borderTop: "1px dashed var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          Partido anterior{m.prev?.durationMs != null ? ` · ${fmtDurMin(m.prev.durationMs)}` : ""}
+                        </span>
+                        {m.prev && (
+                          <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900, color: "var(--fg)" }}>
+                            {m.prev.pointsA ?? 0}
+                            <span style={{ color: "var(--muted-fg)", margin: "0 2px" }}>–</span>
+                            {m.prev.pointsB ?? 0}
+                          </span>
+                        )}
+                      </div>
+                      {m.prev ? (
+                        (() => {
+                          const rows = Math.max(m.prev.teamA.length, m.prev.teamB.length);
+                          const cell = (i: number, side: "l" | "r"): React.CSSProperties => ({
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "var(--fg)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            minWidth: 0,
+                            padding: side === "r" ? "6px 12px 6px 0" : "6px 0 6px 12px",
+                            textAlign: side === "r" ? "right" : "left",
+                            borderBottom: i < rows - 1 ? "1px solid var(--border)" : undefined,
+                          });
+                          return (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center" }}>
+                              {m.prev.teamA.map((name, i) => (
+                                <span key={`a${i}`} style={{ ...cell(i, "r"), gridColumn: 1, gridRow: i + 1 }}>{name}</span>
+                              ))}
+                              <span style={{ gridColumn: 2, gridRow: `1 / span ${rows}`, alignSelf: "stretch", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 12px", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", fontSize: 9, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>vs</span>
+                              {m.prev.teamB.map((name, i) => (
+                                <span key={`b${i}`} style={{ ...cell(i, "l"), gridColumn: 3, gridRow: i + 1 }}>{name}</span>
+                              ))}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay partido anterior en esta cancha.</span>
+                      )}
+                    </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Navegación: cuadritos numerados por cancha */}
+          {n > 1 && (
+            <div style={{ display: "flex", gap: 4, justifyContent: "center", overflowX: "auto", flexShrink: 0 }}>
+              {matches.map((m, i) => {
+                const on = i === active;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setIdx(i)}
+                    aria-label={`Cancha ${m.courtNo ?? i + 1}`}
+                    style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : m.played ? "var(--success-bg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)", fontFamily: "var(--font-heading, inherit)", fontSize: 11, fontWeight: 900, cursor: "pointer", transition: "background 150ms var(--ease-out), color 150ms var(--ease-out)" }}
+                  >
+                    {m.courtNo ?? i + 1}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Tabla de posiciones (ranking individual del americano). Derivada de los games
+// jugados. Top 3 en color primary. Columnas: #, Jugador, PJ, V, PF, DIF.
+function StandingsCard({ rows, nameOf }: { rows: StandingRow[]; nameOf: (id: string) => string }) {
+  const cols = "26px minmax(0,1fr) 30px 28px 38px 42px";
+  const played = rows.some((r) => r.played > 0);
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+          Tabla de posiciones<span className="dot">.</span>
+        </h3>
+        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+        <span>#</span>
+        <span>Jugador</span>
+        <span style={{ textAlign: "center" }}>PJ</span>
+        <span style={{ textAlign: "center" }}>V</span>
+        <span style={{ textAlign: "center" }}>PF</span>
+        <span style={{ textAlign: "center" }}>DIF</span>
+      </div>
+      {rows.map((r, i) => (
+        <div key={r.userId} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px", fontSize: 13 }}>
+          <span className="font-heading tabular" style={{ fontWeight: 900, color: played && i < 3 ? "var(--primary)" : "var(--muted-fg)" }}>{i + 1}</span>
+          <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{nameOf(r.userId)}</span>
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.played}</span>
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.wins}</span>
+          <span className="tabular" style={{ textAlign: "center", fontWeight: 800 }}>{r.pf}</span>
+          <span className="tabular" style={{ textAlign: "center", color: r.diff > 0 ? "var(--success-fg)" : r.diff < 0 ? "var(--destructive-border)" : "var(--muted-fg)" }}>
+            {r.diff > 0 ? `+${r.diff}` : r.diff}
+          </span>
+        </div>
+      ))}
+      {!played && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", paddingTop: 2 }}>Aún sin partidos jugados.</div>}
+    </div>
+  );
+}
+
+type InsightData = {
+  playedN: number;
+  scheduledN: number;
+  totalPts: number;
+  avg: number;
+  closest: { a: number; b: number; court: number | null } | null;
+  longest: { ms: number; court: number | null } | null;
+  streakName: string | null;
+  streakN: number;
+};
+
+// Widget "Insight de juego": progreso de partidos, puntos/promedio y partido más
+// reñido. Todo derivado de los games de la categoría.
+function InsightCard({ playedN, scheduledN, totalPts, avg, closest, longest, streakName, streakN }: InsightData) {
+  const totalSet = playedN + scheduledN;
+  const pct = totalSet > 0 ? Math.round((playedN / totalSet) * 100) : 0;
+  const stat = (label: string, value: string) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</span>
+      <span className="font-heading tabular" style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>{value}</span>
+    </div>
+  );
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+      <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+        Insight de juego<span className="dot">.</span>
+      </h3>
+
+      {/* Progreso de partidos */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Progreso de partidos</span>
+          <span className="font-heading tabular" style={{ fontSize: 14, fontWeight: 900 }}>{playedN} jugados</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 9999, background: "var(--muted)", overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: "var(--primary)", borderRadius: 9999, transition: "width 320ms var(--ease-out)" }} />
+        </div>
+        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{scheduledN > 0 ? `${scheduledN} en cancha` : "Sin partidos en cancha"}</span>
+      </div>
+
+      {/* Puntos / promedio */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {stat("Puntos totales", String(totalPts))}
+        {stat("Promedio/partido", playedN > 0 ? avg.toFixed(1) : "—")}
+      </div>
+
+      {/* Jugador en racha */}
+      {streakName && (
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Jugador en racha</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <Icon name="flame" size={14} color="#f97316" />
+            <span style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{streakName}</span>
+            <span className="tabular" style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 800, color: "var(--muted-fg)" }}>{streakN} seguidos</span>
+          </span>
+        </div>
+      )}
+
+      {/* Partido más reñido */}
+      <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Partido más reñido</span>
+        {closest ? (
+          <span className="font-heading tabular" style={{ fontSize: 15, fontWeight: 900 }}>
+            {closest.a}<span style={{ color: "var(--primary)", margin: "0 3px" }}>–</span>{closest.b}
+            {closest.court ? <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted-fg)", marginLeft: 6 }}>· Cancha {closest.court}</span> : null}
+          </span>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>—</span>
+        )}
+      </div>
+
+      {/* Partido más largo (por duración) */}
+      <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Partido más largo</span>
+        {longest ? (
+          <span className="font-heading tabular" style={{ fontSize: 15, fontWeight: 900 }}>
+            {fmtDurMin(longest.ms)}
+            {longest.court ? <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted-fg)", marginLeft: 6 }}>· Cancha {longest.court}</span> : null}
+          </span>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type GameViewCards = {
+  roundNo: number;
+  scheduledN: number;
+  freeCourt: number | null;
+  leaderName: string | null;
+  leaderPf: number;
+  leaderDiff: number | null;
+  secondName: string | null;
+  cierre: string | null;
+};
+type HistoryItem = { id: string; label: string; court: number | null; teamA: string[]; teamB: string[]; a: number; b: number; durationMs: number | null };
+
+// Card "Partido anterior": último partido jugado por cancha, en modo tabla, con
+// footer de botones numerados (uno por cancha) para navegar.
+function LastMatchCard({ matches }: { matches: HistoryItem[] }) {
+  const [idx, setIdx] = useState(0);
+  const active = Math.min(idx, matches.length - 1);
+  const match = matches[active];
+  const rows = Math.max(match.teamA.length, match.teamB.length);
+  const cell = (i: number, side: "l" | "r"): React.CSSProperties => ({
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--fg)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+    padding: side === "r" ? "6px 12px 6px 0" : "6px 0 6px 12px",
+    textAlign: side === "r" ? "right" : "left",
+    borderBottom: i < rows - 1 ? "1px solid var(--border)" : undefined,
+  });
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+          Partido anterior<span className="dot">.</span>
+        </h3>
+        <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 16, fontWeight: 900 }}>
+          {match.a}<span style={{ color: "var(--primary)", margin: "0 3px" }}>–</span>{match.b}
+        </span>
+      </div>
+      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        Cancha {match.court ?? "—"} · {match.label}{match.durationMs != null ? ` · ${fmtDurMin(match.durationMs)}` : ""}
+      </span>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center" }}>
+        {match.teamA.map((name, i) => (
+          <span key={`a${i}`} style={{ ...cell(i, "r"), gridColumn: 1, gridRow: i + 1 }}>{name}</span>
+        ))}
+        <span style={{ gridColumn: 2, gridRow: `1 / span ${rows}`, alignSelf: "stretch", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 12px", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", fontSize: 9, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>vs</span>
+        {match.teamB.map((name, i) => (
+          <span key={`b${i}`} style={{ ...cell(i, "l"), gridColumn: 3, gridRow: i + 1 }}>{name}</span>
+        ))}
+      </div>
+
+      {/* Footer: una cancha por número */}
+      {matches.length > 1 && (
+        <div style={{ display: "flex", gap: 4, justifyContent: "center", overflowX: "auto", borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 2 }}>
+          {matches.map((mm, i) => {
+            const on = i === active;
+            return (
+              <button
+                key={mm.id}
+                type="button"
+                onClick={() => setIdx(i)}
+                aria-label={`Cancha ${mm.court ?? i + 1}`}
+                style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 6, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)", fontFamily: "var(--font-heading, inherit)", fontSize: 11, fontWeight: 900, cursor: "pointer", transition: "background 150ms var(--ease-out), color 150ms var(--ease-out)" }}
+              >
+                {mm.court ?? i + 1}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Contenido del tab "Partidos" (VISTA DE JUEGO): banner con carrusel grande, cards
+// de estado, todas las canchas, historial, y a la derecha tabla + insight.
+function PartidosTabView({
+  matches,
+  standings,
+  insights,
+  nameOf,
+  seqWord,
+  canReport,
+  reporting,
+  onReport,
+  cards,
+  history,
+  lastPerCourt,
+}: {
+  matches: CourtMatch[];
+  standings: StandingRow[];
+  insights: InsightData;
+  nameOf: (id: string) => string;
+  seqWord: string;
+  canReport: boolean;
+  reporting: boolean;
+  onReport: (gameId: string, a: number, b: number) => void;
+  cards: GameViewCards;
+  history: HistoryItem[];
+  lastPerCourt: HistoryItem[];
+}) {
+  return (
+    <div className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* Columna izquierda */}
+      <div style={{ flex: "1 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Banner VISTA DE JUEGO con carrusel grande */}
+        <div style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-mp-card, 14.4px)", padding: 22, background: "linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)", color: "#fff" }}>
+          <div className="label-mp" style={{ color: "var(--primary)" }}>● En vivo</div>
+          <h2 className="font-heading" style={{ margin: "8px 0 14px", fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+            Vista de juego<span style={{ color: "#34d399" }}>.</span>
+          </h2>
+          <MatchCarouselCard matches={matches} seqWord={seqWord} canReport={canReport} reporting={reporting} onReport={onReport} courtMaxWidth={620} courtNameSize={16} showPrev={false} emptyTitle="Canchas vacías" emptySub="Aún no hay partidos en cancha." />
+        </div>
+
+        {/* Cards de estado */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+          <StatCard label="Ronda actual" value={cards.roundNo > 0 ? String(cards.roundNo) : "—"} sub={`${cards.scheduledN} partido${cards.scheduledN === 1 ? "" : "s"} en progreso`} />
+          <StatCard label="Cancha libre" value={cards.freeCourt ? `Cancha ${cards.freeCourt}` : "—"} sub={cards.freeCourt ? "Lista para próxima rotación" : "Todas en juego"} />
+          <StatCard label="Líder" value={cards.leaderName ? `${cards.leaderName} · ${cards.leaderPf} PF` : "—"} sub={cards.leaderDiff != null && cards.secondName ? `+${cards.leaderDiff} sobre ${cards.secondName}` : "Sin datos aún"} />
+          <StatCard label="Cierre estimado" value={cards.cierre ?? "—"} sub={cards.cierre ? "Si no se añade ronda extra" : "Sin duración configurada"} />
+        </div>
+
+        {/* Todas las canchas */}
+        <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+            Todas las canchas<span className="dot">.</span>
+          </h3>
+          {matches.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin partidos en cancha.</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px,1fr))", gap: 14 }}>
+              {matches.map((m) => (
+                <div key={m.gameId} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span className="font-heading" style={{ fontSize: 13, fontWeight: 900, textTransform: "uppercase" }}>Cancha {m.courtNo ?? "—"}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: m.played ? "var(--success-fg)" : "#b45309" }}>{m.played ? "Libre" : `${seqWord} ${m.seqNo}`}</span>
+                  </div>
+                  <CourtMatchup teamA={m.teamA} teamB={m.teamB} />
+                  {m.played && (
+                    <span className="font-heading tabular" style={{ alignSelf: "center", fontSize: 16, fontWeight: 900 }}>
+                      {m.pointsA ?? 0}<span style={{ color: "var(--primary)", margin: "0 3px" }}>–</span>{m.pointsB ?? 0}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Historial de partidos */}
+        <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+            Historial de partidos<span className="dot">.</span>
+          </h3>
+          {history.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay partidos jugados.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {history.map((h, i) => (
+                <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 2px", borderBottom: i < history.length - 1 ? "1px solid var(--border)" : undefined }}>
+                  <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", minWidth: 64 }}>
+                    {h.label}{h.court ? ` · C${h.court}` : ""}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {h.teamA.join(" + ")} <span style={{ color: "var(--muted-fg)" }}>vs</span> {h.teamB.join(" + ")}
+                  </span>
+                  {h.durationMs != null && <span style={{ flexShrink: 0, fontSize: 11, color: "var(--muted-fg)" }}>{fmtDurMin(h.durationMs)}</span>}
+                  <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900 }}>
+                    {h.a}<span style={{ color: "var(--primary)", margin: "0 2px" }}>–</span>{h.b}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Columna derecha: tabla + insight */}
+      <div className="mp-quedada-side" style={{ maxWidth: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {lastPerCourt.length > 0 && <LastMatchCard matches={lastPerCourt} />}
+        {standings.length > 0 && <StandingsCard rows={standings} nameOf={nameOf} />}
+        <InsightCard {...insights} />
+      </div>
+    </div>
+  );
+}
+
+// Iniciales para el avatar (2 letras).
+function initialsOf(name: string): string {
+  const parts = name.split(" ").filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+type QuedadaPlayerHistory = {
+  appearances: number;
+  timesPaid: number;
+  totalPaidCents: number;
+  payRatePct: number;
+  attendanceRatePct: number;
+  lastJoinedAt: string | null;
+};
+
+// Contenido del tab "Jugadores": banner + seguimiento (lista con rendimiento,
+// estado, pago, categorías y reportar) + gestión de roster (SlotsSection).
+function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameOf: (id: string) => string; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [query, setQuery] = useState("");
+  const [cat, setCat] = useState<string>("all");
+  const [reportFor, setReportFor] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  // Asignación directa de cupo desde el chip "Sin cupo" (roster individual).
+  const [assignFor, setAssignFor] = useState<string | null>(null);
+  const [assigning, startAssign] = useTransition();
+  // Ficha del jugador (historial en MIS quedadas).
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [history, setHistory] = useState<QuedadaPlayerHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!historyFor) return;
+    let alive = true;
+    setHistory(null);
+    setHistoryLoading(true);
+    void getQuedadaPlayerHistory({ playerUserId: historyFor }).then((res) => {
+      if (!alive) return;
+      if (res.ok) setHistory(res.data);
+      setHistoryLoading(false);
+    });
+    return () => { alive = false; };
+  }, [historyFor]);
+
+  const joined = data.participants.filter((p) => p.status === "joined");
+  const multiCat = data.categories.length > 1;
+  // Roster individual (americano/singles): 1 jugador por cupo → asignación directa.
+  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+
+  // Categorías con al menos un cupo libre (para el picker de asignación directa).
+  // Devuelve [{ id, name, freeSlot }] con el cupo libre más bajo.
+  const categoriesWithFreeSlot = data.categories
+    .map((c) => {
+      const occupied = new Set(data.pairs.filter((pr) => pr.category_id === c.id).map((pr) => pr.slot_no));
+      const max = c.max_slots ?? 0;
+      let freeSlot = 0;
+      for (let n = 1; n <= max; n++) if (!occupied.has(n)) { freeSlot = n; break; }
+      return { id: c.id, name: c.name, freeSlot };
+    })
+    .filter((c) => c.freeSlot > 0);
+
+  const assignToCategory = (userId: string, categoryId: string, slotNo: number) => {
+    startAssign(async () => {
+      const res = await assignPair({ quedadaId: data.quedada.id, categoryId, slotNo, playerAId: userId, playerBId: null });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo asignar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Jugador asignado al cupo" });
+      setAssignFor(null);
+      await onChanged();
+    });
+  };
+
+  // Categorías por jugador (puede estar en varias → cada una es un pago).
+  const catsByPlayer = new Map<string, Set<string>>();
+  for (const pr of data.pairs) {
+    const add = (id: string | null) => {
+      if (!id) return;
+      const s = catsByPlayer.get(id) ?? new Set<string>();
+      s.add(pr.category_id);
+      catsByPlayer.set(id, s);
+    };
+    add(pr.player_a_id);
+    add(pr.player_b_id);
+  }
+  const catCount = (uid: string) => catsByPlayer.get(uid)?.size ?? 0;
+
+  const busy = new Set<string>();
+  // Partidos jugados / pendientes por jugador en ESTA quedada (seguimiento
+  // operativo, no ranking competitivo: nada de victorias / diferencia).
+  const playedById = new Map<string, number>();
+  const pendingById = new Map<string, number>();
+  for (const g of data.games) {
+    const players = [g.side_a_p1, g.side_a_p2, g.side_b_p1, g.side_b_p2].filter(Boolean) as string[];
+    if (g.status === "scheduled") players.forEach((x) => busy.add(x));
+    for (const uid of players) {
+      if (g.status === "played") playedById.set(uid, (playedById.get(uid) ?? 0) + 1);
+      else if (g.status === "scheduled") pendingById.set(uid, (pendingById.get(uid) ?? 0) + 1);
+    }
+  }
+  const catNameById = new Map(data.categories.map((c) => [c.id, c.name]));
+  const catNamesFor = (uid: string) => [...(catsByPlayer.get(uid) ?? [])].map((id) => catNameById.get(id) ?? "—");
+
+  const term = query.trim().toLowerCase();
+  const filtered = joined.filter((p) => {
+    if (cat !== "all" && !catsByPlayer.get(p.user_id)?.has(cat)) return false;
+    if (term && !nameOf(p.user_id).toLowerCase().includes(term)) return false;
+    return true;
+  });
+
+  // Chip de seguimiento: tono neutro / éxito / aviso según el estado.
+  const chip = (label: string, tone: "neutral" | "ok" | "warn" = "neutral") => {
+    const palette = {
+      neutral: { bg: "var(--muted)", fg: "var(--muted-fg)", bd: "var(--border)" },
+      ok: { bg: "var(--success-bg, #ecfdf5)", fg: "var(--success-fg)", bd: "var(--success-border, #a7f3d0)" },
+      warn: { bg: "#fff7ed", fg: "#b45309", bd: "#fed7aa" },
+    }[tone];
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 700, background: palette.bg, color: palette.fg, border: `1px solid ${palette.bd}`, whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+    );
+  };
+
+  const submitReport = () => {
+    const name = reportFor ? nameOf(reportFor) : "";
+    setReportFor(null);
+    setReason("");
+    toast({ icon: "flag", title: "Reporte registrado", sub: `${name} — demo, aún no se guarda.` });
+  };
+
+  return (
+    <div className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Banner */}
+      <div style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-mp-card, 14.4px)", padding: 22, background: "linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)", color: "#fff" }}>
+        <div className="label-mp" style={{ color: "var(--primary)" }}>● Gestión</div>
+        <h2 className="font-heading" style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+          Jugadores<span style={{ color: "#34d399" }}>.</span>
+        </h2>
+        <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.82)", marginTop: 8 }}>
+          {joined.length} inscrito{joined.length === 1 ? "" : "s"}
+          {data.categories.length > 0 ? ` · ${data.categories.length} categoría${data.categories.length === 1 ? "" : "s"}` : ""}
+        </div>
+      </div>
+
+      {/* Seguimiento + gestión de roster en 2 columnas (igual que el resto del panel) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 16, alignItems: "start" }}>
+      {/* Seguimiento a jugadores */}
+      <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+            Seguimiento a jugadores<span className="dot">.</span>
+          </h3>
+          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{filtered.length} de {joined.length}</span>
+        </div>
+
+        {/* Buscar + filtro por categoría */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <div style={{ flex: "1 1 200px", minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 9999, padding: "8px 14px" }}>
+            <Icon name="search" size={14} color="var(--muted-fg)" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar jugador…" style={{ flex: 1, minWidth: 0, border: 0, outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--fg)" }} />
+          </div>
+          {multiCat && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[{ id: "all", name: "Todas" }, ...data.categories.map((c) => ({ id: c.id, name: c.name }))].map((c) => {
+                const on = cat === c.id;
+                return (
+                  <button key={c.id} type="button" onClick={() => setCat(c.id)} style={{ padding: "6px 12px", borderRadius: 9999, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)", fontFamily: "inherit", fontSize: 11, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>{c.name}</button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {filtered.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: "8px 2px" }}>No hay jugadores que coincidan.</div>
+        ) : (
+          filtered.map((p, i) => {
+            const inCourt = busy.has(p.user_id);
+            const played = playedById.get(p.user_id) ?? 0;
+            const pending = pendingById.get(p.user_id) ?? 0;
+            const nc = catCount(p.user_id);
+            const catNames = catNamesFor(p.user_id);
+            const canAssign = nc === 0 && individualRoster && categoriesWithFreeSlot.length > 0;
+            const picking = assignFor === p.user_id;
+            return (
+              <div key={p.user_id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : undefined }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 2px" }}>
+                <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: "50%", background: "var(--muted)", border: "1px solid var(--border)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading, inherit)", fontSize: 12, fontWeight: 900, color: "var(--fg)" }}>{initialsOf(nameOf(p.user_id))}</span>
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.user_id)}</span>
+                  <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {chip(inCourt ? "En cancha" : "En banca", inCourt ? "warn" : "neutral")}
+                    {chip(p.paid ? "Pagado" : "Pago pendiente", p.paid ? "ok" : "warn")}
+                    {chip(pending > 0 ? `${played} jugados · ${pending} por jugar` : `${played} jugado${played === 1 ? "" : "s"}`)}
+                    {nc === 0
+                      ? canAssign
+                        ? (
+                          <button
+                            type="button"
+                            onClick={() => setAssignFor(picking ? null : p.user_id)}
+                            title="Asignar a un cupo"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 700, background: picking ? "var(--fg)" : "#fff7ed", color: picking ? "#fff" : "#b45309", border: `1px solid ${picking ? "var(--fg)" : "#fed7aa"}`, cursor: "pointer", whiteSpace: "nowrap" }}
+                          >
+                            <Icon name="plus" size={12} color={picking ? "#fff" : "#b45309"} /> Asignar cupo
+                          </button>
+                        )
+                        : chip("Sin cupo", "warn")
+                      : multiCat
+                        ? chip(catNames.join(" · "))
+                        : chip("Con cupo", "ok")}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFor(p.user_id)}
+                  aria-label={`Ver historial de ${nameOf(p.user_id)}`}
+                  title="Ver su historial en tus quedadas"
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
+                >
+                  <Icon name="history" size={13} color="var(--muted-fg)" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setReportFor(p.user_id); setReason(""); }}
+                  aria-label={`Reportar a ${nameOf(p.user_id)}`}
+                  title="Reportar comportamiento indebido"
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
+                >
+                  <Icon name="flag" size={13} color="var(--muted-fg)" />
+                </button>
+                </div>
+                {picking && (
+                  <div className="mp-tab-in" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 2px 12px 46px" }}>
+                    <span style={{ fontSize: 11, color: "var(--muted-fg)", alignSelf: "center" }}>Asignar a:</span>
+                    {categoriesWithFreeSlot.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={assigning}
+                        onClick={() => assignToCategory(p.user_id, c.id, c.freeSlot)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 11px", borderRadius: 9999, fontSize: 11, fontWeight: 800, background: "#fff", color: "var(--fg)", border: "1px solid var(--border)", cursor: assigning ? "default" : "pointer", opacity: assigning ? 0.6 : 1, whiteSpace: "nowrap" }}
+                      >
+                        {c.name} <span style={{ color: "var(--muted-fg)" }}>· cupo {c.freeSlot}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Gestión de roster (asignar a categorías / cupos) */}
+      <SlotsSection data={data} onChanged={onChanged} />
+      </div>
+
+      {/* Modal de reporte (solo UI por ahora) */}
+      {reportFor && (
+        <div className="mp-modal-backdrop" onClick={() => setReportFor(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div className="mp-modal-panel card" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, padding: 22, display: "flex", flexDirection: "column", gap: 12, background: "#fff" }}>
+            <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+              Reportar jugador<span className="dot">.</span>
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)" }}>
+              Reportando a <b style={{ color: "var(--fg)" }}>{nameOf(reportFor)}</b> por comportamiento indebido.
+            </p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Motivo del reporte (opcional)…"
+              rows={3}
+              style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10, fontFamily: "inherit", fontSize: 13, outline: "none", background: "#fff", color: "var(--fg)", resize: "vertical" }}
+            />
+            <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>Demo: el reporte aún no se guarda ni se notifica.</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setReportFor(null)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Cancelar</button>
+              <button type="button" onClick={submitReport} className="btn" style={{ background: "#dc2626", color: "#fff", border: "1px solid #dc2626" }}>
+                <Icon name="flag" size={13} color="#fff" /> Reportar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ficha del jugador: su historial en TUS quedadas */}
+      {historyFor && (
+        <div className="mp-modal-backdrop" onClick={() => setHistoryFor(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div className="mp-modal-panel card" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, padding: 22, display: "flex", flexDirection: "column", gap: 14, background: "#fff" }}>
+            <div>
+              <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+                {nameOf(historyFor)}<span className="dot">.</span>
+              </h3>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Su historial en todas tus quedadas.</p>
+            </div>
+            {historyLoading || !history ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[0, 1, 2, 3].map((i) => <SkBar key={i} w="100%" h={52} r={10} />)}
+              </div>
+            ) : history.appearances === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>Aún no ha participado en ninguna de tus quedadas.</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Participaciones</span>
+                    <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900 }}>{history.appearances}</span>
+                  </div>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Total pagado</span>
+                    <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900, color: "var(--success-fg)" }}>{money(history.totalPaidCents)}</span>
+                  </div>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>% de pago</span>
+                    <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900, color: history.payRatePct >= 80 ? "var(--success-fg)" : history.payRatePct >= 40 ? "#b45309" : "var(--destructive-border)" }}>{history.payRatePct}%</span>
+                  </div>
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>% asistencia</span>
+                    <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900 }}>{history.attendanceRatePct}%</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+                  Pagó {history.timesPaid} de {history.appearances} vez{history.appearances === 1 ? "" : "es"}.
+                </div>
+              </>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setHistoryFor(null)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -272,6 +1349,20 @@ function nameOf(p: { display_name: string | null; username: string | null } | nu
   if (!p) return "Jugador";
   return p.display_name || (p.username ? `@${p.username}` : "Jugador");
 }
+// Tiempo relativo legible respecto a `starts_at` ("Empieza en 3 días" /
+// "Empezó hace 2 h"). Para el subtítulo de la card Estado.
+function startRel(iso: string): string | undefined {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return undefined;
+  const diff = t - Date.now();
+  const future = diff >= 0;
+  const abs = Math.abs(diff);
+  const mins = Math.round(abs / 60000);
+  const hours = Math.floor(abs / 3600000);
+  const days = Math.floor(abs / 86400000);
+  const span = days >= 1 ? `${days} día${days > 1 ? "s" : ""}` : hours >= 1 ? `${hours} h` : `${Math.max(1, mins)} min`;
+  return future ? `Empieza en ${span}` : `Empezó hace ${span}`;
+}
 function hourLabel(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -280,18 +1371,10 @@ function hourLabel(iso: string | null): string {
 }
 
 
-export function QuedadaManagePanel({
-  quedadaId,
-  onClose,
-  variant = "modal",
-}: {
-  quedadaId: string;
-  onClose?: () => void;
-  variant?: "modal" | "page";
-}) {
+export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const router = useRouter();
-  // En modo página no se pasa onClose: el botón "Volver" navega a la lista.
-  const close = onClose ?? (() => router.push("/dashboard/user/quedadas"));
+  // "Volver" navega a la lista de quedadas.
+  const close = () => router.push("/dashboard/user/quedadas");
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [busy, startBusy] = useTransition();
@@ -300,6 +1383,8 @@ export function QuedadaManagePanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("resumen");
   const [section, setSection] = useState<"gestion" | "juego">("gestion");
+  // Tabs de nivel de página (arriba del banner): cambian toda la interfaz.
+  const [pageTab, setPageTab] = useState<"resumen" | "partidos" | "roster" | "pagos" | "config">("resumen");
 
   const reload = useCallback(async () => {
     const res = await getQuedadaManageData({ quedadaId });
@@ -332,7 +1417,8 @@ export function QuedadaManagePanel({
       { table: "quedada_pairs", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_participants", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_categories", filter: `quedada_id=eq.${quedadaId}` },
-      { table: "quedada_matches", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_rounds", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_games", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedadas", filter: `id=eq.${quedadaId}` },
     ],
     {
@@ -385,6 +1471,62 @@ export function QuedadaManagePanel({
     [data, quedadaId, toast],
   );
 
+  // Check-in de asistencia (informativo; optimista, best-effort).
+  const toggleCheckedIn = useCallback(
+    (userId: string) => {
+      const cur = !!data?.participants.find((p) => p.user_id === userId)?.checked_in_at;
+      const next = cur ? null : new Date().toISOString();
+      setData((d) =>
+        d ? { ...d, participants: d.participants.map((p) => (p.user_id === userId ? { ...p, checked_in_at: next } : p)) } : d,
+      );
+      void setParticipantCheckedIn({ quedadaId, userId, checkedIn: !cur }).then((res) => {
+        if (!res.ok) {
+          setData((d) =>
+            d ? { ...d, participants: d.participants.map((p) => (p.user_id === userId ? { ...p, checked_in_at: cur ? new Date().toISOString() : null } : p)) } : d,
+          );
+          toast({ icon: "alert-triangle", title: "No se pudo registrar el check-in", sub: res.error.message });
+        }
+      });
+    },
+    [data, quedadaId, toast],
+  );
+
+  const setAllCheckedInLocal = useCallback(
+    (checkedIn: boolean) => {
+      const targets = (data?.participants ?? []).filter((p) => p.status === "joined" && !!p.checked_in_at !== checkedIn);
+      if (targets.length === 0) return;
+      const stamp = checkedIn ? new Date().toISOString() : null;
+      setData((d) =>
+        d ? { ...d, participants: d.participants.map((p) => (p.status === "joined" ? { ...p, checked_in_at: stamp } : p)) } : d,
+      );
+      void setAllCheckedIn({ quedadaId, checkedIn }).then((res) => {
+        if (!res.ok) toast({ icon: "alert-triangle", title: "Algunos check-ins no se guardaron", sub: "Recarga para ver el estado real." });
+      });
+    },
+    [data, quedadaId, toast],
+  );
+
+  // Aviso de pago a los pendientes (notif + DM, cooldown 30min server-side).
+  const remindPayment = useCallback(
+    (userIds?: string[]) => {
+      startBusy(async () => {
+        const res = await remindQuedadaPayment({ quedadaId, userIds });
+        if (!res.ok) {
+          toast({ icon: "alert-triangle", title: "No se pudo enviar el aviso", sub: res.error.message });
+          return;
+        }
+        const { sent, skipped } = res.data;
+        if (sent === 0 && skipped > 0) {
+          toast({ icon: "clock", title: "Aviso en cooldown", sub: `${skipped} ya recibieron un aviso hace menos de 30 min.` });
+        } else {
+          toast({ icon: "check", title: `Aviso enviado a ${sent}`, sub: skipped > 0 ? `${skipped} en cooldown (< 30 min).` : undefined });
+        }
+        await afterMutation();
+      });
+    },
+    [quedadaId, toast, afterMutation, startBusy],
+  );
+
   // Transiciones de estado (creador): cerrar inscripciones / iniciar / reabrir.
   const changeStatus = (status: "registration_open" | "registration_closed" | "live") => {
     startBusy(async () => {
@@ -417,11 +1559,270 @@ export function QuedadaManagePanel({
     });
   };
 
-  const isPage = variant === "page";
   const q = data?.quedada ?? null;
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
   const paidCount = data ? data.participants.filter((p) => p.paid).length : 0;
   const sm = q ? quedadaStatusMeta(q.status) : null;
+  const isAmericano = q?.format === "americano";
+
+  // Categoría principal (la primera por orden): contexto para "Generar ronda" y
+  // para el partido destacado del header en Americano.
+  const mainCategory = data
+    ? [...data.categories].sort((a, b) => a.sort_order - b.sort_order)[0] ?? null
+    : null;
+
+  // Ronda actual (la más alta generada en la categoría principal) — para el
+  // texto "Ronda N en vivo" del card Estado.
+  const nameById = (id: string): string =>
+    nameOf(data?.participants.find((p) => p.user_id === id)?.profiles ?? null);
+  const catGames = data && mainCategory ? data.games.filter((g) => g.category_id === mainCategory.id) : [];
+  const currentRoundNo = catGames.reduce((m, g) => Math.max(m, g.round_no ?? 0), 0);
+  const isRolling = q?.engine_mode === "rolling";
+  const seqWord = isRolling ? "Partido" : "Ronda";
+
+  const sideNames = (g: ManageGame, side: "a" | "b"): string[] =>
+    (side === "a" ? [g.side_a_p1, g.side_a_p2] : [g.side_b_p1, g.side_b_p2])
+      .filter((x): x is string => !!x)
+      .map(nameById);
+  const seqOf = (g: ManageGame): number => (isRolling ? g.court_match_no ?? 0 : g.round_no ?? 0);
+  const toMatch = (g: ManageGame, prev: ManageGame | null): CourtMatch => ({
+    gameId: g.id,
+    seqNo: seqOf(g),
+    courtNo: g.court_no,
+    teamA: sideNames(g, "a"),
+    teamB: sideNames(g, "b"),
+    played: g.status === "played",
+    pointsA: g.points_a,
+    pointsB: g.points_b,
+    startedAt: g.created_at,
+    prev: prev
+      ? {
+          seqNo: seqOf(prev),
+          teamA: sideNames(prev, "a"),
+          teamB: sideNames(prev, "b"),
+          pointsA: prev.points_a,
+          pointsB: prev.points_b,
+          durationMs: Date.parse(prev.updated_at) - Date.parse(prev.created_at) || null,
+        }
+      : null,
+  });
+
+  // Carrusel: un slide por cancha. Por cada cancha, el ÚLTIMO partido es el actual
+  // y el anterior es el historial (catGames viene ordenado por created_at asc).
+  const courtMatches: CourtMatch[] = (() => {
+    if (!data || !isAmericano || !mainCategory) return [];
+    const byCourt = new Map<number, ManageGame[]>();
+    for (const g of catGames) {
+      if (g.court_no == null) continue;
+      const arr = byCourt.get(g.court_no);
+      if (arr) arr.push(g);
+      else byCourt.set(g.court_no, [g]);
+    }
+    return [...byCourt.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, list]) => toMatch(list[list.length - 1], list.length > 1 ? list[list.length - 2] : null));
+  })();
+
+  // Insights del juego (derivados de los games de la categoría principal).
+  const insights = (() => {
+    const played = catGames.filter((g) => g.status === "played");
+    const scheduledN = catGames.filter((g) => g.status === "scheduled").length;
+    const totalPts = played.reduce((s, g) => s + (g.points_a ?? 0) + (g.points_b ?? 0), 0);
+    const avg = played.length ? totalPts / played.length : 0;
+    // Partido más reñido: menor diferencia; a igual diferencia, el de mayor puntaje
+    // total (un 11–11 fue más peleado que un 4–4).
+    let closest: { a: number; b: number; court: number | null } | null = null;
+    let bestDiff = Infinity;
+    let bestTotal = -1;
+    for (const g of played) {
+      const a = g.points_a ?? 0;
+      const b = g.points_b ?? 0;
+      const d = Math.abs(a - b);
+      const tot = a + b;
+      if (d < bestDiff || (d === bestDiff && tot > bestTotal)) {
+        bestDiff = d;
+        bestTotal = tot;
+        closest = { a, b, court: g.court_no };
+      }
+    }
+
+    // Jugador en racha: más victorias CONSECUTIVAS contando desde su último partido.
+    // catGames viene en orden cronológico (created_at asc).
+    const results = new Map<string, boolean[]>();
+    for (const g of played) {
+      const a = g.points_a ?? 0;
+      const b = g.points_b ?? 0;
+      const aWon = a > b;
+      const push = (ids: (string | null)[], won: boolean) =>
+        ids.filter((x): x is string => !!x).forEach((id) => {
+          const arr = results.get(id) ?? [];
+          arr.push(won);
+          results.set(id, arr);
+        });
+      push([g.side_a_p1, g.side_a_p2], aWon);
+      push([g.side_b_p1, g.side_b_p2], !aWon && b > a);
+    }
+    let streak: { id: string; n: number } | null = null;
+    for (const [id, arr] of results) {
+      let s = 0;
+      for (let i = arr.length - 1; i >= 0 && arr[i]; i--) s++;
+      if (s > 1 && (!streak || s > streak.n)) streak = { id, n: s };
+    }
+
+    // Partido más largo (por duración: updated_at − created_at).
+    let longest: { ms: number; court: number | null } | null = null;
+    for (const g of played) {
+      const ms = Date.parse(g.updated_at) - Date.parse(g.created_at);
+      if (ms > 0 && (!longest || ms > longest.ms)) longest = { ms, court: g.court_no };
+    }
+
+    return {
+      playedN: played.length,
+      scheduledN,
+      totalPts,
+      avg,
+      closest,
+      longest,
+      streakName: streak ? nameById(streak.id) : null,
+      streakN: streak?.n ?? 0,
+    };
+  })();
+
+  // Tabla de posiciones (ranking individual): roster de la categoría principal,
+  // derivado de los games jugados.
+  const standingsPlayers =
+    data && mainCategory ? data.pairs.filter((p) => p.category_id === mainCategory.id).map((p) => p.player_a_id) : [];
+  const standings: StandingRow[] =
+    isAmericano && standingsPlayers.length > 0
+      ? individualStandings(catGames as GameForStandings[], standingsPlayers, nameById)
+      : [];
+
+  // Cards de estado + historial para la VISTA DE JUEGO (tab Partidos).
+  const courtsCount = Math.max(1, (q?.courts_count as number | null) ?? 1);
+  const gameViewCards = (() => {
+    const maxMatchNo = catGames.reduce((mx, g) => Math.max(mx, (isRolling ? g.court_match_no : g.round_no) ?? 0), 0);
+    const occupied = new Set(catGames.filter((g) => g.status === "scheduled" && g.court_no != null).map((g) => g.court_no as number));
+    let freeCourt: number | null = null;
+    for (let c = 1; c <= courtsCount; c++) {
+      if (!occupied.has(c)) {
+        freeCourt = c;
+        break;
+      }
+    }
+    const leaderRow = standings[0] ?? null;
+    const secondRow = standings[1] ?? null;
+    let cierre: string | null = null;
+    if (q && q.hours != null) {
+      const end = Date.parse(q.starts_at) + q.hours * 3600000;
+      if (!Number.isNaN(end)) {
+        const d = new Date(end);
+        cierre = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+    }
+    return {
+      roundNo: maxMatchNo,
+      scheduledN: insights.scheduledN,
+      freeCourt,
+      leaderName: leaderRow ? nameById(leaderRow.userId) : null,
+      leaderPf: leaderRow?.pf ?? 0,
+      leaderDiff: leaderRow && secondRow ? leaderRow.pf - secondRow.pf : null,
+      secondName: secondRow ? nameById(secondRow.userId) : null,
+      cierre,
+    };
+  })();
+  const toHistory = (g: ManageGame): HistoryItem => ({
+    id: g.id,
+    label: isRolling ? `Partido ${g.court_match_no ?? 0}` : `Ronda ${g.round_no ?? 0}`,
+    court: g.court_no,
+    teamA: sideNames(g, "a"),
+    teamB: sideNames(g, "b"),
+    a: g.points_a ?? 0,
+    b: g.points_b ?? 0,
+    durationMs: Date.parse(g.updated_at) - Date.parse(g.created_at) || null,
+  });
+  const gameHistory = catGames
+    .filter((g) => g.status === "played")
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .map(toHistory);
+  // Último partido jugado por cada cancha (catGames viene en orden cronológico asc).
+  const lastPerCourt = (() => {
+    const byCourt = new Map<number, ManageGame>();
+    for (const g of catGames) {
+      if (g.status === "played" && g.court_no != null) byCourt.set(g.court_no, g);
+    }
+    return [...byCourt.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => toHistory(g));
+  })();
+
+  // Generar la siguiente ronda del Americano (modo rondas).
+  const genRound = () => {
+    if (!mainCategory) {
+      toast({ icon: "alert-triangle", title: "Crea una categoría primero" });
+      return;
+    }
+    startBusy(async () => {
+      const res = await generateAmericanoRound({ quedadaId, categoryId: mainCategory.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo generar la ronda", sub: res.error.message });
+        return;
+      }
+      toast({
+        icon: "check-circle-2",
+        title: `Ronda ${res.data.roundNo} generada`,
+        sub: res.data.byes > 0 ? `${res.data.byes} jugador(es) descansan` : undefined,
+      });
+      await afterMutation();
+    });
+  };
+
+  // Rolling: llenar las canchas libres con un partido inicial.
+  const startRolling = () => {
+    if (!mainCategory) {
+      toast({ icon: "alert-triangle", title: "Crea una categoría primero" });
+      return;
+    }
+    startBusy(async () => {
+      const res = await startAmericanoRolling({ quedadaId, categoryId: mainCategory.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudieron llenar las canchas", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: res.data.filled > 0 ? `${res.data.filled} cancha(s) en juego` : "Canchas ya llenas" });
+      await afterMutation();
+    });
+  };
+
+  // Rolling: reportar marcador → el motor asigna el siguiente partido en esa cancha.
+  const reportRolling = (gameId: string, a: number, b: number) => {
+    startBusy(async () => {
+      const res = await reportRollingGame({ gameId, pointsA: a, pointsB: b });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message });
+        return;
+      }
+      toast({
+        icon: "check-circle-2",
+        title: "Marcador guardado",
+        sub: res.data.advanced ? "Siguiente partido asignado a la cancha" : "Cancha libre — esperando jugadores",
+      });
+      await afterMutation();
+    });
+  };
+
+  // Compartir el link de la vista jugador (join/seguimiento por código).
+  const sharePlayerView = async () => {
+    const code = q?.invite_code;
+    if (!code) {
+      toast({ icon: "alert-triangle", title: "Sin código de invitación" });
+      return;
+    }
+    const link = typeof window !== "undefined" ? `${window.location.origin}/q/${code}` : `/q/${code}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ icon: "check-circle-2", title: "Link copiado", sub: "Compártelo con los jugadores." });
+    } catch {
+      toast({ icon: "alert-triangle", title: "No se pudo copiar", sub: "Copia el link manualmente." });
+    }
+  };
 
   // Dos niveles: arriba GESTIÓN vs JUEGO (el motor), abajo los sub-tabs de cada uno.
   const showResultados =
@@ -429,141 +1830,211 @@ export function QuedadaManagePanel({
     !!q &&
     (q.status === "registration_closed" || q.status === "live" || q.status === "finished");
   // Gestión = setup; Juego = el motor (partidos + resultados/podio).
+  // En americano el roster es individual → la pestaña se llama "Jugadores".
+  // Orden del flujo: la gente se inscribe y paga primero, luego se arma el roster.
+  const rosterLabel = q?.format === "americano" ? "Jugadores" : "Parejas";
   const gestionTabs: { k: TabKey; label: string }[] = [
     { k: "resumen", label: "Resumen" },
-    { k: "parejas", label: "Parejas" },
     { k: "pagos", label: "Pagos" },
+    { k: "parejas", label: rosterLabel },
     ...(data?.isCreator ? [{ k: "config" as TabKey, label: "Configurar" }] : []),
   ];
   const juegoTabs: { k: TabKey; label: string }[] = [
-    { k: "partidos", label: "Partidos" },
-    { k: "posiciones", label: "Posiciones" },
+    { k: "juego", label: "Partidos" },
     ...(showResultados ? [{ k: "resultados" as TabKey, label: "Resultados" }] : []),
   ];
   const sectionTabs = section === "juego" ? juegoTabs : gestionTabs;
   const activeTab: TabKey = sectionTabs.some((t) => t.k === tab) ? tab : sectionTabs[0].k;
   const switchSection = (s: "gestion" | "juego") => {
     setSection(s);
-    setTab(s === "juego" ? "partidos" : "resumen");
+    setTab(s === "juego" ? "juego" : "resumen");
   };
 
-  const backBtn = (
+  // Link "Volver" igual al BackBtn de Teams (texto plano, muted-fg, sin borde).
+  const backLink = (
     <button
       onClick={close}
-      aria-label={isPage ? "Volver" : "Cerrar"}
+      aria-label="Volver a quedadas"
       style={{
-        height: 30,
-        borderRadius: 9999,
-        padding: isPage ? "0 12px" : 0,
-        width: isPage ? undefined : 30,
-        gap: 6,
-        background: "rgba(255,255,255,0.12)",
-        border: "1px solid rgba(255,255,255,0.2)",
-        color: "#fff",
-        cursor: "pointer",
+        alignSelf: "flex-start",
         display: "inline-flex",
         alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "inherit",
-        fontSize: 12,
+        gap: 6,
+        fontSize: 11.5,
         fontWeight: 700,
-        flexShrink: 0,
+        color: "var(--muted-fg)",
+        background: "transparent",
+        border: 0,
+        cursor: "pointer",
+        fontFamily: "inherit",
       }}
     >
-      <Icon name={isPage ? "arrow-left" : "x"} size={14} color="#fff" />
-      {isPage ? "Volver" : null}
+      <Icon name="arrow-left" size={13} /> Volver
     </button>
   );
 
-  const headerActions =
-    q && data?.isCreator && q.status !== "finished" && q.status !== "cancelled" ? (
-      <>
-        {q.status === "registration_open" && (
-          <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock" tone="neutral">Cerrar inscripciones</HeaderBtn>
+  // Acción primaria contextual al estado (avanza el flujo) + compartir vista
+  // jugador. En americano "en vivo" la primaria es Generar ronda (como el mock).
+  const headerButtons =
+    q && data?.canManage ? (
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+        {data.isCreator && q.status === "registration_open" && (
+          <HeaderBtn onClick={() => changeStatus("registration_closed")} disabled={busy} icon="lock" tone="primary">Cerrar inscripciones</HeaderBtn>
         )}
-        {q.status === "registration_closed" && (
-          <>
-            <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play" tone="primary">Iniciar</HeaderBtn>
-            <HeaderBtn onClick={() => changeStatus("registration_open")} disabled={busy} icon="rotate-ccw" tone="neutral">Reabrir</HeaderBtn>
-          </>
+        {data.isCreator && q.status === "registration_closed" && (
+          <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play" tone="primary">Iniciar quedada</HeaderBtn>
         )}
-        {q.status === "live" && (
-          <HeaderBtn onClick={() => { setSection("juego"); setTab("resultados"); }} disabled={busy} icon="flag" tone="primary">Finalizar</HeaderBtn>
+        {data.isCreator && q.status === "live" && isAmericano && isRolling && (
+          <HeaderBtn onClick={startRolling} disabled={busy} icon="layout-grid" tone="primary">Llenar canchas</HeaderBtn>
         )}
-        <HeaderBtn onClick={doCancel} disabled={busy} icon="x" tone="danger">Cancelar</HeaderBtn>
-      </>
+        {data.isCreator && q.status === "live" && isAmericano && !isRolling && (
+          <HeaderBtn onClick={genRound} disabled={busy} icon="plus" tone="primary">Generar ronda</HeaderBtn>
+        )}
+        <HeaderBtn onClick={sharePlayerView} icon="share-2" tone="ghost">Compartir vista jugador</HeaderBtn>
+      </div>
     ) : null;
+
+  // Card propia (columna a la derecha) con el carrusel de partidos en cancha.
+  const nextMatchCard = data && isAmericano ? (
+    <MatchCarouselCard
+      matches={courtMatches}
+      seqWord={seqWord}
+      canReport={!!data.canManage && q != null && q.status === "live"}
+      reporting={busy}
+      onReport={isRolling ? reportRolling : (gameId, a, b) => {
+        // En modo rondas, reportar sin auto-avance.
+        startBusy(async () => {
+          const res = await reportGame({ gameId, pointsA: a, pointsB: b });
+          if (!res.ok) { toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message }); return; }
+          toast({ icon: "check", title: "Marcador guardado" });
+          await afterMutation();
+        });
+      }}
+      emptyTitle={isRolling ? "Canchas vacías" : "Sin rondas todavía"}
+      emptySub={
+        data.isCreator
+          ? isRolling
+            ? "Pulsa “Llenar canchas” para empezar."
+            : "Genera la primera ronda para empezar."
+          : "El organizador aún no generó partidos."
+      }
+    />
+  ) : null;
 
   const header = (
     <div
       style={{
-        padding: "20px 22px 18px",
-        background: "linear-gradient(135deg,var(--fg) 0%,#064e3b 72%,#10b981 100%)",
+        position: "relative",
+        overflow: "hidden",
+        padding: "22px 24px",
+        background:
+          "radial-gradient(115% 130% at 98% 112%, rgba(124,58,237,0.3) 0%, rgba(124,58,237,0) 52%), linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)",
         color: "#fff",
-        flexShrink: 0,
-        borderTopLeftRadius: isPage ? 16 : undefined,
-        borderTopRightRadius: isPage ? 16 : undefined,
+        borderRadius: "var(--radius-mp-card, 14.4px)",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>● Gestión · Quedada</div>
+      {/* Wordmark decorativo (mismo patrón que el hero de la lista de Quedadas) */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          fontFamily: "Plus Jakarta Sans",
+          fontWeight: 900,
+          fontSize: 180,
+          color: "rgba(255,255,255,0.06)",
+          letterSpacing: "-0.06em",
+          lineHeight: 0.8,
+          transform: "rotate(-6deg) translate(15%, -20%)",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+        }}
+      >
+        QUEDA
+      </div>
+      <div style={{ position: "relative", display: "flex", flexDirection: "column" }}>
           {q ? (
-            <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "8px 0 0" }}>
+            <div style={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 9999, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.18)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--primary)" }} />
+              <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "#fff" }}>
+                {sm?.label ?? q.status}{q.location_text ? ` · ${q.location_text}` : ""}
+              </span>
+            </div>
+          ) : (
+            <SkBar w={180} h={22} r={9999} dark />
+          )}
+          {q ? (
+            <h2 className="font-heading" style={{ fontSize: 30, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "12px 0 0", lineHeight: 1.05 }}>
               {q.title}
               <span style={{ color: "#34d399" }}>.</span>
             </h2>
           ) : (
-            <div style={{ margin: "10px 0 0" }}><SkBar w={260} h={24} r={8} dark /></div>
+            <div style={{ margin: "12px 0 0" }}><SkBar w={280} h={30} r={8} dark /></div>
           )}
-          {q ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "rgba(255,255,255,0.82)" }}>
-              {sm && (
-                <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: sm.bg, color: sm.fg }}>{sm.label}</span>
-              )}
-              <span>
-                {FORMAT_LABEL[q.format] ?? q.format} · {q.match_mode === "singles" ? "Singles" : "Dobles"} · {data?.isCreator ? "Organizador" : "Co-host"}
-              </span>
-            </div>
-          ) : (
-            <div style={{ marginTop: 10 }}><SkBar w={200} h={12} r={6} dark /></div>
-          )}
-        </div>
-        {/* Arriba a la derecha: solo Volver/Cerrar */}
-        <div style={{ flexShrink: 0 }}>{backBtn}</div>
-      </div>
-      {/* Abajo: stats (izq) + acciones de estado (der, lado a lado) */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {q ? (
             <>
-              <StatChip label="Inscritos" value={String(joinedCount)} />
-              <StatChip label="Pagados" value={`${paidCount}/${joinedCount}`} />
-              <StatChip label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
-              <StatChip label="Categorías" value={String(data?.categories.length ?? 0)} />
+              {q.description && (
+                <p style={{ fontSize: 13, lineHeight: 1.55, color: "rgba(255,255,255,0.82)", margin: "12px 0 0", maxWidth: 560, whiteSpace: "pre-wrap" }}>
+                  {q.description}
+                </p>
+              )}
+              {headerButtons}
             </>
           ) : (
-            [0, 1, 2, 3].map((i) => (
-              <div key={i} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "8px 12px", minWidth: 78 }}>
-                <SkBar w={36} h={18} r={5} dark />
-                <div style={{ marginTop: 6 }}><SkBar w={54} h={8} r={4} dark /></div>
-              </div>
-            ))
+            <div style={{ marginTop: 14 }}><SkBar w={220} h={12} r={6} dark /></div>
           )}
-        </div>
-        {headerActions && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>{headerActions}</div>}
       </div>
     </div>
   );
 
+  // Cards de stats, FUERA del banner, sobre el fondo de página. Valor = frase
+  // (estilo mock) + subtítulo derivado de datos reales.
+  const pendingPay = joinedCount - paidCount;
+  const cuposSub =
+    q == null
+      ? undefined
+      : q.max_players != null
+        ? joinedCount >= q.max_players
+          ? "Cupos llenos"
+          : `${q.max_players - joinedCount} cupos libres`
+        : "Sin límite de jugadores";
+  const estadoValue =
+    q == null
+      ? "—"
+      : isAmericano && q.status === "live" && currentRoundNo > 0
+        ? `Ronda ${currentRoundNo} en vivo`
+        : sm?.label ?? q.status;
+  const statsRow = (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+      {q ? (
+        <>
+          <StatCard label="Estado" value={estadoValue} sub={startRel(q.starts_at)} valueColor={quedadaStatusSolid(q.status)} />
+          <StatCard label="Jugadores" value={`${joinedCount} confirmados`} sub={cuposSub} />
+          <StatCard label="Cobros" value={`${paidCount}/${joinedCount} pagados`} sub={pendingPay === 0 ? "Todos al día" : `${pendingPay} pendiente${pendingPay > 1 ? "s" : ""}`} />
+          <StatCard label="Formato" value={FORMAT_LABEL[q.format] ?? q.format} sub={isAmericano ? "Ranking individual" : q.match_mode === "singles" ? "Singles" : "Dobles"} />
+        </>
+      ) : (
+        [0, 1, 2, 3].map((i) => (
+          <div key={i} className="card" style={{ padding: "13px 15px" }}>
+            <SkBar w={54} h={9} r={4} />
+            <div style={{ marginTop: 7 }}><SkBar w={90} h={20} r={5} /></div>
+            <div style={{ marginTop: 7 }}><SkBar w={70} h={10} r={4} /></div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   const tabsBar = loading ? (
-    <div style={{ display: "flex", gap: 16, padding: "13px 14px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0 }}>
+    <div style={{ display: "flex", gap: 16 }}>
       {[60, 56, 48, 70].map((w, i) => (
         <SkBar key={i} w={w} h={14} r={6} />
       ))}
     </div>
   ) : data && data.canManage ? (
-      <div style={{ display: "flex", gap: 2, padding: "0 12px", borderBottom: "1px solid var(--border)", background: "#fff", flexShrink: 0, overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 2, overflowX: "auto" }}>
         {sectionTabs.map((t) => {
           const on = t.k === activeTab;
           return (
@@ -596,7 +2067,7 @@ export function QuedadaManagePanel({
   // Switch de nivel superior: Gestión (setup) vs Juego (el motor).
   const sectionSwitch =
     !loading && data?.canManage ? (
-      <div style={{ display: "flex", gap: 6, padding: "12px 14px 0", background: "#fff", flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: 6 }}>
         {([["gestion", "Gestión"], ["juego", "Juego"]] as const).map(([k, label]) => {
           const on = section === k;
           return (
@@ -630,14 +2101,18 @@ export function QuedadaManagePanel({
       </div>
     ) : null;
 
+  // Barra de navegación (Gestión/Juego + sub-tabs) como card propia sobre el
+  // fondo de página, separada del header.
+  const nav =
+    loading || (data && data.canManage) ? (
+      <div className="card" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {sectionSwitch}
+        {tabsBar}
+      </div>
+    ) : null;
+
   const body = (
-    <div
-      style={
-        isPage
-          ? { padding: 22, display: "flex", flexDirection: "column", gap: 18 }
-          : { flex: 1, overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 18 }
-      }
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {loading && <ManageSkeleton />}
       {!loading && loadError && (
         <div className="card" style={{ padding: 18, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 13 }}>
@@ -654,9 +2129,8 @@ export function QuedadaManagePanel({
         <div key={activeTab} className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {activeTab === "resumen" && <ResumenTab data={data} toast={toast} onGoToParejas={() => setTab("parejas")} />}
           {activeTab === "parejas" && <SlotsSection data={data} onChanged={afterMutation} />}
-          {activeTab === "partidos" && <PartidosTab data={data} onChanged={afterMutation} />}
-          {activeTab === "posiciones" && <PosicionesTab data={data} />}
-          {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} />}
+          {activeTab === "juego" && <JuegoTab data={data} onChanged={afterMutation} />}
+          {activeTab === "pagos" && <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} onToggleCheckedIn={toggleCheckedIn} onSetAllCheckedIn={setAllCheckedInLocal} onRemind={remindPayment} reminding={busy} />}
           {activeTab === "resultados" && <ResultadosTab data={data} onChanged={afterMutation} />}
           {activeTab === "config" && data.isCreator && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 18, alignItems: "start" }}>
@@ -677,68 +2151,233 @@ export function QuedadaManagePanel({
     </div>
   );
 
-  // Variante página: tarjeta de ancho completo, scroll natural de la página.
-  if (isPage) {
-    return (
-      <div
-        className="card"
-        style={{
-          width: "100%",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          padding: 0,
-          background: "#fff",
-        }}
-      >
-        {header}
-        {sectionSwitch}
-        {tabsBar}
-        {body}
-      </div>
-    );
-  }
+  // WIP — reestructuración paso a paso: por ahora la página muestra SOLO el
+  // header. La barra de navegación (`nav`) y el contenido de tabs (`body`) quedan
+  // construidos pero sin renderizar; se re-cablean sección por sección.
+  void nav;
+  void body;
+  void doCancel; // Cancelar quedada volverá al reconstruir las secciones de gestión.
 
-  // Variante modal (overlay, no cierra por click afuera para no perder cambios).
+  // Tabs de nivel de página (arriba del banner). "Partidos" = la vista actual
+  // (banner + stats + carrusel + tabla). Los demás cambian toda la interfaz.
+  const pageTabs: { k: "resumen" | "partidos" | "roster" | "pagos" | "config"; l: string }[] = data
+    ? [
+        { k: "resumen", l: "Resumen" },
+        { k: "partidos", l: "Partidos" },
+        { k: "roster", l: rosterLabel },
+        { k: "pagos", l: "Pagos" },
+        ...(data.isCreator ? [{ k: "config" as const, l: "Configuración" }] : []),
+      ]
+    : [];
+  const activePageTab = pageTabs.some((t) => t.k === pageTab) ? pageTab : "resumen";
+  const pageTabsBar =
+    data && data.canManage ? (
+      <div style={{ display: "flex", gap: 22, padding: "0 2px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+        {pageTabs.map((t) => {
+          const on = t.k === activePageTab;
+          return (
+            <button
+              key={t.k}
+              type="button"
+              onClick={() => setPageTab(t.k)}
+              style={{
+                padding: "0 1px 12px",
+                border: 0,
+                borderBottom: on ? "2px solid var(--primary)" : "2px solid transparent",
+                background: "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 900,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: on ? "var(--fg)" : "var(--muted-fg)",
+                whiteSpace: "nowrap",
+                transition: "color 150ms var(--ease-out)",
+              }}
+            >
+              {t.l}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(10,10,10,0.7)",
-        backdropFilter: "blur(6px)",
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        fontFamily: "inherit",
-        animation: "mp-qmp-fade 160ms var(--ease-out, ease)",
-      }}
-    >
-      <style>{`@keyframes mp-qmp-fade{from{opacity:0}to{opacity:1}}
-        @keyframes mp-qmp-pop{from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}}`}</style>
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="card"
-        style={{
-          width: "100%",
-          maxWidth: 760,
-          maxHeight: "92vh",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          padding: 0,
-          background: "#fff",
-          boxShadow: "0 32px 64px rgba(0,0,0,0.5)",
-          animation: "mp-qmp-pop 180ms var(--ease-out, ease)",
-        }}
-      >
-        {header}
-        {sectionSwitch}
-        {tabsBar}
-        {body}
+    <div className="mp-quedada-root" style={{ width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+      {backLink}
+      {pageTabsBar}
+
+      {!loading && loadError && (
+        <div className="card" style={{ padding: 18, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 13 }}>
+          No se pudo cargar la gestión: {loadError}
+        </div>
+      )}
+
+      {activePageTab === "resumen" && (
+        <div key="resumen" className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+            {header}
+            {statsRow}
+            {standings.length > 0 && <StandingsCard rows={standings} nameOf={nameById} />}
+          </div>
+          <div className="mp-quedada-side" style={{ maxWidth: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+            {nextMatchCard}
+            {data && isAmericano && <InsightCard {...insights} />}
+          </div>
+        </div>
+      )}
+
+      {activePageTab === "partidos" && data && isAmericano && (
+        <PartidosTabView
+          matches={courtMatches}
+          standings={standings}
+          insights={insights}
+          nameOf={nameById}
+          seqWord={seqWord}
+          canReport={!!data.canManage && q != null && q.status === "live"}
+          reporting={busy}
+          onReport={isRolling ? reportRolling : (gameId, a, b) => {
+            startBusy(async () => {
+              const res = await reportGame({ gameId, pointsA: a, pointsB: b });
+              if (!res.ok) { toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message }); return; }
+              toast({ icon: "check", title: "Marcador guardado" });
+              await afterMutation();
+            });
+          }}
+          cards={gameViewCards}
+          history={gameHistory}
+          lastPerCourt={lastPerCourt}
+        />
+      )}
+      {activePageTab === "partidos" && (!data || !isAmericano) && (
+        <div key="partidos-empty" className="mp-tab-in card" style={{ padding: 22, color: "var(--muted-fg)", fontSize: 13 }}>
+          La vista de juego está disponible para el formato Americano.
+        </div>
+      )}
+
+      {activePageTab === "roster" && data && (
+        <JugadoresTabView key="roster" data={data} nameOf={nameById} onChanged={afterMutation} />
+      )}
+
+      {activePageTab === "pagos" && data && (
+        <div key="pagos" className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <PagosTab data={data} onTogglePaid={togglePaid} onSetAllPaid={setAllPaid} onToggleCheckedIn={toggleCheckedIn} onSetAllCheckedIn={setAllCheckedInLocal} onRemind={remindPayment} reminding={busy} />
+        </div>
+      )}
+
+      {activePageTab === "config" && data && data.isCreator && (
+        <ConfigTab key="config" data={data} afterMutation={afterMutation} toast={toast} doCancel={doCancel} busy={busy} />
+      )}
+    </div>
+  );
+}
+
+// ── Tab: Configuración (master-detail con stepper numerado) ──────────────────
+// Nav vertical a la izquierda (8 pasos) + sección activa a la derecha. Cada
+// sección trae su propio header (label/title/sub vía <Section>), así que el panel
+// derecho ya muestra el encabezado del paso. "Zona de peligro" = rojo.
+const CONFIG_STEPS = [
+  { key: "general", n: 1, title: "General", sub: "Título, fecha, sede, visibilidad" },
+  { key: "logistica", n: 2, title: "Logística", sub: "Canchas, horas, costos" },
+  { key: "cobro", n: 3, title: "Cobro y premios", sub: "Banco, premios, reglas" },
+  { key: "categorias", n: 4, title: "Categorías", sub: "Niveles y cupos" },
+  { key: "cohosts", n: 5, title: "Co-hosts", sub: "Quién más puede gestionar" },
+  { key: "motor", n: 6, title: "Motor de juego", sub: "Modo, puntos por partido" },
+  { key: "compartir", n: 7, title: "Compartir", sub: "Link de inscripción" },
+  { key: "peligro", n: 8, title: "Zona de peligro", sub: "Cancelar quedada", danger: true },
+] as const;
+
+type ConfigStepKey = (typeof CONFIG_STEPS)[number]["key"];
+
+function ConfigTab({
+  data,
+  afterMutation,
+  toast,
+  doCancel,
+  busy,
+}: {
+  data: ManageData;
+  afterMutation: () => Promise<void>;
+  toast: ReturnType<typeof useToast>;
+  doCancel: () => void;
+  busy: boolean;
+}) {
+  const [step, setStep] = useState<ConfigStepKey>("general");
+
+  return (
+    <div key="config" className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* Nav stepper */}
+      <nav style={{ flex: "1 1 240px", minWidth: 0, maxWidth: 300 }}>
+        <div className="label-mp" style={{ color: "var(--primary)" }}>Setup</div>
+        <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", marginBottom: 14 }}>
+          Configurar<span className="dot">.</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {CONFIG_STEPS.map((s) => {
+            const on = step === s.key;
+            const danger = "danger" in s && s.danger;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setStep(s.key)}
+                aria-current={on}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 13px",
+                  borderRadius: 12,
+                  border: on ? 0 : "1px solid var(--border)",
+                  background: on ? "var(--fg)" : "#fff",
+                  color: on ? "#fff" : danger ? "#dc2626" : "var(--fg)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontFamily: "inherit",
+                  transition: "background 150ms ease, border-color 150ms ease, transform 160ms var(--ease-out)",
+                }}
+              >
+                <span
+                  style={{
+                    flexShrink: 0,
+                    width: 24,
+                    height: 24,
+                    borderRadius: 7,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    background: on ? "rgba(255,255,255,0.16)" : danger ? "#fee2e2" : "var(--muted)",
+                    color: on ? "#fff" : danger ? "#dc2626" : "var(--muted-fg)",
+                  }}
+                >
+                  {s.n}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                  <span style={{ display: "block", fontSize: 11, color: on ? "rgba(255,255,255,0.65)" : "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.sub}</span>
+                </span>
+                {on && <Icon name="chevron-right" size={16} color="#fff" />}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Panel de la sección activa (trae su propio header). */}
+      <div style={{ flex: "1 1 480px", minWidth: 0 }}>
+        <div key={step} className="card mp-tab-in" style={{ padding: 18 }}>
+          {step === "general" && <DetailsSection data={data} onSaved={afterMutation} />}
+          {step === "logistica" && <LogisticsSection data={data} onSaved={afterMutation} />}
+          {step === "cobro" && <BankPrizesSection data={data} onSaved={afterMutation} />}
+          {step === "categorias" && <CategoriesSection data={data} onChanged={afterMutation} />}
+          {step === "cohosts" && <CohostsSection data={data} onChanged={afterMutation} />}
+          {step === "motor" && <EngineSection data={data} onSaved={afterMutation} />}
+          {step === "compartir" && <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} quedadaId={data.quedada.id} onChanged={afterMutation} />}
+          {step === "peligro" && <DangerZoneSection onCancel={doCancel} canceling={busy} status={data.quedada.status} />}
+        </div>
       </div>
     </div>
   );
@@ -847,9 +2486,6 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
           <InfoRow label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
           {cohostNames.length > 0 && <InfoRow label="Co-hosts" value={cohostNames.join(", ")} />}
         </div>
-        {q.description && (
-          <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.description}</p>
-        )}
         {q.perks_text && (
           <div style={{ fontSize: 12, color: "var(--color-mp-primary-active)", background: "var(--color-mp-primary-light)", borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6, alignItems: "flex-start" }}>
             <Icon name="sparkles" size={12} color="#10b981" />
@@ -858,7 +2494,7 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={onGoToParejas} className="btn btn-primary">
-            <Icon name="grid-3x3" size={13} color="#fff" /> Gestionar parejas
+            <Icon name="grid-3x3" size={13} color="#fff" /> {q.format === "americano" ? "Gestionar jugadores" : "Gestionar parejas"}
           </button>
         </div>
       </div>
@@ -943,81 +2579,342 @@ function PagosTab({
   data,
   onTogglePaid,
   onSetAllPaid,
+  onToggleCheckedIn,
+  onSetAllCheckedIn,
+  onRemind,
+  reminding,
 }: {
   data: ManageData;
   onTogglePaid: (userId: string) => void;
   onSetAllPaid: (paid: boolean) => void;
+  onToggleCheckedIn: (userId: string) => void;
+  onSetAllCheckedIn: (checkedIn: boolean) => void;
+  onRemind: (userIds?: string[]) => void;
+  reminding: boolean;
 }) {
-  const acct = data.quedada.payment_account;
+  const toast = useToast();
+  const q = data.quedada;
+  const acct = q.payment_account;
   const joined = data.participants.filter((p) => p.status === "joined");
   const paidN = joined.filter((p) => p.paid).length;
+  const checkedInN = joined.filter((p) => !!p.checked_in_at).length;
+  const pendingPlayers = joined.filter((p) => !p.paid);
   const allPaid = joined.length > 0 && paidN === joined.length;
-  const fee = data.quedada.fee_cents;
+  const allCheckedIn = joined.length > 0 && checkedInN === joined.length;
+  const fee = q.fee_cents;
   const collected = paidN * fee;
+  const expected = joined.length * fee;
+  const pendingCents = expected - collected;
   const pct = joined.length ? Math.round((paidN / joined.length) * 100) : 0;
+  // Costo de las canchas (canchas × horas × precio) e ingreso neto estimado.
+  const courts = q.courts_count ?? 0;
+  const hrs = q.hours ?? 0;
+  const courtCost = Math.round(courts * hrs * (q.court_price_cents ?? 0));
+  const netCents = collected - courtCost;
+
+  // Categoría por jugador (derivada de los slots de quedada_pairs).
+  const catById = new Map(data.categories.map((c) => [c.id, c.name]));
+  const catIdByUser = new Map<string, string>();
+  data.pairs.forEach((pr) => {
+    if (pr.player_a_id) catIdByUser.set(pr.player_a_id, pr.category_id);
+    if (pr.player_b_id) catIdByUser.set(pr.player_b_id, pr.category_id);
+  });
+  const catNameOf = (uid: string): string => catById.get(catIdByUser.get(uid) ?? "") ?? "—";
+  const hasCats = data.categories.length > 0;
+  const sortedCats = data.categories.slice().sort((a, b) => a.sort_order - b.sort_order);
+
+  // Filtros de la tabla de control.
+  const [query, setQuery] = useState("");
+  const [catFilter, setCatFilter] = useState<string>("all"); // "all" | category id
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const [grouped, setGrouped] = useState(false);
+  const qn = query.trim().toLowerCase();
+  const visible = joined.filter((p) => {
+    if (catFilter !== "all" && catIdByUser.get(p.user_id) !== catFilter) return false;
+    if (!qn) return true;
+    const nm = nameOf(p.profiles).toLowerCase();
+    const un = (p.profiles?.username ?? "").toLowerCase();
+    return nm.includes(qn) || un.includes(qn);
+  });
+
+  // Copiar los datos bancarios al portapapeles (para pasárselos a los inscritos).
+  const copyAcct = () => {
+    if (!acct) return;
+    const lines = [
+      acct.bank,
+      `${acct.accountType === "ahorros" ? "Ahorros" : "Corriente"} · ${acct.accountNumber}`,
+      acct.holderName + (acct.holderId ? ` · ${acct.holderId}` : ""),
+      acct.note ?? "",
+    ].filter(Boolean);
+    navigator.clipboard?.writeText(lines.join("\n"));
+    toast({ icon: "check-circle-2", title: "Datos copiados", sub: "Pásalos a los inscritos." });
+  };
+
+  const COLS = "minmax(0,1fr) 90px 116px 104px 110px";
+
+  // Fila de la tabla: avatar + nombre, categoría, asistencia, aviso, pago.
+  const Row = (p: ManageParticipant) => {
+    const present = !!p.checked_in_at;
+    const reminded = !!p.payment_reminded_at;
+    const name = nameOf(p.profiles);
+    return (
+      <div key={p.user_id} style={{ display: "grid", gridTemplateColumns: COLS, alignItems: "center", gap: 10, padding: "9px 14px", borderTop: "1px solid var(--border)", background: p.paid ? "var(--success-bg)" : "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: "var(--muted)", color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 900 }}>{initialsOf(name)}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+            {p.profiles?.username && <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{p.profiles.username}</div>}
+          </div>
+        </div>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{catNameOf(p.user_id)}</span>
+        <button
+          type="button"
+          onClick={() => onToggleCheckedIn(p.user_id)}
+          className="btn"
+          title={present ? "Marcar como ausente" : "Registrar check-in"}
+          style={{ justifySelf: "start", gap: 5, padding: "5px 10px", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", borderRadius: 9999, border: present ? 0 : "1px solid var(--border)", background: present ? "var(--fg)" : "#fff", color: present ? "#fff" : "var(--muted-fg)" }}
+        >
+          <Icon name={present ? "user-check" : "user"} size={12} color={present ? "#fff" : "var(--muted-fg)"} />
+          {present ? "Presente" : "Check-in"}
+        </button>
+        {p.paid ? (
+          <span style={{ justifySelf: "start", fontSize: 12, color: "var(--muted-fg)" }}>—</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onRemind([p.user_id])}
+            disabled={reminding}
+            className="btn"
+            title="Enviar aviso de pago"
+            aria-label={`Avisar a ${name}`}
+            style={{ justifySelf: "start", gap: 5, padding: "5px 10px", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", borderRadius: 9999, border: "1px solid", borderColor: reminded ? "#fcd34d" : "var(--border)", background: reminded ? "#fffbeb" : "#fff", color: reminded ? "#b45309" : "var(--muted-fg)" }}
+          >
+            <Icon name="bell" size={12} color={reminded ? "#b45309" : "var(--muted-fg)"} />
+            {reminded ? "Reenviado" : "Avisar"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onTogglePaid(p.user_id)}
+          className="btn"
+          title={p.paid ? "Marcar como pendiente" : "Marcar como pagado"}
+          style={{ justifySelf: "start", gap: 6, padding: "5px 10px", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", borderRadius: 9999, border: p.paid ? 0 : "1px solid var(--border)", background: p.paid ? "var(--success-fg)" : "#fff", color: p.paid ? "#fff" : "var(--muted-fg)" }}
+        >
+          <Icon name={p.paid ? "check-square" : "square"} size={12} color={p.paid ? "#fff" : "var(--muted-fg)"} />
+          {p.paid ? "Pagado" : "Pendiente"}
+        </button>
+      </div>
+    );
+  };
+
+  const headerCell = (txt: string) => (
+    <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{txt}</span>
+  );
+  const groupHeader = (txt: string) => (
+    <div style={{ padding: "6px 14px", background: "var(--muted)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{txt}</div>
+  );
+  const acctRow = (label: string, value: string, first = false) => (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: first ? 0 : "1px dashed var(--border)" }}>
+      <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</span>
+      <span style={{ minWidth: 0, fontSize: 12.5, fontWeight: 800, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+    </div>
+  );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: acct ? "repeat(auto-fit, minmax(340px, 1fr))" : "1fr", gap: 18, alignItems: "start" }}>
-      {acct && (
-        <Section label="Cobro" title="Datos del organizador" sub="Lo que ven los inscritos para transferir.">
-          <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
-            <div style={{ fontWeight: 900 }}>{acct.bank}</div>
-            <div style={{ color: "var(--muted-fg)" }}>
-              {acct.accountType === "ahorros" ? "Ahorros" : "Corriente"} · {acct.accountNumber}
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* Columna principal: hero de recaudación + control de pago/asistencia. */}
+      <div style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Hero — recaudación live. */}
+        <div style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-mp-card, 14.4px)", background: "linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)", color: "#fff", padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+              <div className="label-mp" style={{ color: "var(--primary)" }}>● Recaudación · Live</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                <span className="font-heading tabular" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1 }}>{money(collected)}</span>
+                <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 800, color: "rgba(255,255,255,0.45)" }}>/ {money(expected)}</span>
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.7)", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span>{paidN} de {joined.length} pagaron</span>
+                <span style={{ color: "var(--primary)", fontWeight: 800 }}>· {pct}% cobrado</span>
+                {pendingCents > 0 && <span>· {money(pendingCents)} por cobrar</span>}
+              </div>
             </div>
-            <div>{acct.holderName}{acct.holderId ? ` · ${acct.holderId}` : ""}</div>
-            {acct.note && <div style={{ color: "var(--muted-fg)" }}>{acct.note}</div>}
+            {courtCost > 0 && (
+              <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px", minWidth: 92 }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Costo canchas</div>
+                  <div className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 3 }}>{money(courtCost)}</div>
+                  <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.45)", marginTop: 1 }}>{courts} × {hrs}h</div>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px", minWidth: 92 }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>Neto estimado</div>
+                  <div className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 3, color: netCents < 0 ? "#f87171" : "var(--primary)" }}>{money(netCents)}</div>
+                  <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.45)", marginTop: 1 }}>{netCents < 0 ? "En rojo" : "Estimado"}</div>
+                </div>
+              </div>
+            )}
           </div>
-        </Section>
-      )}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ height: 8, borderRadius: 9999, background: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: "var(--primary)", borderRadius: 9999, transition: "width 420ms var(--ease-out)" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)" }}>
+              <span>Pagado {paidN}/{joined.length}</span>
+              <span>Presentes {checkedInN}/{joined.length}</span>
+            </div>
+          </div>
+        </div>
 
-      <Section label="Control" title="Estado de pago" sub="Marca quién ya transfirió." badge={`${paidN}/${joined.length}`}>
-        {joined.length === 0 ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay inscritos.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                <span className="font-heading tabular" style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em" }}>
-                  {paidN}
-                  <span style={{ color: "var(--muted-fg)", fontSize: 15 }}>/{joined.length}</span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted-fg)", marginLeft: 8, letterSpacing: "0.04em" }}>PAGADOS</span>
-                </span>
-                {fee > 0 && (
-                  <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-                    ≈ <b style={{ color: "var(--fg)" }}>{money(collected)}</b> recaudado
-                  </span>
+        {/* Control — pago y asistencia (tabla). */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+              <div className="label-mp" style={{ color: "var(--primary)" }}>Control · {paidN}/{joined.length}</div>
+              <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase" }}>Pago y asistencia<span className="dot">.</span></div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 160px", minWidth: 0, border: "1px solid var(--border)", borderRadius: 9999, padding: "6px 12px", background: "#fff" }}>
+              <Icon name="search" size={13} color="var(--muted-fg)" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar jugador…" style={{ flex: 1, minWidth: 0, border: 0, outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 12.5, color: "var(--fg)" }} />
+            </div>
+            {hasCats && (
+              <div style={{ position: "relative" }}>
+                <button type="button" onClick={() => setCatMenuOpen((o) => !o)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 6, textTransform: "none", letterSpacing: 0 }}>
+                  {catFilter === "all" ? "Todas las categorías" : (catById.get(catFilter) ?? "Categoría")}
+                  <Icon name="chevrons-up-down" size={13} color="var(--muted-fg)" />
+                </button>
+                {catMenuOpen && (
+                  <>
+                    <div onClick={() => setCatMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 31, minWidth: 190, background: "#fff", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", padding: 4, display: "flex", flexDirection: "column" }}>
+                      {[{ id: "all", name: "Todas las categorías" }, ...sortedCats.map((c) => ({ id: c.id, name: c.name }))].map((opt) => (
+                        <button key={opt.id} type="button" onClick={() => { setCatFilter(opt.id); setCatMenuOpen(false); }} style={{ textAlign: "left", padding: "7px 10px", borderRadius: 7, border: 0, background: catFilter === opt.id ? "var(--muted)" : "transparent", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "var(--fg)" }}>{opt.name}</button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
-              <div style={{ height: 6, borderRadius: 9999, background: "var(--muted)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: "var(--success-fg)", borderRadius: 9999, transition: "width 320ms var(--ease-out)" }} />
+            )}
+            {hasCats && (
+              <button type="button" onClick={() => setGrouped((g) => !g)} className="btn" title="Agrupar por categoría" style={{ background: grouped ? "var(--fg)" : "#fff", color: grouped ? "#fff" : "var(--fg)", border: grouped ? 0 : "1px solid var(--border)", gap: 6 }}>
+                <Icon name="layers" size={13} color={grouped ? "#fff" : "var(--muted-fg)"} /> Agrupar
+              </button>
+            )}
+          </div>
+
+          {joined.length === 0 ? (
+            <div style={{ padding: 16, fontSize: 12, color: "var(--muted-fg)" }}>Aún no hay inscritos.</div>
+          ) : (
+            <>
+              <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Bulk:</span>
+                <button type="button" onClick={() => onSetAllCheckedIn(!allCheckedIn)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
+                  <Icon name={allCheckedIn ? "circle-x" : "user-check"} size={12} /> {allCheckedIn ? "Quitar presentes" : "Todos presentes"}
+                </button>
+                <button type="button" onClick={() => onSetAllPaid(!allPaid)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
+                  <Icon name={allPaid ? "circle-x" : "check-check"} size={12} /> {allPaid ? "Quitar pagos" : "Todos pagado"}
+                </button>
+                <span style={{ flex: 1 }} />
+                {pendingPlayers.length > 0 && (
+                  <button type="button" onClick={() => onRemind()} disabled={reminding} className="btn" title="Notif + mensaje a los inscritos que aún no pagan (cooldown 30 min)" style={{ background: "var(--fg)", color: "#fff", border: 0, gap: 6 }}>
+                    <Icon name="bell" size={13} color="#fff" /> Avisar a {pendingPlayers.length} pendiente{pendingPlayers.length === 1 ? "" : "s"} · {money(pendingCents)}
+                  </button>
+                )}
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 560 }}>
+              <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 10, padding: "9px 14px" }}>
+                {headerCell("Inscrito")}
+                {headerCell("Categoría")}
+                {headerCell("Asistencia")}
+                {headerCell("Aviso")}
+                {headerCell("Pago")}
+              </div>
+
+              {visible.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 12, color: "var(--muted-fg)", borderTop: "1px solid var(--border)" }}>No hay jugadores que coincidan.</div>
+              ) : grouped && hasCats ? (
+                <>
+                  {sortedCats.map((c) => {
+                    const rows = visible.filter((p) => catIdByUser.get(p.user_id) === c.id);
+                    if (rows.length === 0) return null;
+                    return (
+                      <div key={c.id}>
+                        {groupHeader(`${c.name} · ${rows.length}`)}
+                        {rows.map(Row)}
+                      </div>
+                    );
+                  })}
+                  {(() => {
+                    const rows = visible.filter((p) => !catIdByUser.has(p.user_id));
+                    if (rows.length === 0) return null;
+                    return (
+                      <div>
+                        {groupHeader(`Sin categoría · ${rows.length}`)}
+                        {rows.map(Row)}
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                visible.map(Row)
+              )}
+              </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Columna lateral: datos de cobro + premios. */}
+      <div style={{ flex: "1 1 280px", maxWidth: 360, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {acct && (
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 10, background: "var(--success-bg)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="landmark" size={16} color="var(--success-fg)" />
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div className="label-mp" style={{ color: "var(--primary)" }}>Cobro</div>
+                <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, textTransform: "uppercase" }}>Datos del organizador<span className="dot">.</span></div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => onSetAllPaid(!allPaid)}
-              className="btn"
-              style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid var(--border)", marginBottom: 2 }}
-            >
-              <Icon name={allPaid ? "circle-x" : "check-check"} size={12} />
-              {allPaid ? "Quitar todos" : "Marcar todos como pagado"}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {acctRow("Banco", acct.bank, true)}
+              {acctRow("Cuenta", `${acct.accountType === "ahorros" ? "Ahorros" : "Corriente"} · ${acct.accountNumber}`)}
+              {acctRow("Titular", acct.holderName)}
+              {acct.holderId && acctRow("Cédula / RUC", acct.holderId)}
+            </div>
+            {acct.note && (
+              <div style={{ marginTop: 12, display: "flex", gap: 7, alignItems: "flex-start", padding: "9px 11px", borderRadius: 9, background: "var(--muted)", fontSize: 11.5, color: "var(--muted-fg)" }}>
+                <Icon name="info" size={13} color="var(--muted-fg)" />
+                <span style={{ minWidth: 0 }}>{acct.note}</span>
+              </div>
+            )}
+            <button type="button" onClick={copyAcct} className="btn" style={{ marginTop: 12, width: "100%", justifyContent: "center", background: "#fff", border: "1px solid var(--border)", gap: 7 }}>
+              <Icon name="copy" size={13} color="var(--muted-fg)" /> Copiar datos
             </button>
-            {joined.map((p) => (
-              <label
-                key={p.user_id}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)", background: p.paid ? "var(--success-bg)" : "#fff", cursor: "pointer" }}
-              >
-                <input type="checkbox" checked={p.paid} onChange={() => onTogglePaid(p.user_id)} style={{ accentColor: "var(--success-fg)", cursor: "pointer" }} />
-                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.profiles)}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: p.paid ? "var(--success-fg)" : "var(--muted-fg)", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                  {p.paid && <Icon name="check" size={12} color="var(--success-fg)" />}
-                  {p.paid ? "Pagado" : "Pendiente"}
-                </span>
-              </label>
-            ))}
           </div>
         )}
-      </Section>
+
+        {Array.isArray(q.prizes) && q.prizes.length > 0 && (
+          <div className="card" style={{ padding: 16 }}>
+            <div className="label-mp" style={{ color: "var(--primary)" }}>Recompensas</div>
+            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, textTransform: "uppercase", marginBottom: 10 }}>Premios<span className="dot">.</span></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(q.prizes as Prize[]).map((pz, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--border)" }}>
+                  <span className="font-heading" style={{ flexShrink: 0, minWidth: 22, fontSize: 13, fontWeight: 900, color: i === 0 ? "var(--primary)" : i === 1 ? "#fbbf24" : "var(--muted-fg)" }}>{pz.place}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pz.prize}</span>
+                  {pz.valueCents != null && pz.valueCents > 0 && (
+                    <span className="tabular" style={{ flexShrink: 0, fontSize: 11, fontWeight: 900, color: "var(--muted-fg)" }}>{money(pz.valueCents)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1125,26 +3022,78 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
   );
 }
 
-// ── Tab: Partidos (motor — rondas, puntos, tabla) ────────────────────────────
-function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+// ── Tab: Juego (motor americano — rondas, puntos, tabla individual) ──────────
+// Usa el componente compartido QuedadaGameView con canManage=true. Los callbacks
+// llaman las nuevas actions y refetchean (reload del panel via onChanged).
+function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
-  const cats = data.categories.filter((c) => data.pairs.some((p) => p.category_id === c.id));
-  const hasMatches = data.matches.length > 0;
-  const finished = data.quedada.status === "finished";
-  const cancelled = data.quedada.status === "cancelled";
+  const q = data.quedada;
+  const isAmericano = q.format === "americano";
+  const hasGames = data.games.length > 0;
+  const finished = q.status === "finished";
+  const cancelled = q.status === "cancelled";
+
+  const generateRound = (categoryId: string) => {
+    startTx(async () => {
+      const res = await generateAmericanoRound({ quedadaId: q.id, categoryId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo generar la ronda", sub: res.error.message });
+        return;
+      }
+      const byes = res.data.byes;
+      toast({
+        icon: "check-circle-2",
+        title: `Ronda ${res.data.roundNo} generada`,
+        sub: byes > 0 ? `${byes} jugador(es) descansan esta ronda` : undefined,
+      });
+      await onChanged();
+    });
+  };
+
+  const report = (gameId: string, pointsA: number, pointsB: number) => {
+    startTx(async () => {
+      const res = await reportGame({ gameId, pointsA, pointsB });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Marcador guardado" });
+      await onChanged();
+    });
+  };
+
+  const removeRound = async (roundId: string) => {
+    const ok = await confirm({
+      title: "Borrar ronda",
+      body: "Se borra la ronda con sus partidos y marcadores. ¿Seguir?",
+      confirmLabel: "Borrar ronda",
+      cancelLabel: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+    startTx(async () => {
+      const res = await deleteRound({ roundId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo borrar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Ronda borrada" });
+      await onChanged();
+    });
+  };
 
   const doFinish = async () => {
     const ok = await confirm({
       title: "Cerrar quedada",
-      body: "Se calcula el podio (campeón, finalista y 3er puesto desde la fase final, o el top 3 de la tabla) y la quedada pasa a finalizada. ¿Cerrar?",
+      body: "Se calcula el podio individual por categoría (ranking por puntos a favor) y la quedada pasa a finalizada. ¿Cerrar?",
       confirmLabel: "Cerrar y publicar podio",
       cancelLabel: "Cancelar",
     });
     if (!ok) return;
     startTx(async () => {
-      const res = await finishQuedada({ quedadaId: data.quedada.id });
+      const res = await finishQuedada({ quedadaId: q.id });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo cerrar", sub: res.error.message });
         return;
@@ -1154,547 +3103,72 @@ function PartidosTab({ data, onChanged }: { data: ManageData; onChanged: () => P
     });
   };
 
-  return (
-    <Section label="Juego" title="Partidos por categoría" sub="Genera los partidos, carga los puntos y mira la tabla.">
-      {cats.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Asigna parejas (pestaña Parejas) para poder generar partidos.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {cats.map((c) => (
-            <div key={c.id} className="mp-rise">
-              <CategoryMatches data={data} category={c} onChanged={onChanged} />
-            </div>
-          ))}
-          {hasMatches && !finished && !cancelled && (
-            <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--border-subtle)", paddingTop: 14 }}>
-              <button type="button" onClick={doFinish} className="btn btn-primary">
-                <Icon name="trophy" size={14} color="#fff" /> Cerrar quedada y publicar podio
-              </button>
-            </div>
-          )}
-          {finished && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", padding: 12, borderRadius: 10, background: "var(--success-bg)", color: "var(--success-fg)", fontSize: 12.5, fontWeight: 800 }}>
-              <Icon name="check-circle-2" size={15} color="var(--success-fg)" /> Quedada finalizada · revisa el podio en Resumen
-            </div>
-          )}
-        </div>
-      )}
-    </Section>
-  );
-}
-
-// Etiqueta de pareja (nombres) para una categoría.
-function usePairLabeler(data: ManageData, categoryId: string) {
-  const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const pairs = data.pairs.filter((p) => p.category_id === categoryId);
-  return (pairId: string | null): string => {
-    if (!pairId) return "Bye";
-    const p = pairs.find((x) => x.id === pairId);
-    if (!p) return "—";
-    const a = nameOf(partById.get(p.player_a_id)?.profiles ?? null);
-    const b = p.player_b_id ? nameOf(partById.get(p.player_b_id)?.profiles ?? null) : null;
-    return b ? `${a} + ${b}` : a;
-  };
-}
-const groupLetter = (n: number): string => String.fromCharCode(64 + n);
-
-function CategoryMatches({ data, category, onChanged }: { data: ManageData; category: ManageCategory; onChanged: () => Promise<void> }) {
-  const toast = useToast();
-  const { confirm } = usePromptModal();
-  const [, startTx] = useTransition();
-  const courts = data.quedada.courts_count ?? 0;
-  const [open, setOpen] = useState(true);
-  const [round, setRound] = useState<number | null>(null);
-
-  // El nº de grupos se CALCULA (1 por cancha, cada grupo ≥2 parejas). No se elige.
-  const pairCount = data.pairs.filter((p) => p.category_id === category.id).length;
-  const autoGroups = Math.max(1, Math.min(courts > 0 ? courts : 1, Math.floor(pairCount / 2)));
-  const perGroup = autoGroups > 0 ? Math.ceil(pairCount / autoGroups) : 0;
-
-  const pairLabel = usePairLabeler(data, category.id);
-  const allMatches = data.matches.filter((m) => m.category_id === category.id);
-  const groupMatches = allMatches.filter((m) => m.phase !== "final");
-  const finalMatches = allMatches.filter((m) => m.phase === "final");
-  const hasGroups = groupMatches.length > 0;
-  const hasFinal = finalMatches.length > 0;
-  const groupNos = Array.from(new Set(groupMatches.map((m) => m.group_no))).sort((a, b) => a - b);
-  const multiGroup = groupNos.length > 1;
-  const playedGroups = groupMatches.filter((m) => m.status === "played").length;
-  const groupsDone = hasGroups && playedGroups === groupMatches.length;
-  // `round` (estado del selector) ya no se usa para la fase de grupos: cada grupo
-  // muestra sus propias rondas. Lo dejamos para no romper el setState existente.
-  void round;
-
-  const doGenerate = () => {
-    startTx(async () => {
-      const res = await generateGroupStage({ quedadaId: data.quedada.id, categoryId: category.id });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo generar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: `${res.data.groups} grupo${res.data.groups === 1 ? "" : "s"} · ${res.data.created} partidos al azar` });
-      setRound(null);
-      await onChanged();
-    });
-  };
-  const doRegen = async () => {
-    const ok = await confirm({
-      title: "Regenerar partidos",
-      body: "Borra los partidos y marcadores actuales (incluida la fase final) y re-sortea las parejas al azar. ¿Seguir?",
-      confirmLabel: "Regenerar",
-      cancelLabel: "Cancelar",
-      destructive: true,
-    });
-    if (ok) doGenerate();
-  };
-  const doGenerateFinal = () => {
-    startTx(async () => {
-      const res = await generateMedalFinal({ quedadaId: data.quedada.id, categoryId: category.id });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo armar la fase final", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "trophy", title: `Fase final · ${res.data.classified} clasificados` });
-      await onChanged();
-    });
-  };
-
-  return (
-    <div className="card" style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
-        >
-          <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em" }}>{category.name}</span>
-          {hasGroups && (
-            <span style={{ fontSize: 10.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: groupsDone ? "var(--success-bg)" : "var(--muted)", color: groupsDone ? "var(--success-fg)" : "var(--muted-fg)" }}>{playedGroups}/{groupMatches.length}</span>
-          )}
-          <span style={{ flex: 1 }} />
-          <span style={{ transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)" }}>
-            <Icon name="chevron-down" size={16} color="var(--muted-fg)" />
-          </span>
-        </button>
-        {hasGroups && (
-          <button type="button" onClick={doRegen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0 }}>
-            <Icon name="shuffle" size={12} /> Regenerar
-          </button>
-        )}
-      </div>
-
-      {open && (
-        <div style={{ marginTop: 12 }}>
-          {!hasGroups ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14, borderRadius: 10, background: "var(--muted)" }}>
-              {pairCount < 2 ? (
-                <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>Asigna al menos 2 parejas a esta categoría (pestaña Parejas) para armar la fase de grupos.</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
-                    Las {pairCount} parejas se reparten <b>al azar</b>. {courts > 0 ? `Con ${courts} cancha${courts === 1 ? "" : "s"}:` : "Sin canchas definidas (Configurar):"}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}>
-                      <span className="font-heading tabular" style={{ fontSize: 28, fontWeight: 900, color: "var(--fg)" }}>{autoGroups}</span>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted-fg)" }}>{autoGroups === 1 ? "grupo" : "grupos"} · ~{perGroup} parejas c/u{courts > 0 && autoGroups <= courts ? " · 1 por cancha" : ""}</span>
-                    </div>
-                    <button type="button" onClick={doGenerate} className="btn btn-primary" style={{ marginLeft: "auto" }}>
-                      <Icon name="shuffle" size={13} color="#fff" /> Generar fase de grupos
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Fase de grupos — cada grupo muestra sus propias rondas */}
-              <div style={{ display: "grid", gridTemplateColumns: multiGroup ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 12, alignItems: "start" }}>
-                {groupNos.map((gn) => {
-                  const gm = groupMatches.filter((m) => m.group_no === gn);
-                  const gRounds = Array.from(new Set(gm.map((m) => m.round_no))).sort((a, b) => a - b);
-                  const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
-                  return (
-                    <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                      {(multiGroup || court != null) && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
-                          {multiGroup && <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>}
-                          {court != null && <span style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
-                        </div>
-                      )}
-                      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                        {gRounds.map((r) => (
-                          <div key={r} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {gRounds.length > 1 && (
-                              <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-                                Ronda {r} de {gRounds.length}
-                              </span>
-                            )}
-                            {gm.filter((m) => m.round_no === r).map((m) => (
-                              <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Paso a la fase final de medallas */}
-              {!hasFinal && (
-                <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: groupsDone ? "var(--color-mp-primary-light)" : "var(--muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <Icon name="trophy" size={16} color={groupsDone ? "var(--color-mp-primary-active)" : "var(--muted-fg)"} />
-                  <span style={{ flex: 1, minWidth: 160, fontSize: 12.5, fontWeight: 700, color: groupsDone ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>
-                    {groupsDone ? "Grupos completos. Clasifican los 2 mejores de cada grupo a la eliminación directa." : `Termina los ${groupMatches.length - playedGroups} partidos que faltan para abrir la fase final.`}
-                  </span>
-                  <button type="button" onClick={doGenerateFinal} disabled={!groupsDone} className="btn btn-primary" style={{ opacity: groupsDone ? 1 : 0.5, cursor: groupsDone ? "pointer" : "not-allowed" }}>
-                    <Icon name="trophy" size={13} color="#fff" /> Generar fase final
-                  </button>
-                </div>
-              )}
-
-              {hasFinal && (
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                    <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.04em" }}>Fase final · medallas</span>
-                    <button type="button" onClick={doGenerateFinal} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0, marginLeft: "auto" }}>
-                      <Icon name="rotate-ccw" size={12} /> Rehacer
-                    </button>
-                  </div>
-                  <BracketView matches={finalMatches} pairLabel={pairLabel} onChanged={onChanged} />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Cuadro de eliminación directa: rondas (cuartos/semis/final) + 3er puesto.
-function BracketView({ matches, pairLabel, onChanged }: { matches: ManageMatch[]; pairLabel: (id: string | null) => string; onChanged: () => Promise<void> }) {
-  const main = matches.filter((m) => !m.is_bronze);
-  const bronze = matches.find((m) => m.is_bronze) ?? null;
-  const rounds = Array.from(new Set(main.map((m) => m.round_no))).sort((a, b) => a - b);
-  const finalRound = rounds.length > 0 ? rounds[rounds.length - 1] : 1;
-  const roundLabel = (r: number): string => {
-    const fromEnd = finalRound - r;
-    if (fromEnd === 0) return "Final";
-    if (fromEnd === 1) return "Semifinales";
-    if (fromEnd === 2) return "Cuartos de final";
-    if (fromEnd === 3) return "Octavos de final";
-    return `Ronda ${r}`;
-  };
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
-      {rounds.map((r) => (
-        <div key={r} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "8px 12px", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
-            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>{roundLabel(r)}</span>
-          </div>
-          <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            {main.filter((m) => m.round_no === r).sort((a, b) => (a.bracket_pos ?? 0) - (b.bracket_pos ?? 0)).map((m) => (
-              <MatchRow key={m.id} match={m} labelA={pairLabel(m.pair_a_id)} labelB={pairLabel(m.pair_b_id)} onChanged={onChanged} />
-            ))}
-          </div>
-        </div>
-      ))}
-      {bronze && (
-        <div style={{ border: "1px solid var(--warning-border)", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "8px 12px", background: "var(--warning-bg)", borderBottom: "1px solid var(--warning-border)" }}>
-            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase", color: "var(--warning-fg)" }}>3er puesto</span>
-          </div>
-          <div style={{ padding: 10 }}>
-            <MatchRow match={bronze} labelA={pairLabel(bronze.pair_a_id)} labelB={pairLabel(bronze.pair_b_id)} onChanged={onChanged} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MatchRow({ match, labelA, labelB, onChanged }: { match: ManageMatch; labelA: string; labelB: string; onChanged: () => Promise<void> }) {
-  const toast = useToast();
-  const { confirm } = usePromptModal();
-  const [, startTx] = useTransition();
-  const [a, setA] = useState(match.points_a != null ? String(match.points_a) : "");
-  const [b, setB] = useState(match.points_b != null ? String(match.points_b) : "");
-  const played = match.status === "played";
-  const incomplete = !match.pair_a_id || !match.pair_b_id;
-
-  // Cuadro de eliminación: partido sin ambos lados definidos.
-  if (incomplete) {
-    if (played) {
-      // Bye: el presente pasa directo a la siguiente ronda.
-      const who = match.pair_a_id ? labelA : labelB;
-      return (
-        <div style={{ borderRadius: 12, border: "1px dashed var(--border)", background: "var(--muted)", padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
-          <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Pasa directo</span>
-        </div>
-      );
-    }
+  if (!isAmericano) {
     return (
-      <div style={{ borderRadius: 12, border: "1px dashed var(--border)", background: "var(--muted)", padding: "14px", textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>
-        Esperando clasificados
-      </div>
+      <Section label="Juego" title="Motor de juego">
+        <div className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 12, background: "var(--muted)", color: "var(--muted-fg)" }}>
+          <Icon name="clock" size={18} color="var(--muted-fg)" />
+          <div>
+            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, color: "var(--fg)" }}>Pronto</div>
+            <div style={{ fontSize: 12, marginTop: 2 }}>
+              El motor de juego de este formato todavía no está disponible. Por ahora puedes gestionar parejas y pagos.
+            </div>
+          </div>
+        </div>
+      </Section>
     );
   }
 
-  const report = () => {
-    const pa = parseInt(a, 10);
-    const pb = parseInt(b, 10);
-    if (!Number.isFinite(pa) || !Number.isFinite(pb)) {
-      toast({ icon: "alert-triangle", title: "Pon los puntos de ambos lados" });
-      return;
-    }
-    startTx(async () => {
-      const res = await reportQuedadaMatch({ matchId: match.id, pointsA: pa, pointsB: pb });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: "Resultado guardado" });
-      await onChanged();
-    });
-  };
-  const remove = async () => {
-    const ok = await confirm({ title: "Quitar partido", body: "¿Quitar este partido?", confirmLabel: "Quitar", cancelLabel: "Cancelar", destructive: true });
-    if (!ok) return;
-    startTx(async () => {
-      const res = await deleteQuedadaMatch({ matchId: match.id });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo quitar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check", title: "Partido quitado" });
-      await onChanged();
-    });
-  };
-
-  const na = parseInt(a, 10);
-  const nb = parseInt(b, 10);
-  const aWins = played && Number.isFinite(na) && Number.isFinite(nb) && na > nb;
-  const bWins = played && Number.isFinite(na) && Number.isFinite(nb) && nb > na;
-
-  const scoreBox = (val: string, set: (v: string) => void, win: boolean, label: string) => (
-    <input
-      value={val}
-      onChange={(e) => set(e.target.value)}
-      type="number"
-      min={0}
-      placeholder="–"
-      aria-label={label}
-      className="font-heading tabular"
-      style={{
-        width: 64,
-        height: 56,
-        flexShrink: 0,
-        textAlign: "center",
-        border: win ? "2px solid var(--primary)" : "1.5px solid var(--border)",
-        borderRadius: 12,
-        fontSize: 26,
-        fontWeight: 900,
-        fontFamily: "inherit",
-        outline: "none",
-        background: win ? "var(--color-mp-primary-light)" : "#fff",
-        color: win ? "var(--color-mp-primary-active)" : "var(--fg)",
-      }}
-    />
-  );
-  const nameRow = (name: string, win: boolean, score: React.ReactNode) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: win ? 900 : 700, color: win ? "var(--color-mp-primary-active)" : "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-      {score}
-    </div>
-  );
-
   return (
-    <div style={{ borderRadius: 12, border: "1px solid var(--border)", background: played ? "var(--success-bg)" : "#fff", overflow: "hidden" }}>
-      {nameRow(labelA, aWins, scoreBox(a, setA, aWins, "Puntos A"))}
-      <div style={{ borderTop: "1px solid var(--border)" }} />
-      {nameRow(labelB, bWins, scoreBox(b, setB, bWins, "Puntos B"))}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, padding: "8px 10px", borderTop: "1px solid var(--border)", background: played ? "transparent" : "var(--muted)" }}>
-        {played && <span style={{ flex: 1, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--success-fg)" }}>Jugado</span>}
-        <button type="button" onClick={report} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", padding: "6px 12px" }}>
-          <Icon name="check" size={12} /> {played ? "Actualizar" : "Guardar"}
-        </button>
-        <button type="button" onClick={remove} aria-label="Quitar partido" style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 4 }}>
-          <Icon name="x" size={14} color="var(--muted-fg)" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Tab: Posiciones (tabla por grupo de cada categoría) ──────────────────────
-function PosicionesTab({ data }: { data: ManageData }) {
-  const cats = data.categories.filter((c) => data.matches.some((m) => m.category_id === c.id));
-  return (
-    <Section label="Juego" title="Tabla de posiciones" sub="Por grupo, según los puntos de los partidos jugados.">
-      {cats.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Genera partidos (pestaña Partidos) para ver la tabla.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {cats.map((c) => (
-            <div key={c.id} className="mp-rise"><CategoryStandings data={data} category={c} /></div>
-          ))}
-        </div>
-      )}
-    </Section>
-  );
-}
-
-// Standings: jugados (PJ), ganados/empatados/perdidos (G/E/P), puntos a favor/en
-// contra (PF/PC). Orden por el estándar de pickleball (round robin):
-//   1) más victorias (G)
-//   2) enfrentamiento directo (head-to-head) si empatan EXACTAMENTE 2
-//   3) diferencia de puntos (PF−PC) cuando el empate es de 3+ (círculo A>B>C>A)
-//   4) puntos a favor (PF) como último recurso
-type StandingRow = { pid: string; pj: number; g: number; e: number; p: number; pf: number; pc: number };
-function computeStandings(matches: ManageMatch[], pairIds: string[]): StandingRow[] {
-  const base: StandingRow[] = pairIds.map((pid) => {
-    let pj = 0, g = 0, e = 0, p = 0, pf = 0, pc = 0;
-    for (const m of matches) {
-      if (m.status !== "played") continue;
-      let mine: number, theirs: number;
-      if (m.pair_a_id === pid) { mine = m.points_a ?? 0; theirs = m.points_b ?? 0; }
-      else if (m.pair_b_id === pid) { mine = m.points_b ?? 0; theirs = m.points_a ?? 0; }
-      else continue;
-      pj++; pf += mine; pc += theirs;
-      if (mine > theirs) g++;
-      else if (mine < theirs) p++;
-      else e++;
-    }
-    return { pid, pj, g, e, p, pf, pc };
-  });
-
-  // Head-to-head: >0 si `x` le ganó a `y` en su partido directo, <0 si perdió.
-  const headToHead = (x: string, y: string): number => {
-    let xw = 0, yw = 0;
-    for (const m of matches) {
-      if (m.status !== "played") continue;
-      const xy = m.pair_a_id === x && m.pair_b_id === y;
-      const yx = m.pair_a_id === y && m.pair_b_id === x;
-      if (!xy && !yx) continue;
-      const xPts = xy ? (m.points_a ?? 0) : (m.points_b ?? 0);
-      const yPts = xy ? (m.points_b ?? 0) : (m.points_a ?? 0);
-      if (xPts > yPts) xw++;
-      else if (yPts > xPts) yw++;
-    }
-    return xw - yw;
-  };
-  const diff = (r: StandingRow) => r.pf - r.pc;
-
-  return base.sort((a, b) => {
-    if (b.g !== a.g) return b.g - a.g; // 1) victorias
-    // empatados en victorias: el directo solo decide si son exactamente 2
-    const tied = base.filter((r) => r.g === a.g).length;
-    if (tied === 2) {
-      const h = headToHead(a.pid, b.pid);
-      if (h !== 0) return -h; // a le ganó a b → a primero
-    }
-    if (diff(b) !== diff(a)) return diff(b) - diff(a); // 3) diferencia
-    return b.pf - a.pf; // 4) puntos a favor
-  });
-}
-
-const STANDINGS_COLS = "26px minmax(96px,1fr) 30px 30px 26px 26px 34px 34px 44px";
-function StandingsBody({ rows, pairLabel }: { rows: StandingRow[]; pairLabel: (id: string) => string }) {
-  const head: { k: string; t: string; title: string }[] = [
-    { k: "pj", t: "PJ", title: "Partidos jugados" },
-    { k: "g", t: "G", title: "Ganados (criterio principal)" },
-    { k: "e", t: "E", title: "Empatados" },
-    { k: "p", t: "P", title: "Perdidos" },
-    { k: "pf", t: "PF", title: "Puntos a favor" },
-    { k: "pc", t: "PC", title: "Puntos en contra" },
-    { k: "dif", t: "DIF", title: "Diferencia (PF−PC)" },
-  ];
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <div style={{ minWidth: 440 }}>
-        <div style={{ display: "grid", gridTemplateColumns: STANDINGS_COLS, gap: 6, padding: "5px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
-          <span>#</span>
-          <span>Pareja</span>
-          {head.map((h) => <span key={h.k} title={h.title} style={{ textAlign: h.k === "dif" ? "right" : "center" }}>{h.t}</span>)}
-        </div>
-        {rows.map((s, i) => {
-          const dif = s.pf - s.pc;
-          return (
-            <div key={s.pid} style={{ display: "grid", gridTemplateColumns: STANDINGS_COLS, gap: 6, alignItems: "center", padding: "7px 11px", fontSize: 12, background: i === 0 ? "var(--color-mp-primary-light)" : "transparent" }}>
-              <span className="font-heading tabular" style={{ fontWeight: 900, color: i === 0 ? "var(--color-mp-primary-active)" : "var(--muted-fg)" }}>{i + 1}</span>
-              <span style={{ minWidth: 0, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pairLabel(s.pid)}</span>
-              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pj}</span>
-              <span className="font-heading tabular" style={{ textAlign: "center", color: i === 0 ? "var(--color-mp-primary-active)" : "var(--fg)", fontWeight: 900 }}>{s.g}</span>
-              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.e}</span>
-              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.p}</span>
-              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pf}</span>
-              <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{s.pc}</span>
-              <span className="tabular" style={{ textAlign: "right", fontWeight: 700, color: dif > 0 ? "var(--color-mp-primary-active)" : dif < 0 ? "var(--destructive-fg)" : "var(--muted-fg)" }}>{dif > 0 ? `+${dif}` : dif}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function CategoryStandings({ data, category }: { data: ManageData; category: ManageCategory }) {
-  const pairLabel = usePairLabeler(data, category.id);
-  const matches = data.matches.filter((m) => m.category_id === category.id);
-  const groupNos = Array.from(new Set(matches.map((m) => m.group_no))).sort((a, b) => a - b);
-  const multiGroup = groupNos.length > 1;
-  const allPairIds = Array.from(new Set(matches.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
-  const overall = computeStandings(matches, allPairIds);
-
-  return (
-    <div className="card" style={{ padding: 14 }}>
-      <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em", marginBottom: 10 }}>{category.name}</div>
-
-      {/* Tabla general de toda la categoría */}
-      <div className="label-mp" style={{ marginBottom: 6 }}>General</div>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-        <StandingsBody rows={overall} pairLabel={pairLabel} />
-      </div>
-
-      {/* Por grupo (si hay más de uno) */}
-      {multiGroup && (
-        <>
-          <div className="label-mp" style={{ margin: "14px 0 6px" }}>Por grupo</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-            {groupNos.map((gn) => {
-              const gm = matches.filter((m) => m.group_no === gn);
-              const court = gm.find((m) => m.court_no != null)?.court_no ?? null;
-              const pairIds = Array.from(new Set(gm.flatMap((m) => [m.pair_a_id, m.pair_b_id].filter((x): x is string => !!x))));
-              const rows = computeStandings(gm, pairIds);
-              return (
-                <div key={gn} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", background: "var(--muted)" }}>
-                    <span className="font-heading" style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>Grupo {groupLetter(gn)}</span>
-                    {court != null && <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)" }}>Cancha {court}</span>}
-                  </div>
-                  <StandingsBody rows={rows} pairLabel={pairLabel} />
-                </div>
-              );
-            })}
+    <Section label="Juego" title="Partidos por categoría" sub="Genera rondas, carga los puntos y mira la tabla.">
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <QuedadaGameView
+          categories={data.categories}
+          pairs={data.pairs}
+          participants={data.participants}
+          rounds={data.rounds}
+          games={data.games}
+          meUserId={data.meUserId}
+          matchMode={q.match_mode}
+          quedadaTargetPoints={data.quedada.target_points}
+          canManage
+          onGenerateRound={generateRound}
+          onReportGame={report}
+          onDeleteRound={removeRound}
+        />
+        {hasGames && !finished && !cancelled && data.isCreator && (
+          <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--border-subtle)", paddingTop: 14 }}>
+            <button type="button" onClick={doFinish} className="btn btn-primary">
+              <Icon name="trophy" size={14} color="#fff" /> Cerrar quedada y publicar podio
+            </button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+        {finished && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", padding: 12, borderRadius: 10, background: "var(--success-bg)", color: "var(--success-fg)", fontSize: 12.5, fontWeight: 800 }}>
+            <Icon name="check-circle-2" size={15} color="var(--success-fg)" /> Quedada finalizada · revisa el podio en Resumen
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
 // ── 6. Link de inscripción ───────────────────────────────────────────────────
+// Reusable: en Resumen (solo copiar) y en Configuración (con regenerar, si se
+// pasan quedadaId + onChanged).
 function InviteLinkSection({
   inviteCode,
   toast,
+  quedadaId,
+  onChanged,
 }: {
   inviteCode: string | null;
   toast: ReturnType<typeof useToast>;
+  quedadaId?: string;
+  onChanged?: () => Promise<void>;
 }) {
+  const { confirm } = usePromptModal();
+  const [regenerating, startRegen] = useTransition();
   const link =
     inviteCode && typeof window !== "undefined"
       ? `${window.location.origin}/q/${inviteCode}`
@@ -1711,6 +3185,29 @@ function InviteLinkSection({
       toast({ icon: "alert-triangle", title: "No se pudo copiar", sub: "Copia el link manualmente." });
     }
   };
+
+  const regenerate = async () => {
+    if (!quedadaId || !onChanged) return;
+    const ok = await confirm({
+      title: "Regenerar link",
+      body: "El link actual dejará de funcionar y se creará uno nuevo. ¿Continuar?",
+      confirmLabel: "Regenerar",
+      cancelLabel: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+    startRegen(async () => {
+      const res = await regenerateInviteCode({ quedadaId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo regenerar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Link regenerado", sub: "El anterior ya no sirve." });
+      await onChanged();
+    });
+  };
+
+  const canRegen = !!quedadaId && !!onChanged;
 
   return (
     <Section label="Compartir" title="Link de inscripción" sub="Compártelo para que se unan a la quedada.">
@@ -1738,6 +3235,12 @@ function InviteLinkSection({
             <Icon name="copy" size={13} color="#fff" />
             Copiar link
           </button>
+          {canRegen && (
+            <button className="btn btn-outline" onClick={regenerate} disabled={regenerating} style={{ flexShrink: 0 }}>
+              <Icon name="refresh-cw" size={13} />
+              {regenerating ? "Regenerando…" : "Regenerar"}
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
@@ -1745,6 +3248,206 @@ function InviteLinkSection({
         </div>
       )}
     </Section>
+  );
+}
+
+// ── 7. Detalles generales (editar lo del wizard, sin formato/modo) ───────────
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function DetailsSection({ data, onSaved }: { data: ManageData; onSaved: () => Promise<void> }) {
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const q = data.quedada;
+  const [title, setTitle] = useState(q.title);
+  const [description, setDescription] = useState(q.description ?? "");
+  const [when, setWhen] = useState(isoToLocalInput(q.starts_at));
+  const [location, setLocation] = useState(q.location_text ?? "");
+  const [visibility, setVisibility] = useState<"open" | "private">(q.visibility);
+  const [maxPlayers, setMaxPlayers] = useState(q.max_players != null ? String(q.max_players) : "");
+  const [perks, setPerks] = useState(q.perks_text ?? "");
+
+  const save = () => {
+    if (pending) return;
+    if (title.trim().length < 3) {
+      toast({ icon: "alert-triangle", title: "El título es muy corto", sub: "Mínimo 3 caracteres." });
+      return;
+    }
+    if (!when) {
+      toast({ icon: "alert-triangle", title: "Falta la fecha y hora" });
+      return;
+    }
+    start(async () => {
+      const res = await updateQuedadaDetails({
+        quedadaId: q.id,
+        title: title.trim(),
+        description: description.trim() || null,
+        startsAt: new Date(when).toISOString(),
+        locationText: location.trim() || null,
+        visibility,
+        maxPlayers: maxPlayers.trim() ? parseInt(maxPlayers, 10) : null,
+        perks: perks.trim() || null,
+      });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Datos actualizados", sub: "Si cambiaste la fecha, avisamos a los inscritos." });
+      await onSaved();
+    });
+  };
+
+  return (
+    <Section label="General" title="Detalles de la quedada" sub="Edita lo básico. El formato y el modo (singles/dobles) no se cambian tras crear.">
+      <Field label="Título">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} style={fieldInput} />
+      </Field>
+      <Field label="Descripción">
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500} style={{ ...fieldInput, resize: "vertical" }} />
+      </Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Fecha y hora">
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={fieldInput} />
+        </Field>
+        <Field label="Cupo máximo (opcional)">
+          <input type="number" min={2} max={64} value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} placeholder="Sin límite" style={fieldInput} />
+        </Field>
+      </div>
+      <Field label="Sede / ubicación">
+        <input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={140} placeholder="Club, dirección…" style={fieldInput} />
+      </Field>
+      <Field label="Visibilidad">
+        <div style={{ display: "flex", gap: 8 }}>
+          {([["open", "Abierta"], ["private", "Privada"]] as const).map(([v, label]) => {
+            const on = visibility === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVisibility(v)}
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 9, fontSize: 12, fontWeight: 800, cursor: "pointer", border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)" }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      <Field label="Beneficios / notas (opcional)">
+        <input value={perks} onChange={(e) => setPerks(e.target.value)} maxLength={280} placeholder="Hidratación, premios, etc." style={fieldInput} />
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button className="btn btn-primary" onClick={save} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+          {!pending && <Icon name="save" size={13} color="#fff" />}
+          {pending ? "Guardando…" : "Guardar detalles"}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+// ── 8. Motor de juego (engine_mode + target_points) ──────────────────────────
+function EngineSection({ data, onSaved }: { data: ManageData; onSaved: () => Promise<void> }) {
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const isAmericano = data.quedada.format === "americano";
+  const hasGames = data.games.length > 0;
+  const [mode, setMode] = useState<"rounds" | "rolling">(data.quedada.engine_mode);
+  const [target, setTarget] = useState(data.quedada.target_points != null ? String(data.quedada.target_points) : "");
+
+  const save = () => {
+    if (pending) return;
+    start(async () => {
+      const res = await updateQuedadaLogistics({
+        quedadaId: data.quedada.id,
+        targetPoints: target.trim() ? parseInt(target, 10) : null,
+        ...(hasGames ? {} : { engineMode: mode }),
+      });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Motor actualizado" });
+      await onSaved();
+    });
+  };
+
+  return (
+    <Section label="Juego" title="Motor de juego" sub="Cómo se arman los partidos y a cuántos puntos se juega.">
+      {!isAmericano && (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: "8px 10px", background: "var(--muted)", borderRadius: 8 }}>
+          El motor configurable aplica al formato Americano. Otros formatos llegan pronto.
+        </div>
+      )}
+      <Field label="Modo de emparejamiento">
+        <div style={{ display: "flex", gap: 8 }}>
+          {([["rounds", "Por rondas"], ["rolling", "Continuo por cancha"]] as const).map(([v, label]) => {
+            const on = mode === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                disabled={hasGames}
+                onClick={() => setMode(v)}
+                title={hasGames ? "No puedes cambiar el motor con partidos ya generados" : undefined}
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 9, fontSize: 12, fontWeight: 800, cursor: hasGames ? "default" : "pointer", opacity: hasGames && !on ? 0.5 : 1, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)" }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      {hasGames && (
+        <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+          El modo está bloqueado porque ya hay partidos generados.
+        </div>
+      )}
+      <Field label="Puntos por partido (target)">
+        <input type="number" min={1} max={999} value={target} onChange={(e) => setTarget(e.target.value)} placeholder="24" style={fieldInput} />
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button className="btn btn-primary" onClick={save} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+          {!pending && <Icon name="save" size={13} color="#fff" />}
+          {pending ? "Guardando…" : "Guardar motor"}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+// ── 9. Zona de peligro (cancelar) ────────────────────────────────────────────
+function DangerZoneSection({ onCancel, canceling, status }: { onCancel: () => void; canceling: boolean; status: string }) {
+  const terminal = status === "cancelled" || status === "finished";
+  return (
+    <div className="card" style={{ padding: 16, border: "1px solid var(--destructive-border)", background: "var(--destructive-bg)" }}>
+      <Section label="Cuidado" title="Zona de peligro" sub="Acciones irreversibles. Avisamos a los inscritos.">
+        {terminal ? (
+          <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>
+            Esta quedada ya está {status === "cancelled" ? "cancelada" : "finalizada"}.
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Cancelar la quedada notifica a los inscritos y no se puede deshacer.</span>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={canceling}
+              className="btn"
+              style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "1px solid #dc2626", opacity: canceling ? 0.6 : 1 }}
+            >
+              <Icon name="circle-x" size={13} color="#fff" />
+              Cancelar quedada
+            </button>
+          </div>
+        )}
+      </Section>
+    </div>
   );
 }
 
@@ -1845,6 +3548,7 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
   const [pending, start] = useTransition();
   const [bank, setBank] = useState<BankDraft>(accountToBankDraft(data.quedada.payment_account));
   const [prizeRows, setPrizeRows] = useState<PrizeDraft[]>(prizesToDrafts(data.quedada.prizes));
+  const [ruleRows, setRuleRows] = useState<RuleDraft[]>(rulesToDrafts(data.quedada.rules));
 
   const save = () => {
     if (pending) return;
@@ -1857,6 +3561,7 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
         quedadaId: data.quedada.id,
         paymentAccount: bankDraftToAccount(bank),
         prizes: prizeDraftsToPrizes(prizeRows),
+        rules: ruleDraftsToRules(ruleRows),
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
@@ -1868,12 +3573,15 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
   };
 
   return (
-    <Section label="Cobro" title="Datos del organizador y premios" sub="Para que los jugadores te transfieran y vean qué se juega.">
+    <Section label="Cobro" title="Datos del organizador, premios y reglas" sub="Para que los jugadores te transfieran y vean qué se juega y las reglas.">
       <Field label="Datos del organizador (para el pago)">
         <BankAccountFields value={bank} onChange={setBank} />
       </Field>
       <Field label="Premios">
         <PrizesEditor value={prizeRows} onChange={setPrizeRows} />
+      </Field>
+      <Field label="Reglas clave">
+        <RulesEditor value={ruleRows} onChange={setRuleRows} />
       </Field>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={save} disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
@@ -2131,6 +3839,7 @@ function CategoryForm({
   const [noLevel, setNoLevel] = useState(initLevel.noLevel);
   const [hour, setHour] = useState(hourLabel(category?.starts_at ?? null));
   const [maxSlots, setMaxSlots] = useState(category?.max_slots != null ? String(category.max_slots) : "");
+  const [targetPoints, setTargetPoints] = useState(category?.target_points != null ? String(category.target_points) : "");
 
   // Hora "HH:mm" → ISO usando hoy como fecha base (v1: solo importa la hora).
   const hourToIso = (hh: string): string | undefined => {
@@ -2150,6 +3859,7 @@ function CategoryForm({
       return;
     }
     const slotsN = maxSlots.trim() ? parseInt(maxSlots, 10) : undefined;
+    const targetN = targetPoints.trim() ? parseInt(targetPoints, 10) : undefined;
     start(async () => {
       const res = category
         ? await updateCategory({
@@ -2158,6 +3868,7 @@ function CategoryForm({
             levelLabel: noLevel ? null : sumaLabel(suma),
             startsAt: hourToIso(hour) ?? null,
             maxSlots: slotsN ?? null,
+            targetPoints: targetN ?? null,
           })
         : await createCategory({
             quedadaId,
@@ -2165,6 +3876,7 @@ function CategoryForm({
             levelLabel: noLevel ? undefined : sumaLabel(suma),
             startsAt: hourToIso(hour),
             maxSlots: slotsN,
+            targetPoints: targetN,
           });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
@@ -2207,6 +3919,9 @@ function CategoryForm({
         <Field label="Cupos">
           <input type="number" min={1} value={maxSlots} onChange={(e) => setMaxSlots(e.target.value)} placeholder="8" style={fieldInput} />
         </Field>
+        <Field label="Partido a X puntos">
+          <input type="number" min={1} max={999} value={targetPoints} onChange={(e) => setTargetPoints(e.target.value)} placeholder="24" style={fieldInput} />
+        </Field>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onCancel} disabled={pending}>
@@ -2221,13 +3936,16 @@ function CategoryForm({
   );
 }
 
-// ── 5. Slots / Parejas por categoría ─────────────────────────────────────────
+// ── 5. Roster por categoría (parejas fijas, o jugadores en americano) ─────────
 function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+  const title = individualRoster ? "Jugadores por categoría" : "Parejas por categoría";
+  const sub = individualRoster ? "Asigna un jugador a cada cupo (en americano el compañero rota cada ronda)." : "Asigna parejas a cada cupo.";
   return (
-    <Section label="Roster" title="Parejas por categoría" sub="Asigna parejas a cada cupo.">
+    <Section label="Roster" title={title} sub={sub}>
       {data.categories.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-          Crea al menos una categoría (en Configurar) para asignar parejas.
+          Crea al menos una categoría (en Configurar) para asignar {individualRoster ? "jugadores" : "parejas"}.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2256,7 +3974,10 @@ function CategorySlots({
   const [, startTx] = useTransition();
   const [open, setOpen] = useState(true);
   const [assigningSlot, setAssigningSlot] = useState<number | null>(null);
-  const isDoubles = data.quedada.match_mode === "doubles";
+  // Americano = roster individual (1 por cupo); el compañero rota cada ronda.
+  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+  const isDoubles = !individualRoster && data.quedada.match_mode === "doubles";
+  const unitWord = individualRoster ? "jugador" : "pareja";
 
   const slotCount = category.max_slots ?? 0;
   const pairsBySlot = new Map<number, ManagePair>();
@@ -2292,8 +4013,8 @@ function CategorySlots({
 
   const removePairById = async (pairId: string, slotNo: number) => {
     const ok = await confirm({
-      title: "Quitar pareja",
-      body: `¿Quitar la pareja del cupo ${slotNo} de “${category.name}”?`,
+      title: `Quitar ${unitWord}`,
+      body: `¿Quitar ${individualRoster ? "el jugador" : "la pareja"} del cupo ${slotNo} de “${category.name}”?`,
       confirmLabel: "Quitar",
       cancelLabel: "Cancelar",
       destructive: true,
@@ -2305,7 +4026,7 @@ function CategorySlots({
         toast({ icon: "alert-triangle", title: "No se pudo quitar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check", title: "Pareja quitada" });
+      toast({ icon: "check", title: individualRoster ? "Jugador quitado" : "Pareja quitada" });
       await onChanged();
     });
   };
@@ -2451,7 +4172,7 @@ function SlotCell({
     <button
       type="button"
       onClick={onRemove}
-      aria-label="Quitar pareja"
+      aria-label="Quitar del cupo"
       style={{ flexShrink: 0, background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", display: "inline-flex", padding: 2 }}
     >
       <Icon name="x" size={13} color="var(--muted-fg)" />

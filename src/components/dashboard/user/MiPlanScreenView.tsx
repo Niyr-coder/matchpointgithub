@@ -379,6 +379,16 @@ const BENEFITS: BenefitCategory[] = [
     ],
   },
   {
+    title: "Coach AI",
+    hint: "Sube el video de tu match y recibe análisis táctico: fortalezas, qué corregir y drills personalizados.",
+    available: true,
+    rows: [
+      { label: "Análisis de video", free: "—", premium: "Ilimitados", highlight: true },
+      { label: "Score AI por match", free: "—", premium: "Incluido" },
+      { label: "Drills personalizados", free: "—", premium: "Incluidos" },
+    ],
+  },
+  {
     title: "Torneos privados",
     hint: "Próximamente — torneos solo-invitación entre amigos o tu club.",
     available: false,

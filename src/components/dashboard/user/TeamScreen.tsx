@@ -7,8 +7,10 @@ import { computeTeamMpr } from "@/lib/teams/mpr";
 import { findAccent, findCardStyle } from "@/lib/profile/customization-presets";
 import { canUsePreset } from "@/lib/profile/bundles";
 import { listMyFriends } from "@/server/actions/friends";
+import { getTeamAchievementsServer } from "@/server/actions/team-achievements";
 import {
   TeamScreenView,
+  type AchievementLite,
   type FriendLite,
   type PendingInviteLite,
   type TeamLite,
@@ -60,10 +62,10 @@ async function loadTeam(): Promise<TeamLite | null> {
 
   const teamId = myMemberships[0].team_id as string;
 
-  const [{ data: teamRaw }, { data: allMembers }, { data: pendingRaw }] = await Promise.all([
+  const [{ data: teamRaw }, { data: allMembers }, { data: pendingRaw }, achievements] = await Promise.all([
     supabase
       .from("teams")
-      .select("id,name,slug,sport,description,invite_code,captain_id,created_at,profiles!teams_captain_id_fkey(display_name)")
+      .select("id,name,slug,tag,color,sport,description,invite_code,captain_id,created_at,captain_only_invites,require_join_approval,show_in_ranking,allow_external_chat_guests,status,is_verified,is_pinned,profiles!teams_captain_id_fkey(display_name)")
       .eq("id", teamId)
       .maybeSingle(),
     supabase
@@ -78,6 +80,7 @@ async function loadTeam(): Promise<TeamLite | null> {
       .eq("team_id", teamId)
       .eq("status", "pending")
       .order("created_at", { ascending: false }),
+    getTeamAchievementsServer(teamId, 5),
   ]);
 
   if (!teamRaw) return null;
@@ -215,14 +218,23 @@ async function loadTeam(): Promise<TeamLite | null> {
   const captainSummary = await getProfileSummary(captainId);
   const caps = await getTeamCaps(captainSummary);
 
+  const achievementsLite: AchievementLite[] = achievements.map((a) => ({
+    id: a.id,
+    kind: a.kind,
+    title: a.title,
+    subtitle: a.subtitle,
+    awardedAt: a.awardedAt,
+  }));
+
   return {
     id: team.id as string,
     name: team.name as string,
-    tag: ((team.slug as string) ?? "TEAM").slice(0, 3).toUpperCase(),
+    tag: ((team.tag as string | null) ?? (team.slug as string) ?? "TEAM").slice(0, 4).toUpperCase(),
     sport: SPORT_LABEL[(team.sport as string) ?? "pickleball"] ?? "Multi",
     teamMpr: teamMprResult.rating,
     description: (team.description as string | null | undefined) ?? null,
     inviteCode: (team.invite_code as string | null | undefined) ?? null,
+    accentHex: (team.color as string | null) ?? null,
     captainId,
     captainName: captainProfile?.display_name ?? "Capitán",
     founded: String(created.getFullYear()),
@@ -232,6 +244,16 @@ async function loadTeam(): Promise<TeamLite | null> {
     league: "Sin liga asignada",
     members,
     pendingInvites,
+    achievements: achievementsLite,
+    status: ((team as Record<string, unknown>).status as TeamLite["status"]) ?? "active",
+    isVerified: (team as Record<string, unknown>).is_verified === true,
+    isPinned: (team as Record<string, unknown>).is_pinned === true,
+    settings: {
+      captainOnlyInvites: (team as Record<string, unknown>).captain_only_invites !== false,
+      requireJoinApproval: (team as Record<string, unknown>).require_join_approval !== false,
+      showInRanking: (team as Record<string, unknown>).show_in_ranking !== false,
+      allowExternalChatGuests: (team as Record<string, unknown>).allow_external_chat_guests === true,
+    },
     renameCount,
     captainPlanTier: captainSummary.planTier,
     caps,
@@ -246,6 +268,8 @@ export type PublicTeamLite = {
   city: string | null;
   members: number;
   privacy: "public" | "invite" | "private";
+  isPinned: boolean;
+  isVerified: boolean;
 };
 
 async function loadPublicTeams(): Promise<PublicTeamLite[]> {
@@ -262,8 +286,11 @@ async function loadPublicTeams(): Promise<PublicTeamLite[]> {
 
   const { data: rows } = await supabase
     .from("teams")
-    .select("id,name,slug,sport,privacy,clubs(city)")
+    .select("id,name,slug,tag,sport,privacy,status,is_pinned,is_verified,clubs(city)")
     .in("privacy", ["public", "invite"])
+    .eq("status", "active")
+    // Pinned primero (mig 165 admin pin), después por creación desc.
+    .order("is_pinned", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -286,11 +313,13 @@ async function loadPublicTeams(): Promise<PublicTeamLite[]> {
     return {
       id: t.id as string,
       name: t.name as string,
-      tag: ((t.slug as string) ?? "TEAM").slice(0, 3).toUpperCase(),
+      tag: ((t.tag as string | null) ?? (t.slug as string) ?? "TEAM").slice(0, 4).toUpperCase(),
       sport: (t.sport as string | null) ?? null,
       city: club?.city ?? null,
       members: countMap.get(t.id as string) ?? 0,
       privacy: (t.privacy as PublicTeamLite["privacy"]) ?? "public",
+      isPinned: (t as Record<string, unknown>).is_pinned === true,
+      isVerified: (t as Record<string, unknown>).is_verified === true,
     };
   });
 }

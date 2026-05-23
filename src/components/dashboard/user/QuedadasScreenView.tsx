@@ -3,7 +3,8 @@
 // creador invitar / cargar resultados / cancelar. v1 = social, no toca ranking.
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
@@ -12,16 +13,19 @@ import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import { CrearQuedadaModal, type QuedadaInitial } from "./CrearQuedadaModal";
 import { accountToBankDraft } from "./quedada-fields/BankAccountFields";
 import { prizesToDrafts } from "./quedada-fields/PrizesEditor";
+import { rulesToDrafts } from "./quedada-fields/RulesEditor";
 import { parseSuma } from "@/lib/quedadas/level";
-import { SkeletonRows } from "@/components/ui/Skeleton";
-import type { PaymentAccount, Prize } from "@/lib/schemas/quedadas";
+import type { PaymentAccount, Prize, QuedadaRule } from "@/lib/schemas/quedadas";
 import {
   joinQuedada,
   leaveQuedada,
   inviteToQuedada,
   cancelQuedada,
+  deleteQuedada,
   reportQuedada,
   getQuedadaManageData,
+  getQuedadaDetails,
+  getMyQuedadasFinanceStats,
 } from "@/server/actions/quedadas";
 
 export type QuedadaLite = {
@@ -35,6 +39,7 @@ export type QuedadaLite = {
   visibility: "open" | "private";
   status: string;
   startsAt: string;
+  createdAt: string;
   locationText: string | null;
   maxPlayers: number | null;
   feeCents: number;
@@ -43,9 +48,10 @@ export type QuedadaLite = {
   iAmCreator: boolean;
   iAmJoined: boolean;
   iAmInvited: boolean;
+  creatorIsPremium: boolean;
 };
 
-type Tab = "descubrir" | "mias";
+type Tab = "descubrir" | "organizo" | "juego";
 
 const FORMAT_LABEL: Record<string, string> = {
   americano: "Americano",
@@ -74,6 +80,32 @@ function feeLabel(cents: number): string {
   return `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 }
 
+// Tiempo relativo hasta una fecha, en partes para poder resaltar el número.
+// Puro: recibe `nowMs` (no llama Date.now() en render).
+function relativeParts(iso: string, nowMs: number): { pre: string; n: number; unit: string } | { text: string } {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return { text: "—" };
+  const diff = t - nowMs;
+  if (diff <= 0) return { text: "En curso" };
+  const mins = Math.round(diff / 60000);
+  if (mins < 60) return { pre: "en", n: mins, unit: "min" };
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 24) return { pre: "en", n: hours, unit: hours === 1 ? "hora" : "horas" };
+  const days = Math.floor(diff / 86400000);
+  return { pre: "en", n: days, unit: days === 1 ? "día" : "días" };
+}
+
+// La quedada más próxima (por fecha) entre las que no están finished/cancelled.
+// En función (no en render) para no disparar el chequeo de pureza del compiler.
+function nearestQuedada(list: QuedadaLite[]): QuedadaLite | null {
+  return (
+    list
+      .filter((q) => q.status !== "finished" && q.status !== "cancelled")
+      .slice()
+      .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt))[0] ?? null
+  );
+}
+
 export function QuedadasScreenView({
   meUserId,
   discover,
@@ -90,8 +122,13 @@ export function QuedadasScreenView({
   const [wizard, setWizard] = useState<{ initial?: QuedadaInitial } | null>(null);
   // Invitar es modal liviano; resultados/cierre viven en la página de gestión.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
-  // El calendario del participante es modal liviano; la gestión es una página.
-  const [calendarFor, setCalendarFor] = useState<QuedadaLite | null>(null);
+  // "Ahora" para el tiempo relativo de "Tu próxima" (refresca cada minuto).
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   // Duplicar: trae la config de una quedada propia y abre el wizard precargado
   // (sin fecha). Usa getQuedadaManageData (requiere ser creador/co-host).
@@ -105,34 +142,133 @@ export function QuedadasScreenView({
     });
   };
 
-  const list = tab === "descubrir" ? discover : mine;
+  // Organizo: recién creada primero (lo que acabas de crear aparece al inicio).
+  const organizadas = mine
+    .filter((q) => q.iAmCreator)
+    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  // Juego: la próxima por jugar primero (orden cronológico ascendente de mine).
+  const juego = mine.filter((q) => !q.iAmCreator);
+  const list = tab === "descubrir" ? discover : tab === "organizo" ? organizadas : juego;
+
+  // Métricas del hero (derivadas de la data que ya llega).
+  const all = [...mine, ...discover];
+  const activeCount = mine.filter((q) => q.status === "registration_open" || q.status === "live").length;
+  const organizedCount = new Set(all.filter((q) => q.iAmCreator).map((q) => q.id)).size;
+  const nearbyCount = discover.length;
+  const nextQuedada = nearestQuedada(mine);
+  let proximaNode: ReactNode = "—";
+  if (nextQuedada && nowMs != null) {
+    const p = relativeParts(nextQuedada.startsAt, nowMs);
+    proximaNode =
+      "text" in p ? (
+        p.text.toUpperCase()
+      ) : (
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
+          <span>{p.pre.toUpperCase()}</span>
+          <span style={{ color: "#fbbf24" }}>{p.n}</span>
+          <span>{p.unit.toUpperCase()}</span>
+        </span>
+      );
+  }
+  const heroStats: { v: ReactNode; l: string }[] = [
+    { v: activeCount, l: "En curso / activas" },
+    { v: proximaNode, l: "Tu próxima" },
+    { v: organizedCount, l: "Organizadas por ti" },
+    { v: nearbyCount, l: "Abiertas cerca" },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div className="label-mp">Comunidad · Juego social</div>
+      {/* ── Hero (header grande estilo role-home / RHWelcome) ────────────── */}
       <div
+        className="mp-rise"
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-end",
-          gap: 16,
-          flexWrap: "wrap",
+          position: "relative",
+          padding: "26px 28px",
+          borderRadius: 14.4,
+          overflow: "hidden",
+          background: "linear-gradient(135deg, #0a0a0a 0%, var(--primary) 140%)",
+          color: "#fff",
         }}
       >
-        <h1 className="font-heading display-md" style={{ margin: 0 }}>
-          Quedadas <span className="dot">●</span> {discover.length + mine.length}
-        </h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setWizard({})}
-          disabled={!meUserId}
-          title={meUserId ? undefined : "Inicia sesión para crear una quedada"}
-          style={{ opacity: meUserId ? 1 : 0.6 }}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            fontFamily: "Plus Jakarta Sans",
+            fontWeight: 900,
+            fontSize: 180,
+            color: "rgba(255,255,255,0.06)",
+            letterSpacing: "-0.06em",
+            lineHeight: 0.8,
+            transform: "rotate(-6deg) translate(15%, -20%)",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+          }}
         >
-          <Icon name="plus" size={13} color="#fff" />
-          Crear quedada
-        </button>
+          QUED
+        </div>
+        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 20, flexWrap: "wrap" }}>
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "3px 11px",
+                borderRadius: 9999,
+                background: "rgba(255,255,255,0.12)",
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+              }}
+            >
+              ● Comunidad · Juego social
+            </div>
+            <h1
+              className="font-heading"
+              style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 4px", lineHeight: 1 }}
+            >
+              Quedadas<span style={{ color: "#fbbf24" }}>.</span>
+            </h1>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", maxWidth: 540, lineHeight: 1.5 }}>
+              Organiza partidos sociales, únete a quedadas abiertas y lleva el control del juego desde un solo lugar.
+            </div>
+            <button
+              onClick={() => setWizard({})}
+              disabled={!meUserId}
+              title={meUserId ? undefined : "Inicia sesión para crear una quedada"}
+              className="btn"
+              style={{ marginTop: 16, background: "#fff", color: "var(--fg)", opacity: meUserId ? 1 : 0.6, cursor: meUserId ? "pointer" : "default" }}
+            >
+              <Icon name="plus" size={14} color="var(--fg)" />
+              Crear quedada
+            </button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minWidth: 230 }}>
+            {heroStats.map((s, i) => (
+              <div
+                key={i}
+                className="mp-rise"
+                style={{ animationDelay: `${i * 50}ms`, background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 12, padding: "10px 12px", minHeight: 58, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6, minWidth: 0 }}
+              >
+                <span
+                  className="font-heading"
+                  style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {s.v}
+                </span>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.l}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
 
       <div
         style={{
@@ -146,7 +282,8 @@ export function QuedadasScreenView({
       >
         {([
           { k: "descubrir" as const, l: "Descubrir", n: discover.length },
-          { k: "mias" as const, l: "Mis quedadas", n: mine.length },
+          { k: "organizo" as const, l: "Organizo", n: organizadas.length },
+          { k: "juego" as const, l: "Juego", n: juego.length },
         ]).map((t) => (
           <button
             key={t.k}
@@ -185,18 +322,24 @@ export function QuedadasScreenView({
         ))}
       </div>
 
+      {tab === "organizo" && organizadas.length > 0 && <OrganizerFinanceCard />}
+
       {list.length === 0 ? (
         <EmptyState
-          icon={tab === "descubrir" ? "party-popper" : "calendar-days"}
+          icon={tab === "descubrir" ? "party-popper" : tab === "organizo" ? "settings" : "calendar-days"}
           title={
             tab === "descubrir"
               ? "No hay quedadas abiertas por ahora"
-              : "Aún no tienes quedadas"
+              : tab === "organizo"
+                ? "Aún no organizas ninguna quedada"
+                : "Aún no estás inscrito en ninguna quedada"
           }
           sub={
             tab === "descubrir"
               ? "Sé el primero en organizar una. Toca “Crear quedada”."
-              : "Organiza una o únete a alguna desde Descubrir."
+              : tab === "organizo"
+                ? "Crea tu primera quedada con “Crear quedada”."
+                : "Únete a una abierta desde Descubrir."
           }
         />
       ) : (
@@ -207,16 +350,17 @@ export function QuedadasScreenView({
             gap: 14,
           }}
         >
-          {list.map((q) => (
-            <QuedadaCard
-              key={q.id}
-              q={q}
-              meUserId={meUserId}
-              onInvite={() => setInviteFor(q)}
-              onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
-              onCalendar={() => setCalendarFor(q)}
-              onDuplicate={() => doDuplicate(q.id)}
-            />
+          {list.map((q, i) => (
+            <div key={q.id} className="mp-rise" style={{ height: "100%", animationDelay: `${Math.min(i, 10) * 40}ms` }}>
+              <QuedadaCard
+                q={q}
+                meUserId={meUserId}
+                onInvite={() => setInviteFor(q)}
+                onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
+                onCalendar={() => router.push(`/dashboard/user/quedada/${q.id}`)}
+                onDuplicate={() => doDuplicate(q.id)}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -225,9 +369,73 @@ export function QuedadasScreenView({
       {inviteFor && (
         <InviteModal quedada={inviteFor} meUserId={meUserId} onClose={() => setInviteFor(null)} />
       )}
-      {calendarFor && (
-        <CalendarModal quedada={calendarFor} onClose={() => setCalendarFor(null)} />
-      )}
+    </div>
+  );
+}
+
+// ── Resumen financiero del organizador (todas sus quedadas) ──────────────────
+type FinanceStats = {
+  quedadasCount: number;
+  totalCollectedCents: number;
+  totalExpectedCents: number;
+  pendingCents: number;
+  totalJoined: number;
+  totalPaid: number;
+  payRatePct: number;
+  avgAttendance: number;
+};
+
+function money(cents: number): string {
+  const n = (cents ?? 0) / 100;
+  return `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+}
+
+function OrganizerFinanceCard() {
+  const [stats, setStats] = useState<FinanceStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    void getMyQuedadasFinanceStats({}).then((res) => {
+      if (!alive) return;
+      if (res.ok) setStats(res.data);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  if (loading) {
+    return <div className="card" style={{ padding: 16, marginBottom: 14, height: 92, background: "var(--muted)" }} />;
+  }
+  if (!stats || stats.quedadasCount === 0) return null;
+
+  const tile = (label: string, value: string, tone: "fg" | "ok" | "warn" | "muted" = "fg") => {
+    const color = tone === "ok" ? "var(--success-fg)" : tone === "warn" ? "#b45309" : tone === "muted" ? "var(--muted-fg)" : "var(--fg)";
+    return (
+      <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</span>
+        <span className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="card mp-rise" style={{ padding: 16, marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Icon name="wallet" size={15} color="var(--muted-fg)" />
+        <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.02em" }}>Tu actividad como organizador</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px,1fr))", gap: 10 }}>
+        {tile("Recaudado", money(stats.totalCollectedCents), "ok")}
+        {tile("Pendiente", money(stats.pendingCents), stats.pendingCents > 0 ? "warn" : "muted")}
+        {tile("Quedadas", String(stats.quedadasCount), "muted")}
+        {tile("Inscritos", String(stats.totalJoined), "muted")}
+        {tile("% cobro", `${stats.payRatePct}%`)}
+        {tile("Asistencia prom.", `${stats.avgAttendance}`, "muted")}
+      </div>
+      <span style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+        Recaudado estimado por cuota × pagados (pago offline). Promedio de inscritos por quedada.
+      </span>
     </div>
   );
 }
@@ -248,6 +456,7 @@ type DupQuedada = {
   location_text: string | null;
   payment_account: PaymentAccount | null;
   prizes: Prize[] | null;
+  rules: QuedadaRule[] | null;
 };
 type DupCategory = { name: string; level_label: string | null; starts_at: string | null; max_slots: number | null };
 
@@ -268,6 +477,7 @@ function buildInitialFromManage(data: unknown): QuedadaInitial {
     courtPriceUsd: centsToStr(q.court_price_cents),
     bank: accountToBankDraft(q.payment_account),
     prizeRows: prizesToDrafts(q.prizes),
+    ruleRows: rulesToDrafts(q.rules),
     perks: q.perks_text ?? undefined,
     categories: (d.categories ?? []).map((c) => {
       const { suma, noLevel } = parseSuma(c.level_label);
@@ -339,30 +549,71 @@ function QuedadaCard({
   const toast = useToast();
   const { confirm, ask } = usePromptModal();
   const [pending, startTransition] = useTransition();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [joinPickerOpen, setJoinPickerOpen] = useState(false);
+  const [detailsData, setDetailsData] = useState<QuedadaDetailData | null>(null);
+  const prefetchedRef = useRef(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Prefetch del detalle al hover/focus → el modal abre ya precargado (sin "Cargando…").
+  const prefetchDetails = () => {
+    if (prefetchedRef.current) return;
+    prefetchedRef.current = true;
+    getQuedadaDetails({ quedadaId: q.id }).then((res) => {
+      if (res.ok) setDetailsData(res.data as QuedadaDetailData);
+      else prefetchedRef.current = false;
+    });
+  };
+
+  // Cierra el menú "⋯" al hacer click fuera.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   const cancelled = q.status === "cancelled";
   const finished = q.status === "finished";
   const cupo = q.maxPlayers != null ? `${q.participantCount}/${q.maxPlayers}` : `${q.participantCount}`;
   const full = q.maxPlayers != null && q.participantCount >= q.maxPlayers;
+  // El menú "⋯" siempre tiene algo para no-creadores (Reportar); para el creador,
+  // solo cuando la quedada sigue activa (invitar/duplicar/cancelar).
+  const hasMenu = q.iAmCreator ? !cancelled && !finished : true;
 
-  const doJoin = () => {
+  const doJoin = (categoryId?: string) => {
     if (!meUserId) {
-      toast({ icon: "alert-triangle", title: "Inicia sesión para unirte" });
+      toast({ icon: "alert-triangle", title: "Inicia sesión para inscribirte" });
       return;
     }
     startTransition(async () => {
-      const res = await joinQuedada({ quedadaId: q.id });
+      const res = await joinQuedada({ quedadaId: q.id, categoryId: categoryId ?? null });
       if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo unir", sub: res.error.message });
+        toast({ icon: "alert-triangle", title: "No se pudo inscribir", sub: res.error.message });
         return;
       }
-      if (res.data.transactionId) {
-        router.push(`/pagos/${res.data.transactionId}`);
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "Te uniste a la quedada" });
+      setJoinPickerOpen(false);
+      toast({ icon: "check-circle-2", title: "Te inscribiste en la quedada" });
       router.refresh();
     });
+  };
+
+  // Abre el selector de categoría (o inscribe directo si la quedada no tiene
+  // categorías y ya lo sabemos por el prefetch).
+  const handleInscribirme = () => {
+    if (!meUserId) {
+      toast({ icon: "alert-triangle", title: "Inicia sesión para inscribirte" });
+      return;
+    }
+    if (detailsData && detailsData.categories.length === 0) {
+      doJoin();
+      return;
+    }
+    setJoinPickerOpen(true);
   };
 
   const doLeave = () => {
@@ -397,6 +648,27 @@ function QuedadaCard({
     });
   };
 
+  // Borrar (solo canceladas, solo creador) — limpia la lista de "Organizo".
+  const doDelete = async () => {
+    const ok = await confirm({
+      title: "Borrar quedada",
+      body: `¿Borrar “${q.title}” definitivamente? Desaparece de tu lista y no se puede recuperar.`,
+      confirmLabel: "Borrar",
+      cancelLabel: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const res = await deleteQuedada({ quedadaId: q.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo borrar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Quedada borrada" });
+      router.refresh();
+    });
+  };
+
   const doReport = async () => {
     const reason = await ask({
       title: "Reportar quedada",
@@ -420,16 +692,61 @@ function QuedadaCard({
 
   return (
     <div
+      ref={cardRef}
       className="card"
+      onMouseEnter={prefetchDetails}
+      onFocus={prefetchDetails}
       style={{
         padding: 0,
+        height: "100%",
+        position: "relative",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         opacity: cancelled ? 0.78 : 1,
       }}
     >
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+      {cancelled && q.iAmCreator && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); doDelete(); }}
+          disabled={pending}
+          aria-label={`Borrar ${q.title}`}
+          title="Borrar quedada cancelada"
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            zIndex: 2,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+            borderRadius: 9999,
+            border: "1px solid var(--destructive-border)",
+            background: "#fff",
+            color: "var(--destructive-fg)",
+            cursor: "pointer",
+          }}
+        >
+          <Icon name="x" size={14} color="var(--destructive-fg)" />
+        </button>
+      )}
+      <div
+        onClick={() => setDetailsOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setDetailsOpen(true);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`Ver detalles de ${q.title}`}
+        style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1, cursor: "pointer", textAlign: "left" }}
+      >
+        {/* Chips: estado (coloreado) + formato·modo + Organizas */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {cancelled ? (
             <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
@@ -438,17 +755,16 @@ function QuedadaCard({
           ) : q.visibility === "private" ? (
             <Chip bg="#1f2937" color="#fff">Privada</Chip>
           ) : (
-            <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">Abierta</Chip>
+            <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">● Abierta</Chip>
           )}
           <Chip bg="var(--muted)" color="var(--muted-fg)">
-            {FORMAT_LABEL[q.format] ?? q.format}
-          </Chip>
-          <Chip bg="var(--muted)" color="var(--muted-fg)">
-            {q.matchMode === "singles" ? "Singles" : "Dobles"}
+            {FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
           </Chip>
           {q.iAmCreator && <Chip bg="#fbbf24" color="var(--fg)">Organizas</Chip>}
+          {!q.iAmCreator && q.iAmInvited && !q.iAmJoined && <Chip bg="#1f2937" color="#fff">Invitado</Chip>}
         </div>
 
+        {/* Título */}
         <div
           className="font-heading"
           style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.015em", lineHeight: 1.15 }}
@@ -456,6 +772,7 @@ function QuedadaCard({
           {q.title}
         </div>
 
+        {/* Descripción */}
         {q.description && (
           <p
             style={{
@@ -473,14 +790,63 @@ function QuedadaCard({
           </p>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#1f2937" }}>
-          <Row icon="calendar-days">{formatWhen(q.startsAt)}</Row>
-          {q.locationText && <Row icon="map-pin">{q.locationText}</Row>}
-          <Row icon="users">Cupo {cupo}{full && !cancelled ? " · lleno" : ""}</Row>
-          <Row icon="ticket">{feeLabel(q.feeCents)}</Row>
-          <Row icon="user-round">Organiza {q.creatorName}</Row>
+        {/* Organizador (identidad) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, fontSize: 12 }}>
+          <span style={{ flexShrink: 0 }}>
+            <Icon name="user-round" size={12} color="var(--muted-fg)" />
+          </span>
+          <span style={{ fontWeight: 700, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+            {q.creatorName}
+          </span>
+          {q.creatorIsPremium && (
+            <span
+              style={{
+                fontSize: 8.5,
+                fontWeight: 900,
+                letterSpacing: "0.04em",
+                padding: "2px 6px",
+                borderRadius: 9999,
+                background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
+                color: "#0a0a0a",
+                flexShrink: 0,
+              }}
+            >
+              MP+
+            </span>
+          )}
         </div>
 
+        {/* Bloque logística: cuándo / dónde / cupo+barra / cuota */}
+        <div style={{ background: "var(--muted)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12, color: "#1f2937" }}>
+          <Row icon="calendar-days">{formatWhen(q.startsAt)}</Row>
+          {q.locationText && <Row icon="map-pin">{q.locationText}</Row>}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 5 }}>
+              <Row icon="users">Cupo {cupo}{full && !cancelled ? " · lleno" : ""}</Row>
+              {q.maxPlayers != null && (
+                <div style={{ height: 5, borderRadius: 9999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(100, Math.round((q.participantCount / q.maxPlayers) * 100))}%`,
+                      background: full ? "var(--destructive-fg)" : "var(--primary)",
+                      borderRadius: 9999,
+                      transition: "width 320ms var(--ease-out)",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+              <Icon name="ticket" size={13} color="var(--muted-fg)" />
+              <span className="font-heading" style={{ fontSize: 15, fontWeight: 900, color: q.feeCents > 0 ? "var(--fg)" : "var(--color-mp-primary-active)" }}>
+                {feeLabel(q.feeCents)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Perks */}
         {q.perks && (
           <div
             style={{
@@ -502,111 +868,180 @@ function QuedadaCard({
         )}
       </div>
 
-      {/* Acciones */}
+      {/* Acciones: una acción principal + menú "⋯" con el resto */}
       <div
+        ref={menuRef}
         style={{
           borderTop: "1px solid var(--border)",
           padding: 12,
           display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
+          alignItems: "center",
+          gap: 8,
           background: "var(--muted)",
+          position: "relative",
         }}
       >
-        {!cancelled && !finished && !q.iAmCreator && (
+        {/* Acción principal según rol/estado */}
+        {q.iAmCreator && !cancelled && !finished && (
+          <button className="btn btn-primary" onClick={onManage} disabled={pending} style={{ flex: 1, justifyContent: "center" }}>
+            <Icon name="settings" size={12} color="#fff" /> Gestionar
+          </button>
+        )}
+        {q.iAmCreator && (cancelled || finished) && (
+          <button className="btn" onClick={onDuplicate} disabled={pending} style={{ flex: 1, justifyContent: "center", background: "#fff", border: "1px solid var(--border)" }}>
+            <Icon name="copy" size={12} /> Duplicar
+          </button>
+        )}
+        {!q.iAmCreator && !cancelled && !finished && (
           q.iAmJoined ? (
-            <>
-              <button
-                className="btn"
-                onClick={onCalendar}
-                disabled={pending}
-                style={{ background: "#fff", border: "1px solid var(--border)", flex: 1, justifyContent: "center" }}
-              >
-                <Icon name="calendar-days" size={12} />
-                Tu calendario
-              </button>
-              <button
-                className="btn"
-                onClick={doLeave}
-                disabled={pending}
-                style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", flex: 1, justifyContent: "center" }}
-              >
-                <Icon name="log-out" size={12} color="var(--destructive-fg)" />
-                Salir
-              </button>
-            </>
+            <button className="btn btn-primary" onClick={onCalendar} disabled={pending} style={{ flex: 1, justifyContent: "center" }}>
+              <Icon name="calendar-days" size={12} color="#fff" /> Tu calendario
+            </button>
+          ) : full && !q.iAmInvited ? (
+            <FullButton flex />
           ) : (
             <button
               className="btn btn-primary"
-              onClick={doJoin}
-              disabled={pending || (full && !q.iAmInvited)}
-              style={{ flex: 1, justifyContent: "center", opacity: full && !q.iAmInvited ? 0.6 : 1 }}
-            >
-              <Icon name="plus" size={12} color="#fff" />
-              {full && !q.iAmInvited ? "Lleno" : q.feeCents > 0 ? "Unirme (con cuota)" : "Unirme"}
-            </button>
-          )
-        )}
-
-        {q.iAmCreator && !cancelled && (
-          <>
-            <button
-              className="btn btn-primary"
-              onClick={onManage}
+              onClick={handleInscribirme}
               disabled={pending}
               style={{ flex: 1, justifyContent: "center" }}
             >
-              <Icon name="settings" size={12} color="#fff" />
-              Gestionar
+              <Icon name="plus" size={12} color="#fff" />
+              {q.feeCents > 0 ? `Inscribirme · ${feeLabel(q.feeCents)}` : "Inscribirme"}
             </button>
-            <button
-              className="btn"
-              onClick={onInvite}
-              disabled={pending}
-              style={{ background: "#fff", border: "1px solid var(--border)", flex: 1, justifyContent: "center" }}
-            >
-              <Icon name="user-plus" size={12} />
-              Invitar
-            </button>
-            <button
-              className="btn"
-              onClick={doCancel}
-              disabled={pending}
-              style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", flex: 1, justifyContent: "center" }}
-            >
-              <Icon name="x" size={12} color="var(--destructive-fg)" />
-              Cancelar
-            </button>
+          )
+        )}
+        {!q.iAmCreator && (cancelled || finished) && (
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "var(--muted-fg)" }}>
+            {cancelled ? "Quedada cancelada" : "Quedada finalizada"}
+          </span>
+        )}
+
+        {/* Menú ⋯ */}
+        {hasMenu && (
+          <>
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          disabled={pending}
+          aria-label="Más acciones"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: menuOpen ? "#0a0a0a" : "#fff",
+            border: `1px solid ${menuOpen ? "#0a0a0a" : "var(--border)"}`,
+            cursor: pending ? "default" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background 150ms var(--ease-out)",
+          }}
+        >
+          <Icon name="more-horizontal" size={15} color={menuOpen ? "#fff" : "var(--fg)"} />
+        </button>
+        {menuOpen && (
+          <div
+            className="mp-modal-panel"
+            role="menu"
+            style={{
+              position: "absolute",
+              bottom: "100%",
+              right: 12,
+              marginBottom: 6,
+              minWidth: 200,
+              background: "#fff",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: 6,
+              boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+              zIndex: 50,
+              transformOrigin: "bottom right",
+            }}
+          >
+            {q.iAmCreator && !cancelled && !finished && (
+              <QKebabItem icon="user-plus" label="Invitar jugadores" onClick={() => { setMenuOpen(false); onInvite(); }} />
+            )}
+            {q.iAmCreator && !cancelled && !finished && (
+              <QKebabItem icon="copy" label="Duplicar" onClick={() => { setMenuOpen(false); onDuplicate(); }} />
+            )}
+            {q.iAmJoined && !q.iAmCreator && !cancelled && !finished && (
+              <QKebabItem icon="log-out" label="Salir de la quedada" danger onClick={() => { setMenuOpen(false); doLeave(); }} />
+            )}
+            {q.iAmCreator && !cancelled && !finished && (
+              <QKebabItem icon="x" label="Cancelar quedada" danger onClick={() => { setMenuOpen(false); doCancel(); }} />
+            )}
+            {!q.iAmCreator && (
+              <QKebabItem icon="flag" label="Reportar" onClick={() => { setMenuOpen(false); doReport(); }} />
+            )}
+          </div>
+        )}
           </>
         )}
-
-        {q.iAmCreator && (
-          <button
-            className="btn"
-            onClick={onDuplicate}
-            disabled={pending}
-            title="Duplicar esta quedada"
-            style={{ background: "#fff", border: "1px solid var(--border)", flex: cancelled || finished ? 1 : undefined, justifyContent: "center", padding: "8px 12px" }}
-          >
-            <Icon name="copy" size={12} />
-            Duplicar
-          </button>
-        )}
-
-        {!q.iAmCreator && (
-          <button
-            className="btn"
-            onClick={doReport}
-            disabled={pending}
-            title="Reportar"
-            aria-label="Reportar quedada"
-            style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--muted-fg)", padding: "8px 10px" }}
-          >
-            <Icon name="flag" size={12} color="var(--muted-fg)" />
-          </button>
-        )}
       </div>
+      {detailsOpen && (
+        <QuedadaDetailsModal
+          q={q}
+          onClose={() => setDetailsOpen(false)}
+          onRequestJoin={() => setJoinPickerOpen(true)}
+          onCalendar={onCalendar}
+          onManage={onManage}
+          pending={pending}
+          getOriginRect={() => cardRef.current?.getBoundingClientRect() ?? null}
+          initialData={detailsData}
+        />
+      )}
+      {joinPickerOpen && (
+        <JoinPickerModal
+          q={q}
+          initialData={detailsData}
+          pending={pending}
+          onClose={() => setJoinPickerOpen(false)}
+          onPick={(categoryId) => doJoin(categoryId)}
+        />
+      )}
     </div>
+  );
+}
+
+function QKebabItem({
+  icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  const color = danger ? "#dc2626" : "#0a0a0a";
+  return (
+    <button
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        background: "transparent",
+        border: 0,
+        borderRadius: 8,
+        cursor: "pointer",
+        fontSize: 12.5,
+        fontWeight: 700,
+        color,
+        textAlign: "left",
+        fontFamily: "inherit",
+      }}
+    >
+      <Icon name={icon} size={14} color={color} />
+      {label}
+    </button>
   );
 }
 
@@ -678,38 +1113,6 @@ function InviteModal({
 }
 
 
-// ── Calendario del participante (lectura) ─────────────────────────────────────
-// Muestra, por cada categoría de la quedada, su hora + cancha y el slot/pareja
-// del usuario si está asignado. v1.x = nivel categoría (no partido-por-partido).
-type CalCategory = {
-  id: string;
-  name: string;
-  level_label: string | null;
-  starts_at: string | null;
-  court_label: string | null;
-};
-type CalPair = { id: string; category_id: string; slot_no: number; player_a_id: string; player_b_id: string | null };
-type CalParticipant = { user_id: string; profiles: { display_name: string | null; username: string | null } | null };
-type CalMatch = {
-  id: string;
-  category_id: string;
-  group_no: number;
-  court_no: number | null;
-  round_no: number;
-  pair_a_id: string;
-  pair_b_id: string | null;
-  points_a: number | null;
-  points_b: number | null;
-  status: string;
-};
-type CalData = {
-  meUserId: string;
-  categories: CalCategory[];
-  pairs: CalPair[];
-  participants: CalParticipant[];
-  matches: CalMatch[];
-};
-
 function calHour(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -717,208 +1120,524 @@ function calHour(iso: string | null): string {
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-function CalendarModal({ quedada, onClose }: { quedada: QuedadaLite; onClose: () => void }) {
-  const [data, setData] = useState<CalData | null>(null);
-  const [loading, setLoading] = useState(true);
+// ── Shells reutilizables para los modales secundarios ─────────────────────────
+// ── Modal de detalles (preview desde la tarjeta) ─────────────────────────────
+type DetailParticipant = { userId: string; name: string; mpr: number | null; teamTag: string | null; categoryIds: string[] };
+type QuedadaDetailData = {
+  quedada: { creator_id: string; perks_text: string | null; prizes: Prize[] | null; rules: QuedadaRule[] | null };
+  meUserId: string;
+  joinedCount: number;
+  categories: { id: string; name: string; maxSlots: number | null; taken: number }[];
+  participants: DetailParticipant[];
+};
+
+function detailInitials(name: string): string {
+  return name.trim().split(/\s+/).map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+}
+
+const Q_EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+// Colores de avatar para la lista de inscritos (variados, como en el mockup).
+const AVATAR_COLORS = ["#10b981", "#0a0a0a", "#7c3aed", "#f59e0b", "#f97316", "#0ea5e9", "#dc2626", "#14b8a6"];
+
+// Estado "Lleno": botón inactivo (gris + candado), claramente no clickeable.
+function FullButton({ flex }: { flex?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled
+      aria-label="Quedada llena"
+      style={{
+        ...(flex ? { flex: 1 } : {}),
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        padding: "10px 18px",
+        borderRadius: 9999,
+        border: "1px solid var(--border)",
+        background: "var(--muted)",
+        color: "var(--muted-fg)",
+        fontSize: 12,
+        fontWeight: 900,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        cursor: "not-allowed",
+        fontFamily: "inherit",
+      }}
+    >
+      <Icon name="lock" size={12} color="var(--muted-fg)" /> Lleno
+    </button>
+  );
+}
+
+function QuedadaDetailsModal({
+  q,
+  onClose,
+  onRequestJoin,
+  onCalendar,
+  onManage,
+  pending,
+  getOriginRect,
+  initialData,
+}: {
+  q: QuedadaLite;
+  onClose: () => void;
+  onRequestJoin: () => void;
+  onCalendar: () => void;
+  onManage: () => void;
+  pending: boolean;
+  getOriginRect: () => DOMRect | null;
+  initialData: QuedadaDetailData | null;
+}) {
+  const [data, setData] = useState<QuedadaDetailData | null>(initialData);
+  const [loading, setLoading] = useState(initialData == null);
   const [error, setError] = useState<string | null>(null);
+  const [catTab, setCatTab] = useState<string>("all");
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closingRef = useRef(false);
 
   useEffect(() => {
+    if (initialData) return; // ya precargado por el prefetch del hover
     let active = true;
-    (async () => {
-      const res = await getQuedadaManageData({ quedadaId: quedada.id });
+    getQuedadaDetails({ quedadaId: q.id }).then((res) => {
       if (!active) return;
-      if (!res.ok) {
-        setError(res.error.message);
-        setLoading(false);
-        return;
-      }
-      setData(res.data as CalData);
+      if (!res.ok) setError(res.error.message);
+      else setData(res.data as QuedadaDetailData);
       setLoading(false);
-    })();
+    });
     return () => {
       active = false;
     };
-  }, [quedada.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q.id]);
 
-  const nameOf = (p: { display_name: string | null; username: string | null } | null): string =>
-    p?.display_name || (p?.username ? `@${p.username}` : "Jugador");
+  // Entrada: el panel "crece" desde el rect de la card (FLIP con WAAPI). El
+  // backdrop hace fade en paralelo. Reduced-motion → solo fade, sin movimiento.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const overlay = overlayRef.current;
+    if (!panel || !overlay) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduce ? 140 : 300, easing: Q_EASE, fill: "both" });
+    const origin = getOriginRect();
+    if (reduce || !origin) {
+      panel.animate([{ opacity: 0, transform: "scale(0.98)" }, { opacity: 1, transform: "none" }], { duration: reduce ? 140 : 200, easing: Q_EASE, fill: "both" });
+      return;
+    }
+    const m = panel.getBoundingClientRect();
+    const scale = Math.min(origin.width / m.width, 1);
+    const tx = origin.left + origin.width / 2 - (m.left + m.width / 2);
+    const ty = origin.top + origin.height / 2 - (m.top + m.height / 2);
+    panel.animate(
+      [
+        { transform: `translate(${tx}px, ${ty}px) scale(${scale})`, opacity: 0.35 },
+        { transform: "translate(0px, 0px) scale(1)", opacity: 1 },
+      ],
+      { duration: 360, easing: Q_EASE, fill: "both" },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Etiqueta de una pareja por su id: "Ana + Luis" (o un solo nombre en singles).
-  const pairLabel = (pairId: string | null): string => {
-    if (!data || !pairId) return "Por definir";
-    const pair = data.pairs.find((p) => p.id === pairId);
-    if (!pair) return "Por definir";
-    const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-    const a = nameOf(partById.get(pair.player_a_id)?.profiles ?? null);
-    const b = pair.player_b_id ? nameOf(partById.get(pair.player_b_id)?.profiles ?? null) : null;
-    return b ? `${a} + ${b}` : a;
+  // Cierre: colapsa de vuelta hacia la card, más rápido que la entrada.
+  const close = () => {
+    const panel = panelRef.current;
+    const overlay = overlayRef.current;
+    if (closingRef.current) return;
+    if (!panel || !overlay) {
+      onClose();
+      return;
+    }
+    closingRef.current = true;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduce ? 120 : 200, easing: Q_EASE, fill: "both" });
+    const origin = getOriginRect();
+    let anim: Animation;
+    if (reduce || !origin) {
+      anim = panel.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(0.98)" }], { duration: reduce ? 120 : 180, easing: Q_EASE, fill: "both" });
+    } else {
+      const m = panel.getBoundingClientRect();
+      const scale = Math.min(origin.width / m.width, 1);
+      const tx = origin.left + origin.width / 2 - (m.left + m.width / 2);
+      const ty = origin.top + origin.height / 2 - (m.top + m.height / 2);
+      anim = panel.animate(
+        [
+          { transform: "translate(0px, 0px) scale(1)", opacity: 1 },
+          { transform: `translate(${tx}px, ${ty}px) scale(${scale})`, opacity: 0.2 },
+        ],
+        { duration: 230, easing: Q_EASE, fill: "both" },
+      );
+    }
+    anim.onfinish = () => onClose();
   };
 
-  return (
-    <ModalShell title="Tu calendario" icon="calendar-days" onClose={onClose}>
-      <p style={{ fontSize: 12.5, color: "var(--muted-fg)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Tus categorías en <b style={{ color: "var(--fg)" }}>{quedada.title}</b>: hora, cancha y los partidos que te tocan.
-      </p>
+  // Escape cierra (con animación).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      {loading && (
-        <SkeletonRows rows={3} height={56} />
-      )}
-      {!loading && error && (
-        <div style={{ padding: 14, borderRadius: 8, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 12.5 }}>
-          No se pudo cargar: {error}
+  const cancelled = q.status === "cancelled";
+  const finished = q.status === "finished";
+  const full = q.maxPlayers != null && q.participantCount >= q.maxPlayers;
+  const cupo = q.maxPlayers != null ? `${q.participantCount}/${q.maxPlayers}` : `${q.participantCount}`;
+  const rules = data?.quedada.rules ?? [];
+  const prizes = data?.quedada.prizes ?? [];
+  const participants = data?.participants ?? [];
+  const joinedCount = data?.joinedCount ?? q.participantCount;
+  const categories = data?.categories ?? [];
+  const activeTab = categories.some((c) => c.id === catTab) ? catTab : "all";
+  const shownParticipants = activeTab === "all" ? participants : participants.filter((p) => p.categoryIds.includes(activeTab));
+  const catTabs = [{ id: "all", name: "Todos" }, ...categories];
+  // Tabs de categoría: mobile = chips que envuelven; desktop = pill segmentado.
+  const renderCatTab = (t: { id: string; name: string }, variant: "chip" | "seg") => {
+    const on = activeTab === t.id;
+    const base: CSSProperties = { whiteSpace: "nowrap", borderRadius: 9999, fontSize: 11.5, fontWeight: on ? 800 : 600, cursor: "pointer", fontFamily: "inherit" };
+    const style: CSSProperties =
+      variant === "chip"
+        ? { ...base, padding: "6px 13px", border: `1px solid ${on ? "var(--fg)" : "var(--border)"}`, background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)" }
+        : { ...base, flexShrink: 0, padding: "7px 16px", border: 0, background: on ? "#fff" : "transparent", color: on ? "var(--fg)" : "var(--muted-fg)", boxShadow: on ? "0 1px 3px rgba(0,0,0,0.08)" : "none" };
+    return (
+      <button key={t.id} type="button" onClick={() => setCatTab(t.id)} style={style}>
+        {t.name}
+      </button>
+    );
+  };
+  const act = (fn: () => void) => {
+    fn();
+    close();
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={overlayRef}
+      onClick={close}
+      style={{ position: "fixed", inset: 0, background: "rgba(10,10,10,0.7)", backdropFilter: "blur(6px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "inherit", opacity: 0 }}
+    >
+      <div
+        ref={panelRef}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        className="card"
+        style={{ width: "100%", maxWidth: 720, maxHeight: "92vh", overflow: "auto", padding: 22, borderRadius: 18, background: "#fff", boxShadow: "0 32px 64px rgba(0,0,0,0.5)", opacity: 0, willChange: "transform, opacity" }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#10b981,#047857)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon name="info" size={15} color="#fff" />
+            </div>
+            <h2 className="font-heading" style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.title}</h2>
+          </div>
+          <button onClick={close} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }} aria-label="Cerrar">
+            <Icon name="x" size={18} color="var(--muted-fg)" />
+          </button>
         </div>
-      )}
-      {!loading && data && data.categories.length === 0 && (
-        <div style={{ padding: 14, borderRadius: 8, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 12.5 }}>
-          El organizador todavía no definió categorías.
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Chips + organizador */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {cancelled ? (
+            <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
+          ) : finished ? (
+            <Chip bg="var(--muted)" color="var(--muted-fg)">Finalizada</Chip>
+          ) : q.visibility === "private" ? (
+            <Chip bg="#1f2937" color="#fff">Privada</Chip>
+          ) : (
+            <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">● Abierta</Chip>
+          )}
+          <Chip bg="var(--muted)" color="var(--muted-fg)">
+            {FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
+          </Chip>
         </div>
-      )}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, fontSize: 12 }}>
+          <Icon name="user-round" size={12} color="var(--muted-fg)" />
+          <span style={{ fontWeight: 700, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.creatorName}</span>
+          {q.creatorIsPremium && (
+            <span style={{ fontSize: 8.5, fontWeight: 900, letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 9999, background: "linear-gradient(135deg,#fbbf24,#f59e0b)", color: "#0a0a0a", flexShrink: 0 }}>MP+</span>
+          )}
+        </div>
 
-      {!loading && data && data.categories.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {data.categories.map((c) => {
-            const mine = data.pairs.find(
-              (p) =>
-                p.category_id === c.id &&
-                (p.player_a_id === data.meUserId || p.player_b_id === data.meUserId),
-            );
-            const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-            const partnerId =
-              mine == null
-                ? null
-                : mine.player_a_id === data.meUserId
-                  ? mine.player_b_id
-                  : mine.player_a_id;
-            const partnerName = partnerId ? nameOf(partById.get(partnerId)?.profiles ?? null) : null;
-
-            return (
-              <div
-                key={c.id}
-                className="card"
-                style={{
-                  padding: 12,
-                  background: mine ? "var(--color-mp-primary-light)" : "#fff",
-                  border: mine ? "1px solid var(--primary)" : "1px solid var(--border)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                  <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900 }}>
-                    {c.name}
-                    {c.level_label ? <span style={{ color: "var(--muted-fg)", fontWeight: 600 }}> · {c.level_label}</span> : null}
-                  </div>
-                  {mine && (
-                    <span
-                      style={{
-                        fontSize: 9.5,
-                        fontWeight: 900,
-                        padding: "2px 8px",
-                        borderRadius: 9999,
-                        background: "var(--primary)",
-                        color: "#fff",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                        flexShrink: 0,
-                      }}
-                    >
-                      Slot {mine.slot_no}
-                    </span>
-                  )}
+        {/* Resumen + Reglas (cada uno en su card; reglas a la derecha) */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, alignItems: "stretch" }}>
+          {/* Resumen */}
+          <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.01em" }}>
+              Resumen<span className="dot">.</span>
+            </div>
+            {q.description && (
+              <p style={{ margin: 0, fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{q.description}</p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 12, color: "#1f2937" }}>
+              <Row icon="calendar-days">{formatWhen(q.startsAt)}</Row>
+              {q.locationText && <Row icon="map-pin">{q.locationText}</Row>}
+              {categories.length > 0 && <Row icon="layers">{categories.length} {categories.length === 1 ? "categoría" : "categorías"}</Row>}
+              <Row icon="users">Cupo {cupo}{full && !cancelled ? " · lleno" : ""}</Row>
+              {q.maxPlayers != null && (
+                <div style={{ height: 5, borderRadius: 9999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.min(100, Math.round((q.participantCount / q.maxPlayers) * 100))}%`, background: full ? "var(--destructive-fg)" : "var(--primary)", borderRadius: 9999 }} />
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 5, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  {c.starts_at && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <Icon name="clock" size={11} color="var(--muted-fg)" />
-                      {calHour(c.starts_at)}
-                    </span>
-                  )}
-                </div>
-                {mine ? (
-                  <div style={{ fontSize: 12, color: "var(--color-mp-primary-active)", marginTop: 6, fontWeight: 700 }}>
-                    {partnerName ? `Juegas con ${partnerName}` : "Estás inscrito en esta categoría"}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 6 }}>
-                    Aún no estás asignado en esta categoría.
-                  </div>
-                )}
-
-                {mine && (() => {
-                  const myMatches = data.matches
-                    .filter((m) => m.category_id === c.id && (m.pair_a_id === mine.id || m.pair_b_id === mine.id))
-                    .sort((a, b) => a.round_no - b.round_no);
-                  if (myMatches.length === 0) {
-                    return (
-                      <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 10, fontStyle: "italic" }}>
-                        El organizador todavía no generó los partidos.
-                      </div>
-                    );
-                  }
-                  return (
-                    <div style={{ marginTop: 11, borderTop: "1px solid var(--border-subtle)", paddingTop: 9, display: "flex", flexDirection: "column", gap: 7 }}>
-                      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-                        Tus partidos
-                      </div>
-                      {myMatches.map((m) => {
-                        const rivalId = m.pair_a_id === mine.id ? m.pair_b_id : m.pair_a_id;
-                        const played = m.status === "played";
-                        const myPts = m.pair_a_id === mine.id ? m.points_a : m.points_b;
-                        const rivalPts = m.pair_a_id === mine.id ? m.points_b : m.points_a;
-                        const won = played && (myPts ?? 0) > (rivalPts ?? 0);
-                        const lost = played && (myPts ?? 0) < (rivalPts ?? 0);
-                        return (
-                          <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px" }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", gap: 7, flexWrap: "wrap" }}>
-                                <span>Ronda {m.round_no}</span>
-                                {m.court_no != null && <span>· Cancha {m.court_no}</span>}
-                              </div>
-                              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                vs {pairLabel(rivalId)}
-                              </div>
-                            </div>
-                            {played ? (
-                              <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900, color: won ? "var(--color-mp-primary-active)" : lost ? "var(--destructive-fg)" : "var(--fg)" }}>
-                                {myPts}–{rivalPts}
-                              </span>
-                            ) : (
-                              <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                Por jugar
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon name="ticket" size={13} color="var(--muted-fg)" />
+                <span className="font-heading" style={{ fontSize: 15, fontWeight: 900, color: q.feeCents > 0 ? "var(--fg)" : "var(--color-mp-primary-active)" }}>{feeLabel(q.feeCents)}</span>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+            {prizes.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, borderTop: "1px solid var(--border)", paddingTop: 9 }}>
+                {prizes.map((p, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                    <Icon name="trophy" size={12} color="#f59e0b" />
+                    <span style={{ fontWeight: 800, minWidth: 32 }}>{p.place}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prize}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-        <button onClick={onClose} className="btn btn-primary">
-          Listo
-        </button>
+          {/* Reglas clave */}
+          <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.01em" }}>
+              Reglas clave<span className="dot">.</span>
+            </div>
+            {loading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[0, 1, 2].map((k) => <div key={k} style={{ height: 14, borderRadius: 6, background: "var(--muted)" }} />)}
+              </div>
+            ) : rules.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>El organizador no agregó reglas.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {rules.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ flexShrink: 0, marginTop: 1 }}>
+                      <Icon name={r.warn ? "alert-triangle" : "check"} size={14} color={r.warn ? "#b45309" : "var(--color-mp-primary-active)"} />
+                    </span>
+                    <span style={{ fontSize: 12.5, lineHeight: 1.4, color: "var(--fg)" }}>{r.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {q.perks && (
+          <div style={{ fontSize: 11.5, color: "var(--color-mp-primary-active)", background: "var(--color-mp-primary-light)", borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="sparkles" size={12} color="#10b981" /></span>
+            <span>{q.perks}</span>
+          </div>
+        )}
+
+        {/* Inscritos (card con mini-cards de jugador en 2 columnas) */}
+        <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.01em" }}>
+              Inscritos<span className="dot">.</span>
+            </div>
+            <span style={{ fontSize: 11.5, color: "var(--muted-fg)", fontWeight: 700 }}>{joinedCount}{q.maxPlayers != null ? ` de ${q.maxPlayers}` : ""}</span>
+          </div>
+          {categories.length > 0 && (
+            <>
+              {/* Mobile: chips que envuelven */}
+              <div className="flex flex-wrap md:hidden" style={{ gap: 6 }}>
+                {catTabs.map((t) => renderCatTab(t, "chip"))}
+              </div>
+              {/* Desktop: pill segmentado deslizable */}
+              <div
+                className="hidden md:flex mp-noscroll"
+                style={{ alignItems: "center", gap: 4, padding: 4, background: "var(--muted)", borderRadius: 9999, overflowX: "auto", maxWidth: "100%" }}
+              >
+                {catTabs.map((t) => renderCatTab(t, "seg"))}
+              </div>
+            </>
+          )}
+          {loading ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+              {[0, 1, 2, 3].map((k) => <div key={k} style={{ height: 48, borderRadius: 10, background: "var(--muted)" }} />)}
+            </div>
+          ) : shownParticipants.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>{activeTab === "all" ? "Aún no hay inscritos." : "Nadie asignado en esta categoría."}</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+              {shownParticipants.map((p, i) => (
+                <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 10, minWidth: 0 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: AVATAR_COLORS[i % AVATAR_COLORS.length], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900 }}>
+                    {detailInitials(p.name)}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.mpr != null ? `Nivel ${(p.mpr / 1000).toFixed(1)}` : "Sin nivel"}
+                      {p.teamTag ? ` · ${p.teamTag.toUpperCase()}` : ""}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div style={{ fontSize: 12, color: "var(--destructive-fg)", background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", borderRadius: 8, padding: "8px 10px" }}>
+            No se pudo cargar el detalle: {error}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+          <button className="btn btn-outline" onClick={close}>Cerrar</button>
+          {q.iAmCreator && !cancelled && !finished && (
+            <button className="btn btn-primary" onClick={() => act(onManage)} disabled={pending}>
+              <Icon name="settings" size={12} color="#fff" /> Gestionar
+            </button>
+          )}
+          {!q.iAmCreator && !cancelled && !finished && (
+            q.iAmJoined ? (
+              <button className="btn btn-primary" onClick={() => act(onCalendar)} disabled={pending}>
+                <Icon name="calendar-days" size={12} color="#fff" /> Tu calendario
+              </button>
+            ) : full && !q.iAmInvited ? (
+              <FullButton />
+            ) : (
+              <button className="btn btn-primary" onClick={() => act(onRequestJoin)} disabled={pending}>
+                <Icon name="plus" size={12} color="#fff" />
+                {q.feeCents > 0 ? `Inscribirme · ${feeLabel(q.feeCents)}` : "Inscribirme"}
+              </button>
+            )
+          )}
+        </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// Selector de categoría al inscribirse. Si la quedada no tiene categorías,
+// muestra una confirmación simple. El pago es offline (no hay pantalla de pago).
+function JoinPickerModal({
+  q,
+  initialData,
+  pending,
+  onClose,
+  onPick,
+}: {
+  q: QuedadaLite;
+  initialData: QuedadaDetailData | null;
+  pending: boolean;
+  onClose: () => void;
+  onPick: (categoryId?: string) => void;
+}) {
+  const [data, setData] = useState<QuedadaDetailData | null>(initialData);
+  const [loading, setLoading] = useState(initialData == null);
+
+  useEffect(() => {
+    if (initialData) return;
+    let active = true;
+    getQuedadaDetails({ quedadaId: q.id }).then((res) => {
+      if (!active) return;
+      if (res.ok) setData(res.data as QuedadaDetailData);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [q.id, initialData]);
+
+  const categories = data?.categories ?? [];
+
+  return (
+    <ModalShell title="Inscribirme" icon="user-plus" onClose={onClose} maxWidth={440}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+          {q.feeCents > 0 ? (
+            <>
+              Cuota <b style={{ color: "var(--fg)" }}>{feeLabel(q.feeCents)}</b> — el pago es por transferencia o en el lugar.
+            </>
+          ) : (
+            "Inscripción gratuita."
+          )}
+        </p>
+
+        {loading ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando categorías…</div>
+        ) : categories.length === 0 ? (
+          <button
+            className="btn btn-primary"
+            onClick={() => onPick()}
+            disabled={pending}
+            style={{ justifyContent: "center" }}
+          >
+            <Icon name="plus" size={13} color="#fff" /> Confirmar inscripción
+          </button>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="label-mp">Elige tu categoría</div>
+            {categories.map((c) => {
+              const cap = c.maxSlots ?? 0;
+              const isFull = cap > 0 && c.taken >= cap;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => !isFull && onPick(c.id)}
+                  disabled={pending || isFull}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "11px 13px",
+                    borderRadius: 11,
+                    border: `1px solid ${isFull ? "var(--border)" : "var(--border)"}`,
+                    background: isFull ? "var(--muted)" : "#fff",
+                    cursor: isFull ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                    opacity: pending ? 0.6 : 1,
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                  <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: isFull ? "var(--destructive-fg)" : "var(--muted-fg)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {cap > 0 ? `${c.taken}/${cap}` : `${c.taken}`}{isFull ? " · Lleno" : ""}
+                    {!isFull && <Icon name="chevron-right" size={14} color="var(--primary)" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn btn-outline" onClick={onClose} disabled={pending}>
+            Cancelar
+          </button>
+        </div>
       </div>
     </ModalShell>
   );
 }
 
-// ── Shells reutilizables para los modales secundarios ─────────────────────────
 function ModalShell({
   title,
   icon,
   onClose,
   children,
+  maxWidth = 520,
 }: {
   title: string;
   icon: string;
   onClose: () => void;
   children: React.ReactNode;
+  maxWidth?: number;
 }) {
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -944,10 +1663,11 @@ function ModalShell({
         className="card"
         style={{
           width: "100%",
-          maxWidth: 520,
+          maxWidth,
           maxHeight: "92vh",
           overflow: "auto",
           padding: 22,
+          borderRadius: 18,
           background: "#fff",
           boxShadow: "0 32px 64px rgba(0,0,0,0.5)",
           animation: "mp-q2-pop 180ms var(--ease-out, ease)",
@@ -984,7 +1704,8 @@ function ModalShell({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

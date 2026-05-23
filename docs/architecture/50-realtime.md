@@ -360,6 +360,12 @@ funcione, la tabla debe estar en el publication `supabase_realtime`.
 | `match_seeks` | BuscoPartido feed + mis avisos | 117 |
 | `match_seek_applications` | BuscoPartido (postulantes en vivo) | 117 |
 | `matches` | chat del partido + Mis avisos (cancel/reschedule en vivo) | 121 |
+| `quedadas` | cupos/estado en vivo (panel + detalle jugador) | 131 |
+| `quedada_participants` | cupos/pagos en vivo | 131 |
+| `quedada_categories` | panel gestión (edits concurrentes) | 133 |
+| `quedada_pairs` | panel gestión (parejas/slots en vivo) | 133 |
+| `quedada_rounds` | motor de juego — rondas en vivo (panel + detalle jugador) | 141 |
+| `quedada_games` | motor de juego — scoreboard/tabla en vivo | 141 |
 
 **Para sumar una tabla nueva**:
 

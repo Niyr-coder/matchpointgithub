@@ -39,7 +39,7 @@ export function getAdminClient() {
 export async function setAuditActor(
   client: ReturnType<typeof getAdminClient>,
   userId: string,
-  role: "admin" | "system" | "partner" | "owner" = "admin",
+  role: "admin" | "system" | "partner" | "owner" | "user" = "admin",
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (client as any).rpc("mp_set_audit_actor", {

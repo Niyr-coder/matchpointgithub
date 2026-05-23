@@ -24,6 +24,10 @@ export type OwnerHomeData = {
   revenueWeekCents: number;
   events: { d: string; m: string; name: string; sub: string; tag: string }[];
   staff: { name: string; role: string; online: boolean }[];
+  ratingAvg: number | null;
+  ratingCount: number;
+  membersVipCount: number;
+  membersVipPending: number;
 };
 
 const STAFF_COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#7c3aed", "#dc2626", "#737373"];
@@ -101,7 +105,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16 }}>
         <RHKpi
           label="Revenue hoy"
           value={money(data.revenueHoyCents)}
@@ -122,7 +126,20 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
           value={String(data.sociosCount)}
           sub={data.sociosCount > 0 ? "últimos 30 días" : "Aún sin actividad"}
         />
-        <RHKpi label="Rating club" value="—" sub="club_reviews próximamente" />
+        <RHKpi
+          label="Rating club"
+          value={data.ratingAvg != null ? data.ratingAvg.toFixed(1) : "—"}
+          sub={data.ratingCount > 0 ? `${data.ratingCount} ${data.ratingCount === 1 ? "reseña" : "reseñas"}` : "Aún sin reseñas"}
+        />
+        <RHKpi
+          label="Membresías VIP"
+          value={String(data.membersVipCount)}
+          sub={
+            data.membersVipPending > 0
+              ? `${data.membersVipPending} ${data.membersVipPending === 1 ? "pendiente" : "pendientes"} de aprobación`
+              : "Sin solicitudes"
+          }
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>

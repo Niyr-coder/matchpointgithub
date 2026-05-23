@@ -82,13 +82,14 @@ sus grupos + items.
 **Resumen** (items principales):
 
 ### user
-Inicio · Clubes · Ranking · Eventos · Mensajes · Amigos · Shop · Academia ·
-Mis clases · Mi perfil · Mi Team · Solicitar Club
+Inicio · Clubes · Ranking · Eventos · Mensajes · Amigos · Shop · Coach AI
+(MP+) · Academia · Mis clases · Mi perfil · MATCHPOINT+ · Mis membresías ·
+Personalizar · Soporte · Solicitar Club
 
 ### admin
-Overview · Clubes · Usuarios · Moderación · Pagos · Planes · Eventos ·
-Soporte · Métricas · Auditoría · Configuración · Roles · Team · Flags ·
-Broadcast
+Overview · Clubes · Usuarios · Moderación · Pagos · Planes · Membresías ·
+Bundles cosméticos · Patrocinadores · Eventos · Soporte · Quedadas · Métricas ·
+Auditoría · Configuración · Roles · Team · Flags · Broadcast
 
 ### owner (club)
 Reservas · Canchas · Clientes · Finanzas · Marketing · Configuración ·
@@ -189,9 +190,37 @@ ad-hoc — centraliza la lógica.
 7. Help: agregar entry en `ROLE_HELP` de `HelpScreen.tsx`.
 8. Doc: actualizar este archivo (catálogo + matriz de permisos).
 
+## 10b. RBAC granular (capacidades) — mig 158
+
+Además del modelo por RoleKey, existe una **matriz de capacidades real y editable**:
+
+- Tablas `capabilities` (catálogo de 17 caps por dominio: Clubes/Usuarios/Pagos/
+  Moderación/Sistema) y `role_capabilities` (rol × cap → nivel `all/limited/own/
+  public/none`; ausencia = none). Sembrada con la matriz del diseño.
+- **`admin` = todo, INMUTABLE**: `mp_role_can()` hardcodea `true` para admin (no se
+  puede auto-bloquear); el editor rechaza editar admin.
+- Helper SQL `mp_role_can(uid, cap, club?)` (SECURITY DEFINER) + helper TS
+  `roleCan()` / `assertCapability(cap, { clubId })` en `src/lib/auth/capabilities.ts`.
+- Edición: `AdminRolesView` → "Editar permisos" (admin) → action `updateRoleCapability`
+  (admin-only, auditada vía `tg_audit_role_capabilities`).
+- **Enforcement (por etapas):** Stage 1 ✅ = `assignRole`/`revokeRole` (owner)
+  consultan `sys.roles`. Stage 2 ✅ = **UI del owner** (Personal del club →
+  `AssignStaffModal`) para asignar/revocar manager/coach/empleado de su club, con
+  **aceptación de términos** obligatoria (mig 159: `role_assignments.terms_version`
+  + `platform_config.role_grant_terms*`); `revokeRole` simétrico (owner). Stage 3
+  (en curso) = RLS de defensa en profundidad con patrón **aditivo**
+  `mp_is_admin() OR (chequeo_rol_existente AND mp_role_can(uid, cap, club))` — sólo
+  restringe, nunca amplía, admin intacto. Aplicado a `role_assignments` owner
+  grant/revoke staff (mig 160, gate `sys.roles`); el resto de tablas se convierte
+  on-demand con el mismo patrón (no reescribir las 95 políticas de golpe).
+  Nivel `limited` ≈ permitido (refinamiento por-cap pendiente).
+- **Términos de grant**: antes de que un owner asigne un rol de club, acepta los
+  términos vigentes; se registra `terms_version` y el grant queda en el audit log
+  (hash-chained). Solo admin se salta el gate de términos.
+
 ## 11. TODOs
 
-- [ ] UI para asignar roles a usuarios (admin) — hoy SQL manual
+- [x] UI para asignar roles a usuarios (admin) + matriz de permisos editable (mig 158)
 - [ ] Limpieza de subs realtime al cambiar rol
 - [ ] Cookie write al navegar via `/dashboard/[role]` (hoy solo lo escribe
       `switchRole`)
