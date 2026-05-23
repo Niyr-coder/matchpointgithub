@@ -339,7 +339,7 @@ export async function rejectPlanSubscriptionAdmin(
 
     const { data: sub, error: readErr } = await supabase
       .from("player_subscriptions")
-      .select("id,status")
+      .select("id,status,user_id,tier")
       .eq("id", subscriptionId)
       .maybeSingle();
     if (readErr) {
@@ -378,6 +378,32 @@ export async function rejectPlanSubscriptionAdmin(
     });
     if (auditErr) {
       console.error("[rejectPlanSubscriptionAdmin] audit log:", auditErr.message);
+    }
+
+    // Notificar al usuario. Fire-and-forget (no romper el rechazo si falla el DM).
+    try {
+      const userId = sub.user_id as string | null;
+      if (userId) {
+        const [{ getProfileSummary }, { sendSystemMessage, renderTemplate }] =
+          await Promise.all([
+            import("@/lib/auth/profile"),
+            import("@/lib/messages/system"),
+          ]);
+        const profile = await getProfileSummary(userId);
+        const firstName = (profile.displayName ?? "jugador").split(" ")[0];
+        await sendSystemMessage({
+          recipientUserId: userId,
+          kind: "plan_subscription_rejected",
+          body: renderTemplate("plan_subscription_rejected", {
+            firstName,
+            tier: sub.tier as string,
+            reason,
+          }),
+          payload: { subscriptionId, reason },
+        });
+      }
+    } catch (e) {
+      console.error("[rejectPlanSubscriptionAdmin] notify user failed", e);
     }
 
     return { subscriptionId, status: "rejected" as const };

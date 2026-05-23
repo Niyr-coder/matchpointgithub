@@ -235,6 +235,20 @@ export async function approvePlanSubscriptionAdmin(
       console.error("[approvePlanSubscriptionAdmin] welcome message failed", e);
     }
 
+    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+      p_entity: "player_subscriptions",
+      p_entity_id: subscriptionId,
+      p_action: "plan_subscription.admin_approve",
+      p_diff: {
+        tier: sub.tier,
+        durationMonths: sub.duration_months,
+        expiresAt: newExpiry.toISOString(),
+      } as never,
+    });
+    if (auditErr) {
+      console.error("[approvePlanSubscriptionAdmin] audit log:", auditErr.message);
+    }
+
     return {
       subscriptionId,
       newTier: sub.tier as string,

@@ -261,6 +261,20 @@ export async function approveClubFeaturingAdmin(
       );
     }
 
+    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
+      p_entity: "club_featuring_subscriptions",
+      p_entity_id: subscriptionId,
+      p_action: "club_featuring.admin_approve",
+      p_diff: {
+        clubId,
+        durationDays,
+        expiresAt: newExpiry.toISOString(),
+      } as never,
+    });
+    if (auditErr) {
+      console.error("[approveClubFeaturingAdmin] audit log:", auditErr.message);
+    }
+
     return {
       subscriptionId,
       clubId,

@@ -301,7 +301,7 @@ export async function rejectClubFeaturingAdmin(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sub, error: readErr } = await (supabase as any)
       .from("club_featuring_subscriptions")
-      .select("id,status")
+      .select("id,status,club_id")
       .eq("id", subscriptionId)
       .maybeSingle();
     if (readErr) {
@@ -352,6 +352,53 @@ export async function rejectClubFeaturingAdmin(
     });
     if (auditErr) {
       console.error("[rejectClubFeaturingAdmin] audit log:", auditErr.message);
+    }
+
+    // Notificar a los owners del club. Fire-and-forget.
+    try {
+      const clubId = sub.club_id as string | null;
+      if (clubId) {
+        const { data: club } = await supabase
+          .from("clubs")
+          .select("name")
+          .eq("id", clubId)
+          .maybeSingle();
+        const clubName = (club?.name as string | null) ?? "tu club";
+        const { data: owners } = await supabase
+          .from("role_assignments")
+          .select("user_id")
+          .eq("club_id", clubId)
+          .in("role", ["owner", "manager"])
+          .is("revoked_at", null);
+        const recipientIds = Array.from(
+          new Set(
+            (owners ?? [])
+              .map((o) => o.user_id as string | null)
+              .filter((v): v is string => !!v),
+          ),
+        );
+        if (recipientIds.length > 0) {
+          const { sendSystemMessage, renderTemplate } = await import(
+            "@/lib/messages/system"
+          );
+          const body = renderTemplate("club_featuring_rejected", {
+            clubName,
+            reason,
+          });
+          await Promise.all(
+            recipientIds.map((rid) =>
+              sendSystemMessage({
+                recipientUserId: rid,
+                kind: "club_featuring_rejected",
+                body,
+                payload: { subscriptionId, clubId, reason },
+              }),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[rejectClubFeaturingAdmin] notify owners failed", e);
     }
 
     return { subscriptionId, status: "rejected" as const };

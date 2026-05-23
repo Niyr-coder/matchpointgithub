@@ -21,7 +21,9 @@ export type SystemMessageKind =
   | "welcome_premium_activated"
   | "welcome_onboarding_completed"
   | "cosmetic_bundle_granted"
-  | "quedada_payment_reminder";
+  | "quedada_payment_reminder"
+  | "plan_subscription_rejected"
+  | "club_featuring_rejected";
 // Futuros: team_roster_full_reminder, plan_expiring_soon_reminder.
 
 type Params = {
@@ -79,6 +81,10 @@ export const WELCOME_TEMPLATES = {
     "¡{firstName}! Acabamos de desbloquear el {bundleLabel} en tu cuenta. Ya puedes elegir sus presets desde Mi cuenta → Personalizar.",
   quedada_payment_reminder:
     'Hola {firstName}, te recordamos completar el pago de la quedada "{quedadaTitle}"{amountClause}. {paymentClause}¡Nos vemos en cancha!',
+  plan_subscription_rejected:
+    "Hola {firstName}, tu solicitud de MATCHPOINT+ ({tier}) no fue aprobada. Motivo: {reason}. Podés subir un nuevo comprobante desde Mi plan cuando quieras.",
+  club_featuring_rejected:
+    "Hola, la solicitud de featuring para {clubName} no fue aprobada. Motivo: {reason}. Podés volver a solicitarlo desde el panel del club.",
 } as const satisfies Record<SystemMessageKind, string>;
 
 export function renderTemplate(kind: SystemMessageKind, vars: TemplateVars): string {
