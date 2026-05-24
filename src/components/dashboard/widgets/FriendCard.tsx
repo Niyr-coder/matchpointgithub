@@ -6,10 +6,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { startConversation } from "@/server/actions/messaging";
+import { sendFriendRequest } from "@/server/actions/friends";
 import { readableTextOn } from "@/lib/profile/customization-presets";
 
 export type FriendLite = {
@@ -87,6 +88,8 @@ export function FriendCard({
   const router = useRouter();
   const toast = useToast();
   const [msgPending, startMsg] = useTransition();
+  const [addPending, startAdd] = useTransition();
+  const [addState, setAddState] = useState<"idle" | "sent">("idle");
 
   if (f.isOfficial) {
     return <OfficialFriendCard f={f} />;
@@ -198,9 +201,33 @@ export function FriendCard({
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 12, pointerEvents: preview ? "none" : "auto" }}>
           {isSuggestion ? (
-            <button className={`btn btn-primary${accent ? " btn-accent" : ""}`} style={{ flex: 1, fontSize: 10.5, padding: "8px 10px", ...ctaStyle }}>
-              <Icon name="user-plus" size={12} />
-              Agregar
+            <button
+              type="button"
+              className={`btn btn-primary${accent ? " btn-accent" : ""}`}
+              disabled={preview || addPending || addState === "sent"}
+              onClick={() => {
+                if (preview || addPending || addState === "sent") return;
+                startAdd(async () => {
+                  const r = await sendFriendRequest({ toUserId: f.id });
+                  if (!r.ok) {
+                    toast({ icon: "alert-triangle", title: r.error.message });
+                    return;
+                  }
+                  setAddState("sent");
+                  toast({ icon: "check-circle-2", title: `Solicitud enviada a ${f.name}` });
+                });
+              }}
+              style={{
+                flex: 1,
+                fontSize: 10.5,
+                padding: "8px 10px",
+                ...ctaStyle,
+                opacity: addPending ? 0.6 : 1,
+                cursor: addPending || addState === "sent" ? "default" : "pointer",
+              }}
+            >
+              <Icon name={addState === "sent" ? "check" : "user-plus"} size={12} />
+              {addState === "sent" ? "Enviada" : addPending ? "Enviando..." : "Agregar"}
             </button>
           ) : (
             <>
