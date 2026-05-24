@@ -73,6 +73,14 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: true,
   },
   {
+    key: "club_marketing_enabled",
+    label: "Marketing de club",
+    description: "Habilita Marketing del club (campañas, broadcasts a clientes). Apagado = oculto del sidebar y pantalla no disponible.",
+    surfaces: ["Owner · Marketing (sidebar + pantalla)"],
+    impact: "med",
+    wired: true,
+  },
+  {
     key: "signups_open",
     label: "Registro abierto",
     description: "Permite el registro de usuarios nuevos. Apagar = cerrar registros temporalmente (mantenimiento, lanzamiento por olas).",

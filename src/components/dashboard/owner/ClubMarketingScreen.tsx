@@ -14,6 +14,20 @@ const PROMO_BGS = [
   "linear-gradient(135deg, #7c2d12 0%, #ea580c 100%)",
   "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
 ];
+
+// Payload meta opcional que los defaults seedeados traen para forzar
+// presentación (code legible, tag custom, uses/max, etc.). Si está, gana
+// sobre los derivados del status.
+type CampaignPayload = {
+  code?: string;
+  tag?: string;
+  kind?: string;
+  accent?: string;
+  bg?: string;
+  uses?: number;
+  max?: number;
+  end?: string;
+};
 const STATUS_TAG: Record<string, { tag: string; accent: string }> = {
   draft: { tag: "BORRADOR", accent: "var(--muted-fg)" },
   scheduled: { tag: "PROGRAMADA", accent: "#ea580c" },
@@ -64,7 +78,7 @@ async function loadData(): Promise<MarketingData> {
 
   const { data: broadcasts } = await supabase
     .from("broadcasts")
-    .select("id,title,status,channels,scheduled_for,sent_at,created_at")
+    .select("id,title,status,channels,scheduled_for,sent_at,created_at,payload")
     .eq("scope", "club")
     .eq("club_id", clubId)
     .order("created_at", { ascending: false })
@@ -90,24 +104,34 @@ async function loadData(): Promise<MarketingData> {
     }
   }
 
-  const top3 = (broadcasts ?? []).slice(0, 3);
+  // Sort: defaults seedeadas (payload.default_key presente) van primero
+  // para que el owner vea ejemplos al toque; el resto en orden de creación
+  // descendente.
+  const sorted = [...(broadcasts ?? [])].sort((a, b) => {
+    const aDef = (a.payload as CampaignPayload | null)?.tag != null ? 1 : 0;
+    const bDef = (b.payload as CampaignPayload | null)?.tag != null ? 1 : 0;
+    if (aDef !== bDef) return bDef - aDef;
+    return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
+  });
+  const top3 = sorted.slice(0, 3);
   const campaigns: CampaignCard[] = top3.map((b, i) => {
     const status = (b.status as string) ?? "draft";
     const meta = STATUS_TAG[status] ?? STATUS_TAG.draft;
     const channels = (b.channels as string[] | null) ?? ["inapp"];
-    const kind = CHANNEL_META[channels[0]]?.label ?? "Campaña";
-    const uses = reachByBroadcast.get(b.id as string) ?? 0;
+    const channelKind = CHANNEL_META[channels[0]]?.label ?? "Campaña";
+    const reach = reachByBroadcast.get(b.id as string) ?? 0;
+    const payload = (b.payload as CampaignPayload | null) ?? {};
     return {
       id: b.id as string,
       n: (b.title as string) ?? "Sin título",
-      kind,
-      code: (b.id as string).slice(0, 8).toUpperCase(),
-      uses,
-      max: Math.max(uses, 100),
-      end: fmtDate((b.scheduled_for as string | null) ?? (b.sent_at as string | null)),
-      img: PROMO_BGS[i % PROMO_BGS.length],
-      tag: meta.tag,
-      accent: meta.accent,
+      kind: payload.kind ?? channelKind,
+      code: payload.code ?? (b.id as string).slice(0, 8).toUpperCase(),
+      uses: payload.uses ?? reach,
+      max: payload.max ?? Math.max(reach, 100),
+      end: payload.end ?? fmtDate((b.scheduled_for as string | null) ?? (b.sent_at as string | null)),
+      img: payload.bg ?? PROMO_BGS[i % PROMO_BGS.length],
+      tag: payload.tag ?? meta.tag,
+      accent: payload.accent ?? meta.accent,
     };
   });
 

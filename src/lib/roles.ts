@@ -178,7 +178,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "club-finanzas", label: "Finanzas", icon: "wallet" },
           { k: "club-membresias", label: "Membresías", icon: "star", flag: "club_memberships_v2" },
-          { k: "club-marketing", label: "Marketing", icon: "megaphone" },
+          { k: "club-marketing", label: "Marketing", icon: "megaphone", flag: "club_marketing_enabled" },
         ],
       },
       {

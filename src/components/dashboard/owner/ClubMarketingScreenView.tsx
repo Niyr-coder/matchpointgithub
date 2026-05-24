@@ -1,13 +1,14 @@
 // Client view de ClubMarketingScreen — layout 1:1 (RoleScreensPolish.jsx 182-277).
 "use client";
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
 import { RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
-import { createBroadcast } from "@/server/actions/marketing";
+import { activateBroadcast, createBroadcast } from "@/server/actions/marketing";
 import { ClubFeaturingPanel } from "./ClubFeaturingPanel";
 
 export type CampaignCard = {
@@ -44,10 +45,18 @@ function fmtReach(n: number): string {
   return String(n);
 }
 
-const PLACEHOLDER_PROMO_COUNT = 3;
 const PLACEHOLDER_CHANNEL_COUNT = 4;
 
-function PromoCard({ p }: { p: CampaignCard }) {
+function PromoCard({
+  p,
+  onActivate,
+  isPending,
+}: {
+  p: CampaignCard;
+  onActivate: (id: string) => void;
+  isPending: boolean;
+}) {
+  const isPaused = p.tag === "PAUSADA";
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       <div
@@ -167,10 +176,23 @@ function PromoCard({ p }: { p: CampaignCard }) {
           />
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button className="btn btn-primary" style={{ flex: 1, fontSize: 10.5 }}>
-            <Icon name="share-2" size={11} color="#fff" />
-            Compartir
-          </button>
+          {isPaused ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ flex: 1, fontSize: 10.5, opacity: isPending ? 0.5 : 1, cursor: isPending ? "not-allowed" : "pointer" }}
+              disabled={isPending}
+              onClick={() => onActivate(p.id)}
+            >
+              <Icon name="play" size={11} color="#fff" />
+              Activar
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary" style={{ flex: 1, fontSize: 10.5 }}>
+              <Icon name="share-2" size={11} color="#fff" />
+              Compartir
+            </button>
+          )}
           <button
             className="btn"
             style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5 }}
@@ -187,132 +209,6 @@ function PromoCard({ p }: { p: CampaignCard }) {
           }}
         >
           Vence: <b style={{ color: "#0a0a0a" }}>{p.end}</b>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PromoPlaceholder() {
-  return (
-    <div
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        background: "#fafafa",
-        border: "1px dashed var(--border)",
-        borderRadius: 12,
-        opacity: 0.6,
-      }}
-    >
-      <div
-        style={{
-          height: 140,
-          background: "var(--muted)",
-          position: "relative",
-          display: "flex",
-          alignItems: "flex-end",
-          padding: 16,
-        }}
-      >
-        <div style={{ position: "absolute", top: 12, right: 12 }}>
-          <RSPill bg="var(--muted-fg)">—</RSPill>
-        </div>
-        <div style={{ position: "relative", color: "var(--muted-fg)" }}>
-          <div
-            style={{
-              fontSize: 9,
-              fontWeight: 900,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-            }}
-          >
-            ● —
-          </div>
-          <div
-            className="font-heading"
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              letterSpacing: "-0.025em",
-              textTransform: "uppercase",
-              lineHeight: 1.05,
-              marginTop: 4,
-            }}
-          >
-            Sin campañas
-          </div>
-        </div>
-      </div>
-      <div style={{ padding: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "6px 10px",
-            background: "var(--muted)",
-            borderRadius: 6,
-            marginBottom: 12,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--muted-fg)",
-              fontWeight: 800,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-            }}
-          >
-            Código
-          </span>
-          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 900 }}>
-            —
-          </span>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 10.5,
-            marginBottom: 5,
-          }}
-        >
-          <span style={{ color: "var(--muted-fg)" }}>Usos</span>
-          <b>0 / 0</b>
-        </div>
-        <div
-          style={{
-            height: 5,
-            background: "var(--muted)",
-            borderRadius: 9999,
-            overflow: "hidden",
-            marginBottom: 12,
-          }}
-        />
-        <div style={{ display: "flex", gap: 6 }}>
-          <button className="btn btn-primary" style={{ flex: 1, fontSize: 10.5 }} disabled>
-            <Icon name="share-2" size={11} color="#fff" />
-            Compartir
-          </button>
-          <button
-            className="btn"
-            style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5 }}
-            disabled
-          >
-            <Icon name="bar-chart-3" size={11} />
-          </button>
-        </div>
-        <div
-          style={{
-            fontSize: 9.5,
-            color: "var(--muted-fg)",
-            marginTop: 8,
-            textAlign: "center",
-          }}
-        >
-          Vence: <b style={{ color: "var(--muted-fg)" }}>—</b>
         </div>
       </div>
     </div>
@@ -438,6 +334,7 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
   );
 
   const toast = useToast();
+  const router = useRouter();
   const { ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();
 
@@ -469,19 +366,36 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
         channels: ["inapp"],
         targetFilter: {},
       });
-      if (res.ok) toast({ icon: "check", title: "Campaña creada" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      if (res.ok) {
+        toast({ icon: "check", title: "Campaña creada" });
+        // broadcasts no está en la realtime publication, así que forzamos
+        // refresh del server component para que aparezca en el listado.
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
     });
   };
 
-  const hasPromos = data.campaigns.length > 0;
+  const handleActivate = (id: string) => {
+    startTransition(async () => {
+      const res = await activateBroadcast({ id });
+      if (res.ok) {
+        toast({ icon: "check", title: "Campaña activada" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
   const hasChannels = data.channels.length > 0;
 
   const liveCount = data.campaigns.filter(
-    (p) => p.tag === "EN VIVO" || p.tag === "PROGRAMADA" || p.tag === "ENVIADA",
+    (p) => p.tag === "EN VIVO" || p.tag === "PROGRAMADA" || p.tag === "ENVIADA" || p.tag === "MÁS USADA" || p.tag === "NUEVA",
   ).length;
   const pausedCount = data.campaigns.filter(
-    (p) => p.tag === "BORRADOR" || p.tag === "CANCELADA",
+    (p) => p.tag === "BORRADOR" || p.tag === "CANCELADA" || p.tag === "PAUSADA",
   ).length;
 
   // KPIs: solo alcance + nº enviadas tienen modelo real. Los otros tres
@@ -596,11 +510,9 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
           </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-          {hasPromos
-            ? data.campaigns.map((p) => <PromoCard key={p.id} p={p} />)
-            : Array.from({ length: PLACEHOLDER_PROMO_COUNT }).map((_, k) => (
-                <PromoPlaceholder key={k} />
-              ))}
+          {data.campaigns.map((p) => (
+            <PromoCard key={p.id} p={p} onActivate={handleActivate} isPending={isPending} />
+          ))}
         </div>
       </div>
 
