@@ -1375,3 +1375,53 @@ input[type="range"].mp-mpr,
     animation: mpModalBackdrop 160ms var(--ease-out) both;
   }
 }
+
+/* ── Página /precios (MAT-25) ──────────────────────────────────────────
+   Grids de tier cards stack en mobile; feature matrix queda colapsada en
+   mobile y se abre por defecto en desktop. */
+.precios-tier-grid[data-cols="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.precios-tier-grid[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 880px) {
+  .precios-tier-grid[data-cols="3"] {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .precios-tier-grid[data-cols="2"] {
+    grid-template-columns: 1fr;
+  }
+}
+.payment-explainer {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 760px) {
+  .payment-explainer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Screen-reader-only — used for accessible price descriptions. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .precios-tier-grid *,
+  .pricing-feature-matrix *,
+  .payment-explainer * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
