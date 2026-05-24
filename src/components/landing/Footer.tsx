@@ -14,6 +14,7 @@ const COLS: { t: string; l: FooterLink[] }[] = [
     l: [
       { label: "Cómo funciona", href: "/como-funciona" },
       { label: "Clubes", href: "/clubes" },
+      { label: "Encontrar coach", href: "/coaches" },
       { label: "Eventos", href: "/eventos" },
       { label: "Ranking", href: "/ranking" },
       { label: "Precios", href: "/precios" },
@@ -24,7 +25,7 @@ const COLS: { t: string; l: FooterLink[] }[] = [
     l: [
       { label: "Soy un club", href: "/soy-club" },
       { label: "Soy partner", href: "/soy-partner" },
-      { label: "Soy coach", href: "/coaches" },
+      { label: "Soy coach", href: "/soy-coach" },
       { label: "Casos de éxito", href: "/clubes/casos" },
       { label: "Material para coaches", href: "/coaches/material" },
       {
