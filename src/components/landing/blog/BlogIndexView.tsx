@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { MarketingShell } from "../MarketingShell";
+import { NewsletterForm } from "./NewsletterForm";
 import type { BlogPost } from "@/lib/blog/posts";
 
 function fmtDate(iso: string): string {
@@ -123,6 +124,10 @@ export function BlogIndexView({ posts }: { posts: BlogPost[] }) {
             </div>
           </Link>
         ))}
+      </div>
+
+      <div style={{ marginTop: 36 }}>
+        <NewsletterForm source="blog" />
       </div>
     </MarketingShell>
   );

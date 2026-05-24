@@ -4489,6 +4489,45 @@ export type Database = {
           },
         ]
       }
+      newsletter_signups: {
+        Row: {
+          email: string
+          email_lc: string
+          id: string
+          ip: unknown | null
+          metadata: Json | null
+          occurred_at: string
+          resend_contact_id: string | null
+          source: string
+          status: string
+          user_agent: string | null
+        }
+        Insert: {
+          email: string
+          email_lc?: string
+          id?: string
+          ip?: unknown | null
+          metadata?: Json | null
+          occurred_at?: string
+          resend_contact_id?: string | null
+          source?: string
+          status?: string
+          user_agent?: string | null
+        }
+        Update: {
+          email?: string
+          email_lc?: string
+          id?: string
+          ip?: unknown | null
+          metadata?: Json | null
+          occurred_at?: string
+          resend_contact_id?: string | null
+          source?: string
+          status?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       partner_club_links: {
         Row: {
           club_id: string
