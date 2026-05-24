@@ -397,10 +397,13 @@ function FormField({
   labelColor: string;
   full?: boolean;
 }) {
+  // Wrap input + label en un único <label> para que el input herede etiqueta
+  // implícita sin necesidad de id/for (MAT-33 a11y).
   return (
-    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
-      <div
+    <label style={{ display: "block", gridColumn: full ? "1 / -1" : "auto" }}>
+      <span
         style={{
+          display: "block",
           fontSize: 10,
           fontWeight: 900,
           letterSpacing: "0.18em",
@@ -410,11 +413,11 @@ function FormField({
         }}
       >
         {label} {required && <span style={{ color: "var(--primary)" }}>*</span>}
-      </div>
+      </span>
       {children}
       {error && (
         <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{error}</div>
       )}
-    </div>
+    </label>
   );
 }

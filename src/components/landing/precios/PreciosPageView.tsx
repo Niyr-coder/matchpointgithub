@@ -210,7 +210,7 @@ function AudienceSection({
       id={`audience-${audience.slug}`}
       role="tabpanel"
       aria-labelledby={`audience-tab-${audience.slug}`}
-      style={{ marginBottom: 64, scrollMarginTop: 80 }}
+      style={{ marginBottom: 64, scrollMarginTop: 140 }}
     >
       <header
         style={{

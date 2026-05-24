@@ -19,7 +19,7 @@ export function PricingFAQ({ groups }: Props) {
         borderRadius: 18,
       }}
     >
-      <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 8 }}>
+      <div className="label-mp" style={{ color: "var(--primary-active)", marginBottom: 8 }}>
         FAQ
       </div>
       <h2

@@ -45,3 +45,4 @@ next-env.d.ts
 /tests/e2e/.artifacts/
 /playwright-report/
 /test-results/
+/screenshots-mat33/

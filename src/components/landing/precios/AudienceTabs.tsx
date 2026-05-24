@@ -29,9 +29,13 @@ export function AudienceTabs({ tabs, active, onChange }: Props) {
 
   return (
     <div
+      // top: 76px deja al strip por debajo del Nav flotante de PublicChrome
+      // (position:fixed; top:12; ~52px de alto). Sin este offset, el strip
+      // queda detrás del chrome glass y los usuarios pierden la navegación
+      // entre audiencias al hacer scroll. — MAT-33 QA finding.
       style={{
         position: "sticky",
-        top: 0,
+        top: 76,
         zIndex: 20,
         background: "rgba(250,250,250,0.92)",
         backdropFilter: "blur(8px)",

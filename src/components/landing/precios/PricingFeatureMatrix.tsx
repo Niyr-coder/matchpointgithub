@@ -151,14 +151,14 @@ export function PricingFeatureMatrix({ audience, tiers }: Props) {
 function Cell({ value }: { value: MatrixCell | undefined }) {
   if (value === true) {
     return (
-      <span aria-label="Incluido" title="Incluido" style={{ color: "var(--primary)" }}>
+      <span role="img" aria-label="Incluido" title="Incluido" style={{ color: "var(--primary)" }}>
         <Icon name="check" size={16} />
       </span>
     );
   }
   if (value === false || value === undefined) {
     return (
-      <span aria-label="No incluido" title="No incluido" style={{ color: "var(--muted-fg)" }}>
+      <span role="img" aria-label="No incluido" title="No incluido" style={{ color: "var(--muted-fg)" }}>
         —
       </span>
     );

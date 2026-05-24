@@ -15,7 +15,9 @@ export function MarketingShell({
 }) {
   return (
     <main className="max-w-[1100px] mx-auto px-4 md:px-8 pt-22 md:pt-25 pb-15 md:pb-20">
-      <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 14 }}>
+      {/* color: --primary-active (#047857) en lugar de --primary para pasar AA
+          (small caps 10px). MAT-33 a11y. */}
+      <div className="label-mp" style={{ color: "var(--primary-active)", marginBottom: 14 }}>
         {eyebrow}
       </div>
       <h1

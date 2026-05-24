@@ -371,6 +371,9 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
           role="dialog"
           aria-modal={mobileOpen}
           aria-hidden={!mobileOpen}
+          // `inert` cuando está cerrado evita que los Link/CTA descendientes
+          // queden tab-focusables aun con aria-hidden=true (MAT-33 a11y).
+          inert={!mobileOpen}
           style={{
             position: "fixed",
             top: 80,

@@ -21,7 +21,7 @@ export function PaymentExplainer() {
       className="payment-explainer"
     >
       <div>
-        <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 10 }}>
+        <div className="label-mp" style={{ color: "var(--primary-active)", marginBottom: 10 }}>
           ¿Cómo cobramos?
         </div>
         <h2
@@ -58,7 +58,7 @@ export function PaymentExplainer() {
           </span>
           <span>
             Desde{" "}
-            <strong style={{ color: "var(--primary)", fontWeight: 800 }}>Octubre 2026</strong>{" "}
+            <strong style={{ color: "var(--primary-active)", fontWeight: 800 }}>Octubre 2026</strong>{" "}
             activamos cobro automático con tarjeta vía <strong>Stripe Connect</strong>. Los tiers y
             bullets de esta página ya están adaptados para esa transición — no tienes que cambiar
             nada cuando llegue.

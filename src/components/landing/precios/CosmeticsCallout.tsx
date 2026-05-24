@@ -21,7 +21,7 @@ export function CosmeticsCallout() {
       <div style={{ minWidth: 0, flex: "1 1 320px" }}>
         <div
           className="label-mp"
-          style={{ color: "var(--primary)", marginBottom: 4 }}
+          style={{ color: "var(--primary-active)", marginBottom: 4 }}
         >
           {COSMETICS_CALLOUT.eyebrow}
         </div>
@@ -55,7 +55,7 @@ export function CosmeticsCallout() {
           gap: 6,
           fontSize: 13,
           fontWeight: 700,
-          color: "var(--primary)",
+          color: "var(--primary-active)",
           textDecoration: "none",
           minHeight: 44,
           padding: "0 4px",

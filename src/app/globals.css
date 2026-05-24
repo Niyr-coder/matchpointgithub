@@ -54,7 +54,9 @@
 
   /* Dashboard tokens */
   --bg: #fafafa; --card: #fff; --border: #e5e5e5; --muted: #f5f5f5;
-  --muted-fg: #737373; --fg: #0a0a0a;
+  /* --muted-fg bumped from #737373 → #6a6a6a para alcanzar AA (4.5:1)
+     sobre --muted/--bg/--card. MAT-33 a11y audit. */
+  --muted-fg: #6a6a6a; --fg: #0a0a0a;
   --primary: #10b981; --primary-hover: #059669; --primary-active: #047857;
   --primary-glow: rgba(22, 163, 74, 0.15);
   --border-subtle: #f0f0f0;
