@@ -31,10 +31,14 @@ export default function TerminosPage() {
         </LegalSection>
 
         <LegalSection n={4} title="Conducta del usuario">
-          No está permitido: (a) usar la plataforma para fines ilegales; (b) suplantar identidad;
-          (c) acosar a otros usuarios; (d) hacer no-show reiterado a reservas pagadas (puede resultar
-          en suspensión temporal); (e) intentar acceder sin autorización a datos de otros usuarios o
-          clubes.
+          <p style={{ margin: "0 0 8px" }}>No está permitido:</p>
+          <ol type="a" style={{ margin: 0, paddingLeft: 22, listStyle: "lower-alpha", display: "grid", gap: 6 }}>
+            <li>usar la plataforma para fines ilegales;</li>
+            <li>suplantar identidad;</li>
+            <li>acosar a otros usuarios;</li>
+            <li>hacer no-show reiterado a reservas pagadas (puede resultar en suspensión temporal);</li>
+            <li>intentar acceder sin autorización a datos de otros usuarios o clubes.</li>
+          </ol>
         </LegalSection>
 
         <LegalSection n={5} title="Contenido del usuario">
@@ -69,8 +73,14 @@ export default function TerminosPage() {
         </LegalSection>
 
         <LegalSection n={10} title="Jurisdicción y contacto">
-          Estos términos se rigen por las leyes de la República del Ecuador. Para dudas o reclamos:
-          <br /><strong>hola@matchpoint.top</strong> · MATCHPOINT Ecuador · Quito, Ecuador.
+          <p style={{ margin: "0 0 8px" }}>
+            Estos términos se rigen por las leyes de la República del Ecuador. Para dudas o reclamos:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 22, listStyle: "disc", display: "grid", gap: 6 }}>
+            <li><strong>Correo:</strong> <a href="mailto:hola@matchpoint.top">hola@matchpoint.top</a></li>
+            <li><strong>Empresa:</strong> MATCHPOINT Ecuador</li>
+            <li><strong>Ubicación:</strong> Quito, Ecuador</li>
+          </ul>
         </LegalSection>
 
         <p style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 32 }}>
