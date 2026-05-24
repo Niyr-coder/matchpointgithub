@@ -271,11 +271,7 @@ function TierGrid({
   return (
     <div
       className="precios-tier-grid"
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        gap: 16,
-      }}
+      style={{ display: "grid", gap: 16 }}
       data-cols={cols}
     >
       {tiers.map((t) => (
