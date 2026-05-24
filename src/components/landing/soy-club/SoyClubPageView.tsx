@@ -15,10 +15,10 @@ const BENEFITS = [
   },
   {
     i: "wallet",
-    t: "Cobros y payouts",
-    d: "Cobramos por ti con Stripe. Payout semanal automático a tu cuenta. Tú solo ves caer la plata.",
-    stat: "7 días",
-    sub: "desde reserva a tu banco",
+    t: "Cobro de membresía sin fricción",
+    d: "Hoy: aceptamos transferencia bancaria y DeUna sin comisión por reserva. Desde Octubre 2026: cobro automático con tarjeta vía Stripe Connect — onboarding express, payout semanal automático a tu cuenta.",
+    stat: "Oct 2026",
+    sub: "Stripe Connect · payout semanal",
   },
   {
     i: "megaphone",
@@ -32,7 +32,7 @@ const BENEFITS = [
 const INCLUDED = [
   "Dashboard web completo (Owner + Manager + Empleado)",
   "App móvil para jugadores y tu staff",
-  "Pasarela de pago Stripe · sin setup",
+  "Cobro de membresía · transferencia y DeUna hoy · Stripe Connect Oct 2026",
   "Reportes y analytics en tiempo real",
   "Soporte en español · WhatsApp",
   "Onboarding asistido (48 horas)",
