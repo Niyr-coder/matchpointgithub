@@ -50,6 +50,53 @@ export function AuthModal({
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Escape cierra el modal. Listener global porque el focus puede estar en
+  // cualquier descendiente (inputs, botones OAuth, etc.) y queremos que la
+  // tecla funcione siempre que el modal esté montado.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Restaurar focus al elemento que abrió el modal cuando se desmonta.
+  // Guardamos el `activeElement` al montar y se lo devolvemos al cerrar,
+  // siempre que el nodo siga vivo en el DOM (WCAG 2.4.3 Focus Order).
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+    return () => {
+      if (trigger && document.contains(trigger)) trigger.focus?.();
+    };
+  }, []);
+
+  // Focus trap: confina Tab/Shift+Tab dentro del modal. Calculamos los
+  // focusables en cada Tab para tolerar disabled, conditional rendering del
+  // form (signin vs signup), y elementos que aparecen al cambiar de modo.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab") return;
+    const root = dialogRef.current;
+    if (!root) return;
+    const focusables = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey && (active === first || !root.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   return (
     <div
@@ -67,7 +114,13 @@ export function AuthModal({
       }}
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="authmodal-title"
+        aria-describedby="authmodal-subtitle"
         className="card"
         style={{
           width: "100%",
@@ -147,6 +200,7 @@ function Hero({ mode, onClose }: { mode: AuthMode; onClose: () => void }) {
         ● {isSignUp ? "Es gratis · < 60 s" : "MATCHPOINT"}
       </div>
       <h2
+        id="authmodal-title"
         className="font-heading"
         style={{
           fontSize: 28,
@@ -160,7 +214,10 @@ function Hero({ mode, onClose }: { mode: AuthMode; onClose: () => void }) {
         {isSignUp ? "Crea tu cuenta" : "Bienvenido"}
         <span style={{ color: "#fbbf24" }}>.</span>
       </h2>
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
+      <div
+        id="authmodal-subtitle"
+        style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}
+      >
         {isSignUp
           ? "Únete a la comunidad de pickleball en Ecuador"
           : "Ingresa y vuelve al juego"}
@@ -191,6 +248,7 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
             required
             placeholder="Vicente"
             autoComplete="name"
+            autoFocus
             style={inp}
           />
         </FieldLabel>
@@ -295,6 +353,7 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           required
           placeholder="tu@email.com"
           autoComplete="email"
+          autoFocus
           style={inp}
         />
       </FieldLabel>
@@ -442,6 +501,54 @@ function OAuthButtons() {
         <Icon name="apple" size={14} />
         Continuar con Apple
       </button>
+      <ConsentMicrocopy />
+    </div>
+  );
+}
+
+// LOPDP exige consentimiento informado y explícito sobre los datos que se
+// ceden. Esta microcopy se renderiza adyacente a los botones OAuth para que
+// el "qué se cede" sea visible ANTES de pulsar "Continuar con Google".
+// Énfasis en los 3 datos concretos (nombre, correo, foto) + promesa de no
+// publicar en nombre del usuario. Links a Términos/Privacidad en muted como
+// soporte legal, no como CTA principal (jerarquía: dato cedido > legal).
+function ConsentMicrocopy() {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        fontSize: 10.5,
+        lineHeight: 1.5,
+        color: "var(--muted-fg)",
+        textAlign: "center",
+      }}
+    >
+      <div>
+        Al continuar con Google o Apple, MATCHPOINT recibirá tu{" "}
+        <strong style={{ color: "#0a0a0a" }}>nombre</strong>,{" "}
+        <strong style={{ color: "#0a0a0a" }}>correo</strong> y{" "}
+        <strong style={{ color: "#0a0a0a" }}>foto de perfil</strong>. Nunca
+        publicaremos en tu nombre.
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.85 }}>
+        <a
+          href="/legal/terminos"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--muted-fg)", textDecoration: "underline" }}
+        >
+          Términos
+        </a>
+        {" · "}
+        <a
+          href="/legal/privacidad"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--muted-fg)", textDecoration: "underline" }}
+        >
+          Política de Privacidad
+        </a>
+      </div>
     </div>
   );
 }
