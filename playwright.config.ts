@@ -14,8 +14,16 @@
 //   npm run test:e2e
 
 import { defineConfig, devices } from "@playwright/test";
+import { loadEnvConfig } from "@next/env";
 
-const BASE_URL = process.env.MATCHPOINT_E2E_BASE_URL ?? "http://localhost:3000";
+// Cargar `.env.local` igual que `next dev` para que los helpers de tests
+// (service-role client, etc.) vean las mismas claves que la app.
+loadEnvConfig(process.cwd());
+
+// Port para `next dev`. El runtime de Paperclip exporta PORT=3100 (API) — si
+// no lo sobreescribimos, next dev intenta 3100 y choca. Default 3000.
+const DEV_PORT = process.env.MATCHPOINT_E2E_PORT ?? "3000";
+const BASE_URL = process.env.MATCHPOINT_E2E_BASE_URL ?? `http://localhost:${DEV_PORT}`;
 const REUSE_SERVER = process.env.MATCHPOINT_E2E_REUSE_SERVER === "1";
 
 export default defineConfig({
@@ -49,11 +57,12 @@ export default defineConfig({
   webServer: REUSE_SERVER
     ? undefined
     : {
-        command: "npm run dev",
+        command: `npm run dev -- -p ${DEV_PORT}`,
         url: BASE_URL,
         reuseExistingServer: true,
         timeout: 120_000,
         stdout: "pipe",
         stderr: "pipe",
+        env: { PORT: DEV_PORT },
       },
 });

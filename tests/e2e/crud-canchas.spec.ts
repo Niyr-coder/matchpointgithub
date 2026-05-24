@@ -96,22 +96,28 @@ test.describe.serial("MAT-8 CRUD canchas (owner)", () => {
     await signInAsOwner(page);
     await page.getByRole("button", { name: /Tarifas/ }).click();
 
-    // Abrir el primer editor (la cancha inicial seed). Si está cerrado, abrir
-    // por click en el header colapsable.
-    const editorCard = page.locator(".card").first();
-    const editorBody = editorCard.getByRole("button", { name: /Guardar tarifas/ });
-    if (!(await editorBody.isVisible().catch(() => false))) {
-      await editorCard.click();
-      await editorBody.waitFor({ state: "visible", timeout: 5_000 });
+    // Localizar el editor de la cancha seed por su código. Cada `PricingCardEditor`
+    // arranca colapsado si tiene bandas; abrir click en el header.
+    const editorCard = page
+      .locator(".card")
+      .filter({ hasText: seedState.initialCourtCode })
+      .first();
+    await editorCard.waitFor({ state: "visible", timeout: 10_000 });
+    const saveBtn = editorCard.getByRole("button", { name: /Guardar tarifas/ });
+    if (!(await saveBtn.isVisible().catch(() => false))) {
+      // Click sobre el header (primer hijo) para expandir.
+      await editorCard.locator("div").first().click();
+      await saveBtn.waitFor({ state: "visible", timeout: 5_000 });
     }
 
-    // Cambiar el precio de la primera franja activa: localizar el primer input
-    // numérico no-duración (los precios son los primeros number inputs por row).
+    // Cambiar el precio de la primera franja activa (primer input numérico
+    // de precio dentro de la row de banda — están seguidos: día, desde,
+    // hasta, precio, slot).
     const priceInput = editorCard.locator("input[type='number']").nth(0);
     await priceInput.fill("33.50");
 
     // Guardar tarifas.
-    await editorCard.getByRole("button", { name: /Guardar tarifas/ }).click();
+    await saveBtn.click();
 
     // Esperar el toast "Tarifas guardadas" (o ausencia de error).
     await expect(page.locator("text=Tarifas guardadas")).toBeVisible({ timeout: 10_000 }).catch(() => {

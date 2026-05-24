@@ -11,11 +11,13 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import {
   E2E_CLUB_NAME,
   E2E_CLUB_SLUG,
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
+  getRequiredEnv,
 } from "./env";
 import { getServiceClient } from "./supabase";
 
@@ -42,31 +44,55 @@ export async function writeArtifact(name: string, content: string): Promise<stri
 
 export async function ensureSeed(): Promise<SeedState> {
   const sb = getServiceClient() as ReturnType<typeof getServiceClient> & {
-    auth: { admin: { listUsers: (o: { perPage: number }) => Promise<{ data: { users: Array<{ id: string; email: string | null }> } }>; createUser: (o: object) => Promise<{ data: { user: { id: string } } | null; error: { message: string } | null }> } };
+    auth: { admin: { createUser: (o: object) => Promise<{ data: { user: { id: string } } | null; error: { message: string } | null }> } };
   };
 
-  // 1) Asegurar usuario owner.
-  const { data: list } = await sb.auth.admin.listUsers({ perPage: 1000 });
-  let ownerId = list.users.find((u) => u.email === E2E_OWNER_EMAIL)?.id;
-  if (!ownerId) {
-    const { data, error } = await sb.auth.admin.createUser({
+  // 1) Asegurar usuario owner. NOTA: `auth.admin.listUsers` da 500
+  // ("Database error finding users") en esta instancia preview, así que no lo
+  // usamos. En su lugar, intentamos crear; si el email ya existe, usamos
+  // signInWithPassword (anon client) para obtener el `id` del usuario.
+  let ownerId: string | undefined;
+  const created = await sb.auth.admin.createUser({
+    email: E2E_OWNER_EMAIL,
+    password: E2E_OWNER_PASSWORD,
+    email_confirm: true,
+    user_metadata: {
+      username: "e2eowner",
+      display_name: "E2E Owner",
+      locale: "es",
+    },
+  });
+  if (created.data?.user) {
+    ownerId = created.data.user.id;
+  } else if (created.error?.message?.includes("already")) {
+    const env = getRequiredEnv();
+    const anon = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const signin = await anon.auth.signInWithPassword({
       email: E2E_OWNER_EMAIL,
       password: E2E_OWNER_PASSWORD,
-      email_confirm: true,
-      user_metadata: {
-        username: "e2eowner",
-        display_name: "E2E Owner",
-        locale: "es",
-      },
     });
-    if (error || !data?.user) {
-      throw new Error(`createUser(e2e-owner) falló: ${error?.message ?? "sin user"}`);
+    if (signin.error || !signin.data?.user) {
+      throw new Error(
+        `Usuario ${E2E_OWNER_EMAIL} ya existe pero signInWithPassword falló: ${signin.error?.message ?? "sin user"}`,
+      );
     }
-    ownerId = data.user.id;
+    ownerId = signin.data.user.id;
+  } else {
+    throw new Error(`createUser(e2e-owner) falló: ${created.error?.message ?? "sin user"}`);
   }
-  // Asegurar profile mínimo.
+  if (!ownerId) throw new Error("ownerId sin resolver");
+  // Asegurar profile mínimo + saltar wizard de onboarding (sin esto el layout
+  // de /dashboard redirige a /onboarding y los specs nunca llegan al CRUD).
   await sb.from("profiles").upsert(
-    { id: ownerId, username: "e2eowner", display_name: "E2E Owner", country: "EC" } as never,
+    {
+      id: ownerId,
+      username: "e2eowner",
+      display_name: "E2E Owner",
+      country: "EC",
+      onboarded_at: new Date().toISOString(),
+    } as never,
     { onConflict: "id" },
   );
 
@@ -115,9 +141,15 @@ export async function ensureSeed(): Promise<SeedState> {
   }
   if (!clubId) throw new Error("club id sin resolver");
 
-  // 3) Grant rol owner.
-  await sb.from("user_roles").upsert(
-    { user_id: ownerId, role: "owner", club_id: clubId, partner_id: null } as never,
+  // 3) Grant rol owner (tabla `role_assignments`, no `user_roles`).
+  await sb.from("role_assignments").upsert(
+    {
+      user_id: ownerId,
+      role: "owner",
+      club_id: clubId,
+      partner_id: null,
+      granted_at: new Date().toISOString(),
+    } as never,
     { onConflict: "user_id,role,club_id,partner_id", ignoreDuplicates: true },
   );
 
