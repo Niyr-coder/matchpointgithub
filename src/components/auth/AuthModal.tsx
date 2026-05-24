@@ -3,7 +3,14 @@
 // Replaces the ugly standalone /login and /signup full-page forms.
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { signInFromForm, signUpFromForm } from "@/server/actions/auth";
@@ -13,6 +20,13 @@ import type { SessionResponse } from "@/lib/schemas/identity";
 export type AuthMode = "signin" | "signup";
 
 type State = ActionResult<SessionResponse> | null;
+
+// Reglas del UsernameSchema (src/lib/schemas/common.ts): 3–24 chars,
+// letras/dígitos/_/. (case-insensitive). Lo replicamos client-side para
+// poder dar feedback inline antes del submit. El submit sigue validando
+// con el schema en el server — esto es solo recognition-over-recall.
+const USERNAME_RE = /^[a-z0-9_.]{3,24}$/i;
+const USERNAME_HINT = "3–24 caracteres · letras, números, _ o .";
 
 // Si el server action retornó ok=true pero la página no navegó (caso raro de
 // useActionState + redirect en Next 16), forzamos navegación client-side.
@@ -237,6 +251,24 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
   // (cuirks de Next 16 + Turbopack con useActionState), navegamos a mano.
   useAuthRedirectFallback(state, next);
 
+  // React 19 hace requestFormReset() después de cada form action, incluso si
+  // falla. Para preservar lo que el usuario ya escribió (loss aversion +
+  // Forgiveness lens) controlamos los inputs no-sensibles vía useState. Solo
+  // password se vacía tras error, que es lo deseable por seguridad.
+  const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Reset solo del password tras un error del server.
+  useEffect(() => {
+    if (state && !state.ok) setPassword("");
+  }, [state]);
+
+  const usernameInvalid = username.length > 0 && !USERNAME_RE.test(username);
+  const strength = useMemo(() => passwordStrength(password), [password]);
+
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       {next && <input type="hidden" name="next" value={next} />}
@@ -246,18 +278,27 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           <input
             name="displayName"
             required
-            placeholder="Vicente"
+            placeholder="Tu nombre"
             autoComplete="name"
             autoFocus
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
             style={inp}
           />
         </FieldLabel>
-        <FieldLabel label="Usuario" error={f?.username?.[0]}>
+        <FieldLabel
+          label="Usuario"
+          hint={USERNAME_HINT}
+          error={f?.username?.[0] ?? (usernameInvalid ? USERNAME_HINT : undefined)}
+        >
           <input
             name="username"
             required
-            placeholder="vicente"
+            placeholder="vicente_uio"
             autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            aria-invalid={usernameInvalid || Boolean(f?.username?.[0])}
             style={inp}
           />
         </FieldLabel>
@@ -270,19 +311,23 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           required
           placeholder="tu@email.com"
           autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           style={inp}
         />
       </FieldLabel>
 
-      <FieldLabel label="Contraseña" hint="Mínimo 8 caracteres" error={f?.password?.[0]}>
-        <input
+      <FieldLabel label="Contraseña" error={f?.password?.[0]}>
+        <PasswordInput
           name="password"
-          type="password"
-          required
-          placeholder="••••••••"
+          value={password}
+          onChange={setPassword}
+          show={showPassword}
+          onToggle={() => setShowPassword((s) => !s)}
           autoComplete="new-password"
-          style={inp}
+          minHint="Mínimo 8 caracteres"
         />
+        {password.length > 0 && <PasswordStrengthBar level={strength} />}
       </FieldLabel>
 
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
@@ -302,6 +347,8 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
         <Icon name="mail" size={14} color="#fff" />
         {pending ? "Creando cuenta..." : "Crear cuenta gratis"}
       </button>
+
+      <SignupLegalConsent />
 
       <OAuthButtons />
 
@@ -349,6 +396,16 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
     ? `/forgot-password?email=${encodeURIComponent(email)}`
     : "/forgot-password";
 
+  // Preservar email tras error: Loss Aversion + Forgiveness. Re-tipear el
+  // correo después de un typo de contraseña es fricción innecesaria
+  // (auditoría MAT-45 B3). Solo limpiamos password tras error.
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (state && !state.ok) setPassword("");
+  }, [state]);
+
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       {next && <input type="hidden" name="next" value={next} />}
@@ -368,13 +425,13 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
       </FieldLabel>
 
       <FieldLabel label="Contraseña" error={f?.password?.[0]}>
-        <input
+        <PasswordInput
           name="password"
-          type="password"
-          required
-          placeholder="••••••••"
+          value={password}
+          onChange={setPassword}
+          show={showPassword}
+          onToggle={() => setShowPassword((s) => !s)}
           autoComplete="current-password"
-          style={inp}
         />
       </FieldLabel>
 
@@ -409,6 +466,17 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
         <Icon name="log-in" size={14} color="#fff" />
         {pending ? "Ingresando..." : "Ingresar"}
       </button>
+
+      <div
+        style={{
+          textAlign: "center",
+          fontSize: 10.5,
+          color: "var(--muted-fg)",
+          marginTop: 2,
+        }}
+      >
+        Te recordamos en este dispositivo por 30 días.
+      </div>
 
       <OAuthButtons />
 
@@ -475,6 +543,127 @@ function FieldLabel({
   );
 }
 
+function PasswordInput({
+  name,
+  value,
+  onChange,
+  show,
+  onToggle,
+  autoComplete,
+  minHint,
+}: {
+  name: string;
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggle: () => void;
+  autoComplete: "new-password" | "current-password";
+  minHint?: string;
+}) {
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        name={name}
+        type={show ? "text" : "password"}
+        required
+        placeholder="••••••••"
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        minLength={autoComplete === "new-password" ? 8 : undefined}
+        style={{ ...inp, paddingRight: 40 }}
+        aria-describedby={minHint ? `${name}-hint` : undefined}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
+        aria-pressed={show}
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: 6,
+          transform: "translateY(-50%)",
+          width: 30,
+          height: 30,
+          borderRadius: 6,
+          background: "transparent",
+          border: 0,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--muted-fg)",
+        }}
+      >
+        <Icon name={show ? "eye-off" : "eye"} size={15} />
+      </button>
+      {minHint && (
+        <span id={`${name}-hint`} style={{ display: "none" }}>
+          {minHint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type StrengthLevel = 0 | 1 | 2 | 3;
+
+// Heurística simple para no inflar el bundle: score basado en longitud y
+// diversidad de clases de caracteres (minúscula/mayúscula/dígito/símbolo).
+// No reemplaza una librería tipo zxcvbn — solo da un signal visual rápido
+// para feedback durante la captura. El gate real lo hace PasswordSchema.
+function passwordStrength(pw: string): StrengthLevel {
+  if (pw.length === 0) return 0;
+  if (pw.length < 8) return 1;
+  let classes = 0;
+  if (/[a-z]/.test(pw)) classes++;
+  if (/[A-Z]/.test(pw)) classes++;
+  if (/[0-9]/.test(pw)) classes++;
+  if (/[^A-Za-z0-9]/.test(pw)) classes++;
+  if (pw.length >= 12 && classes >= 3) return 3;
+  if (classes >= 2) return 2;
+  return 1;
+}
+
+function PasswordStrengthBar({ level }: { level: StrengthLevel }) {
+  const labels = ["", "Débil", "Media", "Fuerte"];
+  const colors = ["transparent", "#dc2626", "#f59e0b", "#10b981"];
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div
+        aria-hidden
+        style={{ display: "flex", gap: 4, height: 4, borderRadius: 2, overflow: "hidden" }}
+      >
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1,
+              background: i <= level ? colors[level] : "rgba(0,0,0,0.08)",
+              transition: "background 180ms",
+            }}
+          />
+        ))}
+      </div>
+      {level > 0 && (
+        <span
+          aria-live="polite"
+          style={{
+            fontSize: 10.5,
+            color: colors[level],
+            fontWeight: 700,
+            marginTop: 4,
+            display: "inline-block",
+          }}
+        >
+          {labels[level]}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ErrorBanner({ message }: { message: string }) {
   return (
     <div
@@ -490,6 +679,45 @@ function ErrorBanner({ message }: { message: string }) {
       }}
     >
       {message}
+    </div>
+  );
+}
+
+// LOPDP exige consentimiento informado y explícito antes de procesar datos
+// personales. Esta línea se renderiza inmediatamente debajo del CTA "Crear
+// cuenta gratis" para que el usuario que se registra con email vea los
+// términos sin tener que scrollear o cerrar el modal. La ConsentMicrocopy
+// OAuth (más abajo) explica el caso específico de Google/Apple.
+function SignupLegalConsent() {
+  return (
+    <div
+      style={{
+        fontSize: 10.5,
+        lineHeight: 1.5,
+        color: "var(--muted-fg)",
+        textAlign: "center",
+        marginTop: 2,
+      }}
+    >
+      Al crear tu cuenta aceptas nuestros{" "}
+      <a
+        href="/legal/terminos"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "#0a0a0a", textDecoration: "underline", fontWeight: 700 }}
+      >
+        Términos
+      </a>{" "}
+      y{" "}
+      <a
+        href="/legal/privacidad"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "#0a0a0a", textDecoration: "underline", fontWeight: 700 }}
+      >
+        Política de Privacidad
+      </a>
+      .
     </div>
   );
 }
