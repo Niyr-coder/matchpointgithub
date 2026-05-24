@@ -1,9 +1,33 @@
 "use client";
 import Link from "next/link";
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { MarketingShell } from "../MarketingShell";
+import { ContactSalesForm } from "../forms/ContactSalesForm";
+import type { SalesLeadType } from "@/lib/schemas/sales-leads";
 
-const PLAYER_TIERS = [
+const CONTACT_ANCHOR = "contacto-ventas";
+
+type SalesPreset = {
+  leadType: SalesLeadType;
+  message: string;
+};
+
+type TierCtaKind =
+  | { kind: "link"; href: string }
+  | { kind: "contact"; preset: SalesPreset };
+
+type Tier = {
+  name: string;
+  priceMonth: number | null;
+  desc: string;
+  features: string[];
+  cta: string;
+  ctaTarget: TierCtaKind;
+  highlight: boolean;
+};
+
+const PLAYER_TIERS: Tier[] = [
   {
     name: "Free",
     priceMonth: 0,
@@ -16,7 +40,7 @@ const PLAYER_TIERS = [
       "Mensajería con jugadores de tu zona",
     ],
     cta: "Crear cuenta",
-    ctaHref: "/auth/signup",
+    ctaTarget: { kind: "link", href: "/auth/signup" },
     highlight: false,
   },
   {
@@ -32,12 +56,12 @@ const PLAYER_TIERS = [
       "Soporte prioritario",
     ],
     cta: "Activar MATCHPOINT+",
-    ctaHref: "/dashboard/user?upgrade=premium",
+    ctaTarget: { kind: "link", href: "/dashboard/user?upgrade=premium" },
     highlight: true,
   },
 ];
 
-const CLUB_TIERS = [
+const CLUB_TIERS: Tier[] = [
   {
     name: "Starter",
     priceMonth: 0,
@@ -49,7 +73,7 @@ const CLUB_TIERS = [
       "Soporte por email",
     ],
     cta: "Empezar gratis",
-    ctaHref: "/soy-club",
+    ctaTarget: { kind: "link", href: "/soy-club" },
     highlight: false,
   },
   {
@@ -65,7 +89,13 @@ const CLUB_TIERS = [
       "Soporte prioritario",
     ],
     cta: "Hablar con ventas",
-    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Pro%20MATCHPOINT",
+    ctaTarget: {
+      kind: "contact",
+      preset: {
+        leadType: "club",
+        message: "Me interesa el plan Pro para clubes.",
+      },
+    },
     highlight: true,
   },
   {
@@ -79,22 +109,34 @@ const CLUB_TIERS = [
       "Onboarding personalizado",
     ],
     cta: "Hablar con ventas",
-    ctaHref: "mailto:ventas@matchpoint.top?subject=Plan%20Partner%20MATCHPOINT",
+    ctaTarget: {
+      kind: "contact",
+      preset: {
+        leadType: "partner",
+        message: "Me interesa el plan Partner para organizadores multi-club.",
+      },
+    },
     highlight: false,
   },
 ];
 
-type Tier = {
-  name: string;
-  priceMonth: number | null;
-  desc: string;
-  features: string[];
-  cta: string;
-  ctaHref: string;
-  highlight: boolean;
-};
+function TierCard({
+  t,
+  onContact,
+}: {
+  t: Tier;
+  onContact: (preset: SalesPreset) => void;
+}) {
+  const btnStyle: React.CSSProperties = t.highlight
+    ? { width: "100%", justifyContent: "center" }
+    : {
+        width: "100%",
+        justifyContent: "center",
+        background: "#fff",
+        border: "1px solid var(--border)",
+      };
+  const btnClass = t.highlight ? "btn btn-primary" : "btn";
 
-function TierCard({ t, cols }: { t: Tier; cols: 2 | 3 }) {
   return (
     <div
       className="card"
@@ -102,7 +144,6 @@ function TierCard({ t, cols }: { t: Tier; cols: 2 | 3 }) {
         padding: 26,
         border: t.highlight ? "2px solid var(--primary)" : "1px solid var(--border)",
         position: "relative",
-        gridColumn: cols === 2 ? undefined : undefined,
       }}
     >
       {t.highlight && (
@@ -153,22 +194,40 @@ function TierCard({ t, cols }: { t: Tier; cols: 2 | 3 }) {
           </li>
         ))}
       </ul>
-      <Link
-        href={t.ctaHref}
-        className={t.highlight ? "btn btn-primary" : "btn"}
-        style={
-          t.highlight
-            ? { width: "100%", justifyContent: "center" }
-            : { width: "100%", justifyContent: "center", background: "#fff", border: "1px solid var(--border)" }
-        }
-      >
-        {t.cta}
-      </Link>
+      {t.ctaTarget.kind === "link" ? (
+        <Link href={t.ctaTarget.href} className={btnClass} style={btnStyle}>
+          {t.cta}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          className={btnClass}
+          style={btnStyle}
+          onClick={() => onContact((t.ctaTarget as { kind: "contact"; preset: SalesPreset }).preset)}
+        >
+          {t.cta}
+        </button>
+      )}
     </div>
   );
 }
 
 export function PreciosPageView() {
+  const [preset, setPreset] = useState<SalesPreset>({
+    leadType: "club",
+    message: "",
+  });
+
+  function handleContact(next: SalesPreset) {
+    setPreset(next);
+    if (typeof window !== "undefined") {
+      const el = document.getElementById(CONTACT_ANCHOR);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }
+
   return (
     <MarketingShell
       eyebrow="Precios"
@@ -215,7 +274,7 @@ export function PreciosPageView() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {PLAYER_TIERS.map((t) => (
-            <TierCard key={t.name} t={t} cols={2} />
+            <TierCard key={t.name} t={t} onContact={handleContact} />
           ))}
         </div>
       </section>
@@ -249,9 +308,22 @@ export function PreciosPageView() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           {CLUB_TIERS.map((t) => (
-            <TierCard key={t.name} t={t} cols={3} />
+            <TierCard key={t.name} t={t} onContact={handleContact} />
           ))}
         </div>
+      </section>
+
+      <section id={CONTACT_ANCHOR} style={{ marginBottom: 48, scrollMarginTop: 90 }}>
+        <ContactSalesForm
+          // Remount the form when the user clicks a different tier CTA so
+          // defaultLeadType/defaultMessage re-seed state cleanly.
+          key={`${preset.leadType}::${preset.message}`}
+          heading="Hablar con ventas"
+          description="Cuéntanos sobre tu club o partner y te contactamos en menos de 24 horas hábiles."
+          defaultLeadType={preset.leadType}
+          defaultMessage={preset.message}
+          ctaLabel="Enviar mensaje"
+        />
       </section>
 
       <div

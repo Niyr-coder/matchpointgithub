@@ -6966,6 +6966,48 @@ export type Database = {
           },
         ]
       }
+      sales_leads: {
+        Row: {
+          id: string
+          name: string
+          email: string
+          phone: string | null
+          lead_type: string
+          business_name: string | null
+          message: string | null
+          source_url: string | null
+          ip: string | null
+          user_agent: string | null
+          occurred_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          email: string
+          phone?: string | null
+          lead_type: string
+          business_name?: string | null
+          message?: string | null
+          source_url?: string | null
+          ip?: string | null
+          user_agent?: string | null
+          occurred_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          email?: string
+          phone?: string | null
+          lead_type?: string
+          business_name?: string | null
+          message?: string | null
+          source_url?: string | null
+          ip?: string | null
+          user_agent?: string | null
+          occurred_at?: string
+        }
+        Relationships: []
+      }
       sessions: {
         Row: {
           created_at: string
