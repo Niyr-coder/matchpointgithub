@@ -44,6 +44,148 @@ const COOKIE_OPTS = {
   maxAge: 60 * 60 * 24 * 30, // 30 days
 };
 
+// Traducción de errores Supabase auth → MpError con copy en español. El SDK
+// expone `error.code` con el código canónico (weak_password,
+// over_email_send_rate_limit, etc); ver
+// https://supabase.com/docs/reference/javascript/auth-error-codes.
+// Antes envolvíamos todo en un genérico "No pudimos crear tu cuenta…" que
+// ocultaba la causa real (rate-limit de SMTP, email inválido, password débil).
+type SupabaseAuthErrorShape = {
+  message?: string;
+  code?: string;
+  status?: number;
+};
+
+function mapSupabaseAuthError(
+  error: SupabaseAuthErrorShape,
+  action: "signUp" | "signIn" | "updatePassword",
+): MpError {
+  const code = (error.code ?? "").toLowerCase();
+  const msg = (error.message ?? "").toLowerCase();
+
+  // Rate limiting: el más común en prod cuando Supabase usa el SMTP por
+  // defecto (cap ~3-4 emails/hora). Mismo trato para SMS.
+  if (code === "over_email_send_rate_limit" || code === "over_sms_send_rate_limit") {
+    return new MpError(
+      "AUTH.EMAIL_RATE_LIMIT",
+      "Estamos enviando demasiados correos ahora mismo. Espera unos minutos y vuelve a intentar.",
+      429,
+    );
+  }
+  if (code === "over_request_rate_limit") {
+    return new MpError(
+      "AUTH.RATE_LIMIT",
+      "Estás haciendo muchos intentos. Espera un minuto y vuelve a intentar.",
+      429,
+    );
+  }
+
+  // Password débil: surfaceamos a nivel de campo para que el form la marque.
+  if (code === "weak_password") {
+    return new MpError(
+      "AUTH.WEAK_PASSWORD",
+      "Tu contraseña es muy débil. Usa al menos 8 caracteres con letras y números.",
+      422,
+      { password: ["Muy débil. Usa al menos 8 caracteres con letras y números."] },
+    );
+  }
+
+  // Email mal formado o rechazado (incluye disposable / dominio inválido). El
+  // legacy code "validation_failed" lo emite la REST API directa.
+  if (
+    code === "email_address_invalid" ||
+    (code === "validation_failed" && msg.includes("email"))
+  ) {
+    return new MpError(
+      "AUTH.EMAIL_INVALID",
+      "El correo no parece válido. Revisa la dirección e inténtalo de nuevo.",
+      400,
+      { email: ["El correo no parece válido."] },
+    );
+  }
+
+  // Email ya registrado. Conservamos el match por mensaje "registered" como
+  // fallback porque versiones viejas del SDK no exponen error.code.
+  if (
+    code === "user_already_exists" ||
+    code === "email_exists" ||
+    msg.includes("registered")
+  ) {
+    return new MpError(
+      "AUTH.EMAIL_TAKEN",
+      "Este correo ya está registrado. Inicia sesión o usa otro.",
+      409,
+      { email: ["Ya existe una cuenta con este correo."] },
+    );
+  }
+
+  // Signups deshabilitados a nivel de proyecto Supabase (no nuestro feature
+  // flag, que ya gateamos arriba). Status 403 como el handler de signups_open.
+  if (code === "signup_disabled") {
+    return new MpError(
+      "AUTH.SIGNUPS_CLOSED",
+      "Los registros están deshabilitados temporalmente. Vuelve a intentarlo más tarde.",
+      403,
+    );
+  }
+
+  if (code === "captcha_failed") {
+    return new MpError(
+      "AUTH.CAPTCHA_FAILED",
+      "La verificación anti-bot falló. Recarga la página e inténtalo de nuevo.",
+      400,
+    );
+  }
+
+  if (action === "signIn") {
+    if (
+      code === "invalid_credentials" ||
+      code === "invalid_grant" ||
+      msg.includes("invalid login")
+    ) {
+      return new MpError(
+        "AUTH.INVALID_CREDENTIALS",
+        "Correo o contraseña incorrectos.",
+        401,
+      );
+    }
+    if (code === "email_not_confirmed") {
+      return new MpError(
+        "AUTH.EMAIL_NOT_CONFIRMED",
+        "Tu correo aún no está confirmado. Revisa tu bandeja de entrada.",
+        401,
+      );
+    }
+    // signIn fallback: por seguridad/anti-enumeración no exponemos la causa
+    // exacta — el resto se mapea a "credenciales incorrectas".
+    return new MpError(
+      "AUTH.INVALID_CREDENTIALS",
+      "Correo o contraseña incorrectos.",
+      401,
+    );
+  }
+
+  if (action === "updatePassword") {
+    return new MpError(
+      "AUTH.PASSWORD_UPDATE_FAILED",
+      "No pudimos actualizar tu contraseña. Inténtalo de nuevo.",
+      400,
+    );
+  }
+
+  // signUp catchall: loggeamos para detectar nuevos códigos no mapeados.
+  console.error("[auth.signUp] unmapped Supabase error", {
+    code: error.code,
+    status: error.status,
+    message: error.message,
+  });
+  return new MpError(
+    "AUTH.SIGNUP_FAILED",
+    "No pudimos crear tu cuenta. Revisa los datos e inténtalo de nuevo.",
+    400,
+  );
+}
+
 // ── signUp ──────────────────────────────────────────────────────────────
 export async function signUp(input: unknown): Promise<ActionResult<SessionResponse>> {
   return runAction(SignUpSchema, input, async (data) => {
@@ -78,22 +220,7 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     });
 
     if (error) {
-      // Supabase returns specific codes for the most common failures.
-      if (error.message.toLowerCase().includes("registered")) {
-        throw new MpError(
-          "AUTH.EMAIL_TAKEN",
-          "Este correo ya está registrado. Inicia sesión o usa otro.",
-          409,
-        );
-      }
-      // El error.message original viene en inglés directamente de Supabase;
-      // lo envolvemos en un mensaje genérico en español para no exponer copy
-      // en otro idioma a usuarios finales (CLAUDE.md: tono ES-Ec neutro).
-      throw new MpError(
-        "AUTH.SIGNUP_FAILED",
-        "No pudimos crear tu cuenta. Revisa los datos e inténtalo de nuevo.",
-        400,
-      );
+      throw mapSupabaseAuthError(error, "signUp");
     }
 
     if (!signUpData.user) {
@@ -141,11 +268,7 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
       password: data.password,
     });
     if (error) {
-      throw new MpError(
-        "AUTH.INVALID_CREDENTIALS",
-        "Correo o contraseña incorrectos.",
-        401,
-      );
+      throw mapSupabaseAuthError(error, "signIn");
     }
 
     const session = await buildSession();
@@ -214,7 +337,7 @@ export async function updatePassword(
     }
     const { error } = await supabase.auth.updateUser({ password: data.password });
     if (error) {
-      throw new MpError("AUTH.PASSWORD_UPDATE_FAILED", error.message, 400);
+      throw mapSupabaseAuthError(error, "updatePassword");
     }
     return { ok: true as const };
   });
