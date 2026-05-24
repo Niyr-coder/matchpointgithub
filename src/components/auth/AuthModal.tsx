@@ -340,7 +340,14 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
     null,
   );
   const f = state && !state.ok ? state.error.fields : undefined;
+  // Preservamos el email tipeado para pre-llenarlo en /forgot-password si el
+  // user clickea "¿Olvidaste tu contraseña?".
+  const [email, setEmail] = useState("");
   useAuthRedirectFallback(state, next);
+
+  const forgotHref = email
+    ? `/forgot-password?email=${encodeURIComponent(email)}`
+    : "/forgot-password";
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -354,6 +361,8 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           placeholder="tu@email.com"
           autoComplete="email"
           autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           style={inp}
         />
       </FieldLabel>
@@ -368,6 +377,20 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           style={inp}
         />
       </FieldLabel>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -2 }}>
+        <a
+          href={forgotHref}
+          style={{
+            fontSize: 11.5,
+            fontWeight: 700,
+            color: "var(--primary)",
+            textDecoration: "none",
+          }}
+        >
+          ¿Olvidaste tu contraseña?
+        </a>
+      </div>
 
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
 
