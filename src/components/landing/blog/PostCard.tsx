@@ -26,6 +26,7 @@ export function PostCard({ post }: { post: BlogPost }) {
           title={post.title}
           aspect="16/9"
           sizes="(min-width: 1024px) 360px, 100vw"
+          showOverlayTitle={false}
         />
       </div>
       <div className="pt-4 flex flex-col flex-1">

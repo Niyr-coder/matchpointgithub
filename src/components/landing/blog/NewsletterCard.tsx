@@ -9,6 +9,7 @@ type Props = {
   variant?: Variant;
   source?: Source;
   id?: string;
+  className?: string;
 };
 
 const MICROCOPY =
@@ -18,12 +19,13 @@ export function NewsletterCard({
   variant = "default",
   source = "blog_index",
   id = "newsletter",
+  className,
 }: Props) {
   if (variant === "compact") {
     return (
       <section
         id={id}
-        className="mp-newsletter mp-newsletter--compact"
+        className={`mp-newsletter mp-newsletter--compact${className ? ` ${className}` : ""}`}
         style={cardStyle("compact")}
       >
         <h3
@@ -57,7 +59,7 @@ export function NewsletterCard({
     return (
       <section
         id={id}
-        className="mp-newsletter mp-newsletter--band"
+        className={`mp-newsletter mp-newsletter--band${className ? ` ${className}` : ""}`}
         style={cardStyle("band")}
       >
         <div className="mx-auto" style={{ maxWidth: 720 }}>
@@ -96,7 +98,7 @@ export function NewsletterCard({
   return (
     <section
       id={id}
-      className="mp-newsletter mp-newsletter--default"
+      className={`mp-newsletter mp-newsletter--default${className ? ` ${className}` : ""}`}
       style={cardStyle("default")}
     >
       <div className="flex items-start gap-4 mb-4 flex-wrap">

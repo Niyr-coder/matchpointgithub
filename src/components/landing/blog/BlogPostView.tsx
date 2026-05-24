@@ -82,6 +82,7 @@ export function BlogPostView({ post, related }: Props) {
         variant="band"
         source="blog_post_band"
         id="newsletter-band"
+        className="lg:hidden"
       />
     </main>
   );
