@@ -178,7 +178,13 @@ export function PreciosPageView() {
           <span style={{ color: "var(--primary)" }}>.</span>
         </>
       }
-      lead="Para jugadores, clubes y partners. Pagos por transferencia o DeUna; MATCHPOINT no actúa como pasarela ni cobra porcentaje de cada cobro."
+      lead={
+        <>
+          <strong style={{ color: "#0a0a0a" }}>¿Cómo cobramos?</strong>
+          <br />
+          Sin comisión por reserva del club. Hoy aceptamos pagos por transferencia bancaria y DeUna (Ecuador). A partir de <strong style={{ color: "#0a0a0a" }}>Octubre 2026</strong> activamos cobro automático con tarjeta vía Stripe Connect — los planes y bullets ya están adaptados para esa transición.
+        </>
+      }
     >
       <section style={{ marginBottom: 56 }}>
         <div

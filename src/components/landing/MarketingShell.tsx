@@ -10,7 +10,7 @@ export function MarketingShell({
 }: {
   eyebrow: string;
   title: ReactNode;
-  lead?: string;
+  lead?: ReactNode;
   children: ReactNode;
 }) {
   return (
