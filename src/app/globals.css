@@ -61,6 +61,11 @@
   --sidebar: #18181b; --sidebar-bg: #09090b; --sidebar-border: #27272a;
   --sidebar-fg: #fff; --sidebar-muted: #a1a1aa;
 
+  /* Altura efectiva del Nav flotante landing (Nav.tsx: top:12 + padding-y:10 +
+     ~24px contenido). Lo usan surfaces sticky del landing (filtros del blog,
+     sidebar del post) para evitar hardcodear el offset. */
+  --site-nav-h: 76px;
+
   /* Estado / semantic — fiel al design system (colors_and_type.css) */
   --success-bg: #f0fdf4; --success-fg: #16a34a; --success-border: #bbf7d0;
   --warning-bg: #fffbeb; --warning-fg: #b45309; --warning-border: #fde68a;
