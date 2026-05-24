@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="Barras de ranking ascendentes con trayectoria de pelota subiendo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#022c22"/>
+      <stop offset="0.5" stop-color="#064e3b"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.28" r="0.55">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bar1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9d5ff"/>
+    </linearGradient>
+    <linearGradient id="floorShade" x1="0" y1="0.55" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.46"/>
+    </linearGradient>
+    <pattern id="grain" width="3" height="3" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="0.4" fill="#ffffff" fill-opacity="0.05"/>
+    </pattern>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40,0 L0,0 0,40" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <rect width="1600" height="900" fill="url(#glow)"/>
+
+  <!-- baseline -->
+  <line x1="280" y1="640" x2="1320" y2="640" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+  <line x1="280" y1="640" x2="280" y2="180" stroke="#ffffff" stroke-opacity="0.14" stroke-width="2"/>
+
+  <!-- bars: ascending sequence -->
+  <g>
+    <rect x="380" y="500" width="100" height="140" rx="10" fill="url(#bar1)" opacity="0.95"/>
+    <rect x="380" y="500" width="100" height="140" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
+
+    <rect x="560" y="420" width="100" height="220" rx="10" fill="url(#bar1)" opacity="0.95"/>
+    <rect x="560" y="420" width="100" height="220" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
+
+    <rect x="740" y="340" width="100" height="300" rx="10" fill="url(#bar2)" opacity="0.95"/>
+    <rect x="740" y="340" width="100" height="300" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+
+    <rect x="920" y="260" width="100" height="380" rx="10" fill="url(#bar2)" opacity="0.97"/>
+    <rect x="920" y="260" width="100" height="380" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+
+    <rect x="1100" y="200" width="100" height="440" rx="10" fill="url(#bar3)"/>
+    <rect x="1100" y="200" width="100" height="440" rx="10" fill="none" stroke="#8b5cf6" stroke-opacity="0.45" stroke-width="2"/>
+    <!-- highlight tick on tallest bar -->
+    <rect x="1100" y="200" width="100" height="14" rx="6" fill="#8b5cf6" opacity="0.85"/>
+  </g>
+
+  <!-- ball trajectory arc -->
+  <g fill="none" stroke="#fde68a" stroke-opacity="0.75" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 14">
+    <path d="M380,460 Q780,140 1150,170"/>
+  </g>
+  <!-- target ball at end -->
+  <g transform="translate(1150 170)">
+    <circle r="26" fill="#fde68a"/>
+    <circle r="26" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2"/>
+    <g stroke="#064e3b" stroke-opacity="0.7" stroke-width="1.8" fill="none">
+      <circle r="6"/>
+      <circle r="13"/>
+      <circle r="19"/>
+    </g>
+  </g>
+
+  <!-- subtle data ticks -->
+  <g fill="#ffffff" fill-opacity="0.35" font-family="system-ui, sans-serif" font-size="14">
+    <text x="290" y="660">3.0</text>
+    <text x="1175" y="660" text-anchor="middle">3.5</text>
+  </g>
+
+  <rect width="1600" height="900" fill="url(#grain)"/>
+  <rect width="1600" height="900" fill="url(#floorShade)"/>
+</svg>

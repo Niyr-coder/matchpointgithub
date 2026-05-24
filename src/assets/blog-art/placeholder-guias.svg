@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="Cancha de pickleball al amanecer con pelota cresta sobre la línea de la cocina">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#022c22"/>
+      <stop offset="0.5" stop-color="#064e3b"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.4" r="0.32">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#fde68a" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="court" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e7a5d"/>
+      <stop offset="1" stop-color="#0c5d47"/>
+    </linearGradient>
+    <linearGradient id="floorShade" x1="0" y1="0.5" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </linearGradient>
+    <pattern id="grain" width="3" height="3" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="0.4" fill="#ffffff" fill-opacity="0.05"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+
+  <!-- sun / horizon glow -->
+  <rect width="1600" height="900" fill="url(#sun)"/>
+
+  <!-- perspective court — trapezoid receding to horizon -->
+  <g>
+    <!-- ground -->
+    <polygon points="0,520 1600,520 1600,900 0,900" fill="url(#court)"/>
+    <!-- court trapezoid -->
+    <g stroke="#ffffff" stroke-opacity="0.78" stroke-width="3" fill="none">
+      <polygon points="540,540 1060,540 1380,820 220,820"/>
+      <!-- center line -->
+      <line x1="800" y1="540" x2="800" y2="820"/>
+      <!-- non-volley zone (kitchen) -->
+      <line x1="500" y1="640" x2="1100" y2="640"/>
+      <!-- service boxes -->
+      <line x1="540" y1="540" x2="220" y2="820"/>
+      <line x1="1060" y1="540" x2="1380" y2="820"/>
+    </g>
+    <!-- net suggestion -->
+    <g stroke="#ffffff" stroke-opacity="0.6" stroke-width="3">
+      <line x1="540" y1="540" x2="1060" y2="540"/>
+      <line x1="800" y1="540" x2="800" y2="510" stroke-opacity="0.4"/>
+    </g>
+    <!-- soft kitchen line shadow -->
+    <line x1="500" y1="640" x2="1100" y2="640" stroke="#ffffff" stroke-opacity="0.78" stroke-width="3"/>
+  </g>
+
+  <!-- ball cresting horizon -->
+  <g transform="translate(800 470)">
+    <circle r="46" fill="#fde68a"/>
+    <circle r="46" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2"/>
+    <g stroke="#064e3b" stroke-opacity="0.6" stroke-width="2" fill="none">
+      <circle r="8"/>
+      <circle r="18"/>
+      <circle r="28"/>
+      <circle r="38"/>
+    </g>
+  </g>
+
+  <!-- trailing dotted arc into court -->
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 14">
+    <path d="M800,500 Q830,610 900,720"/>
+  </g>
+
+  <rect width="1600" height="900" fill="url(#grain)"/>
+  <rect width="1600" height="900" fill="url(#floorShade)"/>
+</svg>

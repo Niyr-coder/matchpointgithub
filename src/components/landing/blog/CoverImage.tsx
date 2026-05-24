@@ -25,10 +25,17 @@ const GRADIENT_BY_CATEGORY: Record<BlogCategory, string> = {
   Coaching: "linear-gradient(135deg, #064e3b 0%, #10b981 55%, #8b5cf6 100%)",
 };
 
-// Set vacío hasta que existan los JPGs reales en /public/blog/.
-// Cuando aterricen, listalos acá para que el componente sirva `<Image>` real
-// en lugar del fallback gradient.
-const KNOWN_COVERS = new Set<string>();
+// Slugs cuyas ilustraciones reales viven en /public/blog/{slug}.jpg.
+// Sólo estos sirven <Image> real; el resto cae al fallback gradient.
+// Source SVG en /src/assets/blog-art/{slug}.svg — `npx tsx scripts/render-blog-images.ts`
+// re-rasteriza a JPG 1600×900 (mozjpeg, ~30–50 KB).
+const KNOWN_COVERS = new Set<string>([
+  "/blog/como-armar-un-doble-mixto-sin-pelear.jpg",
+  "/blog/5-clubes-para-jugar-pickleball-en-quito.jpg",
+  "/blog/como-leer-tu-ranking-mejorar-rapido.jpg",
+  "/blog/guia-pago-deuna-clubes-y-jugadores.jpg",
+  "/blog/placeholder-guias.jpg",
+]);
 
 export function CoverImage({
   src,
