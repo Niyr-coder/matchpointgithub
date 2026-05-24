@@ -105,7 +105,11 @@ export function AmigosScreenView({
               }}
             />
           </div>
-          <button className="btn btn-primary">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setTab("descubrir")}
+          >
             <Icon name="user-plus" size={13} />
             Invitar
           </button>
