@@ -6,7 +6,12 @@
 // (aprobar/rechazar/revocar). Patrón espejo de admin-roles y club-finanzas.
 // Ver docs/product/07-club-memberships.md.
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
-import { getClubMembershipTiers, getClubMembers } from "@/server/actions/club-memberships";
+import {
+  getClubMembershipTiers,
+  getClubMembers,
+  listPendingClubMembershipPaymentsForClub,
+  type PendingClubMembershipPaymentRow,
+} from "@/server/actions/club-memberships";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
   ClubMembresiasScreenView,
@@ -27,15 +32,19 @@ export async function ClubMembresiasScreen() {
     );
   }
 
-  const [tiersRes, membersRes] = await Promise.all([
+  const [tiersRes, membersRes, pendingPaymentsRes] = await Promise.all([
     getClubMembershipTiers({ clubId }),
     getClubMembers({ clubId }),
+    listPendingClubMembershipPaymentsForClub({ clubId }),
   ]);
 
   const data: ClubMembresiasData = {
     clubId,
     tiers: tiersRes.ok ? (tiersRes.data as RealTier[]) : [],
     members: membersRes.ok ? (membersRes.data as RealMember[]) : [],
+    pendingPayments: pendingPaymentsRes.ok
+      ? (pendingPaymentsRes.data as PendingClubMembershipPaymentRow[])
+      : [],
   };
 
   return <ClubMembresiasScreenView data={data} />;

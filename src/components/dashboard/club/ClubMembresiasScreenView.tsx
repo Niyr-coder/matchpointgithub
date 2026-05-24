@@ -17,16 +17,21 @@
 // dedicadas — requiere migración; ver "qué necesita migración" en el reporte).
 // Los KPIs de MRR/churn/ARPU y las "Reglas globales" son estimaciones/UI sin
 // backend dedicado (necesitan migración + cron); se conservan del diseño.
-import { useEffect, useMemo, useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import {
+  ApprovalQueue,
+  type ApprovalQueueColumn,
+} from "@/components/dashboard/widgets/ApprovalQueue";
+import {
   saveClubMembershipTier,
   deleteClubMembershipTier,
-  approveClubMembership,
+  approveClubMembershipPayment,
   rejectClubMembership,
   revokeClubMembership,
+  type PendingClubMembershipPaymentRow,
 } from "@/server/actions/club-memberships";
 import {
   MEMBERSHIP_CARD_TEMPLATES,
@@ -67,7 +72,13 @@ export type RealMember = {
   profiles: { display_name: string | null; username: string | null } | null;
   club_membership_tiers: { name: string | null } | null;
 };
-export type ClubMembresiasData = { clubId: string; tiers: RealTier[]; members: RealMember[] };
+export type ClubMembresiasData = {
+  clubId: string;
+  tiers: RealTier[];
+  members: RealMember[];
+  // Cola real de pagos pendientes (transaction.proof_submitted) — W2 (MAT-5).
+  pendingPayments: PendingClubMembershipPaymentRow[];
+};
 
 // ── Modelo del rediseño (Plan) derivado de un tier real ───────────────────────
 type Plan = {
@@ -131,7 +142,7 @@ function countRenewingSoon(members: RealMember[]): number {
 const inputStyle: CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 500, background: "#fff", color: "#0a0a0a", outline: "none" };
 
 export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData }) {
-  const { clubId, tiers, members } = data;
+  const { clubId, tiers, members, pendingPayments } = data;
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
@@ -162,8 +173,10 @@ export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData })
   const arpuCents = totalActive > 0 ? Math.round(estMrrCents / totalActive) : 0;
   const renewNext7 = useMemo(() => countRenewingSoon(members), [members]);
 
-  // Cola de aprobación (pending) + tabla de socios.
-  const pending = members.filter((m) => m.status === "pending");
+  // Cola de aprobación (pending + proof submitted) + tabla de socios.
+  // W2 (MAT-5): la cola REAL son los pagos con comprobante subido — no toda
+  // membresía pending. Si el usuario todavía no subió el comprobante, no hay
+  // nada que el owner pueda aprobar todavía.
   const others = members.filter((m) => m.status !== "pending");
 
   const refresh = () => {
@@ -251,7 +264,7 @@ export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData })
           </div>
         </div>
         <KpiTile icon="users" label="Socios activos" value={String(totalActive)} sub={`${members.length} en total (todos los estados)`} />
-        <KpiTile icon="user-minus" label="Por aprobar" value={String(pending.length)} sub="Comprobantes en cola" warn={pending.length > 0} />
+        <KpiTile icon="user-minus" label="Por aprobar" value={String(pendingPayments.length)} sub="Comprobantes en cola" warn={pendingPayments.length > 0} />
         <KpiTile icon="bar-chart-3" label="ARPU" value={money(arpuCents)} sub="Revenue por socio activo" />
         <KpiTile icon="calendar-check" label="Renuevan 7d" value={String(renewNext7)} sub="Vencen en los próximos 7 días" emerald />
       </div>
@@ -280,32 +293,41 @@ export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData })
 
       {creating && <CreatePlanModal clubId={clubId} onClose={() => setCreating(false)} onCreated={refresh} />}
 
-      {/* POR APROBAR (cola real de pagos de socios) */}
-      {pending.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <h2 className="font-heading" style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-              Por aprobar<span style={{ color: "var(--primary)" }}>.</span>
-            </h2>
-            <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{pending.length} {pending.length === 1 ? "solicitud" : "solicitudes"} de pago</span>
-          </div>
-          <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-            {pending.map((m) => (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 10, flexWrap: "wrap" }}>
-                <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#0a0a0a,#374151)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading)", fontWeight: 900, fontSize: 11 }}>{initialsOf(nameOf(m.profiles))}</span>
-                <span style={{ flex: 1, minWidth: 120, fontSize: 13, fontWeight: 800 }}>{nameOf(m.profiles)}</span>
-                <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>{m.club_membership_tiers?.name ?? "—"}</span>
-                <button className="btn btn-primary" onClick={() => act(() => approveClubMembership({ membershipId: m.id }), "Membresía activada")} style={{ padding: "6px 12px" }}>
-                  <Icon name="check" size={12} color="#fff" /> Aprobar
-                </button>
-                <button className="btn" onClick={() => act(() => rejectClubMembership({ membershipId: m.id }), "Comprobante rechazado")} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #fecaca", color: "#dc2626" }}>
-                  Rechazar
-                </button>
-              </div>
-            ))}
-          </div>
+      {/* POR APROBAR — cola real de pagos de membresía (W2 / MAT-5).
+          Reusa <ApprovalQueue /> de W1 (MAT-4): drawer con detalle, confirm
+          irreversible, reject con razón obligatoria + plantillas. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <h2 className="font-heading" style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+            Por aprobar<span style={{ color: "var(--primary)" }}>.</span>
+          </h2>
+          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+            {pendingPayments.length}{" "}
+            {pendingPayments.length === 1 ? "solicitud" : "solicitudes"} de pago
+          </span>
         </div>
-      )}
+        <ClubMembershipPaymentsQueue
+          items={pendingPayments}
+          onApprove={async (p) => {
+            const res = await approveClubMembershipPayment({ membershipId: p.membershipId });
+            if (!res.ok) {
+              toast({ icon: "alert-triangle", title: "No pudimos aprobar el pago", sub: res.error.message });
+              throw new Error(res.error.message);
+            }
+            toast({ icon: "check-circle-2", title: "Membresía activada", sub: `${p.displayName} · ${p.tierName}` });
+            refresh();
+          }}
+          onReject={async (p, reason) => {
+            const res = await rejectClubMembership({ membershipId: p.membershipId, reason });
+            if (!res.ok) {
+              toast({ icon: "alert-triangle", title: "No pudimos rechazar el comprobante", sub: res.error.message });
+              throw new Error(res.error.message);
+            }
+            toast({ icon: "check-circle-2", title: "Comprobante rechazado", sub: "Se notificó al socio" });
+            refresh();
+          }}
+        />
+      </div>
 
       {/* SOCIOS (tabla real con filtros del diseño) */}
       <SociosSection plans={plans} members={others} onRevoke={(id) => act(() => revokeClubMembership({ membershipId: id }), "Membresía cancelada")} />
@@ -957,6 +979,234 @@ function CreatePlanModal({ clubId, onClose, onCreated }: { clubId: string; onClo
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Cola de aprobación de pagos de membresía (W2 / MAT-5) ────────────────────
+// Envuelve <ApprovalQueue /> con columnas, drawer y handlers específicos.
+
+function fmtMoneyCurrency(cents: number | null, currency: string | null): string {
+  if (cents == null) return "—";
+  const sym = currency === "USD" || !currency ? "$" : `${currency} `;
+  return `${sym}${(cents / 100).toFixed(2)}`;
+}
+
+function fmtRelativeAgo(iso: string | null): string {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "hace segundos";
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `hace ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `hace ${d}d`;
+  return new Date(iso).toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtAbsoluteDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-EC", {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function isImageProof(url: string | null): boolean {
+  if (!url) return false;
+  return /\.(png|jpe?g|webp|gif|heic|avif)$/i.test(url.split("?")[0].toLowerCase());
+}
+
+function ClubMembershipPaymentsQueue({
+  items,
+  onApprove,
+  onReject,
+}: {
+  items: PendingClubMembershipPaymentRow[];
+  onApprove: (p: PendingClubMembershipPaymentRow) => Promise<void>;
+  onReject: (p: PendingClubMembershipPaymentRow, reason: string) => Promise<void>;
+}) {
+  const columns: ApprovalQueueColumn<PendingClubMembershipPaymentRow>[] = [
+    {
+      key: "user",
+      label: "Socio",
+      render: (p) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontWeight: 800, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+            {p.displayName}
+          </span>
+          {p.username && (
+            <span style={{ fontSize: 10.5, color: "var(--muted-fg)", textTransform: "lowercase" }}>
+              @{p.username}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "tier",
+      label: "Membresía",
+      render: (p) => (
+        <span style={{ padding: "2px 7px", borderRadius: 9999, background: "#0a0a0a", color: "#fff", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          {p.tierName} · {p.durationMonths}m
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      key: "amount",
+      label: "Monto",
+      render: (p) => (
+        <span className="font-heading tabular" style={{ fontWeight: 800, fontSize: 13 }}>
+          {fmtMoneyCurrency(p.amountCents, p.currency)}
+        </span>
+      ),
+      align: "right",
+    },
+    {
+      key: "submittedAt",
+      label: "Comprobante",
+      render: (p) => (
+        <span title={fmtAbsoluteDate(p.proofSubmittedAt ?? p.createdAt)} style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+          {fmtRelativeAgo(p.proofSubmittedAt ?? p.createdAt)}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      key: "proof",
+      label: "Adjunto",
+      render: (p) =>
+        p.proofSignedUrl ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 9999, background: "rgba(16,185,129,0.12)", color: "#047857", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <Icon name="check" size={10} color="#047857" /> Sí
+          </span>
+        ) : (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 9999, background: "#fef3c7", color: "#92400e", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <Icon name="alert-triangle" size={10} color="#92400e" /> No
+          </span>
+        ),
+      hideOnMobile: true,
+      align: "center",
+    },
+  ];
+
+  return (
+    <ApprovalQueue<PendingClubMembershipPaymentRow>
+      items={items}
+      columns={columns}
+      getItemId={(p) => p.membershipId}
+      getItemSearchText={(p) => `${p.displayName} ${p.username ?? ""} ${p.tierName}`}
+      renderDetail={(p) => <ClubMembershipPaymentDetail item={p} />}
+      detailTitle={(p) => `${p.tierName} · ${p.displayName}`}
+      detailSubtitle={(p) =>
+        `${p.durationMonths} mes${p.durationMonths === 1 ? "" : "es"} · ${fmtMoneyCurrency(p.amountCents, p.currency)}`
+      }
+      onApprove={onApprove}
+      onReject={onReject}
+      approveLabel="Aprobar pago"
+      approveConfirmTitle={() => "Confirmar aprobación"}
+      approveConfirmBody={(p) =>
+        `Vas a aprobar el pago de ${p.displayName} por la membresía ${p.tierName} (${fmtMoneyCurrency(p.amountCents, p.currency)}). La membresía se activa inmediatamente.`
+      }
+      irreversibleNotice="Esta acción no se puede deshacer."
+      searchPlaceholder="Buscar por socio, plan…"
+      emptyState={{
+        title: "Sin pagos pendientes",
+        description: "Cuando un socio suba un comprobante de membresía, aparecerá acá.",
+      }}
+    />
+  );
+}
+
+function ClubMembershipPaymentDetail({ item }: { item: PendingClubMembershipPaymentRow }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <DetailGroup label="Socio">
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontWeight: 800, fontSize: 14 }}>{item.displayName}</span>
+          {item.username && (
+            <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>@{item.username}</span>
+          )}
+        </div>
+      </DetailGroup>
+
+      <DetailGroup label="Membresía solicitada">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ padding: "3px 9px", borderRadius: 9999, background: "#0a0a0a", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            {item.tierName}
+          </span>
+          <span style={{ fontSize: 13 }}>
+            {item.durationMonths} mes{item.durationMonths === 1 ? "" : "es"}
+          </span>
+          <span className="font-heading tabular" style={{ marginLeft: "auto", fontSize: 22, fontWeight: 900 }}>
+            {fmtMoneyCurrency(item.amountCents, item.currency)}
+          </span>
+        </div>
+      </DetailGroup>
+
+      <DetailGroup label="Comprobante de pago">
+        {item.proofSignedUrl ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+            {isImageProof(item.proofUrl) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.proofSignedUrl}
+                alt="Comprobante"
+                style={{ maxWidth: "100%", maxHeight: 280, borderRadius: 8, border: "1px solid var(--border)", objectFit: "contain", background: "var(--muted)" }}
+              />
+            ) : (
+              <a href={item.proofSignedUrl} target="_blank" rel="noreferrer" className="btn btn-outline">
+                <Icon name="file-text" size={13} /> Abrir comprobante (PDF)
+              </a>
+            )}
+            <a href={item.proofSignedUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--primary)", textDecoration: "underline" }}>
+              Abrir en nueva pestaña ↗
+            </a>
+            {item.proofSubmittedAt && (
+              <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                Subido: {fmtAbsoluteDate(item.proofSubmittedAt)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div style={{ padding: "10px 12px", border: "1px dashed var(--border)", borderRadius: 8, fontSize: 12, color: "#92400e", background: "#fffbeb" }}>
+            <Icon name="alert-triangle" size={12} color="#b45309" /> Comprobante aún no subido. No deberías aprobar este pago hasta verificarlo.
+          </div>
+        )}
+      </DetailGroup>
+
+      {item.transactionId == null && (
+        <div style={{ padding: "10px 12px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, color: "#991b1b" }}>
+          <Icon name="alert-triangle" size={12} color="#991b1b" /> Sin transacción asociada.
+        </div>
+      )}
+
+      <DetailGroup label="Historial">
+        <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+          <li>
+            <span style={{ color: "var(--muted-fg)" }}>Solicitud creada: </span>
+            <span>{fmtAbsoluteDate(item.createdAt)}</span>
+          </li>
+          {item.proofSubmittedAt && (
+            <li>
+              <span style={{ color: "var(--muted-fg)" }}>Comprobante subido: </span>
+              <span>{fmtAbsoluteDate(item.proofSubmittedAt)}</span>
+            </li>
+          )}
+        </ul>
+      </DetailGroup>
+    </div>
+  );
+}
+
+function DetailGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        {label}
+      </div>
+      {children}
     </div>
   );
 }

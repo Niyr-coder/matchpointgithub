@@ -371,3 +371,134 @@ export async function getClubMembers(input: unknown): Promise<ActionResult<unkno
     return (data ?? []) as unknown[];
   });
 }
+
+// W2 (MAT-5): cola de aprobación de pagos de membresía para el club staff.
+// Espejo de listPendingPlanSubscriptionsAdmin (MP+) pero scopeado a un club y
+// gateado por proof_submitted. Si la membresía está pending pero el usuario
+// todavía no subió comprobante, no aparece — owner no tiene nada que aprobar.
+const SIGNED_URL_TTL = 60 * 10; // 10 min
+
+export type PendingClubMembershipPaymentRow = {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  username: string | null;
+  tierId: string;
+  tierName: string;
+  durationMonths: number;
+  priceCents: number;
+  createdAt: string;
+  transactionId: string | null;
+  amountCents: number | null;
+  currency: string | null;
+  transactionStatus: string | null;
+  proofUrl: string | null;
+  proofSignedUrl: string | null;
+  proofSubmittedAt: string | null;
+};
+
+export async function listPendingClubMembershipPaymentsForClub(
+  input: unknown,
+): Promise<ActionResult<PendingClubMembershipPaymentRow[]>> {
+  return runAction(ClubIdSchema, input, async ({ clubId }) => {
+    await requireUserId();
+    await assertClubStaff(clubId);
+    const admin = getAdminClient();
+
+    const { data: mems, error } = await (admin as any)
+      .from("club_memberships")
+      .select(
+        "id,user_id,tier_id,status,transaction_id,created_at,club_membership_tiers(name,price_cents,duration_months)",
+      )
+      .eq("club_id", clubId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw new MpError("CLUB_MEMBERSHIP.READ_FAILED", error.message, 500);
+    const rows = (mems ?? []) as Array<Record<string, any>>;
+
+    const txIds = rows
+      .map((r) => r.transaction_id as string | null)
+      .filter((v): v is string => !!v);
+    const userIds = Array.from(new Set(rows.map((r) => r.user_id as string)));
+
+    const [{ data: txs }, { data: profiles }] = await Promise.all([
+      txIds.length
+        ? (admin as any)
+            .from("transactions")
+            .select("id,amount_cents,currency,status,proof_url,proof_submitted_at")
+            .in("id", txIds)
+        : Promise.resolve({ data: [] as Array<Record<string, any>> }),
+      userIds.length
+        ? (admin as any)
+            .from("profiles")
+            .select("id,display_name,username")
+            .in("id", userIds)
+        : Promise.resolve({ data: [] as Array<Record<string, any>> }),
+    ]);
+
+    const txMap = new Map<string, Record<string, any>>();
+    for (const t of (txs ?? []) as Array<Record<string, any>>) {
+      txMap.set(t.id as string, t);
+    }
+    const profMap = new Map<string, { displayName: string; username: string | null }>();
+    for (const p of (profiles ?? []) as Array<Record<string, any>>) {
+      profMap.set(p.id as string, {
+        displayName: (p.display_name as string) ?? "Sin nombre",
+        username: (p.username as string | null) ?? null,
+      });
+    }
+
+    // Solo memberships con comprobante subido (proof_submitted): si el usuario
+    // todavía no subió el comprobante, el owner no tiene nada que aprobar.
+    const visible = rows.filter((r) => {
+      const txId = r.transaction_id as string | null;
+      if (!txId) return false;
+      const tx = txMap.get(txId);
+      return tx?.status === "proof_submitted";
+    });
+
+    const result: PendingClubMembershipPaymentRow[] = await Promise.all(
+      visible.map(async (r) => {
+        const userId = r.user_id as string;
+        const tier = r.club_membership_tiers ?? {};
+        const txId = (r.transaction_id as string | null) ?? null;
+        const tx = txId ? txMap.get(txId) ?? null : null;
+        const prof = profMap.get(userId);
+        let signed: string | null = null;
+        const proofUrl = (tx?.proof_url as string | null) ?? null;
+        if (proofUrl) {
+          const { data: s } = await admin.storage
+            .from("payment_proofs")
+            .createSignedUrl(proofUrl, SIGNED_URL_TTL);
+          signed = s?.signedUrl ?? null;
+        }
+        return {
+          membershipId: r.id as string,
+          userId,
+          displayName: prof?.displayName ?? "Sin nombre",
+          username: prof?.username ?? null,
+          tierId: r.tier_id as string,
+          tierName: (tier.name as string) ?? "—",
+          durationMonths: (tier.duration_months as number) ?? 1,
+          priceCents: (tier.price_cents as number) ?? 0,
+          createdAt: r.created_at as string,
+          transactionId: txId,
+          amountCents: (tx?.amount_cents as number | null) ?? null,
+          currency: (tx?.currency as string | null) ?? null,
+          transactionStatus: (tx?.status as string | null) ?? null,
+          proofUrl,
+          proofSignedUrl: signed,
+          proofSubmittedAt: (tx?.proof_submitted_at as string | null) ?? null,
+        };
+      }),
+    );
+
+    return result;
+  });
+}
+
+// W2 (MAT-5): alias semántico que matchea el nombre de la acción descrita en el
+// plan ("approveClubMembershipPayment"). Internamente reusa
+// approveClubMembership: ambos activan la membresía y capturan la transacción.
+export const approveClubMembershipPayment = approveClubMembership;
