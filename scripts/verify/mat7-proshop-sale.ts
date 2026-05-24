@@ -80,26 +80,31 @@ function fail(label: string, detail: unknown): never {
 }
 
 async function ensureEmployee(): Promise<string> {
-  const { data: list, error: lErr } = await admin.auth.admin.listUsers({ perPage: 200 });
-  if (lErr) fail("listUsers", lErr.message);
-  // listUsers types in @supabase/auth-js v2 type the page as `never` under our
-  // generated Database<any> binding; widen here so we can read .email.
-  const users = (list?.users ?? []) as Array<{ id: string; email?: string | null }>;
-  let user = users.find((u) => u.email === EMPLOYEE_EMAIL);
-  if (!user) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: EMPLOYEE_EMAIL,
-      password: EMPLOYEE_PW,
-      email_confirm: true,
-      user_metadata: { username: `${DEMO_TAG}-emp`, display_name: "Verify Employee", locale: "es" },
-    });
-    if (error || !data.user) fail("createUser employee", error?.message);
-    user = data.user;
-  } else {
-    // Reset password in case prior run changed it.
-    await admin.auth.admin.updateUserById(user.id, { password: EMPLOYEE_PW });
+  // Idempotent: try create; if email exists, fall through to signIn-as-fetch.
+  // We avoid auth.admin.listUsers because on some Supabase projects the
+  // GoTrue pagination query throws "Database error finding users" even though
+  // single-user reads/writes succeed (issue #1004 in @supabase/auth-js).
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email: EMPLOYEE_EMAIL,
+    password: EMPLOYEE_PW,
+    email_confirm: true,
+    user_metadata: { username: `${DEMO_TAG}-emp`, display_name: "Verify Employee", locale: "es" },
+  });
+  if (created?.user) return created.user.id;
+  if (createErr && createErr.code !== "email_exists") {
+    fail("createUser employee", createErr.message);
   }
-  return user.id;
+  // Already exists: get the id by signing in. Password is fixed for this test
+  // identity, so this round-trip doubles as a credential reset would.
+  const anonClient = createClient(url!, anonKey!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: signIn, error: signErr } = await anonClient.auth.signInWithPassword({
+    email: EMPLOYEE_EMAIL,
+    password: EMPLOYEE_PW,
+  });
+  if (signErr || !signIn.user) fail("signIn existing employee", signErr?.message);
+  return signIn.user.id;
 }
 
 async function ensureClub(employeeId: string): Promise<string> {
