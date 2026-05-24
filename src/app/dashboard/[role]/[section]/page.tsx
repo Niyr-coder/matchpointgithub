@@ -101,16 +101,14 @@ import { ClubReservasScreen } from "@/components/dashboard/club/ClubReservasScre
 // derivados de reservations. Galería + Agenda + Floorplan + bulk block.
 import { ClubCanchasScreen } from "@/components/dashboard/club/ClubCanchasScreen";
 import { ClubClientesScreen } from "@/components/dashboard/club/ClubClientesScreen";
-// La pantalla real (KPIs financieros reales del club, read-only) queda preservada
-// en ClubFinanzasScreen, des-importada. El section "club-finanzas" ahora renderiza
-// el rediseño v2 (demo, todo el diseño). Sin regresión operativa (era read-only);
-// muestra mock en vez de datos reales hasta re-cablear (ver 04-placeholders.md).
-import { ClubFinanzasView } from "@/components/dashboard/club/ClubFinanzasView";
+// Fase 1: ClubFinanzasScreen ahora carga datos reales y los pasa al view v2.
+// KPIs/30-day/sources/txns/payouts cableados. Ranking por cancha y heatmap
+// siguen mock (Fase 2/3). Cuenta bancaria + estado de cuenta sin fuente.
+import { ClubFinanzasScreen } from "@/components/dashboard/club/ClubFinanzasScreen";
 import { ClubMarketingScreen } from "@/components/dashboard/owner/ClubMarketingScreen";
-// La pantalla real queda preservada en owner/ClubConfigScreen, des-importada. El
-// section "club-config" ahora renderiza el rediseño v2 (demo, todo el diseño).
-// Ver 04-placeholders.md para qué cablear en el merge.
-import { ClubConfigView } from "@/components/dashboard/club/ClubConfigView";
+// V2 cableada: ClubConfigScreen (server loader) → ClubConfigView (7 secciones
+// en owner/config-sections/). Cada sección lee/escribe su backend respectivo.
+import { ClubConfigScreen } from "@/components/dashboard/club/ClubConfigScreen";
 import { ClubEventosScreen } from "@/components/dashboard/club/ClubEventosScreen";
 // Personal del club: el rediseño v2 (ClubStaffView) sigue demo, PERO ahora vía
 // ClubStaffScreenServer que resuelve el club activo y habilita la asignación REAL
@@ -205,9 +203,9 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-reservas": () => <ClubReservasScreen />,
     "club-canchas": () => <ClubCanchasScreen />,
     "club-clientes": () => <ClubClientesScreen />,
-    "club-finanzas": () => <ClubFinanzasView />,
+    "club-finanzas": () => <ClubFinanzasScreen />,
     "club-marketing": () => <ClubMarketingScreen />,
-    "club-config": () => <ClubConfigView />,
+    "club-config": () => <ClubConfigScreen />,
     "club-eventos": () => <ClubEventosScreen />,
     "club-staff": () => <ClubStaffScreenServer />,
     "club-membresias": () => <ClubMembresiasScreen />,
@@ -255,6 +253,8 @@ const SECTION_FLAGS: Record<string, string> = {
   "coach-ai": "coach_ai_enabled",
   quedadas: "quedadas_enabled",
   "club-membresias": "club_memberships_v2",
+  "club-marketing": "club_marketing_enabled",
+  personalizar: "profile_customization",
 };
 
 export default async function RoleSectionPage({
