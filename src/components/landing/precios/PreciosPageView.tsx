@@ -1,10 +1,11 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { MarketingShell } from "../MarketingShell";
 import { ContactSalesForm } from "../forms/ContactSalesForm";
 import type { SalesLeadType } from "@/lib/schemas/sales-leads";
+import { trackPricingEvent } from "@/lib/telemetry/pricing";
 
 const CONTACT_ANCHOR = "contacto-ventas";
 
@@ -217,6 +218,10 @@ export function PreciosPageView() {
     leadType: "club",
     message: "",
   });
+
+  useEffect(() => {
+    trackPricingEvent({ name: "pricing_page_viewed" });
+  }, []);
 
   function handleContact(next: SalesPreset) {
     setPreset(next);
