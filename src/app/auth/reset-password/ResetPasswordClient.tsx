@@ -37,9 +37,14 @@ export function ResetPasswordClient({ serverError }: { serverError: string | nul
     null,
   );
 
-  // Si no vino ?code el page lo dejó en "checking" — el SDK del browser puede
-  // levantar la sesión desde el hash (#access_token=...&type=recovery) o
-  // desde una sesión ya persistida en cookies. Verificamos ambos.
+  // Si no vino ?code el page lo dejó en "checking". El SDK del browser puede
+  // levantar la sesión desde tres lugares:
+  //   1) Hash `#access_token=…&type=recovery` (flow implícito de Supabase v1
+  //      verify, que es lo que devuelve `admin.generateLink` y los templates
+  //      de Supabase por default). `@supabase/ssr` NO parsea hash
+  //      automáticamente, así que lo hacemos a mano con `setSession`.
+  //   2) Sesión recovery ya persistida en cookies (segundo viaje).
+  //   3) `?code=` que ya fue intercambiado server-side en `page.tsx`.
   useEffect(() => {
     if (status !== "checking") return;
     const supabase = getBrowserClient();
@@ -47,13 +52,42 @@ export function ResetPasswordClient({ serverError }: { serverError: string | nul
 
     async function check() {
       try {
+        const hash = window.location.hash;
+        if (hash.includes("access_token") && hash.includes("type=recovery")) {
+          const hashParams = new URLSearchParams(hash.slice(1));
+          const access_token = hashParams.get("access_token");
+          const refresh_token = hashParams.get("refresh_token");
+          if (access_token && refresh_token) {
+            const { error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            if (cancelled) return;
+            if (error) {
+              console.error("[reset-password] setSession failed", error.message);
+              setBootstrapError(
+                "Tu enlace ya no es válido. Es probable que haya expirado o se haya usado.",
+              );
+              setStatus("invalid");
+              return;
+            }
+            // Limpiamos el hash para que un refresh no vuelva a procesarlo.
+            window.history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search,
+            );
+            setStatus("ready");
+            return;
+          }
+        }
+
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         if (data.session) {
           setStatus("ready");
           return;
         }
-        // Esperar un beat por si onAuthStateChange aún está procesando el hash.
         await new Promise((r) => setTimeout(r, 400));
         const second = await supabase.auth.getSession();
         if (cancelled) return;
