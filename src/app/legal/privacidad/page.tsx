@@ -12,12 +12,12 @@ export default function PrivacidadPage() {
         </p>
 
         <LegalSection n={1} title="Datos que recopilamos">
-          <strong>Identidad:</strong> nombre, email, teléfono, foto de perfil, fecha de nacimiento.
-          <br /><strong>Deportivos:</strong> deportes, nivel, ranking, partidos, reservas, eventos.
-          <br /><strong>Pago:</strong> comprobantes de transferencia/DeUna que tú subes (no almacenamos
-          tarjetas; no usamos PSP).
-          <br /><strong>Técnicos:</strong> IP, navegador, dispositivo, logs de uso para seguridad y
-          mejora del servicio.
+          <ul style={{ margin: 0, paddingLeft: 22, listStyle: "disc", display: "grid", gap: 6 }}>
+            <li><strong>Identidad:</strong> nombre, email, teléfono, foto de perfil, fecha de nacimiento.</li>
+            <li><strong>Deportivos:</strong> deportes, nivel, ranking, partidos, reservas, eventos.</li>
+            <li><strong>Pago:</strong> comprobantes de transferencia/DeUna que tú subes (no almacenamos tarjetas; no usamos PSP).</li>
+            <li><strong>Técnicos:</strong> IP, navegador, dispositivo, logs de uso para seguridad y mejora del servicio.</li>
+          </ul>
         </LegalSection>
 
         <LegalSection n={2} title="Cómo usamos tus datos">
@@ -71,10 +71,11 @@ export default function PrivacidadPage() {
         </LegalSection>
 
         <LegalSection n={10} title="Contacto">
-          Responsable del tratamiento: MATCHPOINT Ecuador, Quito.
-          <br />Correo de privacidad: <strong>privacidad@matchpoint.top</strong>.
-          <br />Si no estás satisfecho con nuestra respuesta puedes presentar reclamo ante la
-          Superintendencia de Protección de Datos Personales del Ecuador.
+          <ul style={{ margin: 0, paddingLeft: 22, listStyle: "disc", display: "grid", gap: 6 }}>
+            <li><strong>Responsable del tratamiento:</strong> MATCHPOINT Ecuador, Quito.</li>
+            <li><strong>Correo de privacidad:</strong> <a href="mailto:privacidad@matchpoint.top">privacidad@matchpoint.top</a>.</li>
+            <li><strong>Regulador:</strong> si no estás satisfecho con nuestra respuesta puedes presentar reclamo ante la Superintendencia de Protección de Datos Personales del Ecuador.</li>
+          </ul>
         </LegalSection>
 
         <p style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 32 }}>
