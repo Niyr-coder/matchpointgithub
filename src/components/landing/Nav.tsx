@@ -29,6 +29,7 @@ const ITEMS = [
   { k: "/eventos", l: "Eventos" },
   { k: "/coaches", l: "Coaches" },
   { k: "/ranking", l: "Ranking" },
+  { k: "/precios", l: "Precios" },
 ];
 
 function avatarInitials(name: string): string {

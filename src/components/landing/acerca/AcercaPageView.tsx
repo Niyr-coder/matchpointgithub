@@ -68,7 +68,7 @@ export function AcercaPageView() {
             <Icon name="briefcase" size={16} color="#fff" />
             Trabaja con nosotros
           </Link>
-          <Link href="/clubes/precios" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#fff", textDecoration: "none", fontSize: 14 }}>
+          <Link href="/precios" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#fff", textDecoration: "none", fontSize: 14 }}>
             <Icon name="building-2" size={16} color="#fff" />
             Precios para clubes
           </Link>
