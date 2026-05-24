@@ -86,13 +86,14 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
           { k: "membresias", label: "Mis membresías", icon: "star" },
-          { k: "personalizar", label: "Personalizar", icon: "palette" },
+          { k: "mp-plus", label: "Mi plan MP+", icon: "crown", flag: "user_has_mp_plus" },
+          { k: "personalizar", label: "Personalizar", icon: "palette", flag: "profile_customization" },
           { k: "solicitar-club", label: "Solicitar Club", icon: "building" },
         ],
       },
       {
         h: "MATCHPOINT+",
-        items: [{ k: "mp-plus", label: "MATCHPOINT+", icon: "crown", badge: "MP+" }],
+        items: [{ k: "mp-plus", label: "MATCHPOINT+", icon: "crown", badge: "MP+", flag: "user_can_buy_mp_plus" }],
       },
     ],
   },

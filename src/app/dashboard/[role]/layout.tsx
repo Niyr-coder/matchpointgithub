@@ -276,12 +276,20 @@ export default async function RoleLayout({
   // Flags efectivos del usuario (para gatear items del sidebar) + banner de
   // mantenimiento. Una sola lectura de feature_flags para el banner; los flags
   // efectivos vienen del rpc fn_my_effective_flags (respeta excepciones/rollout).
-  const [{ data: maint }, flagsRes, announcement] = await Promise.all([
+  const [{ data: maint }, flagsRes, announcement, { data: planRow }] = await Promise.all([
     supabase.from("feature_flags").select("enabled_default,description,impact").eq("key", "maintenance_banner").maybeSingle(),
     getMyEffectiveFlags(),
     getActiveAnnouncement(),
+    supabase.from("profiles").select("plan_tier,plan_expires_at").eq("id", session.session.userId).maybeSingle(),
   ]);
-  const flags = flagsRes.ok ? flagsRes.data : {};
+  const flags: Record<string, boolean> = flagsRes.ok ? { ...flagsRes.data } : {};
+  // Flag sintético: el item "MATCHPOINT+" del sidebar se oculta si el user
+  // ya tiene MP+ activo. Esto NO vive en feature_flags (es estado por usuario).
+  const planTier = (planRow?.plan_tier as string | null) ?? "free";
+  const planExpiresAt = planRow?.plan_expires_at as string | null;
+  const planActive = planTier === "premium" && (!planExpiresAt || new Date(planExpiresAt).getTime() > Date.now());
+  flags["user_can_buy_mp_plus"] = !planActive;
+  flags["user_has_mp_plus"] = planActive;
   // Banner global: el anuncio activo (canal Banner de Comunicaciones) tiene
   // prioridad; si no hay, cae al flag maintenance_banner.
   const impactToLevel: Record<string, "info" | "warn" | "critical"> = { low: "info", med: "warn", high: "critical" };
