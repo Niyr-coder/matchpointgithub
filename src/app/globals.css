@@ -1322,12 +1322,15 @@ input[type="range"].mp-mpr,
   .mp-follow-btn:active { transform: none; }
 }
 
-/* Footer link hover — texto a blanco para señalar opción activa. */
+/* Footer link hover — texto a blanco para señalar opción activa.
+   min-height 44px asegura target size WCAG 2.5.5; display:flex centra
+   el label dentro del tap zone. */
 .footer-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   color: rgba(255, 255, 255, 0.7);
   font-size: 12px;
-  margin-bottom: 8px;
   text-decoration: none;
   transition: color 160ms var(--ease-out);
 }

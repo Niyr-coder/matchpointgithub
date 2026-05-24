@@ -1,6 +1,7 @@
-// Footer del landing. Todos los links apuntan a rutas reales del app
-// (o mailto: al dominio matchpoint.top). Los iconos sociales quedan
-// disabled hasta que se confirmen URLs reales.
+// Footer del landing. Reagrupado a 4 columnas por intención del visitante
+// (Producto · Negocio · Empresa · Legal) — ver MAT-18 §1.3.
+// Todos los links apuntan a rutas reales del app o `mailto:` al dominio
+// matchpoint.top. Solo se muestran iconos sociales con URL confirmada.
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 
@@ -8,20 +9,23 @@ type FooterLink = { label: string; href: string; external?: boolean };
 
 const COLS: { t: string; l: FooterLink[] }[] = [
   {
-    t: "Jugadores",
+    t: "Producto",
     l: [
       { label: "Cómo funciona", href: "/como-funciona" },
-      { label: "Encontrar clubes", href: "/clubes" },
+      { label: "Clubes", href: "/clubes" },
       { label: "Eventos", href: "/eventos" },
       { label: "Ranking", href: "/ranking" },
+      { label: "Precios", href: "/clubes/precios" },
     ],
   },
   {
-    t: "Clubes",
+    t: "Negocio",
     l: [
-      { label: "Registra tu club", href: "/soy-club" },
-      { label: "Precios", href: "/clubes/precios" },
+      { label: "Soy un club", href: "/soy-club" },
+      { label: "Soy partner", href: "/soy-partner" },
+      { label: "Soy coach", href: "/coaches" },
       { label: "Casos de éxito", href: "/clubes/casos" },
+      { label: "Material para coaches", href: "/coaches/material" },
       {
         label: "Soporte clubes",
         href: "mailto:soporte-clubes@matchpoint.top?subject=Soporte%20MATCHPOINT",
@@ -30,39 +34,47 @@ const COLS: { t: string; l: FooterLink[] }[] = [
     ],
   },
   {
-    t: "Coaches",
-    l: [
-      { label: "Soy coach", href: "/coaches" },
-      { label: "Cómo cobrar", href: "/coaches/como-cobrar" },
-      { label: "Material de marketing", href: "/coaches/material" },
-    ],
-  },
-  {
-    t: "Partners",
-    l: [
-      { label: "Publica tu torneo", href: "/soy-partner" },
-      { label: "Ver torneos", href: "/eventos" },
-    ],
-  },
-  {
-    t: "MATCHPOINT",
+    t: "Empresa",
     l: [
       { label: "Acerca de", href: "/acerca-de" },
       { label: "Blog", href: "/blog" },
       { label: "Trabaja con nosotros", href: "/trabaja-con-nosotros" },
+      {
+        label: "Prensa",
+        href: "mailto:prensa@matchpoint.top?subject=Prensa%20MATCHPOINT",
+        external: true,
+      },
+      {
+        label: "Contacto",
+        href: "mailto:hola@matchpoint.top?subject=Contacto%20MATCHPOINT",
+        external: true,
+      },
+    ],
+  },
+  {
+    t: "Legal",
+    l: [
       { label: "Términos", href: "/legal/terminos" },
       { label: "Privacidad", href: "/legal/privacidad" },
     ],
   },
 ];
 
-const SOCIAL = ["instagram", "message-circle", "youtube", "twitter"] as const;
+// Solo iconos sociales con URL real confirmada. Si se añaden más
+// (YouTube, TikTok, etc.), incluir aria-label descriptivo y rel adecuado.
+const SOCIAL: { name: string; href: string; label: string }[] = [
+  {
+    name: "instagram",
+    href: "https://www.instagram.com/matchpoint.top/",
+    label: "Síguenos en Instagram",
+  },
+];
 
 export function Footer() {
   return (
     <footer className="pt-10 md:pt-15 pb-10 mt-20" style={{ background: "#0a0a0a", color: "#fff" }}>
       <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-8 md:gap-10 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-[2.4fr_1.1fr_1.1fr_1.1fr_0.9fr] gap-8 md:gap-10 mb-10">
           <div className="col-span-2 md:col-span-1">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
               <span
@@ -92,32 +104,46 @@ export function Footer() {
               <br />
               Juega mejor<span style={{ color: "var(--primary)" }}>.</span>
             </div>
-            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.55)", marginTop: 18 }}>
-              ● La comunidad #1 de Pickleball en Ecuador
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 11.5,
+                color: "rgba(255,255,255,0.55)",
+                marginTop: 18,
+              }}
+            >
+              <Icon name="map-pin" size={13} color="rgba(255,255,255,0.55)" />
+              <span>La comunidad #1 de Pickleball en Ecuador</span>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-              {SOCIAL.map((i) => (
-                <span
-                  key={i}
-                  aria-disabled="true"
-                  title="Próximamente"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "rgba(255,255,255,0.35)",
-                    cursor: "not-allowed",
-                  }}
-                >
-                  <Icon name={i} size={14} color="rgba(255,255,255,0.35)" />
-                </span>
-              ))}
-            </div>
+            {SOCIAL.length > 0 && (
+              <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                {SOCIAL.map((s) => (
+                  <a
+                    key={s.name}
+                    href={s.href}
+                    aria-label={s.label}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: "50%",
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "rgba(255,255,255,0.85)",
+                      transition: "background 160ms var(--ease-out), color 160ms var(--ease-out)",
+                    }}
+                  >
+                    <Icon name={s.name} size={16} color="currentColor" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
           {COLS.map((col) => (
             <div key={col.t}>
@@ -153,7 +179,7 @@ export function Footer() {
             display: "flex",
             justifyContent: "space-between",
             fontSize: 11,
-            color: "rgba(255,255,255,0.4)",
+            color: "rgba(255,255,255,0.55)",
             flexWrap: "wrap",
             gap: 10,
           }}
