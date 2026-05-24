@@ -16,6 +16,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import type { Json } from "@/lib/db/types";
 
 // Precio por mes en centavos. USD 5/mes premium.
 const PREMIUM_PRICE_CENTS_PER_MONTH = 500;
@@ -232,7 +233,10 @@ export async function approvePlanSubscriptionAdmin(
         payload: { subscriptionId, expiresAt: newExpiry.toISOString() },
       });
     } catch (e) {
-      console.error("[approvePlanSubscriptionAdmin] welcome message failed", e);
+      console.error(
+        "[approvePlanSubscriptionAdmin] [ok=false] approve_notification_failed",
+        e,
+      );
     }
 
     const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
@@ -243,10 +247,13 @@ export async function approvePlanSubscriptionAdmin(
         tier: sub.tier,
         durationMonths: sub.duration_months,
         expiresAt: newExpiry.toISOString(),
-      } as never,
+      } as Json,
     });
     if (auditErr) {
-      console.error("[approvePlanSubscriptionAdmin] audit log:", auditErr.message);
+      console.error(
+        "[approvePlanSubscriptionAdmin] [ok=false] audit_log_failed (action=plan_subscription.admin_approve):",
+        auditErr.message,
+      );
     }
 
     return {
@@ -346,10 +353,13 @@ export async function grantMatchPointPlusAdmin(
         duration_months: durationMonths,
         expires_at: newExpiry.toISOString(),
         reason: reason ?? null,
-      } as never,
+      } as Json,
     });
     if (auditErr) {
-      console.error("[grantMatchPointPlus] audit log failed", auditErr);
+      console.error(
+        "[grantMatchPointPlus] [ok=false] audit_log_failed (action=plan_subscription.admin_grant):",
+        auditErr.message,
+      );
     }
 
     return {
@@ -407,10 +417,13 @@ export async function revokeMatchPointPlusAdmin(
         revoked_by: adminId,
         reason,
         cancelled_subs: cancelled?.length ?? 0,
-      } as never,
+      } as Json,
     });
     if (auditErr) {
-      console.error("[revokeMatchPointPlus] audit log failed", auditErr);
+      console.error(
+        "[revokeMatchPointPlus] [ok=false] audit_log_failed (action=plan_subscription.admin_revoke):",
+        auditErr.message,
+      );
     }
 
     return { userId, cancelledCount: cancelled?.length ?? 0 };

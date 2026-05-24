@@ -26,6 +26,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import type { Json } from "@/lib/db/types";
 
 const SIGNED_URL_TTL = 60 * 10; // 10 min
 
@@ -298,6 +299,7 @@ export async function rejectClubFeaturingAdmin(
     await requireAdminUserId();
     const supabase = await getServerClient();
 
+    // pre-migration: rejects will 503; intencional, ver header
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sub, error: readErr } = await (supabase as any)
       .from("club_featuring_subscriptions")
@@ -348,10 +350,13 @@ export async function rejectClubFeaturingAdmin(
       p_entity: "club_featuring_subscriptions",
       p_entity_id: subscriptionId,
       p_action: "club_featuring.admin_reject",
-      p_diff: { reason } as never,
+      p_diff: { reason } as Json,
     });
     if (auditErr) {
-      console.error("[rejectClubFeaturingAdmin] audit log:", auditErr.message);
+      console.error(
+        "[rejectClubFeaturingAdmin] [ok=false] audit_log_failed (action=club_featuring.admin_reject):",
+        auditErr.message,
+      );
     }
 
     // Notificar a los owners del club. Fire-and-forget.

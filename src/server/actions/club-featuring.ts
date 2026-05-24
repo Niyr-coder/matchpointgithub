@@ -16,6 +16,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import type { Json } from "@/lib/db/types";
 
 // Precio base: USD 200 por 30 días. Para duraciones distintas se prorratea
 // linealmente: amountCents = round(PRICE * durationDays / 30).
@@ -269,10 +270,13 @@ export async function approveClubFeaturingAdmin(
         clubId,
         durationDays,
         expiresAt: newExpiry.toISOString(),
-      } as never,
+      } as Json,
     });
     if (auditErr) {
-      console.error("[approveClubFeaturingAdmin] audit log:", auditErr.message);
+      console.error(
+        "[approveClubFeaturingAdmin] [ok=false] audit_log_failed (action=club_featuring.admin_approve):",
+        auditErr.message,
+      );
     }
 
     return {

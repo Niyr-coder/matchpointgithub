@@ -12,6 +12,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import type { Json } from "@/lib/db/types";
 
 const SIGNED_URL_TTL = 60 * 10; // 10 min
 
@@ -374,10 +375,13 @@ export async function rejectPlanSubscriptionAdmin(
       p_entity: "player_subscriptions",
       p_entity_id: subscriptionId,
       p_action: "plan_subscription.admin_reject",
-      p_diff: { reason } as never,
+      p_diff: { reason } as Json,
     });
     if (auditErr) {
-      console.error("[rejectPlanSubscriptionAdmin] audit log:", auditErr.message);
+      console.error(
+        "[rejectPlanSubscriptionAdmin] [ok=false] audit_log_failed (action=plan_subscription.admin_reject):",
+        auditErr.message,
+      );
     }
 
     // Notificar al usuario. Fire-and-forget (no romper el rechazo si falla el DM).
