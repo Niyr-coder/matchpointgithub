@@ -7,7 +7,7 @@
 // setCourtMaintenance + clearCourtMaintenance + bulkSetCourtMaintenance.
 // "Now playing" y "Next slot" derivan de reservations (incluye kind mig 167).
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -106,6 +106,18 @@ function fmtHM(ms: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+// Countdown legible. <60min → "Termina en X min"; >=60min → "Termina en Xh Ymin";
+// negativo/0 → "Terminando". renderedAt se actualiza con realtime, así que el
+// número se va achicando solo cuando llega un cambio en reservations.
+function fmtRemaining(deltaMs: number): string {
+  if (deltaMs <= 0) return "Terminando";
+  const totalMin = Math.ceil(deltaMs / 60000);
+  if (totalMin < 60) return `Termina en ${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `Termina en ${h}h` : `Termina en ${h}h ${m}min`;
+}
+
 export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
   useRealtimeRefresh(
     data.clubId
@@ -120,9 +132,7 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
-  // Por defecto entramos a Gestión: es donde el owner/manager opera. El que
-  // viene a mostrar el club ve "Vista pública" desde el segundo tab.
-  const [view, setView] = useState<View>("gestion");
+  const [view, setView] = useState<View>("publica");
   const [openCourt, setOpenCourt] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
@@ -496,11 +506,11 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
       >
         {(
           [
-            { k: "gestion", l: "Gestión", i: "list-checks" },
             { k: "publica", l: "Vista pública", i: "layout-grid" },
-            { k: "tarifas", l: "Tarifas", i: "dollar-sign" },
             { k: "schedule", l: "Agenda hoy", i: "calendar-days" },
+            { k: "tarifas", l: "Tarifas", i: "dollar-sign" },
             { k: "floorplan", l: "Plano del club", i: "map" },
+            { k: "gestion", l: "Gestión", i: "list-checks" },
           ] as Array<{ k: View; l: string; i: string }>
         ).map((t) => {
           const on = view === t.k;
@@ -901,10 +911,14 @@ function GalleryCard({
   onClick: () => void;
   onToggleActive: () => void;
 }) {
-  // Lectura única de Date.now al montar — react-hooks/purity bloquea
-  // Date.now() en el body del render. Refresca solo en re-render por
-  // realtime (cuando llega un cambio en reservations).
-  const [renderedAt] = useState(() => Date.now());
+  // Tick cada 60s para que el countdown "Termina en X min" y la progress
+  // bar se actualicen aunque no llegue ningún evento realtime. Date.now()
+  // no se puede llamar en el body del render (react-hooks/purity).
+  const [renderedAt, setRenderedAt] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setRenderedAt(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const st = STATUS_META[c.status];
   const players =
     c.status === "busy"
@@ -958,7 +972,6 @@ function GalleryCard({
             100,
         )
       : 0;
-  void sessionProgress; // V3 quita el bloque "en juego" denso; la session se ve en metaLine.
 
   const frameDim = c.status === "maintenance" || !c.active;
 
@@ -1117,9 +1130,101 @@ function GalleryCard({
         />
       </div>
 
-      {/* ── META itálica (extra info de session/mant) si aplica ── */}
-      {(c.status === "busy" && c.nowPlaying) ||
-      c.status === "maintenance" ? (
+      {/* ── Panel "EN JUEGO" denso (busy + nowPlaying): pill + jugadores +
+          progress bar. Reemplaza la línea meta italic anterior cuando hay
+          sesión activa. ── */}
+      {c.status === "busy" && c.nowPlaying ? (
+        <div style={{ padding: "0 22px 6px" }}>
+          <div
+            style={{
+              background: "#0a0a0a",
+              color: "#fff",
+              borderRadius: 10,
+              padding: "10px 12px 0",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 9.5,
+                  fontWeight: 900,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "#dc2626",
+                }}
+              >
+                <span
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: "#dc2626",
+                  }}
+                />
+                {c.nowPlaying.kind === "class"
+                  ? "Clase"
+                  : c.nowPlaying.kind === "event"
+                    ? "Evento"
+                    : "En juego"}
+              </span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  color: "rgba(255,255,255,0.55)",
+                  fontFamily: "ui-monospace, monospace",
+                }}
+              >
+                {fmtRemaining(c.nowPlaying.endMs - renderedAt)}
+              </span>
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12.5,
+                fontWeight: 800,
+                letterSpacing: "-0.005em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {c.nowPlaying.who}
+            </div>
+            <div
+              style={{
+                height: 3,
+                background: "rgba(255,255,255,0.12)",
+                borderRadius: 2,
+                marginTop: 10,
+                marginLeft: -12,
+                marginRight: -12,
+                marginBottom: 0,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${sessionProgress}%`,
+                  height: "100%",
+                  background: "#dc2626",
+                  transition: "width 200ms linear",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : c.status === "maintenance" ? (
         <div
           style={{
             padding: "0 22px 6px",
@@ -1135,7 +1240,7 @@ function GalleryCard({
       {/* ── STATS: flex row con gap ── */}
       <div style={{ display: "flex", padding: "0 22px 14px", gap: 22 }}>
         <div>
-          <div className="label-mp">Util</div>
+          <div className="label-mp">Utilización</div>
           <div
             className="font-heading tabular"
             style={{
@@ -1155,7 +1260,7 @@ function GalleryCard({
           </div>
         </div>
         <div>
-          <div className="label-mp">Hoy</div>
+          <div className="label-mp">Revenue hoy</div>
           <div
             className="font-heading tabular"
             style={{

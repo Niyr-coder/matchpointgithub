@@ -42,8 +42,8 @@ export type ReservasData = {
 const HOURS = ["09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"];
 
 const LEGEND: { c: string; l: string }[] = [
-  { c: "var(--primary)", l: "Libre · clickeá para reservar" },
-  { c: "#dc2626", l: "Reservada" },
+  { c: "#d1fae5", l: "Libre · clickea para reservar" },
+  { c: "var(--primary)", l: "Reservada" },
   { c: "#fbbf24", l: "Evento" },
   { c: "#7c3aed", l: "Clase" },
 ];
@@ -71,11 +71,11 @@ function cell(s: number, opts: { disabled?: boolean; past?: boolean } = {}) {
       opacity: 0.55,
     } as const;
   }
-  // Esquema intuitivo: verde = disponible (clickear para reservar),
-  // rojo = ocupada, ámbar = evento, violeta = clase.
+  // Mint claro = libre/clickeable, verde sólido (--primary) = reservada (BOOK),
+  // ámbar = evento, violeta = clase.
   const palette: Record<number, { bg: string; fg: string }> = {
-    0: { bg: "var(--primary)", fg: "#fff" },
-    1: { bg: "#dc2626", fg: "#fff" },
+    0: { bg: "#d1fae5", fg: "#047857" },
+    1: { bg: "var(--primary)", fg: "#fff" },
     2: { bg: "#fbbf24", fg: "#fff" },
     3: { bg: "#7c3aed", fg: "#fff" },
   };
@@ -139,15 +139,17 @@ export function ClubReservasScreenView({ data }: { data: ReservasData }) {
   // en re-render por realtime cuando llegan cambios.
   const [nowMs] = useState(() => Date.now());
   const weekStart = new Date(data.weekStartIso);
-  const slotEndMs = (dayIdx: number, hourIdx: number) => {
+  const slotStartMs = (dayIdx: number, hourIdx: number) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + dayIdx);
-    // Bloque de 1h del grid. Pasado = el bloque entero ya cerró.
-    d.setHours(Number(HOURS[hourIdx]) + 1, 0, 0, 0);
+    d.setHours(Number(HOURS[hourIdx]), 0, 0, 0);
     return d.getTime();
   };
+  // Past = el slot ya arrancó (grace de 60s alineada al handler de click).
+  // Antes comparábamos contra slotEnd, lo que dejaba slots en curso pintados
+  // verdes/clickeables y al clickear saltaba el toast "Ese horario ya pasó".
   const isPastSlot = (dayIdx: number, hourIdx: number) =>
-    slotEndMs(dayIdx, hourIdx) <= nowMs;
+    slotStartMs(dayIdx, hourIdx) < nowMs - 60_000;
 
   // Click en celda libre (state=0) → abre modal con prefill de court+slot.
   // dayIdx 0=Lunes ... 6=Domingo. hourIdx → HOURS[hi] (string "09".."22").
@@ -498,20 +500,16 @@ function ReservedCell({
     return `${parts[0]} ${parts[parts.length - 1][0]}.`.slice(0, 12);
   })();
 
-  // Hover transition + scale (Emil-style ease-out, sin saltos).
-  // Reservadas: scale 1.08 + sombra fuerte + tooltip con nombre.
-  // Libres clickeables: scale 1.04 + sombra suave (sugerir "clickeame").
-  const hoverActive =
-    hover && (reserved || clickable);
+  // Hover sólo en libres clickeables — el salto en reservadas distraía al
+  // staff y se confundía con un estado "clickeable". El tooltip con el nombre
+  // del cliente igual aparece en reservadas (más abajo) sin necesidad de
+  // mover la celda.
+  const hoverActive = hover && clickable;
   const transformStyle: React.CSSProperties = {
-    transform: hoverActive ? (reserved ? "scale(1.08)" : "scale(1.04)") : "scale(1)",
+    transform: hoverActive ? "scale(1.04)" : "scale(1)",
     transition: "transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms",
-    boxShadow: hoverActive
-      ? reserved
-        ? "0 6px 16px rgba(0,0,0,0.18)"
-        : "0 3px 8px rgba(0,0,0,0.12)"
-      : "none",
-    zIndex: hoverActive ? 5 : 1,
+    boxShadow: hoverActive ? "0 3px 8px rgba(0,0,0,0.12)" : "none",
+    zIndex: hover && reserved ? 5 : hoverActive ? 5 : 1,
     position: "relative" as const,
   };
 
