@@ -1,6 +1,6 @@
 # 90 · URL canónica de producción y prevención de drift
 
-> Fuente de verdad operativa. Toda referencia pública (marketing, prensa, redes, QA, auditorías) usa la URL canónica de este documento. Cualquier dominio adicional debe apuntar al mismo deploy o redirect 301 a la canónica.
+> Fuente de verdad operativa. Toda referencia pública (marketing, prensa, redes, QA, auditorías) usa la URL canónica de este documento. No hay otros dominios bajo control de Matchpoint en producción.
 
 ---
 
@@ -10,30 +10,22 @@
 - **Repo fuente:** `Niyr-coder/matchpointgithub` (branch `main` → auto-deploy en Vercel).
 - **Build verification:** el AuthModal del repo (`src/components/auth/AuthModal.tsx`) se monta sobre el landing. `/login` redirige a `/?auth=signin`. Auth híbrido email/password con Google/Apple `[disabled]` "Próximamente".
 
-## 2. Dominios secundarios
+## 2. Dominios que NO son nuestros (pero comparten brand)
 
-| Dominio | Estado deseado | Comportamiento esperado |
-|---|---|---|
-| `www.matchpoint.top` | Aliased a canónica O 301 → canónica | Mismo HTML que canónica o redirect 301 al path equivalente |
-| `matchpoint.top` (apex) | Aliased a canónica O 301 → canónica | Idem |
-
-Cualquier otro dominio que aparezca sirviendo HTML distinto del canónico es **drift** y debe ser retirado o realineado (ver §4).
+- **`matchpoint.top` y `www.matchpoint.top` NO son propiedad de Matchpoint.** Sirven una build third-party (standalone Google-only, MD5 `6daca004…`) desde un proyecto Vercel ajeno (CNAME `d470d5183a898288.vercel-dns-017.com`). Confirmado por CEO el 2026-05-24: el dominio se adquirirá en el futuro; hasta entonces, no es nuestro.
+- **No auditar, no enlazar, no asumir control.** Cualquier hallazgo sobre `*.matchpoint.top` es sobre un sitio third-party que comparte el nombre, no sobre el producto Matchpoint.
 
 ## 3. Anti-drift: reglas duras
 
-1. **Un solo proyecto Vercel activo para producción.** No mantener proyectos Vercel paralelos con dominios productivos.
-2. **Toda URL pública (marketing, blog posts, redes, prensa, decks) usa la canónica** o un dominio aliased a la canónica.
-3. **Auditorías UX/QA deben ejecutarse contra la canónica.** Si una auditoría descubre un dominio sirviendo build distinto del repo, abrir issue `infra` antes de auditar.
-4. **Health check periódico:** comparar MD5 del HTML servido por cada dominio público vs canónica. Drift > 0 byte = alerta.
+1. **Una sola URL canónica:** `matchpointgithub.vercel.app`. Marketing, blog, redes, prensa, decks, QA y auditorías la usan exclusivamente.
+2. **Auditorías UX/QA se ejecutan contra la canónica.** Si una auditoría encuentra `matchpoint.top` (o cualquier otro host que comparta brand), debe marcarlo como **target inválido** y consultar antes de seguir. Esto evita repetir el patrón de [MAT-45](/MAT/issues/MAT-45) (auditoría falsa contra el squatter).
+3. **Health check periódico:** confirmar que `matchpointgithub.vercel.app` deploya desde `main` y que su MD5 de root coincide con el último deploy reportado por Vercel.
+4. **Cualquier dominio nuevo que se adquiera y apunte al producto** debe agregarse a este documento y al proyecto Vercel canónico antes de promoverse externamente.
 
-## 4. Procedimiento ante drift detectado
+## 4. Si en el futuro adquirimos `matchpoint.top`
 
-1. Confirmar fingerprint: `curl -s https://<dominio>/ | md5sum` vs canónica.
-2. Identificar proyecto Vercel que sirve el dominio: CNAME hash del dominio (`vercel-dns-XXX.com`) es el fingerprint del proyecto.
-3. Decidir: A) mover dominio al proyecto canónico, o B) 301 al canónico mientras se planifica A.
-4. Eliminar el proyecto Vercel huérfano una vez confirmado que ningún tráfico productivo lo necesita.
-5. Actualizar este documento si la lista de dominios cambia.
+El runbook técnico para mover los dominios al proyecto canónico ya está escrito y vive en el documento `runbook` de [MAT-59](/MAT/issues/MAT-59#document-runbook). Reusarlo en vez de redactarlo de cero.
 
 ## 5. Historial de incidentes
 
-- **2026-05-24 ([MAT-55](/MAT/issues/MAT-55) / [MAT-59](/MAT/issues/MAT-59)):** detectado drift entre `www.matchpoint.top` (build standalone Google-only, MD5 `6daca004…`) y canónica `matchpointgithub.vercel.app` (AuthModal híbrido, MD5 `f0c2f94f…`). Causó auditoría falsa [MAT-45](/MAT/issues/MAT-45) y 3 hijos cancelados ([MAT-46](/MAT/issues/MAT-46), [MAT-49](/MAT/issues/MAT-49), [MAT-51](/MAT/issues/MAT-51)). Resuelto en [MAT-59](/MAT/issues/MAT-59).
+- **2026-05-24 ([MAT-55](/MAT/issues/MAT-55) / [MAT-59](/MAT/issues/MAT-59)):** detectado drift aparente entre `www.matchpoint.top` (build standalone Google-only, MD5 `6daca004…`) y canónica `matchpointgithub.vercel.app` (AuthModal híbrido, MD5 `f0c2f94f…`). Causó auditoría falsa [MAT-45](/MAT/issues/MAT-45) y 3 hijos cancelados ([MAT-46](/MAT/issues/MAT-46), [MAT-49](/MAT/issues/MAT-49), [MAT-51](/MAT/issues/MAT-51)). Resolución: confirmado que `matchpoint.top` es third-party (no nuestro), no hay drift que corregir — sólo doc + regla anti-auditoría falsa.
