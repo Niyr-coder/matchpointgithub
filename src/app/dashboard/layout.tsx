@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { Suspense } from "react";
 import { ToastProvider } from "@/components/dashboard/ToastProvider";
+import { ResetPasswordToast } from "@/components/dashboard/ResetPasswordToast";
 import { PromptModalProvider } from "@/components/dashboard/widgets/PromptModal";
 import { DashboardModals } from "@/components/dashboard/modals/DashboardModals";
 import { getSession } from "@/lib/auth/session";
@@ -74,6 +76,9 @@ export default async function DashboardLayout({
   }
   return (
     <ToastProvider>
+      <Suspense fallback={null}>
+        <ResetPasswordToast />
+      </Suspense>
       <PromptModalProvider>
         {children}
         {/* Bajamos el userId desde server al wrapper de modales para que

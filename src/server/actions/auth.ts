@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
+import { fail } from "@/lib/api/response";
 import { MpError } from "@/lib/api/errors";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { AuthError, ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
@@ -24,10 +25,12 @@ async function clientIp(): Promise<string> {
 import {
   ProfileSchema,
   ProfileUpdateSchema,
+  RequestPasswordResetSchema,
   SessionResponseSchema,
   SignInSchema,
   SignUpSchema,
   SwitchRoleSchema,
+  UpdatePasswordSchema,
   type Profile,
   type RoleAssignment,
   type SessionResponse,
@@ -139,6 +142,73 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
 
     return await buildSession();
   });
+}
+
+// ── requestPasswordReset ────────────────────────────────────────────────
+//
+// Anti-enumeración: SIEMPRE devuelve { ok: true } incluso si el email no
+// está registrado o si Supabase devuelve error. El mensaje de éxito en la UI
+// debe ser neutro ("Te enviamos un correo si esa cuenta existe."). Sólo
+// propagamos errores de validación de input y de rate-limit (429).
+export async function requestPasswordReset(
+  input: unknown,
+): Promise<ActionResult<{ ok: true }>> {
+  return runAction(RequestPasswordResetSchema, input, async (data) => {
+    await assertRateLimit({
+      key: `auth:reset:${await clientIp()}`,
+      ...RATE_LIMITS.authSensitive,
+    });
+
+    const supabase = await getServerClient();
+    const origin = await requestOrigin();
+    const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
+      redirectTo: `${origin}/auth/reset-password`,
+    });
+    // Loggeamos errores reales (cuota SMTP, config) pero no los exponemos —
+    // confirmar "este email no existe" rompería LOPDP.
+    if (error) {
+      console.error("[auth.requestPasswordReset] supabase error", error.message);
+    }
+    return { ok: true as const };
+  });
+}
+
+// ── updatePassword ──────────────────────────────────────────────────────
+//
+// Requiere sesión activa (la sesión recovery establecida por el link del
+// email). El form vive en /auth/reset-password y se llama solo después de
+// que el client SDK haya exchangeado el token recovery.
+export async function updatePassword(
+  input: unknown,
+): Promise<ActionResult<{ ok: true }>> {
+  return runAction(UpdatePasswordSchema, input, async (data) => {
+    const supabase = await getServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      throw new MpError(
+        "AUTH.RECOVERY_EXPIRED",
+        "Tu enlace de recuperación expiró. Solicita uno nuevo.",
+        401,
+      );
+    }
+    const { error } = await supabase.auth.updateUser({ password: data.password });
+    if (error) {
+      throw new MpError("AUTH.PASSWORD_UPDATE_FAILED", error.message, 400);
+    }
+    return { ok: true as const };
+  });
+}
+
+async function requestOrigin(): Promise<string> {
+  const h = await headers();
+  const explicitOrigin = h.get("origin");
+  if (explicitOrigin) return explicitOrigin;
+  const host = h.get("x-forwarded-host") || h.get("host");
+  const proto = h.get("x-forwarded-proto") || (process.env.NODE_ENV === "production" ? "https" : "http");
+  if (host) return `${proto}://${host}`;
+  return "https://matchpointgithub.vercel.app";
 }
 
 // ── signOut ─────────────────────────────────────────────────────────────
@@ -374,4 +444,29 @@ export async function signInFromForm(prevState: unknown, formData: FormData) {
 export async function signOutAndRedirect() {
   await signOut();
   redirect("/login");
+}
+
+export async function requestPasswordResetFromForm(
+  prevState: unknown,
+  formData: FormData,
+) {
+  return requestPasswordReset({ email: formData.get("email") });
+}
+
+export async function updatePasswordFromForm(
+  prevState: unknown,
+  formData: FormData,
+) {
+  const password = formData.get("password");
+  const confirm = formData.get("confirm");
+  if (typeof password === "string" && typeof confirm === "string" && password !== confirm) {
+    return fail("VALIDATION.PASSWORD_MISMATCH", "Las contraseñas no coinciden.", {
+      fields: { confirm: ["No coincide con la nueva contraseña."] },
+    });
+  }
+  const result = await updatePassword({ password });
+  if (result.ok) {
+    redirect("/dashboard/user?reset=ok");
+  }
+  return result;
 }

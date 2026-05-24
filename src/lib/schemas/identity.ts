@@ -84,6 +84,18 @@ export const SignInSchema = z
   })
   .openapi("SignIn");
 
+export const RequestPasswordResetSchema = z
+  .object({
+    email: EmailSchema,
+  })
+  .openapi("RequestPasswordReset");
+
+export const UpdatePasswordSchema = z
+  .object({
+    password: PasswordSchema,
+  })
+  .openapi("UpdatePassword");
+
 export const SwitchRoleSchema = z
   .object({
     role: MpRoleSchema,
@@ -114,6 +126,8 @@ export type Profile = z.infer<typeof ProfileSchema>;
 export type ProfileUpdate = z.infer<typeof ProfileUpdateSchema>;
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type SignInInput = z.infer<typeof SignInSchema>;
+export type RequestPasswordResetInput = z.infer<typeof RequestPasswordResetSchema>;
+export type UpdatePasswordInput = z.infer<typeof UpdatePasswordSchema>;
 export type SwitchRoleInput = z.infer<typeof SwitchRoleSchema>;
 export type RoleAssignment = z.infer<typeof RoleAssignmentSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
