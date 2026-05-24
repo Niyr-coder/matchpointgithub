@@ -57,7 +57,7 @@
   /* --muted-fg bumped from #737373 → #6a6a6a para alcanzar AA (4.5:1)
      sobre --muted/--bg/--card. MAT-33 a11y audit. */
   --muted-fg: #6a6a6a; --fg: #0a0a0a;
-  --primary: #10b981; --primary-hover: #059669; --primary-active: #047857;
+  --primary: #10b981; --primary-hover: #059669; --primary-active: #047857; --primary-press: #065f46;
   --primary-glow: rgba(22, 163, 74, 0.15);
   --border-subtle: #f0f0f0;
   --sidebar: #18181b; --sidebar-bg: #09090b; --sidebar-border: #27272a;
@@ -202,8 +202,13 @@ body {
   transition: background 150ms ease, border-color 150ms ease, transform 160ms var(--ease-out);
 }
 .btn:active { transform: scale(0.97); }
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-hover); }
+/* MAT-37 a11y: base bg --primary (#10b981) sobre #fff fallaba AA (2.53:1).
+   Subido a --primary-active (#047857) → 7.5:1 (AAA). Hover/active baja
+   un escalón más al nuevo token --primary-press (#065f46) para preservar
+   el feedback de estado (CEO decision en MAT-37). */
+.btn-primary { background: var(--primary-active); color: #fff; }
+.btn-primary:hover { background: var(--primary-press); }
+.btn-primary:active { background: var(--primary-press); }
 /* CTA teñido con accent inline del tema: el hover de background no aplica
    (inline gana), así que el feedback se da con brightness — no lo pisa el
    inline. Gateado a punteros finos para no disparar en touch. */
@@ -295,8 +300,11 @@ body {
     transform 160ms var(--ease-out);
 }
 .lp-btn:active { transform: scale(0.97); }
-.lp-btn-primary { background: var(--primary); color: #fff; }
-.lp-btn-primary:hover { background: var(--primary-hover); }
+/* MAT-37 a11y: idem .btn-primary. lp-btn-primary es el CTA del landing
+   y compartía el mismo fail (white sobre #10b981 = 2.53:1). */
+.lp-btn-primary { background: var(--primary-active); color: #fff; }
+.lp-btn-primary:hover { background: var(--primary-press); }
+.lp-btn-primary:active { background: var(--primary-press); }
 .lp-btn-outline { background: #fff; color: #0a0a0a; border: 1.5px solid var(--border); padding: 9.5px 18.5px; }
 .lp-btn-outline:hover { border-color: #0a0a0a; }
 .lp-btn-dark { background: #0a0a0a; color: #fff; }
@@ -795,13 +803,21 @@ body {
   .mp-press:active { transform: none; }
 }
 
-/* Variante para usar sobre la barra glass oscura del desktop. */
+/* Variante para usar sobre la barra glass oscura del desktop.
+   MAT-37 a11y: fg subido de rgba(255,255,255,0.65) → #fff sólido. El glass
+   real (rgba(10,10,10,0.55)) renderiza ~#767676 sobre el landing claro, así
+   que alpha 0.9 solo llegaba a 4.02:1. Con #fff puro = ~4.5:1 (AA).
+   CEO autorizó "sube a 1.0 si 0.9 no alcanza". */
 .mp-nav-link-dark {
   background: transparent;
-  color: rgba(255, 255, 255, 0.65);
+  color: #fff;
 }
+/* Pill de estado activo: el overlay claro original (rgba(255,255,255,0.12))
+   aclaraba el fondo y arrastraba el ratio a 3.59:1. Lo invertimos a un overlay
+   oscuro que mantiene la sensación glass y deja el texto blanco con sobrado
+   contraste (>6:1). El font-weight 900 ya distingue el estado activo aparte. */
 .mp-nav-link-dark[data-active="true"] {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
   color: #fff;
 }
 @media (hover: hover) and (pointer: fine) {
