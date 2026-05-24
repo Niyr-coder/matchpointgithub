@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "openapi:build": "tsx scripts/build-openapi.ts",
+    "blog:images": "tsx scripts/render-blog-images.ts",
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
     "seed:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
@@ -38,8 +39,9 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "pg": "^8.21.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "tsx": "^4.22.0",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }
