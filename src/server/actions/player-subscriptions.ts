@@ -264,6 +264,59 @@ export async function approvePlanSubscriptionAdmin(
   });
 }
 
+// ── cancelMyPlan ───────────────────────────────────────────────────────
+// Cancela la suscripción premium activa del propio user. Mantiene los
+// beneficios hasta expires_at (no se borra profile.plan_tier acá; un cron
+// futuro lo flippa cuando llegue la fecha). El user puede re-suscribirse
+// cuando quiera vía requestPlanUpgrade.
+const CancelMyPlanSchema = z.object({
+  subscriptionId: UuidSchema,
+  reason: z.string().min(2).max(500).optional(),
+});
+
+export async function cancelMyPlan(
+  input: unknown,
+): Promise<ActionResult<{ subscriptionId: string }>> {
+  return runAction(CancelMyPlanSchema, input, async ({ subscriptionId, reason }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+
+    // Verificar que la sub existe, pertenece al user y está activa.
+    const { data: sub } = await supabase
+      .from("player_subscriptions")
+      .select("id,user_id,status")
+      .eq("id", subscriptionId)
+      .maybeSingle();
+    if (!sub || sub.user_id !== userId) {
+      throw new MpError("PLAN.SUB_NOT_FOUND", "Suscripción no encontrada", 404);
+    }
+    if (sub.status !== "active") {
+      throw new MpError(
+        "PLAN.INVALID_STATE",
+        `Solo se cancela desde 'active' (actual: '${sub.status}')`,
+        409,
+      );
+    }
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+
+    const { error: updErr } = await admin
+      .from("player_subscriptions")
+      .update({
+        status: "cancelled",
+        cancelled_reason: reason ?? "Cancelado por el usuario",
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", subscriptionId);
+    if (updErr) {
+      throw new MpError("PLAN.SUB_UPDATE_FAILED", updErr.message, 500);
+    }
+
+    return { subscriptionId };
+  });
+}
+
 // ── grantMatchPointPlusAdmin ───────────────────────────────────────────
 // Atajo admin para activar MATCHPOINT+ directamente, sin pasar por el flujo
 // de comprobantes. Útil para regalos, soporte, beta testers, recompensas.
