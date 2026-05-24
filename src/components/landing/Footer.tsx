@@ -2,6 +2,7 @@
 // (Producto · Negocio · Empresa · Legal) — ver MAT-18 §1.3.
 // Todos los links apuntan a rutas reales del app o `mailto:` al dominio
 // matchpoint.top. Solo se muestran iconos sociales con URL confirmada.
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 
@@ -60,13 +61,37 @@ const COLS: { t: string; l: FooterLink[] }[] = [
   },
 ];
 
-// Solo iconos sociales con URL real confirmada. Si se añaden más
-// (YouTube, TikTok, etc.), incluir aria-label descriptivo y rel adecuado.
-const SOCIAL: { name: string; href: string; label: string }[] = [
+// Glifo Instagram inlineado: lucide-react 1.x removió los iconos de marca
+// (cuestiones de copyright), por lo que el `<Icon name="instagram">` venía
+// sin renderizar. El path estándar de Instagram queda como SVG inline.
+function InstagramGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
+
+// Solo redes con URL real confirmada. Para añadir más (YouTube, TikTok,
+// etc.), incluir un glifo SVG, aria-label descriptivo y rel adecuado.
+const SOCIAL: { key: string; href: string; label: string; render: () => ReactNode }[] = [
   {
-    name: "instagram",
+    key: "instagram",
     href: "https://www.instagram.com/matchpoint.top/",
     label: "Síguenos en Instagram",
+    render: () => <InstagramGlyph size={18} />,
   },
 ];
 
@@ -121,7 +146,7 @@ export function Footer() {
               <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
                 {SOCIAL.map((s) => (
                   <a
-                    key={s.name}
+                    key={s.key}
                     href={s.href}
                     aria-label={s.label}
                     target="_blank"
@@ -139,7 +164,7 @@ export function Footer() {
                       transition: "background 160ms var(--ease-out), color 160ms var(--ease-out)",
                     }}
                   >
-                    <Icon name={s.name} size={16} color="currentColor" />
+                    {s.render()}
                   </a>
                 ))}
               </div>
