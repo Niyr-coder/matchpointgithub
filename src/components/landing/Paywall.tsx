@@ -182,6 +182,44 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
               Continuar con Apple
             </button>
           </div>
+          {/* LOPDP: consentimiento informado y explícito sobre los datos cedidos
+              vía OAuth. Mismo bloque que AuthModal — mantenerlos en sync. */}
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 10.5,
+              lineHeight: 1.5,
+              color: "var(--muted-fg)",
+              textAlign: "center",
+            }}
+          >
+            <div>
+              Al continuar con Google o Apple, MATCHPOINT recibirá tu{" "}
+              <strong style={{ color: "#0a0a0a" }}>nombre</strong>,{" "}
+              <strong style={{ color: "#0a0a0a" }}>correo</strong> y{" "}
+              <strong style={{ color: "#0a0a0a" }}>foto de perfil</strong>. Nunca
+              publicaremos en tu nombre.
+            </div>
+            <div style={{ marginTop: 6, opacity: 0.85 }}>
+              <a
+                href="/legal/terminos"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--muted-fg)", textDecoration: "underline" }}
+              >
+                Términos
+              </a>
+              {" · "}
+              <a
+                href="/legal/privacidad"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--muted-fg)", textDecoration: "underline" }}
+              >
+                Política de Privacidad
+              </a>
+            </div>
+          </div>
           <div style={{ textAlign: "center", marginTop: 14, fontSize: 11.5, color: "var(--muted-fg)" }}>
             ¿Ya tienes cuenta?{" "}
             <button

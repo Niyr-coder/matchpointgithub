@@ -80,13 +80,28 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     if (error) {
       // Supabase returns specific codes for the most common failures.
       if (error.message.toLowerCase().includes("registered")) {
-        throw new MpError("AUTH.EMAIL_TAKEN", "Email already registered", 409);
+        throw new MpError(
+          "AUTH.EMAIL_TAKEN",
+          "Este correo ya está registrado. Inicia sesión o usa otro.",
+          409,
+        );
       }
-      throw new MpError("AUTH.SIGNUP_FAILED", error.message, 400);
+      // El error.message original viene en inglés directamente de Supabase;
+      // lo envolvemos en un mensaje genérico en español para no exponer copy
+      // en otro idioma a usuarios finales (CLAUDE.md: tono ES-Ec neutro).
+      throw new MpError(
+        "AUTH.SIGNUP_FAILED",
+        "No pudimos crear tu cuenta. Revisa los datos e inténtalo de nuevo.",
+        400,
+      );
     }
 
     if (!signUpData.user) {
-      throw new MpError("AUTH.SIGNUP_PENDING", "Confirm your email to finish sign-up", 202);
+      throw new MpError(
+        "AUTH.SIGNUP_PENDING",
+        "Revisa tu correo para confirmar tu cuenta.",
+        202,
+      );
     }
 
     // Trigger tg_handle_new_auth_user already inserted profile + role 'user'.
@@ -126,7 +141,11 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
       password: data.password,
     });
     if (error) {
-      throw new MpError("AUTH.INVALID_CREDENTIALS", "Email or password incorrect", 401);
+      throw new MpError(
+        "AUTH.INVALID_CREDENTIALS",
+        "Correo o contraseña incorrectos.",
+        401,
+      );
     }
 
     const session = await buildSession();
@@ -443,7 +462,10 @@ export async function signInFromForm(prevState: unknown, formData: FormData) {
 
 export async function signOutAndRedirect() {
   await signOut();
-  redirect("/login");
+  // Redirige al landing con flag que dispara el toast "Cerraste sesión".
+  // Histórico: redirigía a /login, pero hoy /login depende de OAuth — dejaba
+  // al usuario en un dead-end si OAuth estaba roto (ver MAT-52 F3).
+  redirect("/?logout=ok");
 }
 
 export async function requestPasswordResetFromForm(
