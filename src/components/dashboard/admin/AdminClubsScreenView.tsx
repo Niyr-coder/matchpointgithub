@@ -117,121 +117,164 @@ function RowMenu({
   const isActive = club.status === "verified";
   const isPaidPlan = club.planTier === "pro" || club.planTier === "partner";
 
+  // Construimos la lista de items dinámicamente para insertar separadores
+  // (border-top) entre items sin tener que pensar adjacencias hardcoded —
+  // mismo patrón que el kebab de TeamScreenView.
+  type Item = {
+    key: string;
+    icon: string;
+    iconColor?: string;
+    label: string;
+    onClick: () => void;
+    danger?: boolean;
+  };
+  const items: Item[] = [];
+  if (isActive) {
+    items.push({
+      key: "suspend",
+      icon: "ban",
+      iconColor: "#dc2626",
+      label: "Suspender club",
+      onClick: doSuspend,
+      danger: true,
+    });
+  } else {
+    items.push({
+      key: "activate",
+      icon: "check-circle-2",
+      iconColor: "var(--primary)",
+      label: "Reactivar club",
+      onClick: doActivate,
+    });
+  }
+  if (club.planTier === "starter") {
+    items.push(
+      {
+        key: "grant-pro",
+        icon: "zap",
+        iconColor: "var(--primary)",
+        label: "Activar Club Pro",
+        onClick: () => {
+          setOpen(false);
+          onGrantPlan("pro");
+        },
+      },
+      {
+        key: "grant-partner",
+        icon: "handshake",
+        iconColor: "var(--primary)",
+        label: "Activar Partner",
+        onClick: () => {
+          setOpen(false);
+          onGrantPlan("partner");
+        },
+      },
+    );
+  }
+  if (isPaidPlan) {
+    items.push(
+      {
+        key: "extend",
+        icon: "rotate-cw",
+        iconColor: "var(--primary)",
+        label: `Extender ${club.planTier === "pro" ? "Club Pro" : "Partner"}`,
+        onClick: () => {
+          setOpen(false);
+          onGrantPlan(club.planTier as "pro" | "partner");
+        },
+      },
+      {
+        key: "revoke",
+        icon: "x-circle",
+        iconColor: "#dc2626",
+        label: "Revocar plan",
+        onClick: () => {
+          setOpen(false);
+          onRevokePlan();
+        },
+        danger: true,
+      },
+    );
+  }
+
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", display: "inline-block" }}>
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={isPending}
+        aria-label="Opciones del club"
         style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: open ? "var(--primary)" : "var(--muted)",
-          color: open ? "#fff" : "#0a0a0a",
-          border: 0,
+          width: 26,
+          height: 26,
+          borderRadius: 9999,
+          border: "1px solid var(--border)",
+          background: "#fff",
           cursor: "pointer",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Icon name="more-horizontal" size={13} color={open ? "#fff" : "#0a0a0a"} />
+        <Icon name="more-horizontal" size={12} color="var(--muted-fg)" />
       </button>
       {open && (
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 50 }}
             onClick={() => setOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 40 }}
           />
           <div
             style={{
               position: "absolute",
               right: 0,
-              top: 36,
-              minWidth: 180,
+              top: 32,
+              zIndex: 41,
               background: "#fff",
               border: "1px solid var(--border)",
               borderRadius: 10,
-              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
-              zIndex: 51,
-              padding: 6,
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+              minWidth: 200,
+              overflow: "hidden",
+              color: "#0a0a0a",
             }}
           >
-            {isActive ? (
+            {items.map((it, idx) => (
               <button
-                onClick={doSuspend}
-                style={MENU_BTN_STYLE}
+                key={it.key}
+                onClick={it.onClick}
+                disabled={isPending}
+                style={{
+                  ...TEAM_ITEM_STYLE,
+                  color: it.danger ? "#dc2626" : "#0a0a0a",
+                  borderTop: idx === 0 ? 0 : "1px solid var(--border)",
+                }}
               >
-                <Icon name="ban" size={12} color="#dc2626" />
-                Suspender club
+                <Icon name={it.icon} size={13} color={it.iconColor ?? "var(--muted-fg)"} />
+                {it.label}
               </button>
-            ) : (
-              <button
-                onClick={doActivate}
-                style={MENU_BTN_OK_STYLE}
-              >
-                <Icon name="check-circle-2" size={12} color="var(--primary)" />
-                Reactivar club
-              </button>
-            )}
-            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
-            {club.planTier === "starter" && (
-              <>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    onGrantPlan("pro");
-                  }}
-                  style={MENU_BTN_OK_STYLE}
-                >
-                  <Icon name="zap" size={12} color="var(--primary)" />
-                  Activar Club Pro
-                </button>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    onGrantPlan("partner");
-                  }}
-                  style={MENU_BTN_OK_STYLE}
-                >
-                  <Icon name="handshake" size={12} color="var(--primary)" />
-                  Activar Partner
-                </button>
-              </>
-            )}
-            {isPaidPlan && (
-              <>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    onGrantPlan(club.planTier as "pro" | "partner");
-                  }}
-                  style={MENU_BTN_OK_STYLE}
-                >
-                  <Icon name="rotate-cw" size={12} color="var(--primary)" />
-                  Extender {club.planTier === "pro" ? "Club Pro" : "Partner"}
-                </button>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    onRevokePlan();
-                  }}
-                  style={MENU_BTN_STYLE}
-                >
-                  <Icon name="x-circle" size={12} color="#dc2626" />
-                  Revocar plan
-                </button>
-              </>
-            )}
+            ))}
           </div>
         </>
       )}
     </div>
   );
 }
+
+// Patrón de item del dropdown — mismo styling que el kebab de TeamScreenView.
+const TEAM_ITEM_STYLE: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "9px 12px",
+  background: "transparent",
+  border: 0,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 700,
+  textAlign: "left",
+};
 
 function PendingAppRow({
   app,
@@ -675,27 +718,6 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
     </>
   );
 }
-
-// ── Estilos compartidos de items del RowMenu ────────────────────────────
-const MENU_BTN_STYLE: React.CSSProperties = {
-  padding: "8px 12px",
-  border: 0,
-  background: "transparent",
-  textAlign: "left",
-  fontFamily: "inherit",
-  fontSize: 12,
-  color: "#dc2626",
-  cursor: "pointer",
-  borderRadius: 6,
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-};
-
-const MENU_BTN_OK_STYLE: React.CSSProperties = {
-  ...MENU_BTN_STYLE,
-  color: "var(--primary)",
-};
 
 // ── PlanBadge ───────────────────────────────────────────────────────────
 const PLAN_LABEL: Record<ClubPlan, string> = {
