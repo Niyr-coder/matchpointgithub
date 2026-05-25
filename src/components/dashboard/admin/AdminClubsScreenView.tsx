@@ -10,6 +10,10 @@ import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { suspendClub, activateClub } from "@/server/actions/clubs";
 import {
+  grantClubPlanAdmin,
+  revokeClubPlanAdmin,
+} from "@/server/actions/admin/club-plans";
+import {
   quickApproveApplication,
   rejectApplication,
 } from "@/server/actions/clubApplicationsAdmin";
@@ -17,6 +21,7 @@ import { getApplicationDetail } from "@/server/actions/clubApplications";
 import { downloadCsv } from "@/lib/export/csv";
 
 export type Status = "verified" | "pending" | "rejected";
+export type ClubPlan = "starter" | "pro" | "partner";
 export type ClubRow = {
   id: string;
   name: string;
@@ -27,6 +32,8 @@ export type ClubRow = {
   status: Status;
   founded: string;
   tier: "PRO" | "NEW" | "STD" | "X";
+  planTier: ClubPlan;
+  planExpiresAt: string | null;
 };
 export type PendingApplication = {
   id: string;
@@ -59,7 +66,15 @@ const ST_LABEL: Record<Status, string> = {
   rejected: "Rechazado",
 };
 
-function RowMenu({ club }: { club: ClubRow }) {
+function RowMenu({
+  club,
+  onGrantPlan,
+  onRevokePlan,
+}: {
+  club: ClubRow;
+  onGrantPlan: (tier: "pro" | "partner") => void;
+  onRevokePlan: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
@@ -100,6 +115,7 @@ function RowMenu({ club }: { club: ClubRow }) {
   };
 
   const isActive = club.status === "verified";
+  const isPaidPlan = club.planTier === "pro" || club.planTier === "partner";
 
   return (
     <div style={{ position: "relative" }}>
@@ -147,20 +163,7 @@ function RowMenu({ club }: { club: ClubRow }) {
             {isActive ? (
               <button
                 onClick={doSuspend}
-                style={{
-                  padding: "8px 12px",
-                  border: 0,
-                  background: "transparent",
-                  textAlign: "left",
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  color: "#dc2626",
-                  cursor: "pointer",
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
+                style={MENU_BTN_STYLE}
               >
                 <Icon name="ban" size={12} color="#dc2626" />
                 Suspender club
@@ -168,24 +171,60 @@ function RowMenu({ club }: { club: ClubRow }) {
             ) : (
               <button
                 onClick={doActivate}
-                style={{
-                  padding: "8px 12px",
-                  border: 0,
-                  background: "transparent",
-                  textAlign: "left",
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  color: "var(--primary)",
-                  cursor: "pointer",
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
+                style={MENU_BTN_OK_STYLE}
               >
                 <Icon name="check-circle-2" size={12} color="var(--primary)" />
                 Reactivar club
               </button>
+            )}
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+            {club.planTier === "starter" && (
+              <>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onGrantPlan("pro");
+                  }}
+                  style={MENU_BTN_OK_STYLE}
+                >
+                  <Icon name="zap" size={12} color="var(--primary)" />
+                  Activar Club Pro
+                </button>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onGrantPlan("partner");
+                  }}
+                  style={MENU_BTN_OK_STYLE}
+                >
+                  <Icon name="handshake" size={12} color="var(--primary)" />
+                  Activar Partner
+                </button>
+              </>
+            )}
+            {isPaidPlan && (
+              <>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onGrantPlan(club.planTier as "pro" | "partner");
+                  }}
+                  style={MENU_BTN_OK_STYLE}
+                >
+                  <Icon name="rotate-cw" size={12} color="var(--primary)" />
+                  Extender {club.planTier === "pro" ? "Club Pro" : "Partner"}
+                </button>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onRevokePlan();
+                  }}
+                  style={MENU_BTN_STYLE}
+                >
+                  <Icon name="x-circle" size={12} color="#dc2626" />
+                  Revocar plan
+                </button>
+              </>
             )}
           </div>
         </>
@@ -488,6 +527,12 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
   const [f, setF] = useState<"all" | Status>("all");
   const filtered = f === "all" ? data.rows : data.rows.filter((c) => c.status === f);
 
+  const [dialog, setDialog] = useState<
+    | { kind: "grant"; club: ClubRow; tier: "pro" | "partner" }
+    | { kind: "revoke"; club: ClubRow }
+    | null
+  >(null);
+
   const cols: RSColumn<ClubRow>[] = [
     {
       k: "name",
@@ -545,10 +590,21 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
       render: (c) => <RSPill bg={ST_COLOR[c.status]}>{ST_LABEL[c.status]}</RSPill>,
     },
     {
+      k: "plan",
+      l: "Plan",
+      render: (c) => <PlanBadge tier={c.planTier} expiresAt={c.planExpiresAt} />,
+    },
+    {
       k: "a",
       l: "",
       align: "right",
-      render: (c) => <RowMenu club={c} />,
+      render: (c) => (
+        <RowMenu
+          club={c}
+          onGrantPlan={(tier) => setDialog({ kind: "grant", club: c, tier })}
+          onRevokePlan={() => setDialog({ kind: "revoke", club: c })}
+        />
+      ),
     },
   ];
 
@@ -603,6 +659,368 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
         ]}
       />
       <RSTable cols={cols} rows={filtered} rowKey={(c) => c.id} />
+      {dialog?.kind === "grant" && (
+        <GrantClubPlanDialog
+          club={dialog.club}
+          tier={dialog.tier}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "revoke" && (
+        <RevokeClubPlanDialog
+          club={dialog.club}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </>
   );
 }
+
+// ── Estilos compartidos de items del RowMenu ────────────────────────────
+const MENU_BTN_STYLE: React.CSSProperties = {
+  padding: "8px 12px",
+  border: 0,
+  background: "transparent",
+  textAlign: "left",
+  fontFamily: "inherit",
+  fontSize: 12,
+  color: "#dc2626",
+  cursor: "pointer",
+  borderRadius: 6,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const MENU_BTN_OK_STYLE: React.CSSProperties = {
+  ...MENU_BTN_STYLE,
+  color: "var(--primary)",
+};
+
+// ── PlanBadge ───────────────────────────────────────────────────────────
+const PLAN_LABEL: Record<ClubPlan, string> = {
+  starter: "Starter",
+  pro: "Club Pro",
+  partner: "Partner",
+};
+
+function PlanBadge({ tier, expiresAt }: { tier: ClubPlan; expiresAt: string | null }) {
+  const isPaid = tier !== "starter";
+  return (
+    <span
+      title={isPaid && expiresAt ? `Vence: ${fmtExpiryDate(expiresAt)}` : isPaid ? "Sin vencimiento" : "Plan gratuito"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 8px",
+        borderRadius: 9999,
+        background: isPaid ? "#ecfdf5" : "var(--muted)",
+        border: isPaid ? "1px solid #10b981" : "1px solid var(--border)",
+        color: isPaid ? "#047857" : "var(--muted-fg)",
+        fontSize: 10,
+        fontWeight: 900,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+      }}
+    >
+      {isPaid && <Icon name={tier === "partner" ? "handshake" : "zap"} size={9} color="#047857" />}
+      {PLAN_LABEL[tier]}
+    </span>
+  );
+}
+
+function fmtExpiryDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-EC", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// ── Dialogs grant/revoke plan club ──────────────────────────────────────
+function GrantClubPlanDialog({
+  club,
+  tier,
+  onClose,
+}: {
+  club: ClubRow;
+  tier: "pro" | "partner";
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [months, setMonths] = useState<number | null>(tier === "partner" ? null : 1);
+  const [reason, setReason] = useState("");
+  const extending = club.planTier === tier;
+
+  const handleConfirm = () => {
+    startTransition(async () => {
+      const res = await grantClubPlanAdmin({
+        clubId: club.id,
+        tier,
+        durationMonths: months,
+        reason: reason.trim() || undefined,
+      });
+      if (res.ok) {
+        toast({
+          icon: "check-circle-2",
+          title: `${tier === "pro" ? "Club Pro" : "Partner"} activado`,
+          sub: res.data.expiresAt
+            ? `Vence: ${fmtExpiryDate(res.data.expiresAt)}`
+            : "Sin vencimiento",
+        });
+        onClose();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
+  return (
+    <ClubPlanModalShell onClose={onClose}>
+      <h3
+        className="font-heading"
+        style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
+      >
+        {extending ? "Extender" : "Activar"} {tier === "pro" ? "Club Pro" : "Partner"} · {club.name}
+      </h3>
+      <p
+        style={{ margin: "8px 0 16px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}
+      >
+        El plan se activa inmediatamente, sin pasar por comprobante.{" "}
+        {extending && club.planExpiresAt
+          ? `Plan vigente vence el ${fmtExpiryDate(club.planExpiresAt)}; los meses se suman desde esa fecha.`
+          : null}
+      </p>
+
+      <ClubPlanFieldLabel>Duración</ClubPlanFieldLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 14 }}>
+        {[1, 3, 6, 12].map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMonths(m)}
+            style={{
+              padding: "10px 6px",
+              borderRadius: 8,
+              border: months === m ? "2px solid var(--primary)" : "1px solid var(--border)",
+              background: months === m ? "#ecfdf5" : "#fff",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 12.5,
+              fontWeight: 900,
+            }}
+          >
+            {m} {m === 1 ? "mes" : "meses"}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setMonths(null)}
+          style={{
+            padding: "10px 6px",
+            borderRadius: 8,
+            border: months === null ? "2px solid var(--primary)" : "1px solid var(--border)",
+            background: months === null ? "#ecfdf5" : "#fff",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 12.5,
+            fontWeight: 900,
+          }}
+        >
+          Indefinido
+        </button>
+      </div>
+
+      <ClubPlanFieldLabel>Motivo (opcional)</ClubPlanFieldLabel>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        maxLength={500}
+        placeholder="Ej: contrato anual firmado, prueba piloto, partner inaugural"
+        style={CLUB_PLAN_TEXTAREA_STYLE}
+      />
+
+      <ClubPlanDialogFooter>
+        <ClubPlanSecondaryBtn onClick={onClose} disabled={pending}>
+          Cancelar
+        </ClubPlanSecondaryBtn>
+        <button
+          onClick={handleConfirm}
+          disabled={pending}
+          className="btn btn-primary"
+          style={{ opacity: pending ? 0.6 : 1 }}
+        >
+          <Icon name={tier === "partner" ? "handshake" : "zap"} size={13} color="#fff" />
+          {pending
+            ? "Activando…"
+            : months === null
+              ? "Activar sin vencimiento"
+              : `Activar ${months} ${months === 1 ? "mes" : "meses"}`}
+        </button>
+      </ClubPlanDialogFooter>
+    </ClubPlanModalShell>
+  );
+}
+
+function RevokeClubPlanDialog({
+  club,
+  onClose,
+}: {
+  club: ClubRow;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [reason, setReason] = useState("");
+  const canSubmit = reason.trim().length >= 2;
+
+  const handleConfirm = () => {
+    if (!canSubmit) return;
+    startTransition(async () => {
+      const res = await revokeClubPlanAdmin({ clubId: club.id, reason: reason.trim() });
+      if (res.ok) {
+        toast({ icon: "check", title: "Plan del club revocado", sub: club.name });
+        onClose();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
+  return (
+    <ClubPlanModalShell onClose={onClose}>
+      <h3
+        className="font-heading"
+        style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
+      >
+        Revocar plan de {club.name}
+      </h3>
+      <p
+        style={{ margin: "8px 0 16px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}
+      >
+        El club vuelve a Starter inmediatamente. Las suscripciones activas
+        quedan canceladas con el motivo en el audit log.
+      </p>
+
+      <ClubPlanFieldLabel>Motivo (obligatorio)</ClubPlanFieldLabel>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={3}
+        maxLength={500}
+        placeholder="Ej: fin de contrato, falta de pago, downgrade solicitado"
+        style={CLUB_PLAN_TEXTAREA_STYLE}
+      />
+
+      <ClubPlanDialogFooter>
+        <ClubPlanSecondaryBtn onClick={onClose} disabled={pending}>
+          Cancelar
+        </ClubPlanSecondaryBtn>
+        <button
+          onClick={handleConfirm}
+          disabled={pending || !canSubmit}
+          className="btn"
+          style={{
+            background: "#dc2626",
+            color: "#fff",
+            opacity: pending || !canSubmit ? 0.6 : 1,
+          }}
+        >
+          <Icon name="x-circle" size={13} color="#fff" />
+          {pending ? "Revocando…" : "Revocar plan"}
+        </button>
+      </ClubPlanDialogFooter>
+    </ClubPlanModalShell>
+  );
+}
+
+// ── Modal helpers (locales a este screen) ───────────────────────────────
+function ClubPlanModalShell({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480 }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ClubPlanFieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      style={{
+        display: "block",
+        fontSize: 11,
+        fontWeight: 900,
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        marginBottom: 6,
+      }}
+    >
+      {children}
+    </label>
+  );
+}
+
+function ClubPlanDialogFooter({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+      {children}
+    </div>
+  );
+}
+
+function ClubPlanSecondaryBtn({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="btn"
+      style={{ background: "#fff", border: "1px solid var(--border)" }}
+    >
+      {children}
+    </button>
+  );
+}
+
+const CLUB_PLAN_TEXTAREA_STYLE: React.CSSProperties = {
+  width: "100%",
+  padding: 12,
+  border: "1px solid var(--border)",
+  borderRadius: 10,
+  fontFamily: "inherit",
+  fontSize: 13,
+  resize: "vertical",
+};

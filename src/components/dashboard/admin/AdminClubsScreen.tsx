@@ -36,12 +36,15 @@ async function loadData(): Promise<ClubsData> {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const { data: clubs } = await supabase
+  // plan_tier + plan_expires_at vienen de mig 174. Tipos aún sin regenerar:
+  // se castean como any en el view (mismo patrón que user_suspensions).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: clubs } = await (supabase as any)
     .from("clubs")
-    .select("id,name,city,country,status,created_at")
+    .select("id,name,city,country,status,created_at,plan_tier,plan_expires_at")
     .order("created_at", { ascending: false });
 
-  const clubIds = (clubs ?? []).map((c) => c.id as string);
+  const clubIds = (clubs ?? []).map((c: Record<string, unknown>) => c.id as string);
   const courtsByClub = new Map<string, number>();
   const membersByClub = new Map<string, number>();
   const revByClub = new Map<string, number>();
@@ -119,10 +122,22 @@ async function loadData(): Promise<ClubsData> {
     contactEmail: (a.contact_email as string | null) ?? null,
   }));
 
-  const rows: ClubRow[] = (clubs ?? []).map((c) => {
+  const nowMs = now.getTime();
+  const rows: ClubRow[] = (clubs ?? []).map((c: Record<string, unknown>) => {
     const status = mapStatus(c.status as string);
     const createdAt = new Date(c.created_at as string);
     const revCents = revByClub.get(c.id as string) ?? 0;
+    const rawPlan = ((c.plan_tier as string) ?? "starter") as
+      | "starter"
+      | "pro"
+      | "partner";
+    const planExpiresAt = (c.plan_expires_at as string | null) ?? null;
+    // Plan efectivo: si expiró, contamos como starter (espejo de getPlanForClub).
+    const planActive =
+      rawPlan === "starter" ||
+      planExpiresAt == null ||
+      Date.parse(planExpiresAt) > nowMs;
+    const effectivePlan = planActive ? rawPlan : "starter";
     return {
       id: c.id as string,
       name: c.name as string,
@@ -133,6 +148,8 @@ async function loadData(): Promise<ClubsData> {
       status,
       founded: fmtFounded(c.created_at as string, now),
       tier: tierFor(status, revCents, createdAt, now),
+      planTier: effectivePlan,
+      planExpiresAt,
     };
   });
 
