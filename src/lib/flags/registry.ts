@@ -96,6 +96,74 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     impact: "high",
     wired: true,
   },
+
+  // ── Kill-switches de paywalls (mig 172) ────────────────────────────────
+  // Sembrados en false. Cuando un caller los cablea con requirePlanWithFlag,
+  // marcar wired=true y agregar la superficie correspondiente.
+  {
+    key: "paywall_enforce_coach_ai",
+    label: "Paywall · Coach AI",
+    description: "Encendido = solo usuarios MATCHPOINT+ pueden usar Coach AI. Apagado = todos pueden (estado inicial).",
+    surfaces: ["pending: src/components/dashboard/user/CoachAIScreen.tsx + server action"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_player_history",
+    label: "Paywall · Historial de perfil ajeno",
+    description: "Encendido = free ve solo 10 partidos en perfiles ajenos; premium ilimitado. Apagado = todos ven sin cap.",
+    surfaces: ["pending: src/app/players/[username]/page.tsx"],
+    impact: "low",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_match_seek_cap",
+    label: "Paywall · Cap de busco-partido",
+    description: "Encendido = free limitado a N avisos simultáneos (platform_config.match_seek_max_open_per_user); premium ilimitado.",
+    surfaces: ["pending: src/server/actions/match-seeks.ts"],
+    impact: "low",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_profile_customization",
+    label: "Paywall · Personalización de perfil",
+    description: "Encendido = customizaciones premium solo para MP+ o dueños de bundle. Apagado = panel abierto a todos.",
+    surfaces: ["pending: src/server/actions/profile-customization.ts"],
+    impact: "low",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_club_finanzas_advanced",
+    label: "Paywall · Club Finanzas avanzado",
+    description: "Encendido = analytics avanzados (heatmap, cohorts, export histórico) solo para clubes con plan Pro.",
+    surfaces: ["pending: src/components/dashboard/club/ClubFinanzasScreen.tsx"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_club_marketing",
+    label: "Paywall · Club Marketing",
+    description: "Encendido = sección Marketing del club solo para MP Club Pro. Combina con el flag pre-existente club_marketing_enabled (kill-switch global).",
+    surfaces: ["pending: src/components/dashboard/owner/ClubMarketingScreen.tsx"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_club_memberships",
+    label: "Paywall · Membresías de club",
+    description: "Encendido = motor de membresías solo para MP Club Pro. Combina con club_memberships_v2 (kill-switch global).",
+    surfaces: ["pending: src/components/dashboard/club/ClubMembresiasScreen.tsx"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "paywall_enforce_partner_tournaments_cap",
+    label: "Paywall · Cap de torneos para partner",
+    description: "Encendido = partners free limitados a N torneos activos simultáneos; premium ilimitado.",
+    surfaces: ["pending: src/server/actions/tournaments.ts (createTournament)"],
+    impact: "med",
+    wired: false,
+  },
 ];
 
 const MAP: Record<string, KnownFlag> = Object.fromEntries(KNOWN_FLAGS.map((f) => [f.key, f]));
