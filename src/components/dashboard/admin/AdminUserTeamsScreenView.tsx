@@ -100,11 +100,13 @@ export function AdminUserTeamsScreenView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // El menú flotante usa position: fixed con coords del botón disparador
   // (de lo contrario lo recorta el overflow:hidden de la card de la tabla).
-  // Guardamos el HTMLElement del trigger para que RowMenu pueda recalcular
-  // su posición en scroll/resize (sigue al botón en vez de cerrarse).
+  // triggerBottom/Top guardan ambas coords del trigger para que RowMenu
+  // pueda decidir si abrir hacia abajo o hacia arriba según el espacio.
   const [rowMenu, setRowMenu] = useState<{
     id: string;
-    triggerEl: HTMLElement;
+    triggerTop: number;
+    triggerBottom: number;
+    right: number;
   } | null>(null);
   const [grantTarget, setGrantTarget] = useState<AdminTeamRow | null>(null);
   const [statusTarget, setStatusTarget] = useState<{
@@ -1058,7 +1060,13 @@ export function AdminUserTeamsScreenView({
                       setRowMenu(null);
                       return;
                     }
-                    setRowMenu({ id: t.id, triggerEl: e.currentTarget });
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setRowMenu({
+                      id: t.id,
+                      triggerTop: rect.top,
+                      triggerBottom: rect.bottom,
+                      right: window.innerWidth - rect.right,
+                    });
                   }}
                   style={{
                     width: 28,
@@ -1379,7 +1387,9 @@ export function AdminUserTeamsScreenView({
           if (!t) return null;
           return (
             <RowMenu
-              triggerEl={rowMenu.triggerEl}
+              triggerTop={rowMenu.triggerTop}
+              triggerBottom={rowMenu.triggerBottom}
+              right={rowMenu.right}
               onClose={() => setRowMenu(null)}
               items={(() => {
                 const items: MenuItem[] = [
@@ -1657,51 +1667,59 @@ type MenuItem =
 function RowMenu({
   items,
   onClose,
-  triggerEl,
+  triggerTop,
+  triggerBottom,
+  right,
 }: {
   items: MenuItem[];
   onClose: () => void;
-  triggerEl: HTMLElement;
+  triggerTop: number;
+  triggerBottom: number;
+  right: number;
 }) {
-  // Portaleamos a document.body para escapar de cualquier ancestor con
-  // transform/filter (la sidebar de MP genera containing block que rompe
-  // position:fixed).
+  // Portaleamos el dropdown a document.body. Si lo dejamos en el árbol del
+  // dashboard, position:fixed se rompe ante cualquier ancestor con `transform`
+  // o `filter` (la sidebar animada en MP genera un containing block) — el
+  // menú termina anclado al ancestor en vez del viewport y se "mueve con la
+  // pantalla". Portalear a body lo desconecta de esos ancestros.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Ref del propio menú para medir su altura y posicionar relativo al
-  // trigger en cada update.
-  const [node, setNode] = useState<HTMLDivElement | null>(null);
-  const menuRef = useCallback((n: HTMLDivElement | null) => setNode(n), []);
-
-  // Posición calculada (top + right + placement). Se recalcula con cada
-  // scroll/resize leyendo getBoundingClientRect del trigger — el menú
-  // sigue al botón en vez de cerrarse.
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
-
-  useEffect(() => {
+  // Flip vertical: si no hay espacio abajo del trigger para el menú completo,
+  // lo abrimos hacia arriba. Medimos la altura real del menú con un layout
+  // effect después del primer paint y reposicionamos en estado.
+  const [pos, setPos] = useState<{ top: number; placement: "below" | "above" }>(
+    { top: triggerBottom + 4, placement: "below" },
+  );
+  const menuRef = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
-    const reposition = () => {
-      const rect = triggerEl.getBoundingClientRect();
-      const right = window.innerWidth - rect.right;
-      const menuH = node.offsetHeight;
-      const spaceBelow = window.innerHeight - rect.bottom - 8;
-      let top: number;
-      if (menuH > spaceBelow && rect.top > menuH + 8) {
-        top = rect.top - menuH - 4;
-      } else {
-        top = Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menuH - 8));
-      }
-      setPos({ top, right });
-    };
-    reposition();
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
+    const menuH = node.offsetHeight;
+    const spaceBelow = window.innerHeight - triggerBottom - 8;
+    if (menuH > spaceBelow && triggerTop > menuH + 8) {
+      setPos({ top: triggerTop - menuH - 4, placement: "above" });
+    } else {
+      // Si tampoco entra arriba, clampamos al viewport y dejamos abajo —
+      // raro pero no debería romper.
+      const clamped = Math.max(
+        8,
+        Math.min(triggerBottom + 4, window.innerHeight - menuH - 8),
+      );
+      setPos({ top: clamped, placement: "below" });
+    }
+  }, [triggerTop, triggerBottom]);
+
+  // En scroll o resize, cerramos: la posición fue capturada al hacer click,
+  // si el row se mueve, dejar el menú flotando ahí queda raro. Cerrar es la
+  // UX estándar y evita tener que retro-calcular vs el trigger original.
+  useEffect(() => {
+    const close = () => onClose();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, [node, triggerEl]);
+  }, [onClose]);
 
   if (!mounted) return null;
 
@@ -1716,10 +1734,8 @@ function RowMenu({
         ref={menuRef}
         style={{
           position: "fixed",
-          // Antes del primer reposition (pos=null), renderizamos fuera de
-          // viewport para que el menú se mida sin parpadeo de posición fija.
-          top: pos?.top ?? -9999,
-          right: pos?.right ?? 0,
+          top: pos.top,
+          right,
           width: 240,
           background: "#fff",
           borderRadius: 12,
@@ -1728,7 +1744,6 @@ function RowMenu({
           zIndex: 200,
           overflow: "hidden",
           fontSize: 12,
-          visibility: pos ? "visible" : "hidden",
         }}
       >
         {items.map((it, idx) => {
