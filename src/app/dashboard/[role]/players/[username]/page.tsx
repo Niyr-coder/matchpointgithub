@@ -91,13 +91,53 @@ export default async function PublicPlayerProfilePage({
 
   const data = await loadProfileFor(profile.id, { matchHistoryCap });
 
+  // Badge de suspensión: si el target tiene una suspensión activa (mig 173),
+  // mostramos un banner arriba del perfil. El perfil sigue visible — solo lo
+  // marcamos. El motivo NO se expone públicamente; solo admin lo ve en
+  // /dashboard/admin/admin-users.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: suspension } = await (supabase as any)
+    .from("user_suspensions")
+    .select("id")
+    .eq("user_id", profile.id)
+    .is("reactivated_at", null)
+    .limit(1)
+    .maybeSingle();
+
   return (
-    <ProfileScreenView
-      data={data}
-      viewerMode="public"
-      viewerIsPremium={viewerIsPremium}
-      initialFriendship={initialFriendship}
-    />
+    <>
+      {suspension && <SuspendedAccountBanner />}
+      <ProfileScreenView
+        data={data}
+        viewerMode="public"
+        viewerIsPremium={viewerIsPremium}
+        initialFriendship={initialFriendship}
+      />
+    </>
+  );
+}
+
+function SuspendedAccountBanner() {
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        padding: "12px 16px",
+        background: "#fee2e2",
+        border: "1px solid #fca5a5",
+        borderRadius: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <Icon name="ban" size={16} color="#b91c1c" />
+      <div style={{ fontSize: 12.5, color: "#7f1d1d" }}>
+        <b style={{ fontWeight: 900 }}>Cuenta suspendida.</b>{" "}
+        Este usuario no puede usar MATCHPOINT hasta nuevo aviso. Si necesitas
+        información, contacta a soporte.
+      </div>
+    </div>
   );
 }
 

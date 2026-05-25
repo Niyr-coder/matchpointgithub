@@ -40,8 +40,10 @@ async function loadData(): Promise<UsersData> {
   const matchesByUser = new Map<string, number>();
   const spendByUser = new Map<string, number>();
 
+  const suspensionByUser = new Map<string, { reason: string; suspendedAt: string }>();
+
   if (userIds.length > 0) {
-    const [{ data: stats }, { data: txns }] = await Promise.all([
+    const [{ data: stats }, { data: txns }, { data: suspensions }] = await Promise.all([
       supabase.from("player_stats").select("user_id,current_rating,matches_total").in("user_id", userIds),
       supabase
         .from("transactions")
@@ -49,7 +51,20 @@ async function loadData(): Promise<UsersData> {
         .in("customer_user_id", userIds)
         .eq("status", "captured")
         .gte("created_at", monthStart.toISOString()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("user_suspensions")
+        .select("user_id,reason,suspended_at")
+        .in("user_id", userIds)
+        .is("reactivated_at", null) as Promise<{ data: Array<{ user_id: string; reason: string; suspended_at: string }> | null }>,
     ]);
+
+    for (const s of suspensions ?? []) {
+      suspensionByUser.set(s.user_id as string, {
+        reason: s.reason as string,
+        suspendedAt: s.suspended_at as string,
+      });
+    }
 
     // Mejor rating por usuario (across sports) y suma de matches.
     for (const s of stats ?? []) {
@@ -77,6 +92,7 @@ async function loadData(): Promise<UsersData> {
     const expires = (p.plan_expires_at as string | null) ?? null;
     const planActive =
       tier === "premium" && (expires == null || Date.parse(expires) > nowMs);
+    const suspension = suspensionByUser.get(id);
     return {
       id,
       n: name,
@@ -84,13 +100,16 @@ async function loadData(): Promise<UsersData> {
       l: Math.round((elo / 1000) * 10) / 10, // ELO 2500 → 2.5
       city: (p.city as string) ?? "—",
       m: matchesByUser.get(id) ?? 0,
-      st: "active",
+      st: suspension ? "banned" : "active",
       av: initials(name),
       avBg: gradientFor(id),
       spend: `$${Math.round(spendCents / 100).toLocaleString("en-US")}`,
       avatarUrl: (p.avatar_url as string | null) ?? null,
       planTier: planActive ? "premium" : "free",
       planExpiresAt: expires,
+      suspended: Boolean(suspension),
+      suspensionReason: suspension?.reason ?? null,
+      suspendedAt: suspension?.suspendedAt ?? null,
     };
   });
 

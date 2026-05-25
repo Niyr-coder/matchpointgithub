@@ -13,6 +13,7 @@ import {
   grantMatchPointPlusAdmin,
   revokeMatchPointPlusAdmin,
 } from "@/server/actions/player-subscriptions";
+import { suspendUser, reactivateUser } from "@/server/actions/admin/users";
 
 export type UserStatus = "active" | "warned" | "banned";
 export type UserRow = {
@@ -29,6 +30,9 @@ export type UserRow = {
   avatarUrl: string | null;
   planTier: "free" | "premium";
   planExpiresAt: string | null;
+  suspended: boolean;
+  suspensionReason: string | null;
+  suspendedAt: string | null;
 };
 export type UsersData = { rows: UserRow[]; total: number };
 
@@ -62,6 +66,8 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
   const [dialog, setDialog] = useState<
     | { kind: "grant"; user: UserRow }
     | { kind: "revoke"; user: UserRow }
+    | { kind: "suspend"; user: UserRow }
+    | { kind: "reactivate"; user: UserRow }
     | null
   >(null);
 
@@ -186,6 +192,8 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
           user={u}
           onGrant={() => setDialog({ kind: "grant", user: u })}
           onRevoke={() => setDialog({ kind: "revoke", user: u })}
+          onSuspend={() => setDialog({ kind: "suspend", user: u })}
+          onReactivate={() => setDialog({ kind: "reactivate", user: u })}
         />
       ),
     },
@@ -239,6 +247,12 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.kind === "suspend" && (
+        <SuspendDialog user={dialog.user} onClose={() => setDialog(null)} />
+      )}
+      {dialog?.kind === "reactivate" && (
+        <ReactivateDialog user={dialog.user} onClose={() => setDialog(null)} />
+      )}
     </>
   );
 }
@@ -249,10 +263,14 @@ function RowMenu({
   user,
   onGrant,
   onRevoke,
+  onSuspend,
+  onReactivate,
 }: {
   user: UserRow;
   onGrant: () => void;
   onRevoke: () => void;
+  onSuspend: () => void;
+  onReactivate: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -344,6 +362,27 @@ function RowMenu({
                   }}
                 />
               </>
+            )}
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+            {user.suspended ? (
+              <MenuItem
+                icon="rotate-ccw"
+                label="Reactivar cuenta"
+                onClick={() => {
+                  setOpen(false);
+                  onReactivate();
+                }}
+              />
+            ) : (
+              <MenuItem
+                icon="ban"
+                danger
+                label="Suspender cuenta"
+                onClick={() => {
+                  setOpen(false);
+                  onSuspend();
+                }}
+              />
             )}
             </div>
           </>,
@@ -565,6 +604,141 @@ function RevokePlusDialog({
         >
           <Icon name="x-circle" size={13} color="#fff" />
           {pending ? "Revocando…" : "Revocar plan"}
+        </button>
+      </DialogFooter>
+    </ModalShell>
+  );
+}
+
+function SuspendDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [reason, setReason] = useState("");
+
+  const canSubmit = reason.trim().length >= 3;
+
+  const handleConfirm = () => {
+    if (!canSubmit) return;
+    startTransition(async () => {
+      const res = await suspendUser({ userId: user.id, reason: reason.trim() });
+      if (res.ok) {
+        toast({ icon: "check", title: "Cuenta suspendida", sub: user.n });
+        onClose();
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
+  return (
+    <ModalShell onClose={onClose}>
+      <h3
+        className="font-heading"
+        style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
+      >
+        Suspender cuenta de {user.n}
+      </h3>
+      <p
+        style={{ margin: "8px 0 16px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}
+      >
+        El usuario no podrá iniciar sesión ni operar (reservar, inscribirse a torneos
+        o eventos). Su sesión activa se cierra en el próximo request. El perfil
+        público se mantiene visible con badge de suspensión.
+      </p>
+
+      <FieldLabel>Motivo (obligatorio)</FieldLabel>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={3}
+        maxLength={1000}
+        placeholder="Ej: violación de términos, fraude, abuso reportado"
+        style={textareaStyle}
+      />
+
+      <DialogFooter>
+        <SecondaryBtn onClick={onClose} disabled={pending}>
+          Cancelar
+        </SecondaryBtn>
+        <button
+          onClick={handleConfirm}
+          disabled={pending || !canSubmit}
+          className="btn"
+          style={{
+            background: "#dc2626",
+            color: "#fff",
+            opacity: pending || !canSubmit ? 0.6 : 1,
+          }}
+        >
+          <Icon name="ban" size={13} color="#fff" />
+          {pending ? "Suspendiendo…" : "Suspender cuenta"}
+        </button>
+      </DialogFooter>
+    </ModalShell>
+  );
+}
+
+function ReactivateDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [reason, setReason] = useState("");
+
+  const handleConfirm = () => {
+    startTransition(async () => {
+      const res = await reactivateUser({
+        userId: user.id,
+        reason: reason.trim() || undefined,
+      });
+      if (res.ok) {
+        toast({ icon: "check", title: "Cuenta reactivada", sub: user.n });
+        onClose();
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
+  return (
+    <ModalShell onClose={onClose}>
+      <h3
+        className="font-heading"
+        style={{ margin: 0, fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}
+      >
+        Reactivar cuenta de {user.n}
+      </h3>
+      <p
+        style={{ margin: "8px 0 12px", fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.55 }}
+      >
+        El usuario podrá iniciar sesión y operar normalmente. La suspensión queda
+        en historial (motivo original: <i>{user.suspensionReason ?? "sin motivo registrado"}</i>).
+      </p>
+
+      <FieldLabel>Motivo de la reactivación (opcional)</FieldLabel>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        maxLength={1000}
+        placeholder="Ej: revisión completada, error administrativo, periodo cumplido"
+        style={textareaStyle}
+      />
+
+      <DialogFooter>
+        <SecondaryBtn onClick={onClose} disabled={pending}>
+          Cancelar
+        </SecondaryBtn>
+        <button
+          onClick={handleConfirm}
+          disabled={pending}
+          className="btn btn-primary"
+          style={{ opacity: pending ? 0.6 : 1 }}
+        >
+          <Icon name="rotate-ccw" size={13} color="#fff" />
+          {pending ? "Reactivando…" : "Reactivar cuenta"}
         </button>
       </DialogFooter>
     </ModalShell>

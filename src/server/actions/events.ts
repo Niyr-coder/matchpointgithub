@@ -221,6 +221,8 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
       { key: idemKey, scope: "registerEvent", userId, input: { id, paymentMode } },
       async () => {
         const supabase = await getServerClient();
+        const { assertNotSuspended } = await import("@/lib/auth/suspension");
+        await assertNotSuspended(supabase, userId);
         const { data: event } = await supabase
           .from("events")
           .select("status,capacity,price_cents,currency,club_id,payment_policy,members_only")

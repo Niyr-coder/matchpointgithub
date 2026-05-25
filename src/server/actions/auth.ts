@@ -263,12 +263,34 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
       ...RATE_LIMITS.authSensitive,
     });
     const supabase = await getServerClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
     });
     if (error) {
       throw mapSupabaseAuthError(error, "signIn");
+    }
+
+    // Bloqueo por suspensión: si el usuario tiene una suspensión activa
+    // (mig 173), cerramos la sesión recién creada y rechazamos el login.
+    // El check va aquí (post-auth) y no antes para evitar enumeración de
+    // emails — un atacante no debería poder distinguir "suspendido" de
+    // "no existe" sin la contraseña correcta.
+    if (signInData.user?.id) {
+      const { isUserSuspended, getSuspensionInfo } = await import(
+        "@/lib/auth/suspension"
+      );
+      if (await isUserSuspended(supabase, signInData.user.id)) {
+        const info = await getSuspensionInfo(supabase, signInData.user.id);
+        await supabase.auth.signOut();
+        throw new MpError(
+          "ACCOUNT.SUSPENDED",
+          info?.reason
+            ? `Cuenta suspendida: ${info.reason}`
+            : "Tu cuenta está suspendida. Contacta a soporte.",
+          403,
+        );
+      }
     }
 
     const session = await buildSession();

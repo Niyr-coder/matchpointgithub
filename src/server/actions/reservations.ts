@@ -153,6 +153,8 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
       { key: idemKey, scope: "createReservation", userId, input: data },
       async () => {
         const supabase = await getServerClient();
+        const { assertNotSuspended } = await import("@/lib/auth/suspension");
+        await assertNotSuspended(supabase, userId);
 
         // Ventana de reserva: no permitir reservar más allí del horizonte del club.
         const { data: settings } = await supabase

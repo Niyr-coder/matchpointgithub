@@ -366,6 +366,8 @@ export async function registerToTournament(
       { key: idemKey, scope: "registerTournament", userId, input: { tournamentId, body, paymentMode } },
       async () => {
         const supabase = await getServerClient();
+        const { assertNotSuspended } = await import("@/lib/auth/suspension");
+        await assertNotSuspended(supabase, userId);
         const { data: t } = await supabase
           .from("tournaments")
           .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy")

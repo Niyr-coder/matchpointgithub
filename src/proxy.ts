@@ -79,6 +79,31 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // ── Suspension gate ────────────────────────────────────────────────────
+  // Si el usuario tiene una suspensión activa (mig 173), cerramos su sesión
+  // y lo botamos a /login?suspended=1. Solo corremos esta query en rutas
+  // protegidas para no agregar latencia a la landing. El index único parcial
+  // sobre user_suspensions(user_id) where reactivated_at is null hace el
+  // lookup O(log n).
+  if (isProtected && user) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: suspension } = await (supabase as any)
+      .from("user_suspensions")
+      .select("id")
+      .eq("user_id", user.id)
+      .is("reactivated_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (suspension) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = "";
+      url.searchParams.set("suspended", "1");
+      return NextResponse.redirect(url);
+    }
+  }
+
   return response;
 }
 

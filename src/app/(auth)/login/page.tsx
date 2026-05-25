@@ -8,10 +8,16 @@ import { redirect } from "next/navigation";
 export default async function LoginRedirect({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; intent?: string }>;
+  searchParams: Promise<{ next?: string; intent?: string; suspended?: string }>;
 }) {
-  const { next, intent } = await searchParams;
+  const { next, intent, suspended } = await searchParams;
   const auth = intent === "signup" ? "signup" : "signin";
-  const qs = new URLSearchParams({ auth, ...(next ? { next } : {}) });
+  // ?suspended=1 viene del proxy cuando bota a un usuario con suspensión activa
+  // (mig 173). Se preserva para que el landing/auth modal pueda mostrar el aviso.
+  const qs = new URLSearchParams({
+    auth,
+    ...(next ? { next } : {}),
+    ...(suspended === "1" ? { suspended: "1" } : {}),
+  });
   redirect(`/?${qs.toString()}`);
 }
