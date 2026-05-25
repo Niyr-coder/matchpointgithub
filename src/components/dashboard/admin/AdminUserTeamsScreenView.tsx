@@ -100,7 +100,14 @@ export function AdminUserTeamsScreenView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // El menú flotante usa position: fixed con coords del botón disparador
   // (de lo contrario lo recorta el overflow:hidden de la card de la tabla).
-  const [rowMenu, setRowMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+  // triggerBottom/Top guardan ambas coords del trigger para que RowMenu
+  // pueda decidir si abrir hacia abajo o hacia arriba según el espacio.
+  const [rowMenu, setRowMenu] = useState<{
+    id: string;
+    triggerTop: number;
+    triggerBottom: number;
+    right: number;
+  } | null>(null);
   const [grantTarget, setGrantTarget] = useState<AdminTeamRow | null>(null);
   const [statusTarget, setStatusTarget] = useState<{
     team: AdminTeamRow;
@@ -1056,7 +1063,8 @@ export function AdminUserTeamsScreenView({
                     const rect = e.currentTarget.getBoundingClientRect();
                     setRowMenu({
                       id: t.id,
-                      top: rect.bottom + 4,
+                      triggerTop: rect.top,
+                      triggerBottom: rect.bottom,
                       right: window.innerWidth - rect.right,
                     });
                   }}
@@ -1379,7 +1387,8 @@ export function AdminUserTeamsScreenView({
           if (!t) return null;
           return (
             <RowMenu
-              top={rowMenu.top}
+              triggerTop={rowMenu.triggerTop}
+              triggerBottom={rowMenu.triggerBottom}
               right={rowMenu.right}
               onClose={() => setRowMenu(null)}
               items={(() => {
@@ -1658,12 +1667,14 @@ type MenuItem =
 function RowMenu({
   items,
   onClose,
-  top,
+  triggerTop,
+  triggerBottom,
   right,
 }: {
   items: MenuItem[];
   onClose: () => void;
-  top: number;
+  triggerTop: number;
+  triggerBottom: number;
   right: number;
 }) {
   // Portaleamos el dropdown a document.body. Si lo dejamos en el árbol del
@@ -1673,6 +1684,29 @@ function RowMenu({
   // pantalla". Portalear a body lo desconecta de esos ancestros.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Flip vertical: si no hay espacio abajo del trigger para el menú completo,
+  // lo abrimos hacia arriba. Medimos la altura real del menú con un layout
+  // effect después del primer paint y reposicionamos en estado.
+  const [pos, setPos] = useState<{ top: number; placement: "below" | "above" }>(
+    { top: triggerBottom + 4, placement: "below" },
+  );
+  const menuRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const menuH = node.offsetHeight;
+    const spaceBelow = window.innerHeight - triggerBottom - 8;
+    if (menuH > spaceBelow && triggerTop > menuH + 8) {
+      setPos({ top: triggerTop - menuH - 4, placement: "above" });
+    } else {
+      // Si tampoco entra arriba, clampamos al viewport y dejamos abajo —
+      // raro pero no debería romper.
+      const clamped = Math.max(
+        8,
+        Math.min(triggerBottom + 4, window.innerHeight - menuH - 8),
+      );
+      setPos({ top: clamped, placement: "below" });
+    }
+  }, [triggerTop, triggerBottom]);
 
   // En scroll o resize, cerramos: la posición fue capturada al hacer click,
   // si el row se mueve, dejar el menú flotando ahí queda raro. Cerrar es la
@@ -1697,9 +1731,10 @@ function RowMenu({
         style={{ position: "fixed", inset: 0, zIndex: 199, background: "transparent" }}
       />
       <div
+        ref={menuRef}
         style={{
           position: "fixed",
-          top,
+          top: pos.top,
           right,
           width: 240,
           background: "#fff",
