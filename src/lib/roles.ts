@@ -141,6 +141,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "admin-memberships", label: "Membresías clubes", icon: "star" },
           { k: "admin-sponsors", label: "Patrocinadores", icon: "handshake" },
           { k: "admin-cosmetics", label: "Flair de usuarios", icon: "palette" },
+          { k: "admin-paywall-funnel", label: "Paywall funnel", icon: "activity" },
         ],
       },
       {
@@ -357,6 +358,7 @@ export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
     "admin-memberships",
     "admin-sponsors",
     "admin-theme-designer",
+    "admin-paywall-funnel",
   ],
   owner: ["club-reservas", "club-canchas", "club-clientes", "club-finanzas", "club-membresias", "club-marketing", "club-config", "club-eventos", "club-staff"],
   manager: ["club-reservas", "club-canchas", "club-clientes", "club-membresias", "club-eventos", "club-staff", "club-walkins", "club-reportes"],

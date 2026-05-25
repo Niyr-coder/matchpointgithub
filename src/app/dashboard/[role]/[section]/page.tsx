@@ -67,6 +67,7 @@ import { AdminQuedadasScreen } from "@/components/dashboard/admin/AdminQuedadasS
 // hay regresión operativa (las membresías las aprueba el staff del club).
 import { AdminClubMembresiasScreen } from "@/components/dashboard/admin/AdminClubMembresiasScreen";
 import { AdminPatrocinadoresScreen } from "@/components/dashboard/admin/AdminPatrocinadoresScreen";
+import { AdminPaywallFunnelScreen } from "@/components/dashboard/admin/AdminPaywallFunnelScreen";
 import { RankingScreen } from "@/components/dashboard/user/RankingScreen";
 import { QuedadasScreen } from "@/components/dashboard/user/QuedadasScreen";
 import { ProfileScreen } from "@/components/dashboard/user/ProfileScreen";
@@ -176,6 +177,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-quedadas": () => <AdminQuedadasScreen />,
     "admin-memberships": () => <AdminClubMembresiasScreen />,
     "admin-sponsors": () => <AdminPatrocinadoresScreen />,
+    "admin-paywall-funnel": () => <AdminPaywallFunnelScreen />,
   },
   user: {
     ranking: () => <RankingScreen />,
