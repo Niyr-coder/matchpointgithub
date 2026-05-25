@@ -9,7 +9,8 @@
 //     → UI presente, action dispara toast "Pronto" porque no hay backend.
 //     Ver `docs/guides/04-placeholders.md`.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -1665,7 +1666,30 @@ function RowMenu({
   top: number;
   right: number;
 }) {
-  return (
+  // Portaleamos el dropdown a document.body. Si lo dejamos en el árbol del
+  // dashboard, position:fixed se rompe ante cualquier ancestor con `transform`
+  // o `filter` (la sidebar animada en MP genera un containing block) — el
+  // menú termina anclado al ancestor en vez del viewport y se "mueve con la
+  // pantalla". Portalear a body lo desconecta de esos ancestros.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // En scroll o resize, cerramos: la posición fue capturada al hacer click,
+  // si el row se mueve, dejar el menú flotando ahí queda raro. Cerrar es la
+  // UX estándar y evita tener que retro-calcular vs el trigger original.
+  useEffect(() => {
+    const close = () => onClose();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [onClose]);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <>
       {/* Click-outside catcher */}
       <div
@@ -1737,7 +1761,8 @@ function RowMenu({
           );
         })}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
