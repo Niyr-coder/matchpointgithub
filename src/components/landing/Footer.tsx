@@ -212,8 +212,8 @@ export function Footer() {
         >
           <span>© 2026 MATCHPOINT Ecuador · matchpoint.top</span>
           <span>
-            Hecho con <span style={{ color: "#dc2626" }}>♥</span> para la comunidad deportiva · Quito,
-            Ecuador
+            Hecho con <span style={{ color: "#dc2626" }}>♥</span> para la comunidad deportiva ·
+            Portoviejo, Ecuador
           </span>
         </div>
       </div>

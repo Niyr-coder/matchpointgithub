@@ -16,7 +16,7 @@
 ### Importantes
 | Secret | Ubicación | Quién lo usa | Si se filtra |
 |---|---|---|---|
-| `RESEND_API_KEY` / SMTP creds | `.env.local` | Email dispatcher (cuando exista) | Atacante puede enviar emails desde tu dominio |
+| `RESEND_API_KEY` / SMTP creds | `.env.local` | Email dispatcher transaccional (`/api/cron/dispatch-email`) | Atacante puede enviar emails desde tu dominio |
 | `STORAGE_*` | derivados de Supabase | Storage signed URLs | Atacante puede subir archivos arbitrarios |
 
 ### Públicos (OK que estén en bundle cliente)
@@ -25,7 +25,7 @@
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Endpoint REST de Supabase del proyecto |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key (RLS aplica, no es secret) |
-| `NEXT_PUBLIC_SITE_URL` | URL del sitio (para deep links) |
+| `NEXT_PUBLIC_APP_URL` | URL del sitio (para deep links) |
 
 **Regla crítica**: NUNCA prefijar `NEXT_PUBLIC_` algo que no sea trivialmente
 público. Next bundle a cualquier var con ese prefijo al cliente.
@@ -91,7 +91,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 SUPABASE_JWT_SECRET=...
 CRON_SECRET=local-dev-only
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+RESEND_API_KEY=re_xxx
+EMAIL_FROM=MATCHPOINT <notif@matchpoint.top>
 ```
 
 ### Prod (Vercel)
@@ -121,7 +123,7 @@ grep -r "NEXT_PUBLIC_" src/ --include="*.ts" --include="*.tsx" | grep -v "test"
 ```
 
 Solo deberían aparecer `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`.
 
 ## 5. Storage (Supabase buckets)
 
@@ -164,7 +166,7 @@ estilo GitHub webhook. Rotación periódica del secret.
 ### Crons activos
 | Endpoint | Schedule | Llama |
 |---|---|---|
-| `/api/cron/dispatch-email` | (no activo) | email dispatcher cuando exista |
+| `/api/cron/dispatch-email` | externo/Vercel Cron si se configura | despacha `notification_jobs.channel='email'` por Resend; sin `RESEND_API_KEY` marca jobs como `skipped` |
 | `fn_dispatch_inapp_notifications` (SQL) | every 5min | dispatcher inapp |
 | `notify-expiring-plans` (SQL) | daily | encola `plan_expiring_soon` |
 | `cleanup-expired-plans` (SQL) | every 6h | downgrade subs vencidas |

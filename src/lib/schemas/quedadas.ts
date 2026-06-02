@@ -282,9 +282,19 @@ export const QuedadaTemplateIdSchema = z.object({ templateId: UuidSchema }).open
 // ── Motor de juego (rediseño): rondas player-céntricas + puntos ──────────────
 // Americano: genera la siguiente ronda emparejando inscritos (rota compañero/
 // rival, byes rotativos). El nº de ronda lo calcula la action (siguiente libre).
-export const GenerateAmericanoRoundSchema = z
+export const GenerateQuedadaRoundSchema = z
   .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
-  .openapi("GenerateQuedadaAmericanoRound");
+  .openapi("GenerateQuedadaRound");
+export const GenerateAmericanoRoundSchema = GenerateQuedadaRoundSchema;
+export const CreateManualQuedadaGameSchema = z
+  .object({
+    quedadaId: UuidSchema,
+    categoryId: UuidSchema,
+    sideA: z.array(UuidSchema).min(1).max(2),
+    sideB: z.array(UuidSchema).min(1).max(2),
+    courtNo: z.coerce.number().int().min(1).max(64).nullable().optional(),
+  })
+  .openapi("CreateManualQuedadaGame");
 // Reporta el marcador de un game (organizador, directo, sin doble confirmación).
 export const ReportGameSchema = z
   .object({

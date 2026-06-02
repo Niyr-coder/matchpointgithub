@@ -298,10 +298,11 @@ function RowMenu({
           zIndex: 41,
           background: "#fff",
           border: "1px solid var(--border)",
-          borderRadius: 10,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-          padding: 4,
-          minWidth: 200,
+          borderRadius: 12,
+          boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+          overflow: "hidden",
+          width: 240,
+          fontSize: 12,
         }}
       >
         {!isCancelled && (
@@ -362,21 +363,20 @@ function MenuItem({
         width: "100%",
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        padding: "9px 10px",
+        gap: 10,
+        padding: "9px 14px",
         background: "transparent",
         border: 0,
-        borderRadius: 6,
         cursor: "pointer",
-        fontSize: 12.5,
-        fontWeight: 700,
-        color: danger ? "#b91c1c" : "#0a0a0a",
+        fontFamily: "inherit",
+        fontSize: 12,
+        color: danger ? "#dc2626" : "#0a0a0a",
         textAlign: "left",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.04)")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--muted)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
-      <Icon name={icon} size={13} color={danger ? "#b91c1c" : undefined} />
+      <Icon name={icon} size={13} color={danger ? "#dc2626" : undefined} />
       {label}
     </button>
   );

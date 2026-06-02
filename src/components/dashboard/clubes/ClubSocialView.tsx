@@ -3,9 +3,12 @@
 // Tabs: Resumen (feed unificado + foto strip + amigos) · Torneos · Comunidad · Reseñas.
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
+import { useToast } from "@/components/dashboard/ToastProvider";
 import { toggleFollowClub } from "@/server/actions/clubs";
+import { requestClubMembership } from "@/server/actions/club-memberships";
 import { ClubMap } from "./ClubMap";
 import type {
   ClubSocialActivity,
@@ -55,7 +58,23 @@ function priceLabel(cents: number | null): string {
 type Tab = "resumen" | "torneos" | "comunidad" | "reviews";
 
 export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
-  const { club, stats, upcomingTournaments, frequentMembers, friendsHere, activity, photos, reviews, viewerRole } = data;
+  const {
+    club,
+    stats,
+    upcomingTournaments,
+    frequentMembers,
+    friendsHere,
+    activity,
+    photos,
+    reviews,
+    viewerRole,
+    membershipStatus,
+    hasMembershipTiers,
+    cheapestTierId,
+    pendingMembershipTxId,
+  } = data;
+  const router = useRouter();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("resumen");
   const isStaff = viewerRole === "owner" || viewerRole === "manager" || viewerRole === "admin";
   const staffLabel: Record<typeof viewerRole, string> = {
@@ -67,7 +86,7 @@ export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
   const staffPanelHref: Record<typeof viewerRole, string> = {
     owner: "/dashboard/owner/club-config",
     manager: "/dashboard/manager/club-reservas",
-    admin: `/dashboard/admin/admin-clubs`,
+    admin: `/dashboard/admin/admin-clubs/${club.id}`,
     guest: "/dashboard/user",
   };
   const [isFollowing, setIsFollowing] = useState(data.isFollowing);
@@ -78,6 +97,37 @@ export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("mp-open-reservar"));
     }
+  };
+
+  const [joinPending, startJoin] = useTransition();
+
+  const onUnir = () => {
+    if (membershipStatus === "active") return;
+    if (membershipStatus === "pending" && pendingMembershipTxId) {
+      router.push(`/pagos/${pendingMembershipTxId}`);
+      return;
+    }
+    if (!hasMembershipTiers || !cheapestTierId) {
+      toast({
+        icon: "info",
+        title: "Sin membresías disponibles",
+        sub: "Este club aún no publicó planes para unirse como socio.",
+      });
+      return;
+    }
+    const section = document.getElementById("club-membresias");
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    startJoin(async () => {
+      const res = await requestClubMembership({ clubId: club.id, tierId: cheapestTierId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo unir al club", sub: res.error.message });
+        return;
+      }
+      router.push(`/pagos/${res.data.transactionId}`);
+    });
   };
 
   const onFollow = () => {
@@ -157,7 +207,11 @@ export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
         pending={pending}
         onFollow={onFollow}
         onReservar={openReservar}
+        onUnir={onUnir}
+        joinPending={joinPending}
         viewerRole={viewerRole}
+        membershipStatus={membershipStatus}
+        hasMembershipTiers={hasMembershipTiers}
       />
 
       {/* Tabs */}
@@ -212,7 +266,11 @@ function ClubHero({
   pending,
   onFollow,
   onReservar,
+  onUnir,
+  joinPending,
   viewerRole,
+  membershipStatus,
+  hasMembershipTiers,
 }: {
   club: ClubSocialViewData["club"];
   stats: ClubSocialViewData["stats"];
@@ -221,10 +279,17 @@ function ClubHero({
   pending: boolean;
   onFollow: () => void;
   onReservar: () => void;
+  onUnir: () => void;
+  joinPending: boolean;
   viewerRole: ClubSocialViewData["viewerRole"];
+  membershipStatus: ClubSocialViewData["membershipStatus"];
+  hasMembershipTiers: ClubSocialViewData["hasMembershipTiers"];
 }) {
   const isOwnerOrManager = viewerRole === "owner" || viewerRole === "manager";
-  const isAdmin = viewerRole === "admin";
+  const showUnir =
+    !isOwnerOrManager && hasMembershipTiers && membershipStatus !== "active";
+  const unirLabel =
+    membershipStatus === "pending" ? "Subir comprobante" : "Unir";
   const cover = club.coverUrl;
   return (
     <div
@@ -385,57 +450,64 @@ function ClubHero({
               <Icon name={viewerRole === "owner" ? "settings-2" : "layout-dashboard"} size={13} color="#0a0a0a" />
               {viewerRole === "owner" ? "Editar club" : "Ir al panel"}
             </Link>
-          ) : isAdmin ? (
-            <Link
-              href={`/dashboard/admin/admin-clubs/${club.id}`}
-              className="mp-follow-btn"
-              data-following="false"
-              style={{
-                padding: "10px 18px",
-                borderRadius: 9999,
-                fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                fontFamily: "inherit",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "#fff",
-                color: "#0a0a0a",
-                textDecoration: "none",
-              }}
-            >
-              <Icon name="shield" size={13} color="#0a0a0a" />
-              Gestionar club
-            </Link>
           ) : (
-            <button
-              onClick={onFollow}
-              disabled={pending}
-              className="mp-follow-btn"
-              data-following={isFollowing ? "true" : "false"}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 9999,
-                fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                cursor: pending ? "wait" : "pointer",
-                fontFamily: "inherit",
-                border: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: isFollowing ? "rgba(255,255,255,0.18)" : "#fff",
-                color: isFollowing ? "#fff" : "#0a0a0a",
-                opacity: pending ? 0.7 : 1,
-              }}
-            >
-              <Icon name={isFollowing ? "check" : "user-plus"} size={13} color={isFollowing ? "#fff" : "#0a0a0a"} />
-              {isFollowing ? "Siguiendo" : "Seguir club"}
-            </button>
+            <>
+              <button
+                onClick={onFollow}
+                disabled={pending}
+                className="mp-follow-btn"
+                data-following={isFollowing ? "true" : "false"}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 9999,
+                  fontSize: 12,
+                  fontWeight: 900,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  cursor: pending ? "wait" : "pointer",
+                  fontFamily: "inherit",
+                  border: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: isFollowing ? "rgba(255,255,255,0.18)" : "#fff",
+                  color: isFollowing ? "#fff" : "#0a0a0a",
+                  opacity: pending ? 0.7 : 1,
+                }}
+              >
+                <Icon name={isFollowing ? "check" : "user-plus"} size={13} color={isFollowing ? "#fff" : "#0a0a0a"} />
+                {isFollowing ? "Siguiendo" : "Seguir club"}
+              </button>
+              {showUnir && (
+                <button
+                  type="button"
+                  onClick={onUnir}
+                  disabled={joinPending}
+                  className="mp-follow-btn"
+                  data-following="false"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 9999,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    cursor: joinPending ? "wait" : "pointer",
+                    fontFamily: "inherit",
+                    border: "1px solid rgba(251,191,36,0.55)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "rgba(251,191,36,0.22)",
+                    color: "#fff",
+                    opacity: joinPending ? 0.7 : 1,
+                  }}
+                >
+                  <Icon name="sparkle" size={13} color="#fbbf24" />
+                  {unirLabel}
+                </button>
+              )}
+            </>
           )}
           <button
             onClick={onReservar}

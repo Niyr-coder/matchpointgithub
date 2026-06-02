@@ -271,6 +271,11 @@ function CRMini({
             background: "var(--muted)",
             border: 0,
             cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
           }}
         >
           <Icon name="x" size={14} />
@@ -698,6 +703,11 @@ function CRFull({
               background: "var(--muted)",
               border: 0,
               cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              lineHeight: 1,
             }}
           >
             <Icon name="x" size={14} />
@@ -897,6 +907,11 @@ function CRFull({
                   border: 0,
                   color: "var(--muted-fg)",
                   cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  lineHeight: 1,
                 }}
               >
                 <Icon name="x" size={14} />
@@ -1095,6 +1110,11 @@ function CRCheckout({
             background: "var(--muted)",
             border: 0,
             cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
           }}
         >
           <Icon name="x" size={14} />
@@ -1513,6 +1533,11 @@ function CRSuccess({ close }: { close: () => void }) {
               border: "1px solid rgba(255,255,255,0.2)",
               color: "#fff",
               cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
             }}
           >
             <Icon name="x" size={13} color="#fff" />

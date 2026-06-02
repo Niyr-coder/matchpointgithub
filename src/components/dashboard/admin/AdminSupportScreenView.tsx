@@ -1,11 +1,17 @@
 // Client view de AdminSupportScreen — layout 1:1 (RoleScreens2.jsx 33-57).
 "use client";
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { assignTicket } from "@/server/actions/support";
+import { useToast } from "../ToastProvider";
 
 export type Prio = "alta" | "media" | "baja";
 export type TicketRow = {
+  ticketId: string;
+  assigneeId: string | null;
   id: string;
   who: string;
   subj: string;
@@ -16,6 +22,7 @@ export type TicketRow = {
 export type SupportData = {
   rows: TicketRow[];
   openCount: number;
+  currentAdminId: string;
   kpis: {
     slaAtRisk: number;
     altaCount: number;
@@ -61,9 +68,40 @@ function TicketPlaceholderRow() {
 }
 
 export function AdminSupportScreenView({ data }: { data: SupportData }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+
   useRealtimeRefresh([{ table: "tickets" }, { table: "ticket_messages" }], { debounceMs: 4000 });
 
   const hasRows = data.rows.length > 0;
+  const unassignedRows = data.rows.filter((r) => !r.assigneeId);
+
+  const assignToMe = (ticketIds: string[]) => {
+    if (pending || ticketIds.length === 0 || !data.currentAdminId) return;
+    startTransition(async () => {
+      const results = await Promise.all(
+        ticketIds.map((id) =>
+          assignTicket({ id, assigneeId: data.currentAdminId }),
+        ),
+      );
+      const failed = results.filter((r) => !r.ok).length;
+      if (failed > 0) {
+        toast({
+          icon: "alert-triangle",
+          title: failed === ticketIds.length
+            ? "No se pudieron asignar los tickets"
+            : `Se asignaron ${ticketIds.length - failed} de ${ticketIds.length} tickets`,
+        });
+      } else {
+        toast({
+          icon: "check",
+          title: ticketIds.length === 1 ? "Ticket asignado a ti" : "Tickets asignados a ti",
+        });
+      }
+      router.refresh();
+    });
+  };
 
   const KPIS: [string, string, string][] = [
     ["SLA en riesgo", String(data.kpis.slaAtRisk), "#dc2626"],
@@ -110,8 +148,13 @@ export function AdminSupportScreenView({ data }: { data: SupportData }) {
       k: "a",
       l: "",
       align: "right",
-      render: () => (
-        <button className="btn btn-primary" style={{ fontSize: 10.5 }}>
+      render: (t) => (
+        <button
+          className="btn btn-primary"
+          disabled={pending || t.assigneeId === data.currentAdminId}
+          onClick={() => assignToMe([t.ticketId])}
+          style={{ fontSize: 10.5 }}
+        >
           Atender
         </button>
       ),
@@ -128,7 +171,11 @@ export function AdminSupportScreenView({ data }: { data: SupportData }) {
           </>
         }
         action={
-          <button className="btn btn-primary">
+          <button
+            className="btn btn-primary"
+            disabled={pending || unassignedRows.length === 0 || !data.currentAdminId}
+            onClick={() => assignToMe(unassignedRows.map((r) => r.ticketId))}
+          >
             <Icon name="user" size={13} />
             Asignar a mí
           </button>

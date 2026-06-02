@@ -11,6 +11,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from "@/lib/db/env";
 import { ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
+import {
+  decideDashboardRoleAccess,
+  isDashboardRoleKey,
+  ROLE_LOGIN_PRIORITY,
+} from "@/lib/auth/role-route-guard";
+import type { RoleKey } from "@/lib/roles";
+const ACTIVE_COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 30,
+};
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -44,7 +57,7 @@ export async function proxy(request: NextRequest) {
       setAll(cookiesToSet) {
         // Mirror new cookies onto both the request (so downstream handlers see them)
         // and the response (so the browser stores the refreshed values).
-        for (const { name, value, options } of cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
         response = NextResponse.next({ request });
@@ -74,8 +87,16 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
   if (isAuthRoute && user) {
+    const { data: assignments } = await supabase
+      .from("role_assignments")
+      .select("role")
+      .eq("user_id", user.id)
+      .is("revoked_at", null);
+    const granted = new Set((assignments ?? []).map((r) => r.role as RoleKey));
+    const pick =
+      ROLE_LOGIN_PRIORITY.find((r) => granted.has(r)) ?? ("user" as RoleKey);
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard/user";
+    url.pathname = `/dashboard/${pick}`;
     return NextResponse.redirect(url);
   }
 
@@ -101,6 +122,50 @@ export async function proxy(request: NextRequest) {
       url.search = "";
       url.searchParams.set("suspended", "1");
       return NextResponse.redirect(url);
+    }
+  }
+
+  // Guard de rol: la URL no puede "saltar" a otro dashboard si la cookie activa
+  // ya fijó un rol (salvo admin view-as). Cambio de rol → switchRole.
+  const roleFromUrl = pathname.match(/^\/dashboard\/([^/]+)/)?.[1];
+  if (isProtected && user && roleFromUrl && isDashboardRoleKey(roleFromUrl)) {
+    const { data: assignments } = await supabase
+      .from("role_assignments")
+      .select("role,club_id,partner_id")
+      .eq("user_id", user.id)
+      .is("revoked_at", null);
+    const granted = new Set((assignments ?? []).map((r) => r.role as RoleKey));
+    const isAdmin = granted.has("admin");
+    const decision = decideDashboardRoleAccess({
+      urlRole: roleFromUrl,
+      cookieRole: request.cookies.get(ACTIVE_ROLE_COOKIE)?.value,
+      granted,
+      isAdmin,
+    });
+
+    if (decision.action === "redirect") {
+      const url = request.nextUrl.clone();
+      url.pathname = `/dashboard/${decision.toRole}`;
+      return NextResponse.redirect(url);
+    }
+
+    if (decision.syncCookieTo) {
+      response.cookies.set(ACTIVE_ROLE_COOKIE, decision.syncCookieTo, ACTIVE_COOKIE_OPTS);
+      response.headers.set("x-active-role", decision.syncCookieTo);
+      const scoped = ["owner", "manager", "employee", "coach", "partner"] as const;
+      if ((scoped as readonly string[]).includes(decision.syncCookieTo)) {
+        const row = (assignments ?? []).find((a) => a.role === decision.syncCookieTo);
+        if (row?.club_id) {
+          response.cookies.set(ACTIVE_CLUB_COOKIE, row.club_id as string, ACTIVE_COOKIE_OPTS);
+          response.headers.set("x-active-club", row.club_id as string);
+        } else {
+          response.cookies.delete(ACTIVE_CLUB_COOKIE);
+          response.headers.delete("x-active-club");
+        }
+      } else {
+        response.cookies.delete(ACTIVE_CLUB_COOKIE);
+        response.headers.delete("x-active-club");
+      }
     }
   }
 

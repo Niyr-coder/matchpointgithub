@@ -263,7 +263,11 @@ async function loadData(): Promise<ReservasData> {
   };
 }
 
-export async function ClubReservasScreen() {
+export async function ClubReservasScreen({
+  showReceptionHourHint = false,
+}: {
+  showReceptionHourHint?: boolean;
+} = {}) {
   const data = await loadData();
-  return <ClubReservasScreenView data={data} />;
+  return <ClubReservasScreenView data={data} showReceptionHourHint={showReceptionHourHint} />;
 }

@@ -133,12 +133,20 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
     });
   };
 
+  const handleInviteStaff = () => {
+    toast({
+      icon: "user-plus",
+      title: "Gestiona admins desde Permisos & Roles",
+      sub: "Usa Asignar rol para dar acceso admin a una cuenta existente.",
+    });
+  };
+
   const hasRows = data.rows.length > 0;
 
   const KPIS: [string, string, string][] = [
     [
-      "En línea ahora",
-      `${data.kpis.onlineCount}/${data.kpis.totalCount}`,
+      "Admins activos",
+      String(data.kpis.totalCount),
       "var(--primary)",
     ],
     ["Casos abiertos", String(data.kpis.openCasesCount), "#fbbf24"],
@@ -154,7 +162,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
         accent="#dc2626"
         label="Plataforma · Equipo interno MATCHPOINT"
         title="Equipo MP"
-        sub={`${data.kpis.totalCount} ${data.kpis.totalCount === 1 ? "persona" : "personas"} operando MATCHPOINT. Asigna casos, balancea carga y mira quién está disponible.`}
+        sub={`${data.kpis.totalCount} ${data.kpis.totalCount === 1 ? "persona" : "personas"} operando MATCHPOINT. Asigna casos y balancea carga con datos reales de soporte y moderación.`}
         right={
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -170,7 +178,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
               <Icon name="shuffle" size={12} />
               Auto-asignar
             </button>
-            <button className="btn btn-primary">
+            <button className="btn btn-primary" onClick={handleInviteStaff}>
               <Icon name="user-plus" size={13} />
               Invitar staff
             </button>
@@ -250,7 +258,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
                       {p.email} · {p.area}
                     </div>
                     <div style={{ fontSize: 9.5, color: "var(--muted-fg)", marginTop: 4 }}>
-                      Última actividad: {p.lastAct}
+                      {p.lastAct === "—" ? "Actividad reciente no disponible" : `Última actividad: ${p.lastAct}`}
                     </div>
                   </div>
                 </div>
@@ -314,6 +322,13 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
                       border: "1px solid var(--border)",
                       fontSize: 10.5,
                     }}
+                    onClick={() =>
+                      toast({
+                        icon: "message-square",
+                        title: "Mensajería interna pendiente",
+                        sub: "La pantalla muestra carga real, pero aún no abre chats directos entre admins.",
+                      })
+                    }
                   >
                     <Icon name="message-square" size={11} />
                     Mensaje
@@ -334,6 +349,13 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
                       border: "1px solid var(--border)",
                       fontSize: 10.5,
                     }}
+                    onClick={() =>
+                      toast({
+                        icon: "more-horizontal",
+                        title: "Más acciones pendientes",
+                        sub: "La gestión fina de permisos se hace desde Permisos & Roles.",
+                      })
+                    }
                   >
                     <Icon name="more-horizontal" size={11} />
                   </button>

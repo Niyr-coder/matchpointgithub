@@ -6,6 +6,7 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { RatingSparkline } from "../widgets/RatingSparkline";
 import type { RankingEntry, RankingSnapshot } from "@/lib/schemas/ranking";
 import type { RankingData } from "./RankingScreen";
+import { MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
 
 type Mode = "singles" | "doubles";
 
@@ -547,7 +548,7 @@ function PodiumSpot({ entry, center }: { entry: SlotEntry; center: boolean }) {
             : showAvatar
               ? `center/cover no-repeat url("${entry.avatarUrl}")`
               : `linear-gradient(135deg, hsl(${entry.rank * 70}, 55%, 45%), hsl(${entry.rank * 70 + 60}, 60%, 35%))`,
-          border: `3px solid ${c}`,
+          border: "none",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -608,7 +609,7 @@ function PodiumSpot({ entry, center }: { entry: SlotEntry; center: boolean }) {
 }
 
 // Teaser que reemplaza el card "Tu evolución" cuando el user es Free.
-// Muestra rating actual + lista de features Premium gateadas + CTA a /dashboard/user/mi-plan.
+// Muestra rating actual + lista de beneficios MATCHPOINT+ gateados.
 function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
   return (
     <div
@@ -656,7 +657,7 @@ function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
               letterSpacing: "0.12em",
             }}
           >
-            Premium
+            MATCHPOINT+
           </span>
         </div>
         <ul
@@ -682,8 +683,8 @@ function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
             </li>
           ))}
         </ul>
-        <a
-          href="/dashboard/user/mi-plan"
+        <Link
+          href="/dashboard/user/mi-plan?upgrade=premium"
           className="btn"
           style={{
             marginTop: 18,
@@ -697,8 +698,8 @@ function PremiumEvolutionTeaser({ currentRating }: { currentRating: number }) {
             gap: 6,
           }}
         >
-          Activar Premium →
-        </a>
+          {MP_PLUS_PLAN.requestCta} →
+        </Link>
       </div>
     </div>
   );

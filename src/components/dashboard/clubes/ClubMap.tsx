@@ -4,6 +4,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { type Map, type Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { CARTODB_VOYAGER_STYLE } from "@/lib/map/cartodb-voyager-style";
 
 type Props = {
   latitude: number;
@@ -22,24 +23,7 @@ export function ClubMap({ latitude, longitude, zoom = 15, height = 220 }: Props)
 
     const map = new maplibregl.Map({
       container: ref.current,
-      style: {
-        version: 8,
-        sources: {
-          cartodb: {
-            type: "raster",
-            tiles: [
-              "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-              "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-              "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-              "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-            ],
-            tileSize: 256,
-            attribution:
-              '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>',
-          },
-        },
-        layers: [{ id: "cartodb", type: "raster", source: "cartodb" }],
-      },
+      style: CARTODB_VOYAGER_STYLE,
       center: [longitude, latitude],
       zoom,
       attributionControl: { compact: true },

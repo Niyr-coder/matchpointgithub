@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&display=swap");
 
 @import "tailwindcss";
 
@@ -73,6 +73,126 @@
 
   /* Duraciones (design system) */
   --dur-fast: 150ms; --dur-base: 200ms; --dur-slow: 500ms;
+
+  /* Superficies dashboard — patrón Quedadas (radial 98%/112% + linear 135°). Ver `src/lib/ui/gradients.ts`. */
+  --mp-gradient-hero-quedadas:
+    radial-gradient(115% 130% at 98% 112%, rgba(124, 58, 237, 0.3) 0%, rgba(124, 58, 237, 0) 52%),
+    linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%);
+  --mp-gradient-surface-social-dark:
+    radial-gradient(115% 130% at 98% 112%, rgba(16, 185, 129, 0.28) 0%, rgba(16, 185, 129, 0) 52%),
+    linear-gradient(135deg, #0a0a0a 0%, #052e22 58%, #064e3b 100%);
+  --mp-gradient-surface-premium-light:
+    radial-gradient(115% 130% at 98% 112%, rgba(251, 191, 36, 0.24) 0%, rgba(251, 191, 36, 0) 52%),
+    linear-gradient(135deg, #fafafa 0%, #f4f4f5 58%, #ffffff 100%);
+  --mp-gradient-surface-premium-dark:
+    radial-gradient(115% 130% at 98% 112%, rgba(251, 191, 36, 0.28) 0%, rgba(251, 191, 36, 0) 52%),
+    linear-gradient(135deg, #0a0a0a 0%, #1c1910 58%, #422006 100%);
+}
+
+/* Icono MP+ en tile cuadrado (Amigos SmartMatches, insignias perfil). */
+.mp-icon-tile-amber {
+  border-radius: var(--radius-mp-sm);
+  background: var(--color-mp-amber);
+  color: var(--color-mp-black);
+}
+
+/* SmartMatches — superficie MP+ oscura (mismo patrón radial+linear que Quedadas). */
+.mp-smart-matches-surface {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-mp-card);
+  background: var(--mp-gradient-surface-premium-dark);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.mp-smart-matches-surface .mp-smart-matches-sub {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* Tarjetas blancas dentro de la superficie oscura: no heredar color:#fff en .btn outline */
+.mp-smart-matches-surface .btn:not(.btn-primary) {
+  color: #0a0a0a;
+}
+
+/* Amigos — motion + press (Emil: ease-out, transform/opacity, <300ms) */
+.mp-amigos-affinity-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  transition: transform 200ms var(--ease-out);
+}
+.mp-amigos-smart-matches-exit {
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  transform: translateY(0);
+  opacity: 1;
+}
+.mp-amigos-smart-matches-exit.is-closing {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.mp-amigos-confirm-block {
+  animation: mpAmigosConfirmIn 200ms var(--ease-out) both;
+}
+@keyframes mpAmigosConfirmIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mp-amigos-search:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-amigos-smart-matches-exit,
+  .mp-amigos-smart-matches-exit.is-closing {
+    transition-duration: 0ms;
+  }
+  .mp-amigos-smart-matches-exit.is-closing {
+    transform: none;
+  }
+  .mp-amigos-affinity-fill {
+    transition: none;
+  }
+  .mp-amigos-confirm-block {
+    animation: none;
+  }
+}
+
+/* Mensajes — el panel ocupa el alto útil del main (sin hueco bajo el composer) */
+.mp-messages-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mp-messages-shell {
+  padding: 0;
+  overflow: hidden;
+  background: var(--card);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 1023px) {
+  .mp-messages-page {
+    /* TopBar 60px + padding superior main 16px + zona bottom nav ~72px */
+    min-height: calc(100dvh - 60px - 16px - 72px);
+  }
+  .mp-messages-list {
+    border-right: none !important;
+    min-height: 0;
+  }
+  .mp-messages-thread {
+    min-height: 0;
+  }
+}
+@media (min-width: 1024px) {
+  .mp-messages-shell {
+    max-height: min(760px, calc(100vh - 170px));
+  }
+  .mp-messages-list {
+    border-right: 1px solid var(--border);
+  }
 }
 
 /* Google Fonts are loaded at the top of the file */
@@ -218,6 +338,17 @@ body {
 .btn-outline:hover { border-color: #0a0a0a; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 14.4px; }
 .label-mp { font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted-fg); }
+/* Título de card — mismo patrón que PanelShell en /dashboard/user. */
+.card-title {
+  margin-top: 4px;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.25;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
 .display-md { font-family: var(--font-heading); font-weight: 900; font-size: 36px; line-height: 0.95; letter-spacing: -0.03em; text-transform: uppercase; }
 .tabular { font-variant-numeric: tabular-nums; }
 .dot { color: var(--primary); }
@@ -270,8 +401,11 @@ body {
   30% { opacity: 1; transform: translateY(-2px); }
 }
 @keyframes mpSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes mpToastIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes mpToastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes mpSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes mpToastIn { from { opacity: 0; } to { opacity: 1; } }
+}
 
 /* Entradas reutilizables (Emil: ease-out, <300ms, solo opacity+transform) */
 @keyframes mpTabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -646,6 +780,65 @@ body {
   .mp-metrics-split { grid-template-columns: 1fr !important; }
 }
 
+/* Admin reservas v2: la tabla usa tracks flexibles en desktop y se apila como
+   cards cuando el ancho ya no alcanza para siete columnas legibles. */
+.mp-admin-reservas-head > *,
+.mp-admin-reservas-cell,
+.mp-admin-reservas-actions {
+  min-width: 0;
+}
+@media (max-width: 980px) {
+  .mp-admin-reservas-head { display: none !important; }
+  .mp-admin-reservas-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: start !important;
+    gap: 10px 12px !important;
+    padding: 14px 16px !important;
+  }
+  .mp-admin-reservas-primary { grid-column: 1 / 2; }
+  .mp-admin-reservas-actions {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
+    justify-self: end;
+    flex-wrap: wrap;
+    max-width: 64px;
+  }
+  .mp-admin-reservas-cell:not(.mp-admin-reservas-primary) {
+    grid-column: 1 / -1;
+    display: grid !important;
+    grid-template-columns: 108px minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: center;
+  }
+  .mp-admin-reservas-cell::before {
+    content: attr(data-label);
+    color: var(--muted-fg);
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mp-admin-reservas-primary::before { display: none; }
+  .mp-admin-reservas-status {
+    justify-items: start;
+  }
+}
+@media (max-width: 560px) {
+  .mp-admin-reservas-row { grid-template-columns: 1fr !important; }
+  .mp-admin-reservas-actions {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
+    max-width: none;
+  }
+  .mp-admin-reservas-cell:not(.mp-admin-reservas-primary) {
+    grid-template-columns: 1fr;
+    row-gap: 3px;
+  }
+}
+
 /* Editor de plan y wizard del club: grids de 2 columnas que colapsan en móvil. */
 @media (max-width: 720px) {
   .mp-plan-editor-body { grid-template-columns: 1fr !important; }
@@ -665,14 +858,6 @@ body {
 }
 @media (max-width: 560px) {
   .mp-spon-kpis { grid-template-columns: 1fr !important; }
-}
-
-/* Editor de personalización (flair): el grid preview-sticky + secciones colapsa
-   a una sola columna en pantallas angostas; el preview deja de ser sticky y se
-   apila arriba. !important porque el grid-template va inline en el componente. */
-@media (max-width: 860px) {
-  .mp-perso-grid { grid-template-columns: 1fr !important; }
-  .mp-perso-preview { position: static !important; top: auto !important; }
 }
 
 /* Card de categoría del centro de ayuda. Hover = lift sutil (-2px) + borde
@@ -796,6 +981,57 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .mp-press:active { transform: none; }
+}
+
+/* Marquee de clubes del landing. La animación vive en CSS (no inline) para
+   poder desactivarla con prefers-reduced-motion: usuarios sensibles ven los
+   nombres estáticos en lugar del scroll infinito. */
+.mp-marquee {
+  /* min-width: max-content evita que el track se comprima al ancho del
+     contenedor (lo que haría que -50% ya no sea exactamente un set y
+     reaparezca el salto). will-change sube la capa al compositor para un
+     scroll sin repaints. */
+  min-width: max-content;
+  will-change: transform;
+  animation: lpMarquee 35s linear infinite;
+}
+/* En hover pausamos el marquee — permite leer un nombre sin perseguirlo, y es
+   un detalle de pulido esperado en marquees de marca. */
+@media (hover: hover) and (pointer: fine) {
+  .mp-marquee:hover {
+    animation-play-state: paused;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-marquee {
+    animation: none;
+  }
+}
+
+/* Botón fantasma sobre la barra glass oscura (ej. "Iniciar sesión" del nav
+   desktop). Reemplaza los handlers JS de hover por CSS gateado a dispositivos
+   con puntero fino, para que en touch el tap no deje el estado hover pegado. */
+.mp-btn-ghost-dark {
+  padding: 9px 18px;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: transparent;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition:
+    border-color 200ms var(--ease-out),
+    background 200ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-btn-ghost-dark:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.05);
+  }
 }
 
 /* Variante para usar sobre la barra glass oscura del desktop. */
@@ -923,8 +1159,7 @@ body {
     transform 140ms var(--ease-out);
 }
 .mp-upgrade-cta:hover {
-  background: #fde047;
-  box-shadow: 0 8px 22px rgba(250, 204, 21, 0.35);
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
 }
 .mp-upgrade-cta:active { transform: scale(0.97); }
 
@@ -936,9 +1171,9 @@ body {
     transform 140ms var(--ease-out);
 }
 .mp-upgrade-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 .mp-upgrade-close:active { transform: scale(0.9); }
 
@@ -954,6 +1189,17 @@ body {
   }
 }
 
+/* Mensajes: chips de filtro — scroll horizontal sin barra visible */
+.mp-msg-filter-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.mp-msg-filter-scroll::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
 /* Panel de notificaciones — entrada suave al abrir desde el bell.
    Mismo origen (top-right, donde vive el bell) en ambos breakpoints — solo
    cambia el ancho. La animación crece "desde el bell" en mobile y desktop.
@@ -961,14 +1207,14 @@ body {
    arbitrary values + asegurar que mobile NUNCA caiga abajo. */
 .mp-notif-panel {
   position: fixed;
-  top: 68px;
-  right: 8px;
-  left: 8px;
+  top: calc(68px + env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  left: max(8px, env(safe-area-inset-left));
   max-height: 80vh;
   width: auto;
   z-index: 50;
   transform-origin: top right;
-  animation: mpNotifPanelIn 220ms var(--ease-out);
+  animation: mpNotifPanelIn 180ms var(--ease-out) both;
 }
 @media (min-width: 768px) {
   .mp-notif-panel {
@@ -981,11 +1227,11 @@ body {
   }
 }
 @keyframes mpNotifPanelIn {
-  from { opacity: 0; transform: translateY(-8px) scale(0.94); }
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .mp-notif-backdrop {
-  animation: mpNotifBackdropIn 200ms var(--ease-out);
+  animation: mpNotifBackdropIn 160ms var(--ease-out) both;
 }
 @keyframes mpNotifBackdropIn {
   from { opacity: 0; }
@@ -999,12 +1245,12 @@ body {
 /* Badge de notificaciones — pop al aparecer o al incrementar. La animación
    se re-dispara cambiando la `key` del span desde React. */
 .mp-notif-badge {
-  animation: mpBadgePop 420ms var(--ease-out);
+  animation: mpBadgePop 220ms var(--ease-out);
   transform-origin: center;
 }
 @keyframes mpBadgePop {
-  0%   { transform: scale(0.4); }
-  55%  { transform: scale(1.35); }
+  0%   { opacity: 0; transform: scale(0.88); }
+  70%  { opacity: 1; transform: scale(1.08); }
   100% { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1124,15 +1370,14 @@ input[type="range"].mp-mpr,
   transform-origin: 50% 18%;
 }
 .mp-bell-icon[data-ringing="true"] {
-  animation: mpBellRing 1200ms var(--ease-out);
+  animation: mpBellRing 560ms var(--ease-out);
 }
 @keyframes mpBellRing {
   0%   { transform: rotate(0); }
-  15%  { transform: rotate(-35deg); }
-  30%  { transform: rotate(30deg); }
-  45%  { transform: rotate(-22deg); }
-  60%  { transform: rotate(16deg); }
-  75%  { transform: rotate(-9deg); }
+  18%  { transform: rotate(-16deg); }
+  36%  { transform: rotate(14deg); }
+  54%  { transform: rotate(-9deg); }
+  72%  { transform: rotate(5deg); }
   100% { transform: rotate(0); }
 }
 @media (prefers-reduced-motion: reduce) {

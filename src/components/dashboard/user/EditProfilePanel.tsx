@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { updateProfile } from "@/server/actions/auth";
-import type { EditableProfile } from "./ProfileScreenView";
+import type { EditableProfile } from "./profile-types";
 
 const SPORTS: Array<{ v: EditableProfile["preferredSport"]; l: string }> = [
   { v: "pickleball", l: "Pickleball" },

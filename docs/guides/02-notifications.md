@@ -29,8 +29,8 @@
 ≈ realtime publication notifications ≈
      │
      ▼
-[TopBar bell wiggle + badge pop] (componente <TopBar> escucha
-postgres_changes filtrado por recipient_user_id=eq.<uid>)
+[TopBar bell wiggle + badge pop] (componente <TopBar> escucha un canal
+por rol activo y filtra postgres_changes por recipient_user_id=eq.<uid>)
 ```
 
 Tablas:
@@ -52,17 +52,22 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `club_application_new` | clubs | admin | submit de club_application | 033 | ✅ |
 | `club_application_approved` | clubs | applicant + owner | `quickApproveApplication` | 033 | ✅ |
 | `club_application_rejected` | clubs | applicant | `rejectApplication` | 033 | ✅ |
-| `club_application_status` | clubs | applicant | cambio de fase de revisión | 033 | ⚠️ no disparada hoy |
+| `club_application_status` | clubs | applicant | cambio de fase de revisión | 033 | ✅ |
 | `reservation_created` | reservations | user | createReservation | 033 | ✅ |
 | `reservation_cancelled` | reservations | user | cancelReservation | 033 | ✅ |
 | `ticket_new` | support | admin | submit ticket de soporte | 033 | ✅ |
 | `ticket_assigned` | support | admin asignado | admin asigna ticket | 033 | ✅ |
+| `ticket_status_changed` | support | user dueño del ticket | cambio real a `in_progress`, `waiting_user`, `resolved` o `closed` | 20260531042315 | ✅ |
 | `friend_request_new` | social | user destino | sendFriendRequest | 033 | ✅ |
 | `event_rescheduled` | events | user inscrito | updateEventAdmin con cambio de fechas | 045 | ✅ |
+| `event_registration_cancelled` | events | user inscrito | `removeEventRegistrationAdmin` | 20260530232000 | ✅ |
+| `event_registration_transferred` | events | user origen + destino | `transferEventSlotAdmin` | 20260530232000 | ✅ |
+| `event_registration_no_show` | events | user inscrito | `markEventNoShowAdmin` | 20260530232000 | ✅ |
 | `tournament_rescheduled` | tournaments | jugadores pending+accepted | `updateTournamentByOrganizer` con cambio fechas | 045 | ✅ |
 | `tournament_cancelled` | tournaments | jugadores pending+accepted | `setTournamentStatus(cancelled)` / `cancelTournament` | 071 | ✅ |
 | `registration_accepted` | tournaments | jugadores del registration | `updateRegistrationStatus(accepted)` | 079 | ✅ |
 | `registration_rejected` | tournaments | jugadores del registration | `updateRegistrationStatus(rejected)` | 079 | ✅ |
+| `tournament_registration_removed` | tournaments | jugadores del registration | `removeTournamentRegistrationAdmin` | 20260530232000 | ✅ |
 | `payment_proof_rejected` | pagos | customer_user_id de la tx | `rejectPaymentProofAdmin` | 079 | ✅ |
 | `plan_expiring_soon` | (sin categoría custom) | user con sub que vence ≤7d | cron diario `notify-expiring-plans` (mig 049) | 050 | ✅ |
 | `match_seek_applied` | matches | autor del aviso | `applyToMatchSeek` | 119 | ✅ |
@@ -87,6 +92,15 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `club_membership_expiring_soon` | clubs | usuario | cron `process-club-memberships-daily` (≤7d) | 148 | ✅ |
 | `club_staff_assigned` | roles | manager/coach/employee asignado | `assignRole` (owner agrega staff) | 165 | ✅ |
 | `club_staff_removed` | roles | manager/coach/employee removido | `revokeRole` (owner quita staff) | 165 | ✅ |
+| `broadcast` | marketing | usuarios del segmento | `dispatchBroadcast` admin | 176 | ✅ |
+| `payment_captured` | pagos | customer_user_id de la tx | `approvePaymentProofAdmin` | 176 | ✅ |
+| `mp_plus_activated` | premium | user | `approvePlanSubscriptionAdmin` / `grantMatchPointPlusAdmin` | 176 | ✅ |
+| `mp_plus_revoked` | premium | user | `revokeMatchPointPlusAdmin` | 176 | ✅ |
+| `refund_completed` | pagos | customer_user_id de la tx | `markTransactionRefundedAdmin` | 176 | ✅ |
+| `report_resolved` | moderation | reporter | `actOnReport` | 176 | ✅ |
+| `role_assigned` | roles | usuario afectado | `assignRole` admin | 176 | ✅ |
+| `role_revoked` | roles | usuario afectado | `revokeRole` admin | 176 | ✅ |
+| `welcome_owner` | clubs | owner recién aprobado | `quickApproveApplication` / `approveApplication` | 176 | ✅ |
 
 ## 3. Render del dispatcher (cómo derivá title/body/link)
 
@@ -157,8 +171,16 @@ if (jobErr) console.error("[mi_action] enqueue notif failed:", jobErr.message);
 ## 5. Realtime + reactivity
 
 - Tabla `notifications` está en publication `supabase_realtime` (mig 061).
-- `TopBar.tsx` se suscribe a:
-  `postgres_changes` filter `recipient_user_id=eq.<uid>` event `*`
+- `TopBar.tsx` se suscribe a un canal por rol activo:
+  `mp:user:<uid>:role:<role>:notifications`
+- El `postgres_changes` usa filter `recipient_user_id=eq.<uid>` event `*` y
+  el handler descarta eventos cuyo `recipient_role` no coincide con el rol
+  activo. RLS sigue protegiendo cross-user; este guard evita refrescos y badge
+  por notificaciones de otro rol del mismo usuario.
+- Pendiente DB si se quiere aislamiento estricto por rol en el stream: hacer
+  que la conexión Realtime tenga `app.active_role` confiable o ajustar la
+  política de `notifications` sin romper clientes existentes. No resolver con
+  hacks de cliente: el guard actual es solo reactividad/UX.
 - Al recibir un evento dispara `refresh()` que re-fetcha el badge count +
   bell wiggle + badge pulse.
 
@@ -172,24 +194,83 @@ if (jobErr) console.error("[mi_action] enqueue notif failed:", jobErr.message);
    notif desde otras actions o se duplica.
 3. **`registration_accepted/rejected` solo cuando hay cambio real** —
    `updateRegistrationStatus` chequea `previousStatus !== newStatus` antes
-   de encolar. Sin eso, repintar el botón = spam de notifs.
+   de encolar. El path admin `markTournamentRegistrationStatusAdmin` rechaza
+   mismo status antes de encolar. Sin eso, repintar el botón = spam de notifs.
 4. **`payment_proof_rejected` necesita el `proof_rejection_reason`** en el
    payload o el body cae al genérico. Ya lo pasa `rejectPaymentProofAdmin`.
-5. **El cron dispatcher corre cada 5 min** — para testing manual:
+5. **Eventos admin no deben duplicar cambios terminales** —
+   `removeEventRegistrationAdmin` no corre sobre canceladas y
+   `markEventNoShowAdmin` rechaza inscripciones ya `no_show`.
+6. **El cron dispatcher corre cada 5 min** — para testing manual:
    `select fn_dispatch_inapp_notifications();` desde la SQL console de
    Supabase. Procesa hasta 500 jobs por corrida.
+7. **`ticket_assigned` es best-effort desde `assignTicket`** — al asignar un
+   ticket se encola notif al admin destino. No manda DM de sistema porque es
+   una alerta operativa puntual, no conversación persistente.
+8. **`ticket_status_changed` va al dueño del ticket** — se encola solo si el
+   status realmente cambia. No manda DM del sistema: el cambio de estado es
+   alerta puntual con deep-link a `/dashboard/user/soporte`; no abre una
+   conversación nueva ni requiere historial conversacional.
 
 ## 7. Canales
 
 `notification_kinds.default_channels` es array de `mp_notification_channel`
-(`inapp | email | push`). Hoy **solo `inapp` está implementado**. El
-dispatcher de email existe pero está dormido (`src/lib/notifications/email-templates.ts`
-+ cron `dispatch-email`). Push notifications no están armadas.
+(`inapp | email | push | sms`). Estado real:
+
+| Canal | Estado | Qué existe | Qué falta |
+|---|---|---|---|
+| `inapp` | Activo | `fn_enqueue_notification`, `fn_dispatch_inapp_notifications()`, tabla `notifications`, realtime en TopBar y panel de campana. | Mantener branch del dispatcher por cada kind nuevo. |
+| `email` | Preparado / parcial | Cron HTTP `/api/cron/dispatch-email`, Resend vía `RESEND_API_KEY`, `EMAIL_FROM`, preferencias por kind/canal y plantillas en `src/lib/notifications/email-templates.ts`. | Programar el cron en el entorno, definir env vars server-only y agregar plantillas explícitas para cada kind que se quiera enviar por email. Los kinds sin plantilla se marcan `skipped`, no envían payload crudo. |
+| `push` | Pendiente | Enum, tabla `notification_subscriptions` y preferencias modeladas. Hay `manifest.webmanifest` básico para metadata PWA. | Service worker, registro/opt-in en cliente, VAPID keys, endpoint de suscripciones, dispatcher Web Push y QA en navegadores reales. |
+| `sms` | Pendiente | Valor del enum usado solo por algunas configuraciones de club. | Proveedor, costos, consentimiento, plantillas y dispatcher. |
+
+### 7.1 Preferencias por tipo/canal
+
+`notification_preferences` guarda overrides por usuario, rol, kind y canal:
+
+- No tener fila significa **usar el default seguro** del catálogo: solo se
+  considera habilitado si el canal está en `notification_kinds.default_channels`.
+- `enabled=false` bloquea ese `kind + channel` para ese `user + role`.
+- `fn_enqueue_notification` respeta la preferencia antes de crear la fila
+  `notifications` para `inapp` o de encolar jobs de `email`/`push`.
+- `fn_dispatch_inapp_notifications()` vuelve a chequear la preferencia antes
+  de materializar jobs insertados directo en `notification_jobs`.
+- El cron `dispatch-email` también marca como `skipped` los jobs `email`
+  desactivados antes de resolver correo o llamar a Resend.
+
+### 7.2 Email transaccional
+
+El dispatcher de email no activa env faltantes:
+
+- Sin `CRON_SECRET`, `/api/cron/dispatch-email` responde 401.
+- Sin `RESEND_API_KEY`, los jobs `email` quedan `skipped` con
+  `last_error="RESEND_API_KEY missing"`.
+- Con `RESEND_API_KEY`, antes de enviar vuelve a validar preferencias y que el
+  canal esté en `notification_kinds.default_channels`.
+- Si el kind no tiene plantilla en `renderEmail()`, el job queda `skipped` con
+  `last_error="sin plantilla de email para <kind>"`.
 
 Si necesitas email para alguna notif crítica (ej. `tournament_cancelled`):
 1. Agregar `'email'` al `default_channels` del kind.
-2. Implementar branch en `dispatchEmailFor(kind, payload)` (no existe hoy).
-3. Encolar también `channel='email'` en notification_jobs aparte del inapp.
+2. Implementar branch en `renderEmail(kind, payload)` dentro de
+   `src/lib/notifications/email-templates.ts`.
+3. Asegurar que el caller use `fn_enqueue_notification` / `notify()`; si inserta
+   jobs directo en `notification_jobs`, debe crear también el job `email`.
+
+### 7.3 Readiness checklist para push
+
+No implementar push real hasta completar esta base:
+
+- [ ] `public/manifest.webmanifest` con nombre, scope, display e íconos.
+- [ ] Service worker versionado que maneje `push` y `notificationclick`.
+- [ ] VAPID keys server-only (`VAPID_PRIVATE_KEY`) y public key expuesta solo si
+  se usa para `PushManager.subscribe()`.
+- [ ] Endpoint autenticado para crear/revocar subscriptions en
+  `notification_subscriptions`.
+- [ ] UI de opt-in con copy claro de “próximamente” mientras el dispatcher no
+  esté activo.
+- [ ] Worker/cron de entrega Web Push que respete `notification_preferences`.
+- [ ] QA en Chrome/Edge desktop y Android; fallback claro en iOS si aplica.
 
 ## 8. System messages (DMs del perfil oficial "MATCHPOINT")
 
@@ -198,7 +279,15 @@ Distinto del catálogo de notifs: estos son **mensajes reales** en la tabla
 `profiles`. Aparecen en `/dashboard/user/chat` con badge verified y pin
 top en la lista de conversaciones.
 
-**Cuándo se disparan** (4 momentos hoy):
+**Estado P2-D**:
+- El DM oficial MATCHPOINT es **read-only para usuarios**. No hay composer en
+  la UI y `sendMessage()` bloquea envíos si la conversación incluye un perfil
+  `is_system=true`.
+- No se debe prometer soporte por este DM mientras no exista moderación,
+  asignación o SLA claro. Para soporte, dirigir al usuario a la sección
+  Soporte.
+
+**Cuándo se disparan**:
 - `welcome_signup` — al `signUp` server action.
 - `welcome_team_created` — al `createTeam`.
 - `welcome_onboarding_completed` — al `saveOnboardingStep(step='finish')`.
@@ -230,7 +319,7 @@ top en la lista de conversaciones.
 
 **Cuándo usar system message vs notification**:
 - System message: comunicación rica, conversacional, mantiene historial,
-  permite respuesta futura del user (cuando habilitemos respuestas).
+  pero hoy no permite respuesta del usuario.
 - Notification: alerta puntual, ephemeral, badge en bell, click → URL.
 
 ## 9. TODOs
@@ -241,5 +330,5 @@ top en la lista de conversaciones.
 - [ ] Notif `match_result_reported`
 - [ ] Notif `payout_paid` (al partner/club cuando MP les paga)
 - [ ] Email channel para notifs críticas (rescheduled, cancelled, refund)
-- [ ] Push notifications (después de PWA install)
-- [ ] Settings para que el user elija qué notifs recibir y por qué canal
+- [ ] Push notifications (service worker + opt-in + dispatcher Web Push)
+- [x] Base de settings para que el user elija qué notifs recibir y por qué canal

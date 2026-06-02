@@ -1,35 +1,34 @@
 // FriendCard — card de jugador reutilizable (amigos, sugerencias, descubrir).
-// Extraída de AmigosScreenView para reusarla también en el preview del panel
-// Personalizar (sin recrearla → siempre fiel). Self-contained: no importa nada
-// de AmigosScreenView.
+// Extraída de AmigosScreenView para reusarla también en previews de flair
+// sin recrearla. Self-contained: no importa nada de AmigosScreenView.
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
+import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
 import { useToast } from "../ToastProvider";
 import { startConversation } from "@/server/actions/messaging";
 import { sendFriendRequest } from "@/server/actions/friends";
-import { readableTextOn } from "@/lib/profile/customization-presets";
 
 export type FriendLite = {
   id: string;
   name: string;
   username: string | null;
+  avatarUrl?: string | null;
   city: string;
   sport: string;
   level: number;
   isOfficial: boolean;
   isPremium: boolean;
-  accentHex?: string | null;
-  cardStyleCss?: {
-    background: string;
-    border?: string;
-    boxShadow?: string;
-    backdropFilter?: string;
-    color?: string;
-  } | null;
+  friendSince?: string | null;
+  matchesTogether?: number;
+  h2hWins?: number;
+  h2hLosses?: number;
+  teamWins?: number;
+  teamLosses?: number;
+  lastPlayedAt?: string | null;
 };
 
 export const REQ_AVATARS = [
@@ -44,33 +43,6 @@ export function initials(name: string): string {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
 }
 
-// Badge MP+ (chip dorado junto al nombre).
-export function MpPlusBadge() {
-  return (
-    <span
-      title="MATCHPOINT+ activo"
-      aria-label="MATCHPOINT+ activo"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        padding: "1px 5px",
-        borderRadius: 4,
-        background: "#facc15",
-        color: "#0a0a0a",
-        fontSize: 8.5,
-        fontWeight: 900,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        flexShrink: 0,
-      }}
-    >
-      <Icon name="crown" size={8} color="#0a0a0a" />
-      MP+
-    </span>
-  );
-}
-
 export function FriendCard({
   f,
   index,
@@ -80,8 +52,7 @@ export function FriendCard({
   f: FriendLite;
   index: number;
   isSuggestion: boolean;
-  // En preview (panel Personalizar): card no interactiva (botones inertes,
-  // nombre no linkea). Render idéntico al real.
+  // Preview no interactiva: botones inertes y nombre sin link.
   preview?: boolean;
 }) {
   // Hooks SIEMPRE antes de cualquier return (rules-of-hooks).
@@ -96,15 +67,7 @@ export function FriendCard({
   }
 
   const profileHref = !preview && f.username ? `/dashboard/user/players/${f.username}` : null;
-  const cardCss = f.cardStyleCss;
-  const accent = f.accentHex;
-  // CTA primario teñido con el accent del dueño de la card (texto por contraste).
-  const ctaStyle = accent
-    ? { background: accent, borderColor: accent, color: readableTextOn(accent) }
-    : undefined;
-  const headerBg = accent
-    ? `linear-gradient(135deg, ${accent}cc, ${accent})`
-    : "linear-gradient(135deg, #064e3b, #10b981)";
+  const headerBg = "linear-gradient(135deg, #064e3b, #10b981)";
 
   const nameEl = (
     <div
@@ -116,12 +79,12 @@ export function FriendCard({
         lineHeight: 1.15,
         display: "inline-flex",
         alignItems: "center",
-        gap: 5,
+        gap: 0,
         maxWidth: "100%",
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-      {f.isPremium && <MpPlusBadge />}
+      <NameplateMark size="sm" />
     </div>
   );
 
@@ -133,11 +96,6 @@ export function FriendCard({
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: cardCss?.background,
-        border: cardCss?.border,
-        boxShadow: cardCss?.boxShadow,
-        backdropFilter: cardCss?.backdropFilter,
-        color: cardCss?.color,
       }}
     >
       <div style={{ position: "relative", height: 76, background: headerBg, overflow: "hidden" }}>
@@ -203,7 +161,7 @@ export function FriendCard({
           {isSuggestion ? (
             <button
               type="button"
-              className={`btn btn-primary${accent ? " btn-accent" : ""}`}
+              className="btn btn-primary"
               disabled={preview || addPending || addState === "sent"}
               onClick={() => {
                 if (preview || addPending || addState === "sent") return;
@@ -221,7 +179,6 @@ export function FriendCard({
                 flex: 1,
                 fontSize: 10.5,
                 padding: "8px 10px",
-                ...ctaStyle,
                 opacity: addPending ? 0.6 : 1,
                 cursor: addPending || addState === "sent" ? "default" : "pointer",
               }}
@@ -260,8 +217,8 @@ export function FriendCard({
                 {msgPending ? "Abriendo..." : "Mensaje"}
               </button>
               <button
-                className={`btn btn-primary${accent ? " btn-accent" : ""}`}
-                style={{ flex: 1, fontSize: 10.5, padding: "8px 10px", ...ctaStyle }}
+                className="btn btn-primary"
+                style={{ flex: 1, fontSize: 10.5, padding: "8px 10px" }}
                 onClick={() => {
                   if (preview) return;
                   window.dispatchEvent(
@@ -339,29 +296,13 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
         </div>
         <div
           className="font-heading"
-          style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.15, display: "inline-flex", alignItems: "center", gap: 5 }}
+          style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.15, display: "inline-flex", alignItems: "center", gap: 0 }}
         >
           {f.name}
-          <span
-            title="Cuenta oficial de la app"
-            aria-label="Cuenta oficial de la app"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 14,
-              height: 14,
-              borderRadius: "50%",
-              background: "var(--primary)",
-              color: "#fff",
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="check" size={9} color="#fff" />
-          </span>
+          <NameplateMark nameplateKey="support" size="sm" />
         </div>
         <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 6, lineHeight: 1.45 }}>
-          Cuenta oficial de MATCHPOINT EC. Te enviamos novedades, recordatorios y respuestas de soporte.
+          Cuenta oficial de MATCHPOINT EC. Te enviamos novedades y recordatorios. El chat oficial es solo informativo.
         </div>
       </div>
     </>

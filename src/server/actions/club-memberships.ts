@@ -348,7 +348,7 @@ export async function adminListClubMemberships(input: unknown): Promise<ActionRe
     if (!isAdmin) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
     const { data, error } = await (admin as any)
       .from("club_memberships")
-      .select("id,status,member_no,expires_at,created_at,clubs(name),profiles(display_name,username),club_membership_tiers(name,price_cents)")
+      .select("id,status,member_no,expires_at,created_at,clubs(name,city),profiles(display_name,username),club_membership_tiers(name,price_cents,duration_months)")
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new MpError("CLUB_MEMBERSHIP.READ_FAILED", error.message, 500);

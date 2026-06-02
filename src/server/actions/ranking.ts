@@ -9,7 +9,7 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireUserId } from "@/lib/auth/session";
 import {
   MatchResultReportSchema,
   MatchResultSchema,
@@ -20,15 +20,6 @@ import {
   type RankingEntry,
 } from "@/lib/schemas/ranking";
 import { UuidSchema, MpSportSchema, MpMatchModeSchema } from "@/lib/schemas/common";
-
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
-}
 
 // ── getRanking (public) ────────────────────────────────────────────────
 export async function getRanking(input: unknown): Promise<ActionResult<RankingEntry[]>> {

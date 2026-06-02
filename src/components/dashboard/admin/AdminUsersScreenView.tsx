@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
+import { MpBadge } from "../widgets/MpBadge";
+import { planBadgeMeta } from "@/lib/ui/trust-badge";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import {
@@ -33,8 +35,13 @@ export type UserRow = {
   suspended: boolean;
   suspensionReason: string | null;
   suspendedAt: string | null;
+  reliabilityScore: number;
+  reliabilityLabel: string;
+  reliabilityColor: string;
+  noShows: number;
+  cancellations: number;
 };
-export type UsersData = { rows: UserRow[]; total: number };
+export type UsersData = { rows: UserRow[]; total: number; reliabilityEnabled: boolean };
 
 const ST_STYLES: Record<UserStatus, { c: string; l: string }> = {
   active: { c: "var(--primary)", l: "● Activo" },
@@ -58,6 +65,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     [
       { table: "profiles" },
       { table: "player_stats" },
+      { table: "player_reliability" },
       { table: "player_subscriptions" },
     ],
     { debounceMs: 5000 },
@@ -127,6 +135,37 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     },
     { k: "city", l: "Ciudad" },
     { k: "m", l: "Matches", align: "center", render: (u) => <b className="font-heading">{u.m}</b> },
+    ...(data.reliabilityEnabled
+      ? [
+          {
+            k: "reliability",
+            l: "Fiabilidad",
+            align: "center" as const,
+            render: (u: UserRow) => (
+              <span
+                title={`${u.noShows} inasistencias · ${u.cancellations} cancelaciones`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "3px 8px",
+                  borderRadius: 9999,
+                  background: `${u.reliabilityColor}14`,
+                  border: `1px solid ${u.reliabilityColor}55`,
+                  color: u.reliabilityColor,
+                  fontSize: 10,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                <Icon name="shield-check" size={9} color={u.reliabilityColor} />
+                {u.reliabilityScore} · {u.reliabilityLabel}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       k: "spend",
       l: "Gasto · mes",
@@ -140,42 +179,13 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
       l: "Plan",
       render: (u) =>
         u.planTier === "premium" ? (
-          <span
+          <MpBadge
+            {...planBadgeMeta("premium")}
+            size="sm"
             title={`Vence: ${fmtExpiry(u.planExpiresAt)}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 9999,
-              background: "#ecfdf5",
-              border: "1px solid #10b981",
-              color: "#047857",
-              fontSize: 10,
-              fontWeight: 900,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            <Icon name="crown" size={9} color="#047857" />
-            MATCHPOINT+
-          </span>
+          />
         ) : (
-          <span
-            style={{
-              display: "inline-flex",
-              padding: "3px 8px",
-              borderRadius: 9999,
-              background: "var(--muted)",
-              color: "var(--muted-fg)",
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Free
-          </span>
+          <MpBadge {...planBadgeMeta("free")} size="sm" />
         ),
     },
     {
@@ -308,6 +318,11 @@ function RowMenu({
           background: "var(--muted)",
           border: 0,
           cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          lineHeight: 1,
         }}
       >
         <Icon name="more-horizontal" size={13} />
@@ -327,10 +342,11 @@ function RowMenu({
                 zIndex: 9999,
                 background: "#fff",
                 border: "1px solid var(--border)",
-                borderRadius: 10,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                padding: 4,
-                minWidth: 220,
+                borderRadius: 12,
+                boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+                overflow: "hidden",
+                width: 240,
+                fontSize: 12,
               }}
             >
             {user.planTier === "free" ? (
@@ -409,22 +425,21 @@ function MenuItem({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 9,
+        gap: 10,
         width: "100%",
-        padding: "9px 12px",
+        padding: "9px 14px",
         background: "transparent",
         border: 0,
-        borderRadius: 8,
         cursor: "pointer",
-        fontSize: 12.5,
-        fontWeight: 700,
-        color: danger ? "#b91c1c" : "#0a0a0a",
+        fontFamily: "inherit",
+        fontSize: 12,
+        color: danger ? "#dc2626" : "#0a0a0a",
         textAlign: "left",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.04)")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--muted)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
-      <Icon name={icon} size={13} color={danger ? "#b91c1c" : undefined} />
+      <Icon name={icon} size={13} color={danger ? "#dc2626" : undefined} />
       {label}
     </button>
   );

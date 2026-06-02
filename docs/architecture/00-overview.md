@@ -16,8 +16,8 @@
 | API hacia el dashboard | **Server Actions** (mutaciones) + **Route Handlers REST** `/api/v1/*` (lecturas) | Zod en input/output siempre |
 | Validación | **Zod 3** + **@asteasolutions/zod-to-openapi** | Una sola fuente de schemas |
 | Docs API | **OpenAPI 3.1** generado · **Scalar UI** servida en `/docs` | Autogenerada desde Zod |
-| Mail | **Resend** | Plantillas en `src/emails/` (React Email) |
-| Push web | **Web Push API** propio (no FCM por ahora) | VAPID keys en env |
+| Mail | **Resend** | Dispatcher parcial en `/api/cron/dispatch-email`; plantillas HTML inline en `src/lib/notifications/email-templates.ts` |
+| Push web | Pendiente | Manifest PWA básico; sin service worker, VAPID ni dispatcher Web Push |
 | Jobs / colas | **pg_cron** + tabla `notification_jobs` · **Edge Functions** para entrega | Sin Redis por ahora |
 | Observabilidad | **Sentry** (errores) + **Vercel Analytics** (rendimiento) + tabla `audit_log` (negocio) | |
 | Pagos | **Stripe** (international) + **Mercado Pago** (LATAM) | Webhooks en `/api/v1/webhooks/{provider}` |
@@ -71,7 +71,11 @@ auth.users (gestionada por Supabase)
 - Al login, el JWT lleva `app_metadata.roles[]` con todas las asignaciones.
 - El frontend guarda el `active_role` en cookie `mp_active_role` (HttpOnly, SameSite=Lax).
 - Cada Server Action / Route Handler lee la cookie y valida con `assertRole({role, scope})`.
-- Postgres lee el rol activo vía `current_setting('app.active_role', true)` configurado por el middleware antes de cada request (mediante `SET LOCAL`).
+- Postgres puede leer el rol activo vía `current_setting('app.active_role', true)`,
+  pero la app no lo setea globalmente hoy: Supabase JS/PostgREST no da un
+  `SET LOCAL` seguro para todas las queries posteriores del cliente. Si una
+  policy necesita ese contexto, debe ir por RPC específica o derivar el scope
+  desde tablas.
 
 ```sql
 -- Helper Postgres

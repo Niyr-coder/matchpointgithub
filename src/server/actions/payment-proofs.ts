@@ -33,6 +33,7 @@ import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
 import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
+import { notify } from "@/server/notifications/dispatch";
 
 // ── helpers de auth ─────────────────────────────────────────────────────
 async function requireUserId(): Promise<string> {
@@ -77,6 +78,11 @@ function mapResult(row: Record<string, unknown>): PaymentProofResult {
     proofReviewedAt: (row.proof_reviewed_at as string | null) ?? null,
     proofRejectionReason: (row.proof_rejection_reason as string | null) ?? null,
   };
+}
+
+function amountLabel(amountCents: number | null, currency: string | null): string {
+  if (amountCents == null) return "tu pago";
+  return `${currency ?? "USD"} ${(amountCents / 100).toFixed(2)}`;
 }
 
 // ── submitPaymentProof (user) ───────────────────────────────────────────
@@ -133,6 +139,7 @@ export async function submitPaymentProof(
     // transactions no expone UPDATE al customer, así que usamos service role
     // para esta mutación — la validación de identidad ya pasó.
     const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
     const { data, error } = await admin
       .from("transactions")
       .update(updatePayload as never)
@@ -175,7 +182,7 @@ export async function approvePaymentProofAdmin(
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
-      .select("id,status,kind,ref_id")
+      .select("id,status,kind,ref_id,customer_user_id,amount_cents,currency")
       .eq("id", transactionId)
       .maybeSingle();
     if (readErr) throw new MpError("PAYMENT_PROOF.DB_ERROR", readErr.message, 500);
@@ -286,6 +293,24 @@ export async function approvePaymentProofAdmin(
           err,
         );
       }
+    }
+
+    const customerId = tx.customer_user_id as string | null;
+    if (customerId) {
+      await notify({
+        userId: customerId,
+        role: "user",
+        kind: "payment_captured",
+        title: "Pago confirmado",
+        body: `Confirmamos ${amountLabel(tx.amount_cents as number | null, (tx.currency as string | null) ?? null)} en MATCHPOINT.`,
+        payload: {
+          transaction_id: transactionId,
+          transaction_kind: tx.kind,
+          ref_id: tx.ref_id,
+          amount_cents: tx.amount_cents,
+          currency: tx.currency,
+        },
+      });
     }
 
     return mapResult(data);

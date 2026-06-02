@@ -648,24 +648,6 @@
           "skillLevel": {
             "$ref": "#/components/schemas/MpSkillLevel"
           },
-          "accentColor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bannerPreset": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "cardStyle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "locale": {
             "type": "string",
             "default": "es"
@@ -696,9 +678,6 @@
           "dominantHand",
           "preferredSport",
           "skillLevel",
-          "accentColor",
-          "bannerPreset",
-          "cardStyle",
           "createdAt",
           "updatedAt"
         ]
@@ -846,7 +825,7 @@
           "email": {
             "type": "string",
             "format": "email",
-            "example": "you@matchpoint.app"
+            "example": "tu@matchpoint.top"
           },
           "password": {
             "type": "string",
@@ -890,7 +869,7 @@
           "email": {
             "type": "string",
             "format": "email",
-            "example": "you@matchpoint.app"
+            "example": "tu@matchpoint.top"
           },
           "password": {
             "type": "string",
@@ -2231,6 +2210,30 @@
           "ordinal": {
             "type": "integer"
           },
+          "surfaceColor": {
+            "type": "string"
+          },
+          "linesColor": {
+            "type": "string"
+          },
+          "lineStyle": {
+            "type": "string"
+          },
+          "strokeWidth": {
+            "type": "number"
+          },
+          "maintenanceReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maintenanceUntil": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -2339,6 +2342,27 @@
           "ordinal": {
             "type": "integer",
             "minimum": 0
+          },
+          "surfaceColor": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "linesColor": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "lineStyle": {
+            "type": "string",
+            "enum": [
+              "classic",
+              "showcourt",
+              "minimal"
+            ]
+          },
+          "strokeWidth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
           }
         }
       },
@@ -2509,6 +2533,11 @@
               "null"
             ],
             "maxLength": 500
+          },
+          "forUserId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           }
         },
         "required": [
@@ -4566,6 +4595,15 @@
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
             "example": "club-norte-pickleball"
           },
+          "tag": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 9
+          },
           "description": {
             "type": "string",
             "maxLength": 500
@@ -6035,6 +6073,10 @@
           },
           "visibility": {
             "$ref": "#/components/schemas/EventVisibility"
+          },
+          "membersOnly": {
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [
@@ -6182,8 +6224,7 @@
         "enum": [
           "inapp",
           "email",
-          "push",
-          "sms"
+          "push"
         ]
       },
       "UpdateNotificationPreferences": {
@@ -6817,6 +6858,41 @@
             "minimum": 0,
             "maximum": 100
           },
+          "env": {
+            "type": "string",
+            "enum": [
+              "prod",
+              "staging",
+              "beta",
+              "dev"
+            ]
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "low",
+              "med",
+              "high"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "segment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6833,6 +6909,11 @@
           "description",
           "enabledDefault",
           "rolloutPct",
+          "env",
+          "impact",
+          "owner",
+          "segment",
+          "label",
           "createdAt",
           "updatedAt"
         ]
@@ -6860,6 +6941,44 @@
             "minimum": 0,
             "maximum": 100,
             "default": 0
+          },
+          "env": {
+            "type": "string",
+            "enum": [
+              "prod",
+              "staging",
+              "beta",
+              "dev"
+            ]
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "low",
+              "med",
+              "high"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "segment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
           }
         },
         "required": [

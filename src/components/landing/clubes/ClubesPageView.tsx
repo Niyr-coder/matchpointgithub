@@ -1,7 +1,8 @@
 // /clubes — migrado 1:1 desde MATCHPOINT Public.html (líneas 373-443)
 "use client";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { usePaywall } from "@/components/landing/PublicChromeClient";
 import { useEnabledSports } from "@/components/SportsProvider";
@@ -28,14 +29,27 @@ const CARD_GRADIENTS = [
   "linear-gradient(135deg,#831843,#db2777)",
 ];
 
-const MAP_POSITIONS = [
-  { x: "28%", y: "38%" },
-  { x: "46%", y: "58%" },
-  { x: "54%", y: "24%" },
-  { x: "68%", y: "46%" },
-  { x: "34%", y: "70%" },
-  { x: "74%", y: "70%" },
-];
+const ClubesMap = dynamic(
+  () => import("./ClubesMap").then((m) => m.ClubesMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="card"
+        style={{
+          height: 520,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--muted-fg)",
+          fontSize: 13,
+        }}
+      >
+        Cargando mapa…
+      </div>
+    ),
+  },
+);
 
 function sportLabel(sport: string): string {
   if (sport === "tennis") return "Tenis";
@@ -98,6 +112,24 @@ export function ClubesPageView({
       return Number.isFinite(t) && t > nowMs;
     }) ?? null;
   const gridSource = featured ? filtered.filter((c) => c.id !== featured.id) : filtered;
+
+  const mapClubs = useMemo(
+    () =>
+      filtered
+        .filter(
+          (c): c is ClubFeatured & { latitude: number; longitude: number } =>
+            c.latitude != null && c.longitude != null,
+        )
+        .map((c) => ({
+          id: c.id,
+          slug: c.slug,
+          name: c.name,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          minPriceCents: c.minPriceCents,
+        })),
+    [filtered],
+  );
 
   const padded: ClubCard[] = [...gridSource.map((c) => ({ ...c, placeholder: false as const }))];
   while (padded.length < MIN_CLUB_CARDS) {
@@ -510,93 +542,7 @@ export function ClubesPageView({
           })}
         </div>
         <div className="hidden md:block" style={{ position: "sticky", top: 100, height: "fit-content" }}>
-          <div
-            style={{
-              position: "relative",
-              height: 520,
-              borderRadius: 14.4,
-              overflow: "hidden",
-              background: "linear-gradient(180deg, #f0f4ff 0%, #c7d2fe 100%)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }} preserveAspectRatio="none" viewBox="0 0 720 540">
-              <defs>
-                <pattern id="grd" width="22" height="22" patternUnits="userSpaceOnUse">
-                  <path d="M 22 0 L 0 0 0 22" fill="none" stroke="rgba(99,102,241,0.18)" strokeWidth="0.5" />
-                </pattern>
-              </defs>
-              <rect width="720" height="540" fill="url(#grd)" />
-              <path
-                d="M -20 320 Q 200 240 380 280 T 760 240"
-                stroke="rgba(99,102,241,0.4)"
-                strokeWidth="22"
-                fill="none"
-                opacity="0.4"
-              />
-              <path d="M 0 200 L 720 240" stroke="rgba(255,255,255,0.9)" strokeWidth="14" />
-              <path d="M 220 0 L 260 540" stroke="rgba(255,255,255,0.9)" strokeWidth="14" />
-              <circle cx="420" cy="160" r="48" fill="rgba(16,185,129,0.25)" />
-            </svg>
-            {gridSource.map((c, i) => {
-              const pos = MAP_POSITIONS[i % MAP_POSITIONS.length];
-              const price = c.minPriceCents != null ? Math.round(c.minPriceCents / 100) : 12;
-              return (
-                <Link
-                  key={c.id}
-                  href={`/clubes/${c.slug}`}
-                  style={{
-                    position: "absolute",
-                    left: pos.x,
-                    top: pos.y,
-                    transform: "translate(-50%, -100%)",
-                    textDecoration: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: 9999,
-                      background: "var(--primary)",
-                      color: "#fff",
-                      fontSize: 11.5,
-                      fontWeight: 900,
-                      fontFamily: "Plus Jakarta Sans",
-                      letterSpacing: "-0.01em",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.22)",
-                    }}
-                  >
-                    ${price}
-                  </div>
-                  <div
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeft: "6px solid transparent",
-                      borderRight: "6px solid transparent",
-                      borderTop: "8px solid var(--primary)",
-                      margin: "-1px auto 0",
-                    }}
-                  />
-                </Link>
-              );
-            })}
-            <div
-              style={{
-                position: "absolute",
-                top: 14,
-                right: 14,
-                padding: "6px 12px",
-                background: "#fff",
-                borderRadius: 9999,
-                fontSize: 10.5,
-                fontWeight: 800,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-            >
-              {filtered.length} clubes
-            </div>
-          </div>
+          <ClubesMap clubs={mapClubs} totalCount={filtered.length} />
         </div>
       </div>
       {/* CTA flotante: si no hay clubes en la ciudad seleccionada, empuja onboarding */}

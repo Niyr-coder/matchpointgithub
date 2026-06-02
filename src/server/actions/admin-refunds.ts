@@ -8,10 +8,12 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { notify } from "@/server/notifications/dispatch";
 
 // ── auth helpers ─────────────────────────────────────────────────────────
 async function requireUserId(): Promise<string> {
@@ -60,17 +62,23 @@ export type MarkTransactionRefundedResult = {
     | null;
 };
 
+function amountLabel(amountCents: number | null, currency: string | null): string {
+  if (amountCents == null) return "tu pago";
+  return `${currency ?? "USD"} ${(amountCents / 100).toFixed(2)}`;
+}
+
 export async function markTransactionRefundedAdmin(
   input: unknown,
 ): Promise<ActionResult<MarkTransactionRefundedResult>> {
   return runAction(MarkRefundedSchema, input, async (data) => {
     const adminUserId = await requireAdminUserId();
-    const supabase = await getServerClient();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
 
     // 1) Cargar la transaction y validar status.
-    const { data: tx, error: loadErr } = await supabase
+    const { data: tx, error: loadErr } = await admin
       .from("transactions")
-      .select("id,status,kind,ref_id")
+      .select("id,status,kind,ref_id,customer_user_id,amount_cents,currency")
       .eq("id", data.transactionId)
       .maybeSingle();
     if (loadErr) {
@@ -90,11 +98,27 @@ export async function markTransactionRefundedAdmin(
       );
     }
 
-    // 2) Marcar como refunded. El trigger tg_audit registra el cambio
-    //    en audit_log automáticamente (acción 'transaction.admin_refund'
-    //    queda implícita como UPDATE con el diff de las columnas).
+    const { data: existingRefund, error: existingRefundErr } = await admin
+      .from("refunds")
+      .select("id")
+      .eq("transaction_id", data.transactionId)
+      .limit(1)
+      .maybeSingle();
+    if (existingRefundErr) {
+      throw new MpError("REFUND.LOAD_FAILED", existingRefundErr.message, 500);
+    }
+    if (existingRefund) {
+      throw new MpError(
+        "TX.ALREADY_REFUNDED",
+        "Ya existe un reembolso registrado para esta transacción",
+        409,
+      );
+    }
+
+    // 2) Marcar como refunded. `setAuditActor` preserva el actor admin en
+    //    audit_log aunque usemos service role para cruzar RLS.
     const refundedAtIso = new Date().toISOString();
-    const { data: updatedRaw, error: updErr } = await supabase
+    const { data: updatedRaw, error: updErr } = await admin
       .from("transactions")
       .update({
         status: "refunded",
@@ -120,17 +144,30 @@ export async function markTransactionRefundedAdmin(
       );
     }
 
-    // 3) Cancelar la inscripción asociada (opt-out via flag).
+    // 3) Registrar la trazabilidad normalizada en refunds. La referencia
+    //    bancaria/DeUna queda en transactions.refund_reference porque el schema
+    //    actual de refunds no tiene columna de referencia.
+    const { error: refundErr } = await admin.from("refunds").insert({
+      transaction_id: data.transactionId,
+      amount_cents: tx.amount_cents,
+      reason: data.reason.trim(),
+      created_by: adminUserId,
+    } as never);
+    if (refundErr) {
+      throw new MpError("REFUND.CREATE_FAILED", refundErr.message, 500);
+    }
+
+    // 4) Cancelar la inscripción asociada (opt-out via flag).
     let cancelledRegistration: MarkTransactionRefundedResult["cancelledRegistration"] = null;
     if (data.cancelRegistration) {
       // Evento: event_registrations.paid_transaction_id → status='cancelled'
-      const { data: evReg } = await supabase
+      const { data: evReg } = await admin
         .from("event_registrations")
         .select("id,status")
         .eq("paid_transaction_id", data.transactionId)
         .maybeSingle();
       if (evReg && evReg.status !== "cancelled") {
-        const { error: evErr } = await supabase
+        const { error: evErr } = await admin
           .from("event_registrations")
           .update({ status: "cancelled" } as never)
           .eq("id", evReg.id);
@@ -146,13 +183,13 @@ export async function markTransactionRefundedAdmin(
 
       // Torneo: registrations.paid_transaction_id → status='withdrawn'
       if (!cancelledRegistration) {
-        const { data: trReg } = await supabase
+        const { data: trReg } = await admin
           .from("registrations")
           .select("id,status")
           .eq("paid_transaction_id", data.transactionId)
           .maybeSingle();
         if (trReg && trReg.status !== "withdrawn") {
-          const { error: trErr } = await supabase
+          const { error: trErr } = await admin
             .from("registrations")
             .update({ status: "withdrawn" } as never)
             .eq("id", trReg.id);
@@ -166,6 +203,27 @@ export async function markTransactionRefundedAdmin(
           cancelledRegistration = { kind: "tournament", id: trReg.id as string };
         }
       }
+    }
+
+    const customerId = tx.customer_user_id as string | null;
+    if (customerId) {
+      await notify({
+        userId: customerId,
+        role: "user",
+        kind: "refund_completed",
+        title: "Reembolso registrado",
+        body: `Registramos el reembolso de ${amountLabel(tx.amount_cents as number | null, (tx.currency as string | null) ?? null)}. La devolución se completa fuera de la app según la referencia registrada por soporte.`,
+        payload: {
+          transaction_id: data.transactionId,
+          transaction_kind: tx.kind,
+          ref_id: tx.ref_id,
+          amount_cents: tx.amount_cents,
+          currency: tx.currency,
+          reason: data.reason.trim(),
+          refund_reference: data.refundReference ?? null,
+          cancelled_registration: cancelledRegistration,
+        },
+      });
     }
 
     return {

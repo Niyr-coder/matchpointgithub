@@ -3,14 +3,19 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { ReservationCheckInQr } from "../shared/ReservationCheckInQr";
+import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 type Status = "booked" | "confirmed" | "checked_in" | "no_show" | "cancelled" | "completed";
 
 export type MisReserva = {
   id: string;
+  clubId: string;
   during: string;
   status: Status;
   sport: string;
+  source: string;
+  checkInCode: string | null;
   notes: string | null;
   createdAt: string;
   cancelledAt: string | null;
@@ -87,6 +92,16 @@ function fmtRel(start: Date): string {
 
 export function MisReservasScreenView({ data }: { data: MisReservasData }) {
   const [tab, setTab] = useState<Tab>("proximas");
+
+  useRealtimeRefresh(
+    data.meUserId
+      ? [
+          { table: "reservations", filter: `organizer_id=eq.${data.meUserId}` },
+          { table: "reservations", filter: `for_user_id=eq.${data.meUserId}` },
+        ]
+      : [],
+    { enabled: !!data.meUserId, debounceMs: 1000 },
+  );
 
   const buckets = useMemo(() => {
     const now = new Date();
@@ -295,6 +310,14 @@ function ReservationRow({ r }: { r: MisReserva }) {
             </>
           )}
         </div>
+        {(r.status === "booked" || r.status === "confirmed") && r.checkInCode ? (
+          <ReservationCheckInQr
+            clubId={r.clubId}
+            reservationId={r.id}
+            source={r.source}
+            checkInCode={r.checkInCode}
+          />
+        ) : null}
       </div>
 
       <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>

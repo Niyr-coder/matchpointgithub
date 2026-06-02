@@ -30,7 +30,7 @@ const NOTIFICATIONS: Record<RoleKey, Notification[]> = {
   admin: [
     { id: "a1", g: "Hoy", icon: "alert-triangle", avBg: "#dc2626", title: "Nuevo reporte de abuso · severidad alta", sub: "Mensaje ofensivo · Andrés Vega → Camila Reyes", when: "hace 8 min", actions: ["Revisar", "Descartar"] },
     { id: "a2", g: "Hoy", icon: "building-2", avBg: "#0ea5e9", title: "Solicitud de club pendiente", sub: "Smash Sport Cumbayá · documentos completos", when: "hace 22 min", actions: ["Verificar", "Rechazar"] },
-    { id: "a3", g: "Hoy", icon: "wallet", avBg: "#10b981", title: "Payout semanal listo · $32,840", sub: "142 clubes · Stripe transfer pendiente aprobación", when: "hace 1 h", actions: ["Aprobar"] },
+    { id: "a3", g: "Hoy", icon: "wallet", avBg: "#10b981", title: "Conciliación semanal lista · $32,840", sub: "142 clubes · pagos manuales pendientes de revisión", when: "hace 1 h", actions: ["Revisar"] },
     { id: "a4", g: "Hoy", icon: "server", avBg: "#fbbf24", title: "API p99 sobre umbral · 320ms", sub: "Pico en /matches/result · auto-escalado activo", when: "hace 2 h" },
     { id: "a5", g: "Ayer", icon: "users", avBg: "#7c3aed", read: true, title: "42 nuevos usuarios registrados", sub: "Quito 18 · Guayaquil 14 · Cuenca 6 · Otros 4", when: "ayer" },
     { id: "a6", g: "Ayer", icon: "shield-alert", avBg: "#dc2626", read: true, title: "Suspensión automática · 1 cuenta", sub: 'Usuario "fake_player_99" · 5 reportes confirmados', when: "ayer 14:00" },

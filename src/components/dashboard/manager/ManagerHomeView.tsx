@@ -221,6 +221,11 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
                             background: "var(--muted)",
                             border: 0,
                             cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 0,
+                            lineHeight: 1,
                           }}
                         >
                           <Icon name="more-horizontal" size={12} />

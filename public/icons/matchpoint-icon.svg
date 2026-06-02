@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>MATCHPOINT</title>
+  <rect width="512" height="512" rx="112" fill="#0a0a0a"/>
+  <circle cx="369" cy="149" r="42" fill="#10b981"/>
+  <path
+    fill="#ffffff"
+    d="M126 337V175h44l45 86 45-86h44v162h-40V241l-33 63h-32l-33-63v96h-40Z"
+  />
+</svg>

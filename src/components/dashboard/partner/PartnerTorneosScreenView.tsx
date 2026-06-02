@@ -203,6 +203,8 @@ function TorneoCard({ t }: { t: TorneoRow }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
           }}
         >
           <Icon name="more-horizontal" size={12} color={menuOpen ? "#fff" : "#0a0a0a"} />
@@ -215,13 +217,14 @@ function TorneoCard({ t }: { t: TorneoRow }) {
               top: "100%",
               right: 12,
               marginTop: 6,
-              minWidth: 220,
+              width: 240,
               background: "#fff",
               border: "1px solid var(--border)",
               borderRadius: 12,
-              padding: 6,
-              boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+              overflow: "hidden",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
               zIndex: 50,
+              fontSize: 12,
             }}
           >
             <KebabItem icon="pencil" label="Editar torneo" onClick={onEditar} />
@@ -268,13 +271,11 @@ function KebabItem({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 10px",
+        padding: "9px 14px",
         background: "transparent",
         border: 0,
-        borderRadius: 8,
         cursor: disabled ? "not-allowed" : "pointer",
-        fontSize: 12.5,
-        fontWeight: 700,
+        fontSize: 12,
         color,
         textAlign: "left",
         fontFamily: "inherit",

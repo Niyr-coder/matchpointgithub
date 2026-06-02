@@ -343,29 +343,82 @@ El hook genérico `useRealtimeRefresh([{ table, filter }])` se suscribe vía
 `postgres_changes` y dispara `router.refresh()` al recibir eventos. Para que
 funcione, la tabla debe estar en el publication `supabase_realtime`.
 
-**Inventario actual** (migs 061, 078):
+**Inventario actual** (migs 061, 078, 117, 121, 131, 141, 147, 177, 181, 20260530155713, 20260530161200, 20260531003558, 20260531041217):
 
 | Tabla | Usada por | Mig |
 |---|---|---|
 | `notifications` | TopBar bell, todas las pantallas con badge | 050 |
-| `reservations` | ClubReservas, UserHome (mis reservas) | 022 |
-| `ranking_snapshots` | UserHome rating widget, Ranking | 028 |
-| `player_stats` | UserHome rating widget | 028 |
-| `tournaments` | UserHome mis-torneos, panel partner, listings | 061 |
-| `registrations` | PartnerInscritos, gestión torneo, UserHome | 061 |
-| `club_followers` | ClubSocial | 062 |
+| `conversations` | Mensajes, listado de chats y último mensaje | 20260531003558 |
+| `conversation_members` | Mensajes, lectura/unread y membresía del chat | 20260531003558 |
+| `messages` | Mensajes, chat activo y system messages | 20260531003558 |
+| `reservations` | ClubReservas, UserHome (mis reservas) | 177 |
+| `reservation_payments` | Admin reservas: estado/ligas de pago de reservas | 20260531041217 |
+| `courts` | ClubCanchas, Finanzas por cancha | 177 |
+| `court_pricing` | ClubCanchas tarifas | 177 |
+| `court_blocks` | ClubCanchas mantenimiento/bloqueos | 177 |
+| `club_settings` | Configuración, ventanas de reserva y reglas | 177 |
+| `walkins` | Walk-ins, ManagerHome, EmployeeHome | 177 |
+| `check_ins` | Check-in, cola recepción | 177 |
+| `cash_sessions` | Caja employee, Finanzas | 177 |
+| `transactions` | Pagos, comprobantes, admin pagos, widgets financieros | 177 |
+| `refunds` | Admin pagos, reembolsos y conciliación | 177 |
+| `payouts` | Admin pagos, payouts pendientes/pagados | 177 |
+| `products` | Pro shop inventario/catálogo | 177 |
+| `sales` | Pro shop ventas y movimientos | 177 |
+| `inventory_movements` | Pro shop y recepción admin: movimientos de inventario | 20260531041217 |
+| `tickets` | Soporte admin y soporte employee | 177 |
+| `ticket_messages` | Detalle/conversación de soporte | 177 |
+| `broadcasts` | Comunicaciones admin/club | 177 |
+| `broadcast_recipients` | Entregas y aperturas de comunicados | 177 |
+| `profiles` | Chrome/plan, usuarios, métricas | 177 |
+| `player_subscriptions` | MATCHPOINT+ / Mi plan / admin planes | 177 |
+| `role_assignments` | RoleSwitcher, roles, staff, permisos | 177 |
+| `feature_flags` | Kill switches, sidebar gates, flags admin | 177 |
+| `feature_flag_assignments` | Overrides de flags por usuario/rol | 177 |
+| `club_applications` | Solicitar club + admin clubes | 177 |
+| `clubs` | Clubes, suspensión, planes club, listados | 177 |
+| `club_memberships` | Admin memberships, club memberships, Mis membresías | 177 |
+| `club_membership_tiers` | Catálogo de tiers y admin memberships | 177 |
+| `announcements` | Banner global del dashboard | 177 |
+| `audit_log` | Live tail admin audit | 177 |
+| `reports` | Admin home, moderación y colas de soporte operativo | 181 |
+| `moderation_actions` | Admin moderación, resumen de acciones y refresh post-review | 181 |
+| `events` | Admin eventos y detalle de evento | 181 |
+| `event_registrations` | Admin eventos y detalle de inscripciones | 181 |
+| `role_requests` | Admin roles, solicitudes pendientes | 181 |
+| `paywall_events` | Admin paywall funnel | 181 |
+| `team_reports` | Admin teams, reportes de teams | 181 |
+| `ranking_snapshots` | UserHome rating widget, Ranking | 177 |
+| `player_stats` | UserHome rating widget | 177 |
+| `tournaments` | UserHome mis-torneos, panel partner, listings | 177 |
+| `registrations` | PartnerInscritos, gestión torneo, UserHome | 177 |
+| `brackets` | Brackets partner y detalle admin de torneo | 177 |
+| `bracket_matches` | Scoreboard y detalle admin de torneo | 177 |
+| `club_followers` | ClubSocial | 177 |
 | `tournament_categories` | Panel gestión torneo (edits concurrentes) | 078 |
 | `tournament_schedule_blocks` | Panel gestión torneo | 078 |
 | `tournament_prizes` | Panel gestión torneo | 078 |
 | `match_seeks` | BuscoPartido feed + mis avisos | 117 |
 | `match_seek_applications` | BuscoPartido (postulantes en vivo) | 117 |
 | `matches` | chat del partido + Mis avisos (cancel/reschedule en vivo) | 121 |
+| `match_no_shows` | Admin matches y reportes de inasistencia | 177 |
+| `player_reliability` | Admin matches y badge/score de fiabilidad | 177 |
 | `quedadas` | cupos/estado en vivo (panel + detalle jugador) | 131 |
 | `quedada_participants` | cupos/pagos en vivo | 131 |
+| `quedada_reports` | Admin quedadas: cola de reportes y resolución | 20260531041217 |
 | `quedada_categories` | panel gestión (edits concurrentes) | 133 |
 | `quedada_pairs` | panel gestión (parejas/slots en vivo) | 133 |
 | `quedada_rounds` | motor de juego — rondas en vivo (panel + detalle jugador) | 141 |
 | `quedada_games` | motor de juego — scoreboard/tabla en vivo | 141 |
+| `sponsors` | Admin patrocinadores: catálogo de marcas | 20260530155713 |
+| `sponsor_slots` | Admin patrocinadores: inventario de superficies | 20260530155713 |
+| `sponsor_placements` | Admin patrocinadores: campañas/placements | 20260530155713 |
+| `sponsor_placement_events` | Admin patrocinadores: impresiones/clics reales | 20260530155713 |
+| `sales_leads` | Admin ventas: inbox y pipeline comercial | 20260530203500 |
+| `help_articles` | Admin ayuda y centro de ayuda del jugador | 20260530161200 |
+| `help_article_revisions` | Admin ayuda: historial editorial | 20260530161200 |
+| `help_feedback` | Admin ayuda: votos de utilidad reales | 20260530161200 |
+| `help_search_logs` | Admin ayuda: búsquedas y misses reales | 20260530161200 |
 
 **Para sumar una tabla nueva**:
 

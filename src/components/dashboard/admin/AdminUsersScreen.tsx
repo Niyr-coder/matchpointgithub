@@ -1,5 +1,6 @@
 // Server: lista global de usuarios para admin.
 import { getServerClient } from "@/lib/db/client.server";
+import { reliabilityScore, reliabilityTier } from "@/lib/reliability";
 import { AdminUsersScreenView, type UsersData, type UserRow } from "./AdminUsersScreenView";
 
 const AV_GRADIENTS = [
@@ -25,6 +26,13 @@ function gradientFor(id: string): string {
 
 async function loadData(): Promise<UsersData> {
   const supabase = await getServerClient();
+  // Mismo gate que usa el chat para reportar inasistencias; con el flag OFF no
+  // exponemos badges parciales en admin-users.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: flags } = await (supabase as any).rpc("fn_my_effective_flags");
+  const reliabilityEnabled = ((flags ?? []) as { key: string; enabled: boolean }[]).some(
+    (f) => f.key === "match_reliability_enabled" && f.enabled,
+  );
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -39,6 +47,7 @@ async function loadData(): Promise<UsersData> {
   const ratingByUser = new Map<string, number>();
   const matchesByUser = new Map<string, number>();
   const spendByUser = new Map<string, number>();
+  const reliabilityByUser = new Map<string, { noShows: number; cancellations: number }>();
 
   const suspensionByUser = new Map<string, { reason: string; suspendedAt: string }>();
 
@@ -58,6 +67,12 @@ async function loadData(): Promise<UsersData> {
         .in("user_id", userIds)
         .is("reactivated_at", null) as Promise<{ data: Array<{ user_id: string; reason: string; suspended_at: string }> | null }>,
     ]);
+    const { data: reliability } = reliabilityEnabled
+      ? await supabase
+          .from("player_reliability")
+          .select("user_id,no_shows,cancellations")
+          .in("user_id", userIds)
+      : { data: [] };
 
     for (const s of suspensions ?? []) {
       suspensionByUser.set(s.user_id as string, {
@@ -80,6 +95,12 @@ async function loadData(): Promise<UsersData> {
       if (!uid) continue;
       spendByUser.set(uid, (spendByUser.get(uid) ?? 0) + ((t.amount_cents as number) ?? 0));
     }
+    for (const r of reliability ?? []) {
+      reliabilityByUser.set(r.user_id as string, {
+        noShows: (r.no_shows as number) ?? 0,
+        cancellations: (r.cancellations as number) ?? 0,
+      });
+    }
   }
 
   const nowMs = Date.now();
@@ -93,6 +114,9 @@ async function loadData(): Promise<UsersData> {
     const planActive =
       tier === "premium" && (expires == null || Date.parse(expires) > nowMs);
     const suspension = suspensionByUser.get(id);
+    const reliability = reliabilityByUser.get(id) ?? { noShows: 0, cancellations: 0 };
+    const reliabilityValue = reliabilityScore(reliability);
+    const reliabilityMeta = reliabilityTier(reliabilityValue);
     return {
       id,
       n: name,
@@ -110,10 +134,15 @@ async function loadData(): Promise<UsersData> {
       suspended: Boolean(suspension),
       suspensionReason: suspension?.reason ?? null,
       suspendedAt: suspension?.suspendedAt ?? null,
+      reliabilityScore: reliabilityValue,
+      reliabilityLabel: reliabilityMeta.label,
+      reliabilityColor: reliabilityMeta.color,
+      noShows: reliability.noShows,
+      cancellations: reliability.cancellations,
     };
   });
 
-  return { rows, total: totalCount ?? rows.length };
+  return { rows, total: totalCount ?? rows.length, reliabilityEnabled };
 }
 
 export async function AdminUsersScreen() {

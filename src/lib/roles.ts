@@ -52,10 +52,10 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Jugar",
         items: [
           { k: "home", label: "Inicio", icon: "home" },
-          { k: "busco-partido", label: "Busco partido", icon: "swords" },
-          { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA", flag: "quedadas_enabled" },
           { k: "eventos", label: "Eventos", icon: "trophy" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
+          { k: "busco-partido", label: "Busco partido", icon: "swords" },
+          { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA", flag: "quedadas_enabled" },
         ],
       },
       {
@@ -86,8 +86,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
           { k: "membresias", label: "Mis membresías", icon: "star" },
-          { k: "mp-plus", label: "Mi plan MP+", icon: "crown", flag: "user_has_mp_plus" },
-          { k: "personalizar", label: "Personalizar", icon: "palette", flag: "profile_customization" },
+          { k: "mi-plan", label: "Mi plan MP+", icon: "crown", flag: "user_has_mp_plus" },
+          { k: "soporte", label: "Soporte", icon: "life-buoy" },
           { k: "solicitar-club", label: "Solicitar Club", icon: "building" },
         ],
       },
@@ -120,8 +120,11 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "admin-clubs", label: "Clubes", icon: "building-2" },
           { k: "admin-users", label: "Usuarios", icon: "users" },
           { k: "admin-user-teams", label: "Teams", icon: "users-2" },
+          { k: "admin-partners", label: "Partners", icon: "handshake" },
           { k: "admin-events", label: "Eventos", icon: "trophy" },
           { k: "admin-quedadas", label: "Quedadas", icon: "party-popper" },
+          { k: "admin-matches", label: "Matches", icon: "swords" },
+          { k: "admin-reservas", label: "Reservas", icon: "calendar-days" },
         ],
       },
       {
@@ -129,6 +132,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "admin-mod", label: "Moderación", icon: "shield-alert" },
           { k: "admin-support", label: "Soporte", icon: "life-buoy" },
+          { k: "admin-recepcion", label: "Recepción", icon: "badge-check" },
           { k: "admin-broadcast", label: "Comunicaciones", icon: "megaphone" },
           { k: "admin-team", label: "Equipo MP", icon: "user-cog" },
         ],
@@ -139,8 +143,8 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "admin-pagos", label: "Pagos & Payouts", icon: "wallet" },
           { k: "admin-plans", label: "Planes premium", icon: "badge-check" },
           { k: "admin-memberships", label: "Membresías clubes", icon: "star" },
+          { k: "admin-ventas", label: "Ventas", icon: "briefcase-business" },
           { k: "admin-sponsors", label: "Patrocinadores", icon: "handshake" },
-          { k: "admin-cosmetics", label: "Flair de usuarios", icon: "palette" },
           { k: "admin-paywall-funnel", label: "Paywall funnel", icon: "activity" },
         ],
       },
@@ -192,7 +196,9 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       },
       {
         h: "Ajustes",
-        items: [{ k: "club-config", label: "Configuración del club", icon: "settings-2" }],
+        items: [
+          { k: "club-config", label: "Configuración del club", icon: "settings-2" },
+        ],
       },
     ],
   },
@@ -291,7 +297,9 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       },
       {
         h: "Cuenta",
-        items: [{ k: "c-perfil", label: "Mi perfil", icon: "user" }],
+        items: [
+          { k: "c-perfil", label: "Mi perfil", icon: "user" },
+        ],
       },
     ],
   },
@@ -310,8 +318,9 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         items: [
           { k: "home", label: "Mi turno", icon: "home" },
           { k: "e-checkin", label: "Check-in", icon: "user-check" },
-          { k: "e-walkins", label: "Walk-ins", icon: "user-plus" },
-          { k: "e-reservas", label: "Reservas hoy", icon: "calendar-days" },
+          { k: "e-walkins", label: "Walk-ins y canchas", icon: "user-plus" },
+          { k: "e-calendario", label: "Calendario hoy", icon: "calendar" },
+          { k: "e-reservas", label: "Semana completa", icon: "calendar-days" },
         ],
       },
       {
@@ -320,6 +329,10 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "e-caja", label: "Caja del día", icon: "banknote" },
           { k: "e-shop", label: "Tienda", icon: "shopping-bag" },
         ],
+      },
+      {
+        h: "Operación",
+        items: [{ k: "e-soporte", label: "Soporte", icon: "life-buoy" }],
       },
     ],
   },
@@ -336,7 +349,29 @@ export const MP_ROLE_ORDER: RoleKey[] = [
 ];
 
 // Qué pantallas están realmente implementadas (vs stub). Mantener en sync con los componentes migrados.
-export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
+export const MP_ROLE_SCREENS: Record<RoleKey, string[]> = {
+  user: [
+    "ranking",
+    "perfil",
+    "clubes",
+    "eventos",
+    "chat",
+    "amigos",
+    "shop",
+    "solicitar-club",
+    "soporte",
+    "mi-plan",
+    "mp-plus",
+    "team",
+    "busco-partido",
+    "quedadas",
+    "coach-ai",
+    "academia",
+    "mis-clases",
+    "ayuda-guias",
+    "mis-reservas",
+    "membresias",
+  ],
   admin: [
     "admin-clubs",
     "admin-users",
@@ -351,24 +386,27 @@ export const MP_ROLE_SCREENS: Record<Exclude<RoleKey, "user">, string[]> = {
     "admin-roles",
     "admin-team",
     "admin-user-teams",
+    "admin-partners",
     "admin-ayuda-guias",
     "admin-flags",
     "admin-broadcast",
     "admin-quedadas",
+    "admin-matches",
+    "admin-reservas",
+    "admin-recepcion",
     "admin-memberships",
+    "admin-ventas",
     "admin-sponsors",
-    "admin-theme-designer",
     "admin-paywall-funnel",
   ],
   owner: ["club-reservas", "club-canchas", "club-clientes", "club-finanzas", "club-membresias", "club-marketing", "club-config", "club-eventos", "club-staff"],
   manager: ["club-reservas", "club-canchas", "club-clientes", "club-membresias", "club-eventos", "club-staff", "club-walkins", "club-reportes"],
   partner: ["p-ligas", "p-torneos", "p-brackets", "p-inscritos", "p-clubes", "p-finanzas", "p-marketing"],
   coach: ["c-clases", "c-alumnos", "c-calendar", "c-pagos", "c-recursos", "c-perfil"],
-  employee: ["e-checkin", "e-walkins", "e-caja", "e-reservas", "e-shop", "e-soporte"],
+  employee: ["e-checkin", "e-walkins", "e-calendario", "e-caja", "e-reservas", "e-shop", "e-soporte"],
 };
 
 export function mpRoleScreenExists(role: RoleKey, key: string): boolean {
-  if (role === "user") return false;
   return (MP_ROLE_SCREENS[role] || []).includes(key);
 }
 

@@ -80,10 +80,7 @@ export function CancelacionSection({
   clubId?: string;
 }) {
   const [tiers, setTiers] = useState<CancelTier[]>(data?.tiers ?? DEFAULT_TIERS);
-  // TODO: persistir las reglas finas cuando se agregue la columna
-  // `cancellation_rules` jsonb a club_settings. Por ahora viven solo
-  // en memoria del componente.
-  const [rules, setRules] = useState<CancelRule[]>(data?.rules ?? DEFAULT_RULES);
+  const rules = data?.rules ?? DEFAULT_RULES;
   const [noShowPenalty, setNoShowPenalty] = useState<number>(data?.noShowPenaltyCents ?? 500);
   const [editing, setEditing] = useState<number | null>(null);
   const [isSaving, startSave] = useTransition();
@@ -110,11 +107,6 @@ export function CancelacionSection({
     );
     setNoShowPenalty(AGGRESSIVE_NO_SHOW_CENTS);
     onAction("Política agresiva aplicada (no olvides guardar)");
-  };
-
-  const toggleRule = (key: string) => {
-    setRules((prev) => prev.map((r) => (r.key === key ? { ...r, enabled: !r.enabled } : r)));
-    onAction("Esta regla aún no se persiste en backend");
   };
 
   const save = () => {
@@ -193,7 +185,7 @@ export function CancelacionSection({
         <div className="label-mp">Excepciones · reglas finas</div>
         <h3 className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "4px 0 14px" }}>Casos especiales<span className="dot">.</span></h3>
         <div style={{ fontSize: 10, color: "var(--muted-fg)", marginBottom: 8, fontStyle: "italic" }}>
-          Estos toggles aún no persisten — solo afectan la sesión actual.
+          Estas reglas aún no tienen backend. Se muestran como referencia y no son editables todavía.
         </div>
         {rules.map((r, i) => (
           <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: i === 0 ? 0 : "1px dashed var(--border)" }}>
@@ -201,7 +193,7 @@ export function CancelacionSection({
               <div style={{ fontSize: 12, fontWeight: 800 }}>{r.label}</div>
               <div style={{ fontSize: 10, color: "var(--muted-fg)", marginTop: 2 }}>{r.sub}</div>
             </div>
-            <VisualToggle on={r.enabled} onClick={() => toggleRule(r.key)} />
+            <VisualToggle on={r.enabled} />
           </div>
         ))}
       </div>

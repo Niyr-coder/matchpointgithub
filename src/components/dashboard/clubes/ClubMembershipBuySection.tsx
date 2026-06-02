@@ -52,7 +52,7 @@ export function ClubMembershipBuySection({ clubId }: { clubId: string }) {
   const isPending = mine?.status === "pending";
 
   return (
-    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+    <div id="club-membresias" className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14, scrollMarginTop: 88 }}>
       <div>
         <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em" }}>
           Membresías VIP<span className="dot">.</span>

@@ -332,19 +332,19 @@ export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData })
       {/* SOCIOS (tabla real con filtros del diseño) */}
       <SociosSection plans={plans} members={others} onRevoke={(id) => act(() => revokeClubMembership({ membershipId: id }), "Membresía cancelada")} />
 
-      {/* REGLAS GLOBALES (UI del diseño — sin backend dedicado todavía) */}
+      {/* REGLAS GLOBALES (solo lectura hasta que exista backend dedicado) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <h2 className="font-heading" style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
             Reglas globales<span style={{ color: "var(--primary)" }}>.</span>
           </h2>
-          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Aplican a todos los planes del club</span>
+          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Referencia no editable · falta modelo persistente</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 14 }}>
           <GlobalRuleCard icon="pause-circle" title="Pausas" desc="Cualquier socio puede pausar su membresía sin perder beneficios acumulados." controls={[{ k: "max-pauses", l: "Máx pausas/año", type: "num", val: 2, suffix: "pausas" }, { k: "pause-len", l: "Duración máx", type: "num", val: 30, suffix: "días" }]} />
           <GlobalRuleCard icon="x-circle" title="Cancelación" desc="Política cuando un socio decide darse de baja." controls={[{ k: "notice", l: "Aviso requerido", type: "num", val: 7, suffix: "días antes" }, { k: "refund", l: "Reembolso", type: "toggle", val: false }]} />
           <GlobalRuleCard icon="user-plus" title="Invitados" desc="Reglas para los invitados que llevan tus socios al club." controls={[{ k: "guest-fee", l: "Cuota extra invitado", type: "money", val: 800 }, { k: "kid-free", l: "Niños <12 gratis", type: "toggle", val: true }]} />
-          <GlobalRuleCard icon="megaphone" title="Visibilidad pública" desc="Si los planes aparecen en la app o solo se ofrecen en el club." controls={[{ k: "public", l: "Mostrar en app público", type: "toggle", val: true }, { k: "auto-bill", l: "Auto-renovación por defecto", type: "toggle", val: true }]} />
+          <GlobalRuleCard icon="megaphone" title="Visibilidad pública" desc="Si los planes aparecen en la app o solo se ofrecen en el club." controls={[{ k: "public", l: "Mostrar en app público", type: "toggle", val: true }, { k: "manual-renew", l: "Recordatorio de renovación", type: "toggle", val: true }]} />
         </div>
       </div>
     </div>
@@ -742,7 +742,11 @@ function SegmentFilter({ label, value, onChange, options }: { label: string; val
 type RuleControl = { k: string; l: string; type: "num" | "toggle" | "money"; val: number | boolean; suffix?: string };
 
 function GlobalRuleCard({ icon, title, desc, controls }: { icon: string; title: string; desc: string; controls: RuleControl[] }) {
-  const [vals, setVals] = useState<Record<string, number | boolean>>(() => Object.fromEntries(controls.map((c) => [c.k, c.val])));
+  const labelFor = (c: RuleControl) => {
+    if (c.type === "toggle") return c.val ? "Activado" : "Desactivado";
+    if (c.type === "money") return money(Number(c.val));
+    return `${c.val}${c.suffix ? ` ${c.suffix}` : ""}`;
+  };
   return (
     <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -758,21 +762,9 @@ function GlobalRuleCard({ icon, title, desc, controls }: { icon: string; title: 
         {controls.map((c) => (
           <div key={c.k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 0", borderTop: "1px dashed var(--border)" }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "#0a0a0a" }}>{c.l}</span>
-            {c.type === "toggle" ? (
-              <button type="button" role="switch" aria-checked={Boolean(vals[c.k])} onClick={() => setVals((v) => ({ ...v, [c.k]: !v[c.k] }))} style={{ flexShrink: 0, width: 36, height: 20, borderRadius: 9999, background: vals[c.k] ? "var(--primary)" : "#e5e5e5", position: "relative", cursor: "pointer", border: 0, padding: 0, transition: "background 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}>
-                <span style={{ position: "absolute", top: 2, left: vals[c.k] ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.2)", transition: "left 150ms cubic-bezier(0.16, 1, 0.3, 1)" }} />
-              </button>
-            ) : c.type === "money" ? (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "#fff" }}>
-                <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>$</span>
-                <input type="number" min={0} value={Number(vals[c.k]) / 100} onChange={(e) => setVals((v) => ({ ...v, [c.k]: Math.round(Number(e.target.value) * 100) }))} style={{ width: 50, border: 0, outline: 0, fontFamily: "inherit", fontSize: 12, fontWeight: 800, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
-              </div>
-            ) : (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "#fff" }}>
-                <input type="number" min={0} value={Number(vals[c.k])} onChange={(e) => setVals((v) => ({ ...v, [c.k]: parseInt(e.target.value) || 0 }))} style={{ width: 36, border: 0, outline: 0, fontFamily: "inherit", fontSize: 12, fontWeight: 800, textAlign: "right", fontVariantNumeric: "tabular-nums" }} />
-                {c.suffix && <span style={{ fontSize: 10.5, color: "var(--muted-fg)", fontWeight: 700 }}>{c.suffix}</span>}
-              </div>
-            )}
+            <span style={{ flexShrink: 0, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "#fafafa", fontSize: 11, color: "var(--muted-fg)", fontWeight: 800 }}>
+              {labelFor(c)}
+            </span>
           </div>
         ))}
       </div>

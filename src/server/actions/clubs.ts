@@ -30,6 +30,7 @@ import {
   type ClubSocialTournament,
   type ClubSocialView,
 } from "@/lib/schemas/clubs";
+import { isClubMembershipActive } from "@/lib/clubs/membership";
 import type { PageMeta } from "@/lib/api/response";
 import { UuidSchema } from "@/lib/schemas/common";
 
@@ -134,19 +135,29 @@ export async function listFeaturedClubs(
     const ids = rows.map((r) => r.id as string);
     const { data: extraRows } = await supabase
       .from("clubs")
-      .select("id,featured_until,description,address")
+      .select("id,featured_until,description,address,latitude,longitude")
       .in("id", ids);
-    type Extra = { featuredUntil: string | null; description: string | null; address: string | null };
+    type Extra = {
+      featuredUntil: string | null;
+      description: string | null;
+      address: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    };
     const extraById = new Map<string, Extra>();
     for (const f of extraRows ?? []) {
       const fid = f.id as string;
       const until = (f.featured_until as string | null) ?? null;
       // Tratamos como null si ya expiró: la UI no debe destacarlo.
       const stillActive = until != null && new Date(until) > new Date();
+      const lat = f.latitude as number | null;
+      const lng = f.longitude as number | null;
       extraById.set(fid, {
         featuredUntil: stillActive ? until : null,
         description: (f.description as string | null) ?? null,
         address: (f.address as string | null) ?? null,
+        latitude: lat != null && Number.isFinite(Number(lat)) ? Number(lat) : null,
+        longitude: lng != null && Number.isFinite(Number(lng)) ? Number(lng) : null,
       });
     }
 
@@ -176,6 +187,8 @@ export async function listFeaturedClubs(
         minPriceCents: row.min_price_cents ?? null,
         description: extra?.description ?? null,
         address: extra?.address ?? null,
+        latitude: extra?.latitude ?? null,
+        longitude: extra?.longitude ?? null,
         featuredUntil: extra?.featuredUntil ?? null,
         openHoursToday: hoursById.get(row.id as string)?.range ?? null,
         isOpenNow: hoursById.get(row.id as string)?.isOpenNow ?? false,
@@ -301,13 +314,14 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       .eq("user_id", meId)
       .is("revoked_at", null);
     const roles = roleRows ?? [];
-    if (roles.some((r) => r.role === "admin")) {
-      viewerRole = "admin";
-    }
     const clubScoped = roles.find(
       (r) => r.club_id === clubId && (r.role === "owner" || r.role === "manager"),
     );
-    if (clubScoped) viewerRole = clubScoped.role as "owner" | "manager";
+    if (clubScoped) {
+      viewerRole = clubScoped.role as "owner" | "manager";
+    } else if (roles.some((r) => r.role === "admin")) {
+      viewerRole = "admin";
+    }
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -323,6 +337,8 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       { count: followersCount },
       { count: myFollowCount },
       { count: matchesLast30dCount },
+      { data: membershipTierRows },
+      { data: myMembership },
     ] = await Promise.all([
       supabase.from("courts").select("id", { count: "exact", head: false }).eq("club_id", clubId),
       supabase.from("club_settings").select("open_hours").eq("club_id", clubId).maybeSingle(),
@@ -405,6 +421,21 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
         .select("*", { count: "exact", head: true })
         .eq("club_id", clubId)
         .gte("played_at", thirtyDaysAgo),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("club_membership_tiers")
+        .select("id")
+        .eq("club_id", clubId)
+        .eq("is_active", true)
+        .order("price_cents", { ascending: true })
+        .limit(1),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("club_memberships")
+        .select("status,expires_at,transaction_id")
+        .eq("club_id", clubId)
+        .eq("user_id", meId)
+        .maybeSingle(),
     ]);
 
     // Set de amigos del user actual.
@@ -625,6 +656,25 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
     const courtsCount = (courts ?? []).length;
     const hours = computeTodayHours(settings?.open_hours as unknown);
 
+    const tierRows = (membershipTierRows ?? []) as Array<{ id: string }>;
+    const hasMembershipTiers = tierRows.length > 0;
+    const cheapestTierId = tierRows[0]?.id ?? null;
+    const memRow = myMembership as {
+      status: string;
+      expires_at: string | null;
+      transaction_id: string | null;
+    } | null;
+    let membershipStatus: "none" | "active" | "pending" = "none";
+    let pendingMembershipTxId: string | null = null;
+    if (memRow) {
+      if (isClubMembershipActive(memRow)) {
+        membershipStatus = "active";
+      } else if (memRow.status === "pending") {
+        membershipStatus = "pending";
+        pendingMembershipTxId = memRow.transaction_id;
+      }
+    }
+
     return ClubSocialViewSchema.parse({
       club: {
         id: clubId,
@@ -652,6 +702,10 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       },
       isFollowing: (myFollowCount ?? 0) > 0,
       viewerRole,
+      membershipStatus,
+      hasMembershipTiers,
+      cheapestTierId,
+      pendingMembershipTxId,
       upcomingTournaments,
       frequentMembers,
       friendsHere,

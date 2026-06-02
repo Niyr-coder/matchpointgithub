@@ -170,6 +170,9 @@ al body.
   una transacción ligada no captured (e.g. onsite que nunca pagó), se
   marca como `failed` automáticamente.
 - **Verificación**: kebab ya no muestra "Marcar no-show" en esa fila.
+- **Notificación**: se encola `event_registration_no_show` para el usuario
+  afectado. Repetir la acción sobre una fila ya `no_show` debe fallar, no
+  duplicar jobs.
 
 ### 3.4 · Transferir cupo (eventos)
 
@@ -179,6 +182,8 @@ al body.
 - Pegá el UUID destino → confirmar.
 - **Verificación**: la inscripción ahora pertenece al user destino.
   Trying to transferir a un user que ya está inscrito devuelve error.
+- **Notificación**: se encola `event_registration_transferred` para el user
+  origen y para el user destino, con copy específico para cada lado.
 
 ### 3.5 · Refund manual
 
@@ -189,6 +194,16 @@ al body.
 - Confirmá.
 - **Esperado**: transaction pasa a `refunded`, registración a
   `cancelled` (si el checkbox estaba), entrada en audit.
+
+### 3.5b · Remover inscripción desde soporte
+
+- En el detalle del evento, usa "Remover inscripción" sobre una fila activa.
+- **Esperado**: `event_registrations.status = 'cancelled'`, audit semántico
+  `event_registration.admin_remove` y job `event_registration_cancelled`.
+- En el detalle de torneo, usa la acción equivalente sobre una registration
+  activa.
+- **Esperado**: `registrations.status = 'withdrawn'`, audit semántico
+  `registration.admin_remove` y job `tournament_registration_removed`.
 
 ### 3.6 · Cancelar evento o torneo
 

@@ -1,4 +1,5 @@
 // POST /api/v1/notifications/:id/dismiss
+// Compatibilidad pública: hoy "dismiss" marca la notificación como leída.
 import { dismissNotification } from "@/server/actions/notifications";
 import { httpFail, httpOk } from "@/lib/api/response";
 

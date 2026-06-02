@@ -17,6 +17,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -96,7 +97,7 @@ export async function reassignEventOrganizerAdmin(
   input: unknown,
 ): Promise<ActionResult<{ eventId: string; oldOrganizerId: string; newOrganizerId: string }>> {
   return runAction(ReassignEventSchema, input, async ({ eventId, newOrganizerUserId }) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
 
     const { data: existing } = await supabase
@@ -116,7 +117,9 @@ export async function reassignEventOrganizerAdmin(
 
     await assertCanBeOrganizer(newOrganizerUserId);
 
-    const { error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { error } = await admin
       .from("events")
       .update({ organizer_id: newOrganizerUserId } as never)
       .eq("id", eventId);
@@ -149,7 +152,7 @@ export async function reassignTournamentOrganizerAdmin(
     ReassignTournamentSchema,
     input,
     async ({ tournamentId, newOrganizerUserId }) => {
-      await requireAdminUserId();
+      const adminUserId = await requireAdminUserId();
       const supabase = await getServerClient();
 
       const { data: existing } = await supabase
@@ -171,7 +174,9 @@ export async function reassignTournamentOrganizerAdmin(
 
       await assertCanBeOrganizer(newOrganizerUserId);
 
-      const { error } = await supabase
+      const admin = getAdminClient();
+      await setAuditActor(admin, adminUserId, "admin");
+      const { error } = await admin
         .from("tournaments")
         .update({ created_by: newOrganizerUserId } as never)
         .eq("id", tournamentId);

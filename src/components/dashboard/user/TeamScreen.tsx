@@ -4,8 +4,6 @@ import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getTeamCaps } from "@/lib/teams/caps";
 import { computeTeamMpr } from "@/lib/teams/mpr";
-import { findAccent, findCardStyle } from "@/lib/profile/customization-presets";
-import { canUsePreset } from "@/lib/profile/bundles";
 import { listMyFriends } from "@/server/actions/friends";
 import { getTeamAchievementsServer } from "@/server/actions/team-achievements";
 import {
@@ -71,7 +69,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     supabase
       .from("team_members")
       .select(
-        "user_id,role,profiles(display_name,username,accent_color,card_style,plan_tier,plan_expires_at)",
+        "user_id,role,profiles(display_name,username,plan_tier,plan_expires_at)",
       )
       .eq("team_id", teamId),
     supabase
@@ -111,48 +109,6 @@ async function loadTeam(): Promise<TeamLite | null> {
 
   const statsMap = new Map((stats ?? []).map((s) => [s.user_id as string, s]));
 
-  // Grants cosméticos de los miembros (mig 115 abrió SELECT público).
-  const { data: grantRows } =
-    memberIds.length > 0
-      ? await supabase
-          .from("profile_cosmetic_grants")
-          .select("user_id,bundle_key")
-          .in("user_id", memberIds)
-      : { data: [] };
-  const grantsByUser = new Map<string, Set<string>>();
-  for (const g of (grantRows ?? []) as Array<{ user_id: string; bundle_key: string }>) {
-    if (!grantsByUser.has(g.user_id)) grantsByUser.set(g.user_id, new Set());
-    grantsByUser.get(g.user_id)!.add(g.bundle_key);
-  }
-  function memberIsPremium(p: { plan_tier?: unknown; plan_expires_at?: unknown }): boolean {
-    if (p.plan_tier !== "premium") return false;
-    const exp = p.plan_expires_at;
-    if (exp == null) return true;
-    return new Date(exp as string).getTime() > Date.now();
-  }
-  function resolveMemberCustomization(
-    userId: string,
-    profile: Record<string, unknown> | null,
-  ): { accentHex: string | null; cardStyleCss: TeamMemberLite["cardStyleCss"] } {
-    if (!profile) return { accentHex: null, cardStyleCss: null };
-    const ownArgs = {
-      isPremium: memberIsPremium({
-        plan_tier: profile.plan_tier,
-        plan_expires_at: profile.plan_expires_at,
-      }),
-      myGrants: grantsByUser.get(userId) ?? new Set<string>(),
-    };
-    const accentRaw = findAccent((profile.accent_color as string | null) ?? null);
-    const cardRaw = findCardStyle((profile.card_style as string | null) ?? null);
-    const accentObj =
-      accentRaw && canUsePreset(accentRaw.bundleKey, ownArgs) ? accentRaw : null;
-    const cardObj = cardRaw && canUsePreset(cardRaw.bundleKey, ownArgs) ? cardRaw : null;
-    return {
-      accentHex: accentObj?.hex ?? null,
-      cardStyleCss: cardObj?.css ?? null,
-    };
-  }
-
   const captainId = team.captain_id as string;
   const members: TeamMemberLite[] = (allMembers ?? []).map((m) => {
     const profile = m.profiles as Record<string, unknown> | null;
@@ -160,7 +116,6 @@ async function loadTeam(): Promise<TeamLite | null> {
     const total = (s?.matches_total as number | undefined) ?? 0;
     const wins = (s?.wins as number | undefined) ?? 0;
     const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
-    const customization = resolveMemberCustomization(m.user_id as string, profile);
     return {
       userId: m.user_id as string,
       username: (profile?.username as string | undefined) ?? null,
@@ -170,8 +125,6 @@ async function loadTeam(): Promise<TeamLite | null> {
       played: total,
       wr,
       online: false,
-      accentHex: customization.accentHex,
-      cardStyleCss: customization.cardStyleCss,
     };
   });
 
@@ -234,7 +187,7 @@ async function loadTeam(): Promise<TeamLite | null> {
     teamMpr: teamMprResult.rating,
     description: (team.description as string | null | undefined) ?? null,
     inviteCode: (team.invite_code as string | null | undefined) ?? null,
-    accentHex: (team.color as string | null) ?? null,
+    colorHex: (team.color as string | null) ?? null,
     captainId,
     captainName: captainProfile?.display_name ?? "Capitán",
     founded: String(created.getFullYear()),

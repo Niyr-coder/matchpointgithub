@@ -4,16 +4,16 @@
 // Layout pixel-faithful al prototipo. Comportamiento:
 //   - Listar/buscar/filtrar/ordenar/seleccionar bulk → real (client-side sobre data del server).
 //   - Otorgar logro a un team → real (grantTeamAchievement, mig 164).
-//   - Resto de acciones (verify, pin, suspend, archive, dissolve, mensaje al
-//     capitán, comunicar a capitanes, editor de política, reportes/moderación)
-//     → UI presente, action dispara toast "Pronto" porque no hay backend.
-//     Ver `docs/guides/04-placeholders.md`.
+//   - Verify/pin/status/dissolve/mensajes/reportes → reales vía actions admin
+//     y team-reports. El editor de política sigue read-only/staged.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
+import { trustBadgeMeta } from "@/lib/ui/trust-badge";
 import { useToast } from "../ToastProvider";
 import { grantTeamAchievement } from "@/server/actions/team-achievements";
 import {
@@ -326,13 +326,10 @@ export function AdminUserTeamsScreenView({
         }}
       >
         <div>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>
-            ● Admin · Plataforma
-          </div>
           <h1
             className="font-heading"
             style={{
-              margin: "6px 0 0",
+              margin: 0,
               fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
@@ -927,7 +924,7 @@ export function AdminUserTeamsScreenView({
                   >
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
                     {t.isVerified && (
-                      <Icon name="badge-check" size={13} color="#0ea5e9" />
+                      <MpBadge {...trustBadgeMeta("verified")} variant="icon-only" size="sm" />
                     )}
                     {t.isPinned && <Icon name="pin" size={12} color="#b45309" />}
                     {t.reportsCount > 0 && (
@@ -1078,6 +1075,8 @@ export function AdminUserTeamsScreenView({
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    padding: 0,
+                    lineHeight: 1,
                   }}
                 >
                   <Icon name="more-horizontal" size={13} />

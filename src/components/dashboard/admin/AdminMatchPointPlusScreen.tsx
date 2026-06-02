@@ -1,8 +1,7 @@
 "use client";
-// MATCHPOINT+ admin screen. Three-tab layout per UX Kit Ola A §2:
-//   1. Resumen        — KPIs/funnel/features/subscribers (aspirational, mostly mock until Ola D).
-//   2. Cola de aprob. — REAL operational queues (player_subscriptions + club_featuring_subscriptions).
-//   3. Planes & precios — editable pricing + promo codes (mock until Ola D).
+// MATCHPOINT+ admin screen.
+//   1. Resumen        — métricas reales disponibles + aclaración de tracking pendiente.
+//   2. Cola de aprob. — operational queues reales (player_subscriptions + club_featuring_subscriptions).
 //
 // The operational queues are built on the reusable <ApprovalQueue /> widget so
 // MAT-5 (club membership approvals) can consume the same component.
@@ -35,6 +34,7 @@ export type AdminPlusData = {
   pendingFeaturing: PendingClubFeaturingRow[];
   recentFeaturing: RecentClubFeaturingRow[];
   activeFeaturedCount: number;
+  activePlanCount: number;
 };
 
 const money = (c: number) => "$" + (c / 100).toFixed(c % 100 === 0 ? 0 : 2);
@@ -87,41 +87,20 @@ function isImageUrl(url: string | null): boolean {
 type Plan = { priceCents: number; active: number };
 type TabKey = "resumen" | "cola" | "planes";
 
-const FUNNEL = [
-  { l: "Visitas a la página MP+", v: 28412, pct: 100, color: "#0a0a0a" },
-  { l: 'Click "Empezar prueba"', v: 6240, pct: 22, color: "#0a0a0a" },
-  { l: "Inició trial 14d", v: 4180, pct: 15, color: "#10b981" },
-  { l: "Convirtió a pago", v: 2820, pct: 10, color: "#047857" },
-];
+const FUNNEL: { l: string; v: number; pct: number; color: string }[] = [];
 
-const FEATURES = [
-  { icon: "sparkles", l: "Coach AI · análisis", uses: 18420, pct: 86 },
-  { icon: "infinity", l: "Quedadas ilimitadas", uses: 14210, pct: 72 },
-  { icon: "bar-chart-3", l: "Stats avanzadas", uses: 11800, pct: 58 },
-  { icon: "trophy", l: "Acceso anticipado torneos", uses: 6240, pct: 31 },
-  { icon: "phone", l: "Soporte prioritario · llamada", uses: 840, pct: 4 },
-];
+const FEATURES: { icon: string; l: string; uses: number; pct: number }[] = [];
 
 type SubStatus = "active" | "trial" | "cancel" | "overdue";
-const SUBSCRIBERS: { who: string; initials: string; plan: string; status: SubStatus; since: string; ltv: number; mrr: number; avBg: string }[] = [
-  { who: "Camila Aguilar", initials: "CA", plan: "Anual", status: "active", since: "oct 2024", ltv: 7999, mrr: 666, avBg: "linear-gradient(135deg,#10b981,#047857)" },
-  { who: "Andrés Vega", initials: "AV", plan: "Mensual", status: "trial", since: "hace 6d", ltv: 0, mrr: 999, avBg: "linear-gradient(135deg,#ca8a04,#facc15)" },
-  { who: "Renata Salas", initials: "RS", plan: "Mensual", status: "cancel", since: "jul 2025", ltv: 4995, mrr: 0, avBg: "linear-gradient(135deg,#f59e0b,#ef4444)" },
-  { who: "Diego Carrasco", initials: "DC", plan: "Anual", status: "active", since: "feb 2025", ltv: 7999, mrr: 666, avBg: "linear-gradient(135deg,#0a0a0a,#374151)" },
-  { who: "Mateo Bravo", initials: "MB", plan: "Mensual", status: "overdue", since: "mar 2025", ltv: 12987, mrr: 0, avBg: "linear-gradient(135deg,#dc2626,#b91c1c)" },
-];
+const SUBSCRIBERS: { who: string; initials: string; plan: string; status: SubStatus; since: string; ltv: number; mrr: number; avBg: string }[] = [];
 const SUB_STATUS: Record<SubStatus, { bg: string; fg: string; l: string }> = {
   active: { bg: "rgba(16,185,129,0.12)", fg: "#047857", l: "Activo" },
-  trial: { bg: "#fef3c7", fg: "#92400e", l: "Trial 14d" },
+  trial: { bg: "#fef3c7", fg: "#92400e", l: "Trial" },
   cancel: { bg: "var(--muted)", fg: "var(--muted-fg)", l: "Canceló" },
   overdue: { bg: "#fee2e2", fg: "#dc2626", l: "Vencido" },
 };
 
-const PROMOS = [
-  { code: "PICKLE2026", off: "50% × 3 meses", uses: "412", cap: "1000", exp: "jun 30" },
-  { code: "FRIEND", off: "$5 off mensual", uses: "1840", cap: "∞", exp: "—" },
-  { code: "CLUB-NORTE", off: "1 mes free", uses: "84", cap: "200", exp: "jul 15" },
-];
+const PROMOS: { code: string; off: string; uses: string; cap: string; exp: string }[] = [];
 
 const SUBS_COLS = "1.8fr 110px 130px 110px 110px 90px";
 
@@ -132,8 +111,8 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
     data.pending.length + data.pendingFeaturing.length > 0 ? "cola" : "resumen",
   );
   const [plans, setPlans] = useState<{ monthly: Plan; annual: Plan }>({
-    monthly: { priceCents: 999, active: 4280 },
-    annual: { priceCents: 7999, active: 1840 },
+    monthly: { priceCents: 699, active: data.activePlanCount },
+    annual: { priceCents: 0, active: 0 },
   });
   const [promoOpen, setPromoOpen] = useState(false);
   const [showSubsExpanded, setShowSubsExpanded] = useState(true);
@@ -149,7 +128,7 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
     { debounceMs: 5000 },
   );
 
-  const { pending, pendingFeaturing, activeFeaturedCount } = data;
+  const { pending, pendingFeaturing, activeFeaturedCount, activePlanCount } = data;
 
   const pendingProofCount = useMemo(
     () => pending.filter((p) => !!p.proofSignedUrl).length,
@@ -157,6 +136,8 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
   );
 
   const totalPending = pending.length + pendingFeaturing.length;
+  const recentPlanRevenueCents = data.recent.reduce((sum, row) => sum + (row.amountCents ?? 0), 0);
+  const recentFeaturingRevenueCents = data.recentFeaturing.reduce((sum, row) => sum + (row.amountCents ?? 0), 0);
 
   // ── approve/reject for plan subscriptions ────────────────────────────
   const onApprovePlan = async (p: PendingPlanSubscriptionRow) => {
@@ -257,9 +238,9 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
     plans.monthly.active * plans.monthly.priceCents +
     Math.round((plans.annual.active * plans.annual.priceCents) / 12);
   const arpu = Math.round(mrr / totalSubs);
-  const savings = Math.round(
-    (1 - plans.annual.priceCents / 12 / plans.monthly.priceCents) * 100,
-  );
+  const savings = plans.annual.priceCents > 0
+    ? Math.round((1 - plans.annual.priceCents / 12 / plans.monthly.priceCents) * 100)
+    : 0;
 
   const copyCode = async (code: string) => {
     try {
@@ -515,13 +496,10 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
         }}
       >
         <div>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>
-            ● Admin · Plataforma · Premium
-          </div>
           <h1
             className="font-heading"
             style={{
-              margin: "6px 0 0",
+              margin: 0,
               fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
@@ -539,8 +517,9 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
               color: "var(--muted-fg)",
             }}
           >
-            {totalSubs.toLocaleString()} suscriptores activos · MRR{" "}
-            {moneyK(mrr)} · ARPU {money(arpu)}
+            {activePlanCount.toLocaleString("es-EC")} suscripciones activas ·{" "}
+            {activeFeaturedCount.toLocaleString("es-EC")} clubes destacados activos ·{" "}
+            {moneyK(recentPlanRevenueCents + recentFeaturingRevenueCents)} en últimos registros
           </p>
         </div>
       </div>
@@ -559,6 +538,10 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
           pending={pending.length}
           pendingFeaturing={pendingFeaturing.length}
           pendingProofCount={pendingProofCount}
+          recent={data.recent}
+          recentFeaturing={data.recentFeaturing}
+          activePlanCount={activePlanCount}
+          activeFeaturedCount={activeFeaturedCount}
         />
       )}
 
@@ -670,7 +653,6 @@ function TabBar({
   const tabs: { k: TabKey; l: string; badge?: number }[] = [
     { k: "resumen", l: "Resumen" },
     { k: "cola", l: "Cola de aprobación", badge: pendingCount },
-    { k: "planes", l: "Planes & precios" },
   ];
   return (
     <div
@@ -1177,6 +1159,10 @@ function ResumenTab({
   pending,
   pendingFeaturing,
   pendingProofCount,
+  recent,
+  recentFeaturing,
+  activePlanCount,
+  activeFeaturedCount,
 }: {
   plans: { monthly: Plan; annual: Plan };
   mrr: number;
@@ -1184,7 +1170,106 @@ function ResumenTab({
   pending: number;
   pendingFeaturing: number;
   pendingProofCount: number;
+  recent: RecentPlanSubscriptionRow[];
+  recentFeaturing: RecentClubFeaturingRow[];
+  activePlanCount: number;
+  activeFeaturedCount: number;
 }) {
+  const recentPlanRevenueCents = recent.reduce((sum, row) => sum + (row.amountCents ?? 0), 0);
+  const recentFeaturingRevenueCents = recentFeaturing.reduce((sum, row) => sum + (row.amountCents ?? 0), 0);
+  const recentRows = recent.slice(0, 8);
+
+  if (Array.isArray(recent)) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div
+        className="mp-spon-kpis"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 14.4,
+            background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 100%)",
+            color: "#fff",
+            padding: 18,
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(circle at 90% 20%, rgba(16,185,129,0.25), transparent 55%)",
+            }}
+          />
+          <div style={{ position: "relative" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span className="label-mp" style={{ color: "#34d399" }}>
+                ● Suscripciones activas
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 800, color: "#34d399" }}>
+                dato real
+              </span>
+            </div>
+            <div className="font-heading tabular" style={{ fontSize: 42, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
+              {activePlanCount.toLocaleString("es-EC")}
+            </div>
+            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>
+              `player_subscriptions` activas y no vencidas.
+            </div>
+          </div>
+        </div>
+        <AdminMpKpi icon="clock" label="Pendientes MP+" value={String(pending)} sub={`${pendingProofCount} con comprobante`} warn={pending > 0} />
+        <AdminMpKpi icon="badge-check" label="Clubes destacados" value={String(activeFeaturedCount)} sub="featured activo" emerald />
+        <AdminMpKpi icon="wallet" label="MP+ reciente" value={moneyK(recentPlanRevenueCents)} sub={`${recent.length} registros recientes`} />
+        <AdminMpKpi icon="star" label="Featuring reciente" value={moneyK(recentFeaturingRevenueCents)} sub={`${recentFeaturing.length} registros recientes`} />
+      </div>
+
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
+          <div className="label-mp" style={{ color: "var(--primary)" }}>
+            ● Historial real
+          </div>
+          <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, textTransform: "uppercase" }}>
+            Últimas suscripciones MATCHPOINT+<span className="dot">.</span>
+          </h3>
+        </div>
+        {recentRows.length === 0 ? (
+          <div style={{ padding: 18, color: "var(--muted-fg)", fontSize: 13 }}>
+            Sin suscripciones recientes.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ minWidth: 720 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 110px 110px 120px 110px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                <span>Usuario</span>
+                <span>Estado</span>
+                <span>Duración</span>
+                <span>Monto</span>
+                <span>Creada</span>
+              </div>
+              {recentRows.map((row, index) => (
+                <div key={row.subscriptionId} style={{ display: "grid", gridTemplateColumns: "1.6fr 110px 110px 120px 110px", gap: 12, padding: "12px 18px", alignItems: "center", borderBottom: index < recentRows.length - 1 ? "1px solid var(--border)" : undefined, fontSize: 12.5 }}>
+                  <span style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.displayName}</span>
+                  <span style={{ color: row.status === "active" ? "#047857" : "var(--muted-fg)", fontWeight: 900 }}>{row.status}</span>
+                  <span style={{ color: "var(--muted-fg)" }}>{row.durationMonths} mes{row.durationMonths === 1 ? "" : "es"}</span>
+                  <span className="font-heading tabular" style={{ fontWeight: 900 }}>{fmtMoney(row.amountCents, row.currency)}</span>
+                  <span title={fmtAbsolute(row.createdAt)} style={{ color: "var(--muted-fg)" }}>{fmtRelative(row.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div
@@ -1674,7 +1759,7 @@ function PlanesTab({
             </h3>
           </div>
           <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-            Los cambios aplican a nuevos suscriptores
+            Referencia operativa; la activación sigue con comprobante manual
           </span>
         </div>
         <div
@@ -1692,9 +1777,9 @@ function PlanesTab({
             mrrPart={plans.monthly.active * plans.monthly.priceCents}
           />
           <PlanEditCard
-            cycle="Anual"
+            cycle="Anual no activo"
             plan={plans.annual}
-            priceLabel="/año"
+            priceLabel=""
             onChange={(p) => setPlans({ ...plans, annual: p })}
             mrrPart={Math.round(
               (plans.annual.active * plans.annual.priceCents) / 12,
@@ -1968,7 +2053,7 @@ function PlanesTab({
                   setPromoOpen(false);
                   toast({
                     icon: "check-circle-2",
-                    title: "Código creado (demo)",
+                    title: "Promos pendientes de backend",
                   });
                 }}
               >

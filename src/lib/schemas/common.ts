@@ -29,12 +29,18 @@ export const UsernameSchema = z
   .regex(/^[a-z0-9_.]+$/i, "letters, digits, underscore and dot only")
   .openapi({ example: "vicente" });
 
-export const EmailSchema = z.string().email().openapi({ example: "you@matchpoint.app" });
+export const EmailSchema = z.string().email().openapi({ example: "tu@matchpoint.top" });
 
+// Mínimo 8 caracteres y al menos una letra + un dígito. El medidor cliente ya
+// marca "débil" pero el server es la fuente de verdad: sin este refine pasaba
+// "12345678". Mensaje en español neutro (lo surfacea el form a nivel de campo).
 export const PasswordSchema = z
   .string()
-  .min(8, "Minimum 8 characters")
+  .min(8, "Mínimo 8 caracteres")
   .max(128)
+  .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), {
+    message: "Usa al menos una letra y un número.",
+  })
   .openapi({ writeOnly: true, format: "password" });
 
 export const PhoneSchema = z.string().min(7).max(20).optional();

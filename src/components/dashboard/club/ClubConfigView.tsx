@@ -64,9 +64,9 @@ export function ClubConfigView({ data }: { data?: ClubConfigData }) {
             <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Ver perfil público · próximamente")}>
               <Icon name="eye" size={13} color="#fff" />Ver perfil público
             </button>
-            <button className="btn btn-primary" onClick={() => toast({ icon: "check-circle-2", title: "Cambios guardados" })}>
-              <Icon name="save" size={13} color="#fff" />Guardar cambios
-            </button>
+            <span style={{ alignSelf: "center", color: "rgba(255,255,255,0.72)", fontSize: 11, fontWeight: 700 }}>
+              Cada sección guarda sus cambios por separado.
+            </span>
           </div>
         }
       />

@@ -1,19 +1,18 @@
 // Server loader del management view de MATCHPOINT+ (solo se renderiza
 // cuando el user ya tiene un plan activo; el dispatch vive en
 // MatchPointPlusScreen.tsx). Carga la sub activa, el histórico de cobros
-// del plan, y los KPIs (días restantes, cobrado total, próximo cobro).
+// del plan, y los KPIs (días restantes, cobrado total, renovación sugerida).
 import { getServerClient } from "@/lib/db/client.server";
 import { redirect } from "next/navigation";
 import { MpPlusManageView, type MpPlusManageData } from "./MpPlusManageView";
 
-const PREMIUM_PRICE_CENTS_PER_MONTH = 500;
+const PREMIUM_PRICE_CENTS_PER_MONTH = 699;
 
 function methodLabel(method: string | null): string {
   switch (method) {
     case "transfer": return "Transferencia";
     case "cash": return "Efectivo";
-    case "wallet": return "Saldo MP";
-    case "card": return "Tarjeta";
+    case "deuna": return "DeUna";
     default: return method ?? "—";
   }
 }
@@ -74,8 +73,8 @@ async function loadData(
     0,
   );
 
-  // Determinar próximo cobro: si hay sub activa con duration_months, asumir
-  // mismo monto. Si no hay sub activa, hardcode al precio mensual.
+  // Renovación sugerida: no implica cobro automático; solo calcula el monto
+  // para crear otro comprobante manual por la misma duración.
   const durationMonths = (activeSub?.duration_months as number | null) ?? 1;
   const nextChargeCents = PREMIUM_PRICE_CENTS_PER_MONTH * durationMonths;
 

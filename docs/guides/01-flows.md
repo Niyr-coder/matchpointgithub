@@ -299,48 +299,11 @@ notif.
 [User recibe notif inapp con la razón del rechazo + deep link a /dashboard/user/mi-plan]
 ```
 
-## 9. Adquirir bundle cosmético (manual)
+## 9. Personalización de perfil
 
-Fase 1 sin self-service. El user contacta soporte, paga por transferencia/DeUna,
-admin otorga manualmente.
-
-```
-[User en /dashboard/user/personalizar]
-    │
-    │   Ve un preset locked con badge "Pack Neon"
-    │   Click → toast "Pídelo a soporte · contacta a MATCHPOINT"
-    ▼
-[Sale del flow, abre DM con MATCHPOINT o WhatsApp]
-    │
-    │   Acuerda transferencia ($X)
-    │   Hace el envío manual
-    ▼
-[Admin en /dashboard/admin/admin-cosmetics]
-    │
-    │   Busca user por nombre/username
-    │   Selecciona bundle del dropdown
-    │   Agrega nota (memo del pago, opcional)
-    │   Click Otorgar bundle
-    │
-    │   grantBundleToUser(...) (src/server/actions/admin/cosmetics.ts)
-    │     ├── requireAdminUserId() valida rol
-    │     ├── setAuditActor(admin, callerId, "admin")
-    │     ├── upsert profile_cosmetic_grants {user_id, bundle_key, granted_by, note}
-    │     └── fire-and-forget sendSystemMessage(
-    │          kind: "cosmetic_bundle_granted",
-    │          body: "¡{firstName}! Acabamos de desbloquear el {bundleLabel}...")
-    ▼
-[User recibe DM del perfil oficial MATCHPOINT]
-    │
-    │   Al refrescar /personalizar, los presets del bundle quedan unlocked
-    ▼
-[User aplica los presets → setProfileCustomization revalida ownership → save]
-```
-
-**Revoke** (caso raro: refund, chargeback): admin click "Revocar" en la
-fila del bundle. Quita el row, audit registra. Si el user tenía un preset
-de ese bundle activo, el server lo silencia al render (revert a default)
-pero no lo elimina del campo en DB hasta que el user edite manualmente.
+El flujo anterior de paquetes cosméticos manuales fue retirado. No hay compra,
+grant, revoke ni panel operativo activo para personalización de perfil. El
+nuevo flujo queda pendiente de diseño.
 
 ## 10. Crear reserva de cancha
 

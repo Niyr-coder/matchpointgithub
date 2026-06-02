@@ -25,6 +25,7 @@ import {
   type Message,
 } from "@/lib/schemas/messaging";
 import { UuidSchema } from "@/lib/schemas/common";
+import { readMatchPlannedMeta } from "@/lib/matches/planned-meta";
 
 function mapConv(row: Record<string, unknown>): Conversation {
   return ConversationSchema.parse({
@@ -62,6 +63,71 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
+type ServerClient = Awaited<ReturnType<typeof getServerClient>>;
+
+async function assertConversationWritable(
+  supabase: ServerClient,
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  const { data: members, error: membersError } = await supabase
+    .from("conversation_members")
+    .select("user_id")
+    .eq("conversation_id", conversationId)
+    .is("left_at", null);
+  if (membersError) throw new MpError("MESSAGING.DB_ERROR", membersError.message, 500);
+
+  const otherMemberIds = (members ?? [])
+    .map((m) => m.user_id as string)
+    .filter((id) => id !== userId);
+  if (otherMemberIds.length === 0) return;
+
+  // Los types generados pueden no incluir profiles.is_system en algunas ramas.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: systemProfiles, error: profilesError } = await (supabase as any)
+    .from("profiles")
+    .select("id")
+    .in("id", otherMemberIds)
+    .eq("is_system", true)
+    .limit(1);
+  if (profilesError) throw new MpError("MESSAGING.DB_ERROR", profilesError.message, 500);
+
+  if ((systemProfiles ?? []).length > 0) {
+    throw new MpError(
+      "MESSAGING.READ_ONLY",
+      "Este canal oficial es solo informativo. Para soporte, usa la sección Soporte.",
+      403,
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: convRow, error: convErr } = await (supabase as any)
+    .from("conversations")
+    .select("kind,match_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (convErr) throw new MpError("MESSAGING.DB_ERROR", convErr.message, 500);
+
+  const kind = (convRow as { kind?: string } | null)?.kind;
+  const matchId = (convRow as { match_id?: string | null } | null)?.match_id ?? null;
+  if (kind === "match" && matchId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: matchRow, error: matchErr } = await (supabase as any)
+      .from("matches")
+      .select("status")
+      .eq("id", matchId)
+      .maybeSingle();
+    if (matchErr) throw new MpError("MESSAGING.DB_ERROR", matchErr.message, 500);
+    if ((matchRow as { status?: string } | null)?.status === "cancelled") {
+      throw new MpError(
+        "MESSAGING.READ_ONLY",
+        "Este partido fue cancelado. El chat quedó cerrado.",
+        403,
+      );
+    }
+  }
+}
+
 // ── listMyConversations (with last message + unread count + members) ───
 export async function listMyConversations(): Promise<ActionResult<ConversationSummary[]>> {
   return runAction(z.undefined(), undefined, async () => {
@@ -79,11 +145,13 @@ export async function listMyConversations(): Promise<ActionResult<ConversationSu
     if (convIds.length === 0) return [];
 
     // 2. Conversation rows + members + last message + unread count in parallel.
+    // El unread sale del RPC canónico para mantener la misma cuenta que el
+    // badge del layout y MensajesScreen.
     const [
       { data: convs },
       { data: allMembers },
       { data: lastMessages },
-      { data: unreadRows },
+      { data: unreadRows, error: unreadErr },
     ] = await Promise.all([
       supabase
         .from("conversations")
@@ -101,12 +169,9 @@ export async function listMyConversations(): Promise<ActionResult<ConversationSu
         .in("conversation_id", convIds)
         .order("created_at", { ascending: false })
         .limit(convIds.length * 3),
-      supabase
-        .from("messages")
-        .select("conversation_id,id")
-        .in("conversation_id", convIds)
-        .is("deleted_at", null),
+      supabase.rpc("fn_unread_messages_count"),
     ]);
+    if (unreadErr) throw new MpError("MESSAGING.DB_ERROR", unreadErr.message, 500);
 
     // Build helpers
     const otherUserIds = new Set<string>();
@@ -124,18 +189,9 @@ export async function listMyConversations(): Promise<ActionResult<ConversationSu
       }
     }
 
-    const lastReadByConv = new Map<string, string | null>();
-    for (const m of memberships ?? []) {
-      lastReadByConv.set(
-        m.conversation_id as string,
-        (m.last_read_message_id as string | null) ?? null,
-      );
-    }
-    const allMsgsByConv = new Map<string, string[]>();
+    const unreadByConv = new Map<string, number>();
     for (const r of unreadRows ?? []) {
-      const arr = allMsgsByConv.get(r.conversation_id as string) ?? [];
-      arr.push(r.id as string);
-      allMsgsByConv.set(r.conversation_id as string, arr);
+      unreadByConv.set(r.conversation_id as string, Number(r.unread_count ?? 0));
     }
 
     const membersByConv = new Map<string, string[]>();
@@ -148,19 +204,6 @@ export async function listMyConversations(): Promise<ActionResult<ConversationSu
     return (convs ?? []).map((c) => {
       const convId = c.id as string;
       const lastMsgRow = lastByConv.get(convId);
-      const allMsgIds = allMsgsByConv.get(convId) ?? [];
-      const lastReadId = lastReadByConv.get(convId);
-      // Unread = messages whose id is after lastReadId. Since we don't have a
-      // numeric ordinal, we approximate by counting messages whose created_at >
-      // the last_read marker. For a simple MVP we approximate: if there's no
-      // lastReadId, count everything not from me as unread.
-      let unread = 0;
-      if (!lastReadId) {
-        unread = lastMsgRow && lastMsgRow.sender_id !== userId ? 1 : 0;
-      } else {
-        const idx = allMsgIds.indexOf(lastReadId);
-        unread = idx === -1 ? 0 : idx; // newer messages came after lastRead in the ordered list
-      }
 
       const memberIds = (membersByConv.get(convId) ?? []).filter((id) => id !== userId);
       const members = memberIds.map((id) => ({
@@ -172,7 +215,7 @@ export async function listMyConversations(): Promise<ActionResult<ConversationSu
       return ConversationSummarySchema.parse({
         conversation: mapConv(c),
         lastMessage: lastMsgRow ? mapMessage(lastMsgRow) : null,
-        unreadCount: unread,
+        unreadCount: unreadByConv.get(convId) ?? 0,
         members,
       });
     });
@@ -184,6 +227,192 @@ const GetSchema = z.object({
   id: UuidSchema,
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
+
+export type ThreadMessage = {
+  id: string;
+  senderId: string;
+  body: string;
+  kind: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type ThreadMatchContext = {
+  matchId: string;
+  status: string;
+  playedAt: string;
+  sport: string;
+  mode: string;
+  durationMin: number;
+  clubId: string | null;
+  clubName: string | null;
+  courtId: string | null;
+  courtName: string | null;
+  plannedBestOf: number | null;
+  reservationId: string | null;
+  reservationStartsAt: string | null;
+  reservationEndsAt: string | null;
+  reservationStatus: string | null;
+  reliabilityEnabled: boolean;
+  matchTimePassed: boolean;
+  others: { id: string; name: string }[];
+};
+
+export type ConversationThread = {
+  messages: ThreadMessage[];
+  activeMatch: ThreadMatchContext | null;
+};
+
+const LoadThreadSchema = z.object({
+  conversationId: UuidSchema,
+  limit: z.coerce.number().int().min(1).max(200).default(60),
+  /** Si true, no consulta mensajes (el cliente ya los trae por Supabase directo). */
+  skipMessages: z.boolean().optional(),
+});
+
+function mapThreadMessage(row: Record<string, unknown>): ThreadMessage {
+  return {
+    id: row.id as string,
+    senderId: row.sender_id as string,
+    body: (row.body as string | null) ?? "",
+    kind: row.kind as string,
+    payload: (row.payload as Record<string, unknown> | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+// Hilo de una conversación (mensajes + barra de partido). Usado al cambiar de chat
+// en cliente sin recargar la página.
+export async function loadConversationThread(
+  input: unknown,
+): Promise<ActionResult<ConversationThread>> {
+  return runAction(LoadThreadSchema, input, async ({ conversationId, limit, skipMessages }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+
+    const { data: membership, error: memberErr } = await supabase
+      .from("conversation_members")
+      .select("conversation_id")
+      .eq("conversation_id", conversationId)
+      .eq("user_id", userId)
+      .is("left_at", null)
+      .maybeSingle();
+    if (memberErr) throw new MpError("MESSAGING.DB_ERROR", memberErr.message, 500);
+    if (!membership) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "No eres miembro de esta conversación");
+    }
+
+    let messages: ThreadMessage[] = [];
+    if (!skipMessages) {
+      const { data: msgRows, error: msgErr } = await supabase
+        .from("messages")
+        .select("id,sender_id,body,kind,payload,created_at")
+        .eq("conversation_id", conversationId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (msgErr) throw new MpError("MESSAGING.DB_ERROR", msgErr.message, 500);
+      messages = ((msgRows ?? []) as Record<string, unknown>[]).map(mapThreadMessage);
+    }
+
+    let activeMatch: ThreadMatchContext | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: convRow } = await (supabase as any)
+      .from("conversations")
+      .select("kind,match_id")
+      .eq("id", conversationId)
+      .maybeSingle();
+    const kind = (convRow as { kind?: string } | null)?.kind;
+    const matchId = (convRow as { match_id?: string | null } | null)?.match_id ?? null;
+
+    if (kind === "match" && matchId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: m } = await (supabase as any)
+        .from("matches")
+        .select(
+          "id,status,played_at,sport,mode,duration_min,club_id,court_id,score,team_a_player_ids,team_b_player_ids",
+        )
+        .eq("id", matchId)
+        .maybeSingle();
+      if (m) {
+        const allPlayers: string[] = [
+          ...((m.team_a_player_ids as string[] | null) ?? []),
+          ...((m.team_b_player_ids as string[] | null) ?? []),
+        ];
+        const otherIds = allPlayers.filter((id) => id !== userId);
+        const { data: oProfiles } = otherIds.length
+          ? await supabase.from("profiles").select("id,display_name").in("id", otherIds)
+          : { data: [] as { id: string; display_name: string | null }[] };
+        const nameById = new Map(
+          ((oProfiles ?? []) as { id: string; display_name: string | null }[]).map((p) => [
+            p.id,
+            p.display_name,
+          ]),
+        );
+        const clubId = (m.club_id as string | null) ?? null;
+        const courtId = (m.court_id as string | null) ?? null;
+        const [{ data: clubRow }, { data: courtRow }] = await Promise.all([
+          clubId
+            ? supabase.from("clubs").select("name").eq("id", clubId).maybeSingle()
+            : Promise.resolve({ data: null }),
+          courtId
+            ? supabase.from("courts").select("name,code").eq("id", courtId).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        const planned = readMatchPlannedMeta(m.score);
+        let reservationStartsAt: string | null = null;
+        let reservationEndsAt: string | null = null;
+        let reservationStatus: string | null = null;
+        if (planned.reservationId) {
+          const { data: rsv } = await supabase
+            .from("reservations")
+            .select("during,status")
+            .eq("id", planned.reservationId)
+            .maybeSingle();
+          if (rsv?.during) {
+            const range = String(rsv.during);
+            const parts = /^[\[(]([^,]+),([^)\]]+)[\)\]]$/.exec(range);
+            if (parts) {
+              reservationStartsAt = new Date(parts[1]).toISOString();
+              reservationEndsAt = new Date(parts[2]).toISOString();
+            }
+            reservationStatus = (rsv.status as string) ?? null;
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: flags } = await (supabase as any).rpc("fn_my_effective_flags");
+        const reliabilityEnabled = ((flags ?? []) as { key: string; enabled: boolean }[]).some(
+          (f) => f.key === "match_reliability_enabled" && f.enabled,
+        );
+        const courtName =
+          (courtRow?.name as string | null)?.trim() ||
+          (courtRow?.code ? `Cancha ${courtRow.code as string}` : null);
+        activeMatch = {
+          matchId: m.id as string,
+          status: m.status as string,
+          playedAt: m.played_at as string,
+          sport: m.sport as string,
+          mode: m.mode as string,
+          durationMin: (m.duration_min as number) ?? 60,
+          clubId,
+          clubName: (clubRow?.name as string | null) ?? null,
+          courtId,
+          courtName,
+          plannedBestOf: planned.bestOf ?? null,
+          reservationId: planned.reservationId ?? null,
+          reservationStartsAt,
+          reservationEndsAt,
+          reservationStatus,
+          reliabilityEnabled,
+          matchTimePassed: new Date(m.played_at as string).getTime() < Date.now(),
+          others: otherIds.map((id) => ({ id, name: nameById.get(id) ?? "Jugador" })),
+        };
+      }
+    }
+
+    return { messages, activeMatch };
+  });
+}
 
 export async function getConversation(input: unknown): Promise<ActionResult<ConversationDetail>> {
   return runAction(GetSchema, input, async ({ id, limit }) => {
@@ -259,16 +488,21 @@ export async function startConversation(input: unknown): Promise<ActionResult<Co
       } as never)
       .select()
       .single();
-    if (error) throw new MpError("MESSAGING.CREATE_FAILED", error.message, 500);
+    if (error || !conv) {
+      throw new MpError("MESSAGING.CREATE_FAILED", error?.message ?? "No se pudo crear la conversación", 500);
+    }
 
     const memberRows = [userId, ...data.memberIds.filter((id) => id !== userId)].map((uid) => ({
       conversation_id: conv.id,
       user_id: uid,
       role: uid === userId ? "admin" : "member",
     }));
-    await supabase
+    const { error: membersErr } = await supabase
       .from("conversation_members")
       .insert(memberRows as never, { defaultToNull: false });
+    if (membersErr) {
+      throw new MpError("MESSAGING.MEMBERS_FAILED", membersErr.message, 500);
+    }
 
     return mapConv(conv);
   });
@@ -285,6 +519,7 @@ export async function sendMessage(input: unknown): Promise<ActionResult<Message>
     const userId = await requireUserId();
     await assertRateLimit({ key: `msg:send:${userId}`, ...RATE_LIMITS.mutationsAuthn });
     const supabase = await getServerClient();
+    await assertConversationWritable(supabase, id, userId);
     const { data, error } = await supabase
       .from("messages")
       .insert({

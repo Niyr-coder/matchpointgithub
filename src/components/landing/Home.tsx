@@ -64,7 +64,7 @@ type DualCTA = {
 };
 
 const DUAL: DualCTA[] = [
-  { tag: "Para jugadores", t: "Únete gratis", d: "Acceso anticipado · 130 cupos restantes · sin tarjeta requerida.", cta: "Crear cuenta", icon: "user-plus", accent: "var(--primary)", action: "reservar" },
+  { tag: "Para jugadores", t: "Únete gratis", d: "Acceso anticipado · sin tarjeta requerida · listo en menos de 60 s.", cta: "Crear cuenta", icon: "user-plus", accent: "var(--primary)", action: "reservar" },
   { tag: "Para clubes", t: "Registra tu club", d: "Tu club. Más reservas. Menos trabajo. Onboarding en 48 horas.", cta: "Solicitar demo", icon: "building-2", accent: "#fbbf24", href: "/soy-club" },
 ];
 
@@ -218,10 +218,14 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
         className="py-10 overflow-hidden bg-white"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
+        {/* Marquee sin "salto": en vez de `gap` de flex usamos `margin-right`
+            por ítem (incluido el último). Así el empalme entre las dos copias
+            tiene exactamente la misma separación que los gaps internos y el
+            translateX(-50%) cae perfecto en el loop. `shrink-0` evita que flex
+            comprima ítems y desincronice el ancho del set. */}
         <div
-          className="flex whitespace-nowrap text-[22px] md:text-[30px] gap-10 md:gap-15"
+          className="mp-marquee flex whitespace-nowrap text-[22px] md:text-[30px]"
           style={{
-            animation: "lpMarquee 35s linear infinite",
             fontFamily: "Plus Jakarta Sans",
             fontWeight: 900,
             letterSpacing: "-0.02em",
@@ -230,7 +234,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
           }}
         >
           {[...CLUBS_MARQUEE, ...CLUBS_MARQUEE].map((c, i) => (
-            <span key={i}>
+            <span key={i} className="shrink-0 mr-10 md:mr-15">
               {c} <span style={{ color: "var(--primary)" }}>●</span>
             </span>
           ))}
@@ -654,90 +658,10 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
         </div>
       </section>
 
-      {/* TESTIMONIOS */}
-      <section className="py-15 md:py-25" style={{ background: "var(--muted)" }}>
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="label-mp" style={{ color: "var(--primary)" }}>
-            ● La voz de la comunidad
-          </div>
-          <h2
-            className="font-heading mt-3 mb-8 md:mb-12"
-            style={{
-              fontSize: "clamp(2.5rem, 5vw, 4rem)",
-              fontWeight: 900,
-              letterSpacing: "-0.035em",
-              textTransform: "uppercase",
-              lineHeight: 1,
-            }}
-          >
-            Ellos ya juegan<span className="dot">.</span>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="p-6 md:p-7"
-                style={{
-                  background: "#fafafa",
-                  borderRadius: 14.4,
-                  borderLeft: "2px dashed var(--border)",
-                  opacity: 0.7,
-                }}
-              >
-                <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Icon key={s} name="star" size={13} color="var(--muted-fg)" />
-                  ))}
-                </div>
-                <p
-                  style={{
-                    fontSize: 16,
-                    lineHeight: 1.5,
-                    margin: 0,
-                    fontWeight: 500,
-                    color: "var(--muted-fg)",
-                    fontStyle: "italic",
-                  }}
-                >
-                  Pronto: aquí leerás lo que la comunidad dice de MATCHPOINT.
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginTop: 18,
-                    paddingTop: 14,
-                    borderTop: "1px dashed var(--border)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50%",
-                      background: "var(--muted)",
-                      color: "var(--muted-fg)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontFamily: "Plus Jakarta Sans",
-                      fontWeight: 900,
-                      fontSize: 12,
-                    }}
-                  >
-                    —
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--muted-fg)" }}>—</div>
-                    <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>—</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* TESTIMONIOS — oculto hasta tener reviews reales promovibles
+          (club_reviews). Renderizar placeholders "—" rompía la regla de no
+          mostrar estados vacíos y restaba credibilidad. Reactivar cuando haya
+          testimonios reales que poblar. */}
 
       {/* DUAL CTA */}
       <section

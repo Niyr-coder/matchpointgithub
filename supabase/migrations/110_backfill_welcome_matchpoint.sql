@@ -30,7 +30,7 @@ begin
     v_first_name := coalesce(nullif(split_part(v_user.display_name, ' ', 1), ''), 'jugador');
     perform fn_send_system_message(
       v_user.id,
-      '¡Hola ' || v_first_name || '! Bienvenido a MatchPoint, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Si tienes dudas, escríbenos por aquí.',
+      '¡Hola ' || v_first_name || '! Te damos la bienvenida a MATCHPOINT, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Este canal es informativo; para soporte usa la sección Soporte.',
       jsonb_build_object('kind', 'welcome_signup', 'backfilled', true)
     );
   end loop;

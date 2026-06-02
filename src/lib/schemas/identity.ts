@@ -33,13 +33,6 @@ export const ProfileSchema = z
     dominantHand: MpDominantHandSchema.nullable(),
     preferredSport: MpSportSchema.nullable(),
     skillLevel: MpSkillLevelSchema.nullable(),
-    // Customización de perfil (MP+ exclusivo). Keys del catálogo en
-    // src/lib/profile/customization-presets.ts. Validación contra el catálogo
-    // vive en server action, no en schema (para que sumar un preset nuevo no
-    // requiera redeploy del schema OpenAPI).
-    accentColor: z.string().nullable(),
-    bannerPreset: z.string().nullable(),
-    cardStyle: z.string().nullable(),
     locale: z.string().default("es"),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
@@ -59,9 +52,6 @@ export const ProfileUpdateSchema = ProfileSchema.pick({
   dominantHand: true,
   preferredSport: true,
   skillLevel: true,
-  accentColor: true,
-  bannerPreset: true,
-  cardStyle: true,
   locale: true,
 })
   .partial()

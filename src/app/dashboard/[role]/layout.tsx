@@ -1,12 +1,17 @@
 import { notFound, redirect } from "next/navigation";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
+import type { RoleSwitchOption } from "@/components/dashboard/ActiveRoleSwitcher";
 import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 import { getActiveAnnouncement } from "@/server/queries/announcements";
+import { decideDashboardRoleAccess } from "@/lib/auth/role-route-guard";
+import { loadReceptionQueue } from "@/server/queries/reception-queue";
+import { ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
+import { cookies } from "next/headers";
 
 function isValidRole(r: string): r is RoleKey {
   return Object.prototype.hasOwnProperty.call(MP_ROLES, r);
@@ -31,19 +36,35 @@ export default async function RoleLayout({
   const supabase = await getServerClient();
   const { data: roles } = await supabase
     .from("role_assignments")
-    .select("role")
+    .select("role,club_id,partner_id")
     .eq("user_id", session.session.userId)
     .is("revoked_at", null);
 
   const granted = new Set((roles ?? []).map((r) => r.role as RoleKey));
   const isAdmin = granted.has("admin");
+  const cookieRole = (await cookies()).get(ACTIVE_ROLE_COOKIE)?.value;
 
-  // Admin can "view as" any role (that's the point of the dev switcher).
-  // Everyone else gets redirected to their own role's dashboard.
-  if (!isAdmin && !granted.has(role)) {
-    const priority: RoleKey[] = ["owner", "manager", "partner", "coach", "employee", "user"];
-    const fallback = priority.find((r) => granted.has(r)) ?? "user";
-    redirect(`/dashboard/${fallback}`);
+  const access = decideDashboardRoleAccess({
+    urlRole: role,
+    cookieRole,
+    granted,
+    isAdmin,
+  });
+  if (access.action === "redirect") {
+    redirect(`/dashboard/${access.toRole}`);
+  }
+
+  const roleSwitchOptions: RoleSwitchOption[] = [];
+  const seenSwitch = new Set<RoleKey>();
+  for (const row of roles ?? []) {
+    const rk = row.role as RoleKey;
+    if (rk === "admin" || seenSwitch.has(rk)) continue;
+    seenSwitch.add(rk);
+    roleSwitchOptions.push({
+      role: rk,
+      clubId: (row.club_id as string | null) ?? null,
+      partnerId: (row.partner_id as string | null) ?? null,
+    });
   }
 
   // Resuelve nombre del usuario + contexto activo (club / partner) para los
@@ -156,22 +177,18 @@ export default async function RoleLayout({
     const tomorrowStart = new Date(todayStart);
     tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-    const [checkins, walkinsHoy] = await Promise.all([
-      supabase
-        .from("check_ins")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", clubId)
-        .gte("created_at", todayStart.toISOString())
-        .lt("created_at", tomorrowStart.toISOString()),
+    const [queue, walkinsHoy] = await Promise.all([
+      loadReceptionQueue(supabase, clubId, { windowHours: 18, limit: 50 }),
       supabase
         .from("walkins")
         .select("id", { count: "exact", head: true })
         .eq("club_id", clubId)
+        .is("created_reservation_id", null)
         .gte("created_at", todayStart.toISOString())
         .lt("created_at", tomorrowStart.toISOString()),
     ]);
     badgeOverrides = {
-      "e-checkin": checkins.count ?? 0,
+      "e-checkin": queue.length,
       "e-walkins": walkinsHoy.count ?? 0,
     };
   }
@@ -313,6 +330,7 @@ export default async function RoleLayout({
         badgeOverrides={badgeOverrides}
         banner={banner}
         flags={flags}
+        roleSwitchOptions={!isAdmin ? roleSwitchOptions : undefined}
       >
         {children}
       </DashboardChrome>

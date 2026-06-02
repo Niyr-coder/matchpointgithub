@@ -104,6 +104,9 @@ Ver `guides/02-notifications.md §2`.
   - **Mis postulaciones** — las que enviaste, con estado (pendiente/aceptado/
     rechazado/retirado) y atajo al chat del partido si te aceptaron
     (`listMyApplications`).
+- **Admin (Ola 3)**: sección `admin-matches` para soporte y gobernanza. Muestra
+  avisos recientes, permite cancelar avisos abiertos y cruza postulaciones,
+  matches, no-shows y fiabilidad en una sola pantalla.
 
 ## Cosas que rompen seguido
 
@@ -120,4 +123,5 @@ Ver `guides/02-notifications.md §2`.
 - Filtro "mi club" (requiere `home_club_id` en el perfil, que aún no existe).
 - Caso "completar mi equipo con randoms" en dobles.
 - Cola automática de matchmaking.
-- Pantalla admin dedicada para moderar avisos abusivos (hoy solo audit log).
+- Moderación avanzada de avisos abusivos con razones/categorías; el camino
+  mínimo admin ya existe en `admin-matches`.

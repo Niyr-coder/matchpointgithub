@@ -7,7 +7,7 @@ import "server-only";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { getActiveClubDiscountPct, applyDiscount } from "@/server/queries/club-membership";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
@@ -429,6 +429,7 @@ export async function registerToTournament(
         // contexto auth en server actions; ambos campos quedan amarrados a
         // userId en código.
         const admin = getAdminClient();
+        await setAuditActor(admin, userId, "user");
         let paidTransactionId: string | null = null;
         if (effectiveMode !== "free") {
           // Descuento de membresía VIP del club organizador (si aplica).
@@ -538,6 +539,7 @@ export async function setTournamentStatus(
       if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo partner/admin");
     }
     const admin = getAdminClient();
+    await setAuditActor(admin, userId, isAdmin ? "admin" : "partner");
     const { data: updated, error } = await admin
       .from("tournaments")
       .update({ status } as never)
@@ -636,6 +638,7 @@ export async function markRegistrationPaidByPartner(
       throw new MpError("REGISTRATION.NO_TX", "Esta inscripción no tiene transacción asociada", 422);
     }
     const admin = getAdminClient();
+    await setAuditActor(admin, userId, "partner");
     const { data: updated, error } = await admin
       .from("transactions")
       .update({ status: "captured" } as never)
@@ -707,7 +710,7 @@ export async function updateRegistrationStatus(
       .single();
     if (!t?.partner_id)
       throw new MpError("TOURNAMENTS.PARTNER_REQUIRED", "Tournament has no partner", 422);
-    await requirePartnerAdmin(t.partner_id as string);
+    const callerId = await requirePartnerAdmin(t.partner_id as string);
 
     const { data: row, error } = await supabase
       .from("registrations")
@@ -728,6 +731,7 @@ export async function updateRegistrationStatus(
       const userIds = Array.from(new Set(players.filter((x): x is string => !!x)));
       if (userIds.length > 0) {
         const admin = getAdminClient();
+        await setAuditActor(admin, callerId, "partner");
         const payload = {
           tournament_id: t.id,
           tournament_slug: t.slug,
@@ -1008,6 +1012,24 @@ export type AdminTournamentDetail = {
     customerName: string | null;
     createdAt: string;
   }[];
+  brackets: {
+    id: string;
+    categoryId: string | null;
+    format: string;
+    size: number;
+    generatedAt: string;
+    matches: {
+      id: string;
+      round: number;
+      position: number;
+      status: string;
+      sideARegistrationId: string | null;
+      sideBRegistrationId: string | null;
+      winnerSide: string | null;
+      score: unknown;
+      scheduledAt: string | null;
+    }[];
+  }[];
 };
 
 export async function getTournamentForAdmin(
@@ -1023,7 +1045,7 @@ export async function getTournamentForAdmin(
       .single();
     if (error || !tr) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
 
-    const [{ data: regs }, { data: txs }] = await Promise.all([
+    const [{ data: regs }, { data: txs }, { data: brackets }] = await Promise.all([
       supabase
         .from("registrations")
         .select("id,team_id,player_ids,status,paid_transaction_id,created_at")
@@ -1035,7 +1057,28 @@ export async function getTournamentForAdmin(
         .eq("kind", "tournament")
         .eq("ref_id", tournamentId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("brackets")
+        .select("id,category_id,format,size,generated_at")
+        .eq("tournament_id", tournamentId)
+        .order("generated_at", { ascending: false }),
     ]);
+
+    const bracketIds = (brackets ?? []).map((b) => b.id as string);
+    const { data: bracketMatches } =
+      bracketIds.length > 0
+        ? await supabase
+            .from("bracket_matches")
+            .select("id,bracket_id,round,position,status,side_a_registration_id,side_b_registration_id,winner_side,score,scheduled_at")
+            .in("bracket_id", bracketIds)
+            .order("round", { ascending: true })
+            .order("position", { ascending: true })
+        : { data: [] };
+    const matchesByBracket = new Map<string, NonNullable<typeof bracketMatches>>();
+    for (const match of bracketMatches ?? []) {
+      const bracketId = match.bracket_id as string;
+      matchesByBracket.set(bracketId, [...(matchesByBracket.get(bracketId) ?? []), match]);
+    }
 
     // Hidratar nombres de players para todas las registrations.
     const allPlayerIds = new Set<string>();
@@ -1089,6 +1132,24 @@ export async function getTournamentForAdmin(
         status: t.status as string,
         customerName: (t.customer_name as string | null) ?? null,
         createdAt: t.created_at as string,
+      })),
+      brackets: (brackets ?? []).map((b) => ({
+        id: b.id as string,
+        categoryId: (b.category_id as string | null) ?? null,
+        format: b.format as string,
+        size: b.size as number,
+        generatedAt: b.generated_at as string,
+        matches: (matchesByBracket.get(b.id as string) ?? []).map((m) => ({
+          id: m.id as string,
+          round: m.round as number,
+          position: m.position as number,
+          status: m.status as string,
+          sideARegistrationId: (m.side_a_registration_id as string | null) ?? null,
+          sideBRegistrationId: (m.side_b_registration_id as string | null) ?? null,
+          winnerSide: (m.winner_side as string | null) ?? null,
+          score: m.score ?? null,
+          scheduledAt: (m.scheduled_at as string | null) ?? null,
+        })),
       })),
     };
   });
@@ -1215,6 +1276,7 @@ export async function updateTournamentByOrganizer(
 
     // Admin client para el update (RLS de tournaments puede ser restrictiva).
     const adminClient = getAdminClient();
+    await setAuditActor(adminClient, userId, isAdmin ? "admin" : "partner");
     const { data: updated, error: updErr } = await adminClient
       .from("tournaments")
       .update(update as never)
@@ -1293,8 +1355,10 @@ export async function updateTournamentByOrganizer(
 // Helper auth: el caller debe ser admin global o partner_member (owner/admin)
 // del partner_org del torneo. Reusado por create/update/delete.
 async function requireTournamentEditor(tournamentId: string): Promise<{
+  userId: string;
   isAdmin: boolean;
   partnerId: string | null;
+  actorRole: "admin" | "partner";
 }> {
   const userId = await requireUserId();
   const supabase = await getServerClient();
@@ -1313,7 +1377,7 @@ async function requireTournamentEditor(tournamentId: string): Promise<{
     .is("revoked_at", null)
     .maybeSingle();
   const isAdmin = !!adminRow;
-  if (isAdmin) return { isAdmin, partnerId };
+  if (isAdmin) return { userId, isAdmin, partnerId, actorRole: "admin" };
   if (!partnerId) {
     throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
   }
@@ -1327,7 +1391,7 @@ async function requireTournamentEditor(tournamentId: string): Promise<{
   if (!member) {
     throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el partner organizador o un admin");
   }
-  return { isAdmin, partnerId };
+  return { userId, isAdmin, partnerId, actorRole: "partner" };
 }
 
 const CategoryBodySchema = z.object({
@@ -1378,8 +1442,9 @@ export async function createTournamentCategory(
   input: unknown,
 ): Promise<ActionResult<TournamentCategoryRow>> {
   return runAction(CreateCategorySchema, input, async ({ tournamentId, body }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       .from("tournament_categories")
       .insert({
@@ -1410,7 +1475,7 @@ export async function updateTournamentCategory(
   input: unknown,
 ): Promise<ActionResult<TournamentCategoryRow>> {
   return runAction(UpdateCategorySchema, input, async ({ tournamentId, categoryId, body }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
     const update: Record<string, unknown> = {};
     if (body.name !== undefined) update.name = body.name;
@@ -1424,6 +1489,7 @@ export async function updateTournamentCategory(
     if (Object.keys(update).length === 0) {
       throw new MpError("CATEGORY.EMPTY_PATCH", "Nada que actualizar", 422);
     }
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       .from("tournament_categories")
       .update(update as never)
@@ -1445,7 +1511,7 @@ export async function deleteTournamentCategory(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeleteCategorySchema, input, async ({ tournamentId, categoryId }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
     // Bloqueamos delete si ya hay inscripciones que la usan, para evitar
     // huérfanos. El partner debería mover/cancelar inscripciones primero.
@@ -1460,6 +1526,7 @@ export async function deleteTournamentCategory(
         409,
       );
     }
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { error } = await admin
       .from("tournament_categories")
       .delete()
@@ -1507,9 +1574,9 @@ export async function createScheduleBlock(
   input: unknown,
 ): Promise<ActionResult<TournamentScheduleBlockRow>> {
   return runAction(CreateBlockSchema, input, async ({ tournamentId, body }) => {
-    const userId = await requireUserId();
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       .from("tournament_schedule_blocks" as never)
       .insert({
@@ -1518,7 +1585,7 @@ export async function createScheduleBlock(
         starts_at: body.startsAt,
         label: body.label,
         notes: body.notes ?? null,
-        created_by: userId,
+        created_by: editor.userId,
       } as never)
       .select()
       .single();
@@ -1537,7 +1604,7 @@ export async function updateScheduleBlock(
   input: unknown,
 ): Promise<ActionResult<TournamentScheduleBlockRow>> {
   return runAction(UpdateBlockSchema, input, async ({ tournamentId, blockId, body }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
     const update: Record<string, unknown> = {};
     if (body.startsAt !== undefined) update.starts_at = body.startsAt;
@@ -1547,6 +1614,7 @@ export async function updateScheduleBlock(
     if (Object.keys(update).length === 0) {
       throw new MpError("SCHEDULE.EMPTY_PATCH", "Nada que actualizar", 422);
     }
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       .from("tournament_schedule_blocks" as never)
       .update(update as never)
@@ -1568,8 +1636,9 @@ export async function deleteScheduleBlock(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeleteBlockSchema, input, async ({ tournamentId, blockId }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { error } = await admin
       .from("tournament_schedule_blocks" as never)
       .delete()
@@ -1618,8 +1687,9 @@ export async function createTournamentPrize(
   input: unknown,
 ): Promise<ActionResult<TournamentPrizeRow>> {
   return runAction(CreatePrizeSchema, input, async ({ tournamentId, body }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)
@@ -1648,7 +1718,7 @@ export async function updateTournamentPrize(
   input: unknown,
 ): Promise<ActionResult<TournamentPrizeRow>> {
   return runAction(UpdatePrizeSchema, input, async ({ tournamentId, prizeId, body }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
     const update: Record<string, unknown> = {};
     if (body.placeLabel !== undefined) update.place_label = body.placeLabel;
@@ -1659,6 +1729,7 @@ export async function updateTournamentPrize(
     if (Object.keys(update).length === 0) {
       throw new MpError("PRIZE.EMPTY_PATCH", "Nada que actualizar", 422);
     }
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { data, error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)
@@ -1681,8 +1752,9 @@ export async function deleteTournamentPrize(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeletePrizeSchema, input, async ({ tournamentId, prizeId }) => {
-    await requireTournamentEditor(tournamentId);
+    const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    await setAuditActor(admin, editor.userId, editor.actorRole);
     const { error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)

@@ -4,11 +4,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { AdminApplicationDetailActions } from "./AdminApplicationDetailActions";
+import {
+  AdminApplicationDetailActions,
+  AdminApplicationDocumentActions,
+} from "./AdminApplicationDetailActions";
 import {
   ensureAdmin,
   loadApplicationDetail,
-  type ApplicationDetail as DetailData,
 } from "@/server/queries/admin-applications";
 
 
@@ -32,6 +34,23 @@ const DOC_KIND_LABEL: Record<string, string> = {
   other: "Otro documento",
 };
 
+const EVENT_KIND_LABEL: Record<string, { title: string; tone: string }> = {
+  created: { title: "Solicitud creada", tone: "#64748b" },
+  step_completed: { title: "Paso completado", tone: "#0ea5e9" },
+  submitted: { title: "Solicitud enviada", tone: "var(--primary)" },
+  docs_review_started: { title: "Revisión documental iniciada", tone: "#f59e0b" },
+  docs_approved: { title: "Documentos aprobados", tone: "#16a34a" },
+  docs_rejected: { title: "Documentos rechazados", tone: "#dc2626" },
+  field_scheduled: { title: "Verificación en sitio agendada", tone: "#2563eb" },
+  field_completed: { title: "Verificación en sitio completada", tone: "#16a34a" },
+  final_review_started: { title: "Revisión final iniciada", tone: "#7c3aed" },
+  approved: { title: "Solicitud aprobada", tone: "#16a34a" },
+  rejected: { title: "Solicitud rechazada", tone: "#dc2626" },
+  withdrawn: { title: "Solicitud retirada", tone: "#64748b" },
+  note_added: { title: "Nota agregada", tone: "#0ea5e9" },
+  contacted: { title: "Contacto registrado", tone: "#0ea5e9" },
+};
+
 
 function fmtBytes(n: number | null): string {
   if (n == null) return "—";
@@ -43,6 +62,20 @@ function fmtBytes(n: number | null): string {
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("es-EC", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function eventDetail(payload: Record<string, unknown> | null, note: string | null): string | null {
+  if (note) return note;
+  if (!payload) return null;
+  const notes = typeof payload.notes === "string" ? payload.notes : null;
+  if (notes) return notes;
+  const scheduledAt = typeof payload.scheduled_at === "string" ? payload.scheduled_at : null;
+  if (scheduledAt) return `Fecha propuesta: ${fmtDate(scheduledAt)}`;
+  const reason = typeof payload.reason === "string" ? payload.reason : null;
+  if (reason) return reason;
+  const clubId = typeof payload.club_id === "string" ? payload.club_id : null;
+  if (clubId) return `Club creado: ${clubId}`;
+  return null;
 }
 
 export async function AdminApplicationDetail({ applicationId }: { applicationId: string }) {
@@ -119,6 +152,86 @@ export async function AdminApplicationDetail({ applicationId }: { applicationId:
           status={data.status}
         />
       )}
+
+      <div className="card" style={{ padding: 20 }}>
+        <div className="label-mp" style={{ marginBottom: 12 }}>
+          Timeline de revisión ({data.events.length})
+        </div>
+        {data.events.length === 0 ? (
+          <div
+            style={{
+              padding: 14,
+              background: "#fafafa",
+              border: "1px dashed var(--border)",
+              borderRadius: 8,
+              fontSize: 11,
+              color: "var(--muted-fg)",
+              textAlign: "center",
+            }}
+          >
+            Aún no hay eventos registrados para esta solicitud.
+          </div>
+        ) : (
+          <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {data.events.map((event, index) => {
+              const meta = EVENT_KIND_LABEL[event.kind] ?? {
+                title: event.kind,
+                tone: "var(--muted-fg)",
+              };
+              const detail = eventDetail(event.payload, event.note);
+              return (
+                <li
+                  key={event.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "16px 1fr",
+                    gap: 12,
+                    padding: "10px 0",
+                    borderTop: index === 0 ? 0 : "1px solid var(--border)",
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: meta.tone,
+                      marginTop: 5,
+                      boxShadow: `0 0 0 4px color-mix(in srgb, ${meta.tone} 12%, transparent)`,
+                    }}
+                  />
+                  <div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 13 }}>{meta.title}</strong>
+                      <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                        {fmtDate(event.createdAt)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                      {event.actorName
+                        ? `Por ${event.actorName}${event.actorRole ? ` · ${event.actorRole}` : ""}`
+                        : "Evento del sistema"}
+                    </div>
+                    {detail && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: "#0a0a0a",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {detail}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div className="card" style={{ padding: 20 }}>
@@ -267,7 +380,7 @@ export async function AdminApplicationDetail({ applicationId }: { applicationId:
                 >
                   {d.status}
                 </span>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {d.url ? (
                     <>
                       <a
@@ -304,6 +417,11 @@ export async function AdminApplicationDetail({ applicationId }: { applicationId:
                       Sin acceso al archivo
                     </span>
                   )}
+                  <AdminApplicationDocumentActions
+                    documentId={d.id}
+                    status={d.status}
+                    applicationStatus={data.status}
+                  />
                 </div>
               </div>
             ))}

@@ -106,7 +106,7 @@ export function PromptModalProvider({ children }: { children: ReactNode }) {
             inset: 0,
             background: "rgba(10,10,10,0.55)",
             backdropFilter: "blur(4px)",
-            zIndex: 200,
+            zIndex: 1200,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -152,6 +152,8 @@ export function PromptModalProvider({ children }: { children: ReactNode }) {
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  padding: 0,
+                  lineHeight: 1,
                 }}
                 aria-label="Cerrar"
               >

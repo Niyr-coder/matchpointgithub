@@ -1,0 +1,99 @@
+import "server-only";
+
+import { formatReservationCheckInLabel } from "@/lib/checkin/code";
+import {
+  durationLabelMinutes,
+  fmtHHMM,
+  overlapsRangeIso,
+  parseRangeEnd,
+  parseRangeStart,
+  sportLabel,
+} from "@/lib/reservations/during-range";
+
+export type ReceptionQueueStatus = "arriving" | "on-time" | "walkin";
+
+export type ReceptionQueueItem = {
+  id: string;
+  t: string;
+  n: string;
+  c: string;
+  d: string;
+  code: string;
+  sport: string;
+  st: ReceptionQueueStatus;
+  players: number;
+};
+
+const ACTIVE_STATUSES = ["booked", "confirmed"] as const;
+
+/** Cola de recepción: reservas que empiezan pronto o están en curso (sin check-in aún). */
+export async function loadReceptionQueue(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  clubId: string,
+  opts?: { windowHours?: number; limit?: number; lateGraceMinutes?: number },
+): Promise<ReceptionQueueItem[]> {
+  const now = new Date();
+  const windowHours = opts?.windowHours ?? 24;
+  const limit = opts?.limit ?? 40;
+  const graceMs = (opts?.lateGraceMinutes ?? 30) * 60 * 1000;
+  const windowEnd = new Date(now.getTime() + windowHours * 3600 * 1000);
+
+  const { data: reservations, error } = await supabase
+    .from("reservations")
+    .select("id,during,sport,source,organizer_id,max_players,courts(code,name)")
+    .eq("club_id", clubId)
+    .overlaps("during", overlapsRangeIso(now, windowEnd))
+    .in("status", [...ACTIVE_STATUSES])
+    .limit(80);
+
+  if (error) throw new Error(`RECEPTION.RESERVATIONS_FAILED: ${error.message}`);
+
+  type RawRow = Record<string, unknown>;
+  type ParsedRow = { r: RawRow; start: Date; end: Date | null };
+
+  const sorted = ((reservations ?? []) as RawRow[])
+    .map((r) => {
+      const during = r.during as string;
+      const start = parseRangeStart(during);
+      const end = parseRangeEnd(during);
+      return { r, start, end };
+    })
+    .filter((x): x is ParsedRow => !!x.start && x.start.getTime() >= now.getTime() - graceMs)
+    .sort((a: ParsedRow, b: ParsedRow) => a.start.getTime() - b.start.getTime())
+    .slice(0, limit);
+
+  const organizerIds = Array.from(
+    new Set(sorted.map((x) => x.r.organizer_id as string).filter(Boolean)),
+  );
+  const profNames = new Map<string, string>();
+  if (organizerIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id,display_name")
+      .in("id", organizerIds);
+    for (const p of profs ?? []) {
+      profNames.set(p.id as string, p.display_name as string);
+    }
+  }
+
+  return sorted.map((x) => {
+    const court = x.r.courts as { code?: string; name?: string } | null;
+    const c = (court?.code ?? court?.name ?? "—").slice(0, 4);
+    const diffMin = Math.round((x.start.getTime() - now.getTime()) / 60000);
+    const source = x.r.source as string;
+    const st: ReceptionQueueStatus =
+      source === "walkin" ? "walkin" : diffMin <= 15 ? "arriving" : "on-time";
+    return {
+      id: x.r.id as string,
+      t: fmtHHMM(x.start),
+      n: profNames.get(x.r.organizer_id as string) ?? "Cliente",
+      c,
+      d: durationLabelMinutes(x.start, x.end),
+      code: formatReservationCheckInLabel(source, x.r.id as string),
+      sport: sportLabel(x.r.sport as string),
+      st,
+      players: (x.r.max_players as number) ?? 0,
+    };
+  });
+}

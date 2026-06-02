@@ -47,6 +47,10 @@ function groupKey(iso: string): string {
 
 function iconForKind(kind: string): string {
   if (kind === "welcome_owner") return "crown";
+  if (kind === "mp_plus_activated" || kind === "mp_plus_revoked") return "crown";
+  if (kind === "payment_captured" || kind === "refund_completed") return "wallet";
+  if (kind === "broadcast") return "megaphone";
+  if (kind === "report_resolved") return "shield-check";
   if (kind.startsWith("role_request")) return "shield";
   if (kind.startsWith("club_application")) return "building-2";
   if (kind.startsWith("reservation")) return "calendar-clock";
@@ -85,6 +89,9 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
         : "/dashboard/admin/admin-roles"
       : null;
   }
+  if (kind === "ticket_status_changed") {
+    return "/dashboard/user/soporte";
+  }
   if (kind.startsWith("ticket")) {
     return role === "admin"
       ? tktId
@@ -104,6 +111,20 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   }
   if (kind === "welcome_owner") {
     return "/dashboard/owner";
+  }
+  if (kind === "mp_plus_activated" || kind === "mp_plus_revoked") {
+    return "/dashboard/user/mi-plan";
+  }
+  if (kind === "payment_captured" || kind === "refund_completed") {
+    const txId = typeof payload.transaction_id === "string" ? payload.transaction_id : null;
+    return txId ? `/pagos/${txId}` : "/dashboard/user/mi-plan";
+  }
+  if (kind === "report_resolved") {
+    return "/dashboard/user/soporte";
+  }
+  if (kind === "broadcast") {
+    const link = typeof payload.link === "string" ? payload.link : null;
+    return link;
   }
   if (kind === "team_roster_cap_reached" || kind === "team_member_kicked") {
     return "/dashboard/user/team";
@@ -133,13 +154,18 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   }
   if (kind.startsWith("club_staff")) {
     // Lo recibe el staff (manager/coach/employee) → su dashboard del club.
-    return `/dashboard/${role}/home`;
+    return `/dashboard/${role}`;
   }
   return null;
 }
 
 function colorForKind(kind: string): string {
   if (kind === "welcome_owner") return "#10b981";
+  if (kind === "broadcast") return "var(--primary)";
+  if (kind === "payment_captured" || kind === "mp_plus_activated") return "#10b981";
+  if (kind === "refund_completed") return "#0ea5e9";
+  if (kind === "mp_plus_revoked") return "#dc2626";
+  if (kind === "report_resolved") return "#7c3aed";
   if (kind.includes("rejected") || kind.includes("cancelled") || kind.includes("kicked")) return "#dc2626";
   if (kind.includes("approved")) return "#10b981";
   if (kind.startsWith("reservation")) return "var(--primary)";
@@ -369,6 +395,10 @@ export function NotificationsPanel({
         }}
       >
         <button
+          onClick={() => {
+            onClose();
+            router.push(`/dashboard/${role}/notificaciones`);
+          }}
           style={{
             background: "transparent",
             border: 0,

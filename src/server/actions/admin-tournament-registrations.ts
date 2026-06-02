@@ -18,6 +18,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -41,19 +42,62 @@ async function requireAdminUserId(): Promise<string> {
 }
 
 async function writeAuditLog(params: {
+  admin: ReturnType<typeof getAdminClient>;
   entity: string;
   entityId: string;
   action: string;
   diff?: Record<string, unknown>;
 }): Promise<void> {
-  const supabase = await getServerClient();
-  const { error } = await supabase.rpc("fn_admin_audit_log", {
+  const { error } = await params.admin.rpc("fn_admin_audit_log", {
     p_entity: params.entity,
     p_entity_id: params.entityId,
     p_action: params.action,
     p_diff: (params.diff ?? {}) as never,
   });
   if (error) console.error("[admin-tournament-registrations] audit log failed", error);
+}
+
+async function getTournamentNotificationPayload(
+  admin: ReturnType<typeof getAdminClient>,
+  tournamentId: string,
+): Promise<Record<string, unknown>> {
+  const { data: tournament } = await admin
+    .from("tournaments")
+    .select("id,name,slug,starts_at,ends_at")
+    .eq("id", tournamentId)
+    .maybeSingle();
+
+  return {
+    tournament_id: tournamentId,
+    tournament_name: tournament?.name ?? "tu torneo",
+    tournament_slug: tournament?.slug ?? null,
+    starts_at: tournament?.starts_at ?? null,
+    ends_at: tournament?.ends_at ?? null,
+  };
+}
+
+async function enqueueTournamentRegistrationNotification(params: {
+  admin: ReturnType<typeof getAdminClient>;
+  userIds: string[];
+  kind: "registration_accepted" | "registration_rejected" | "tournament_registration_removed";
+  payload: Record<string, unknown>;
+  logContext: string;
+}): Promise<void> {
+  const userIds = Array.from(new Set(params.userIds.filter(Boolean)));
+  if (userIds.length === 0) return;
+
+  const jobs = userIds.map((uid) => ({
+    user_id: uid,
+    role: "user",
+    kind: params.kind,
+    channel: "inapp",
+    payload: params.payload,
+    status: "pending",
+  }));
+  const { error } = await params.admin.from("notification_jobs").insert(jobs as never);
+  if (error) {
+    console.error(`[${params.logContext}] enqueue notification failed:`, error.message);
+  }
 }
 
 export type TournamentRegistrationRow = {
@@ -90,7 +134,7 @@ export async function removeTournamentRegistrationAdmin(
   input: unknown,
 ): Promise<ActionResult<TournamentRegistrationRow>> {
   return runAction(RemoveSchema, input, async ({ registrationId, reason }) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("registrations")
@@ -108,7 +152,9 @@ export async function removeTournamentRegistrationAdmin(
       );
     }
 
-    const { data: updated, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: updated, error } = await admin
       .from("registrations")
       .update({ status: "withdrawn" } as never)
       .eq("id", registrationId)
@@ -119,6 +165,7 @@ export async function removeTournamentRegistrationAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "registrations",
       entityId: registrationId,
       action: "registration.admin_remove",
@@ -128,6 +175,23 @@ export async function removeTournamentRegistrationAdmin(
         paidTransactionId: existing.paid_transaction_id ?? null,
         refundPending: existing.paid_transaction_id != null,
       },
+    });
+
+    const tournamentPayload = await getTournamentNotificationPayload(
+      admin,
+      existing.tournament_id as string,
+    );
+    await enqueueTournamentRegistrationNotification({
+      admin,
+      userIds: (existing.player_ids as string[] | null) ?? [],
+      kind: "tournament_registration_removed",
+      payload: {
+        ...tournamentPayload,
+        registration_id: registrationId,
+        reason: reason ?? null,
+        previous_status: existing.status,
+      },
+      logContext: "removeTournamentRegistrationAdmin",
     });
 
     return mapReg(updated);
@@ -144,7 +208,7 @@ export async function markTournamentRegistrationStatusAdmin(
   input: unknown,
 ): Promise<ActionResult<TournamentRegistrationRow>> {
   return runAction(StatusSchema, input, async ({ registrationId, status }) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("registrations")
@@ -169,7 +233,9 @@ export async function markTournamentRegistrationStatusAdmin(
       );
     }
 
-    const { data: updated, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: updated, error } = await admin
       .from("registrations")
       .update({ status } as never)
       .eq("id", registrationId)
@@ -180,6 +246,7 @@ export async function markTournamentRegistrationStatusAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "registrations",
       entityId: registrationId,
       action: "registration.admin_mark_status",
@@ -188,6 +255,24 @@ export async function markTournamentRegistrationStatusAdmin(
         newStatus: status,
       },
     });
+
+    if (status === "accepted" || status === "rejected") {
+      const tournamentPayload = await getTournamentNotificationPayload(
+        admin,
+        existing.tournament_id as string,
+      );
+      await enqueueTournamentRegistrationNotification({
+        admin,
+        userIds: (existing.player_ids as string[] | null) ?? [],
+        kind: status === "accepted" ? "registration_accepted" : "registration_rejected",
+        payload: {
+          ...tournamentPayload,
+          registration_id: registrationId,
+          previous_status: existing.status,
+        },
+        logContext: "markTournamentRegistrationStatusAdmin",
+      });
+    }
 
     return mapReg(updated);
   });

@@ -117,6 +117,7 @@ correspondiente. Tienen seccion "Cosas que rompen seguido".
 | [00-matchpoint-plus.md](product/00-matchpoint-plus.md) | Plan premium del jugador, billing manual, grant admin, cron expiry |
 | [01-tournaments.md](product/01-tournaments.md) | Crear, modalidades, scoring, MPR, cronograma, premios, estados, sync cross-superficie |
 | [02-payments.md](product/02-payments.md) | Modelo transactions, comprobantes manuales, auto-capture torneos, refunds |
+| [08-monetization-blueprint.md](product/08-monetization-blueprint.md) | Execution Pack: landing clubes, CRM ventas, sponsors nativos y pricing real |
 
 ### `guides/` — manuales operativos
 Leer estos cuando vayas a tocar UI, roles, configuración o agregar features.
@@ -155,6 +156,7 @@ implementar GDPR-style endpoints.
 | Archivo | Para qué |
 |---|---|
 | [admin-events-support.md](qa/admin-events-support.md) | Checklist QA admin eventos |
+| [new-flow-cross-surface-checklist.md](qa/new-flow-cross-surface-checklist.md) | Checklist cross-superficie para roles, RLS, realtime, notificaciones, mensajería, admin espejo, audit y tests |
 
 ---
 
@@ -193,3 +195,7 @@ implementar GDPR-style endpoints.
 
 8. **MATCHPOINT no usa PSP**. Cualquier código que asuma "el pago se
    procesó automático" es bug. Todo cobro es manual humano.
+
+9. **Si agregas un flujo nuevo**, pasa el checklist cross-superficie:
+   roles, RLS, realtime, notificaciones, mensajería, admin espejo, audit
+   actor y tests. Ver `qa/new-flow-cross-surface-checklist.md`.

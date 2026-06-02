@@ -117,7 +117,13 @@ type ManualTarget = {
   endsAt: string; // ISO (default +90 min)
 };
 
-export function ClubReservasScreenView({ data }: { data: ReservasData }) {
+export function ClubReservasScreenView({
+  data,
+  showReceptionHourHint = false,
+}: {
+  data: ReservasData;
+  showReceptionHourHint?: boolean;
+}) {
   useRealtimeRefresh(
     data.clubId ? [{ table: "reservations", filter: `club_id=eq.${data.clubId}` }] : [],
     { enabled: !!data.clubId },
@@ -260,6 +266,26 @@ export function ClubReservasScreenView({ data }: { data: ReservasData }) {
 
   return (
     <>
+      {showReceptionHourHint ? (
+        <div
+          className="card"
+          style={{
+            padding: "12px 16px",
+            marginBottom: 12,
+            background: "#fffbeb",
+            border: "1px solid #fde68a",
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}
+        >
+          En esta vista las <b>columnas son los días</b> (lun–dom) y las <b>horas van a la izquierda</b>{' '}
+          (09:00, 10:00, …). Para ver <b>todas las canchas por hora</b> en un solo día, usa{' '}
+          <a href="/dashboard/employee/e-calendario" style={{ fontWeight: 900, color: "var(--primary)" }}>
+            Calendario hoy
+          </a>
+          .
+        </div>
+      ) : null}
       <RSHeader
         label="Club · Operación"
         title="Reservas semanales"
@@ -371,12 +397,27 @@ export function ClubReservasScreenView({ data }: { data: ReservasData }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "50px repeat(7, 1fr)",
+            gridTemplateColumns: `${showReceptionHourHint ? 56 : 50}px repeat(7, 1fr)`,
             gap: 4,
             marginBottom: 6,
           }}
         >
-          <div />
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 900,
+              color: "var(--muted-fg)",
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "flex-end",
+              paddingRight: 6,
+              paddingBottom: 4,
+            }}
+          >
+            HORA ↓
+            <br />
+            DÍA →
+          </div>
           {data.daysLabels.map((d, i) => (
             <div
               key={d}
@@ -398,16 +439,16 @@ export function ClubReservasScreenView({ data }: { data: ReservasData }) {
             key={h}
             style={{
               display: "grid",
-              gridTemplateColumns: "50px repeat(7, 1fr)",
+              gridTemplateColumns: `${showReceptionHourHint ? 56 : 50}px repeat(7, 1fr)`,
               gap: 4,
               marginBottom: 4,
             }}
           >
             <div
               style={{
-                fontSize: 9.5,
-                fontWeight: 700,
-                color: "var(--muted-fg)",
+                fontSize: showReceptionHourHint ? 11 : 9.5,
+                fontWeight: 900,
+                color: showReceptionHourHint ? "#0a0a0a" : "var(--muted-fg)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-end",

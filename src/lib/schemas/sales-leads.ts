@@ -41,6 +41,12 @@ export const SalesLeadCreateSchema = z.object({
     .max(500)
     .optional()
     .transform((v) => (v && v.length > 0 ? v : undefined)),
+  sourceCampaign: z
+    .string()
+    .trim()
+    .max(160)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
   // Honeypot — debe llegar vacío.
   website: z
     .string()

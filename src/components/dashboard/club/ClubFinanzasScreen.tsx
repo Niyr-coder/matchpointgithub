@@ -3,6 +3,7 @@
 // por fuente, movimientos hoy, hero payout + waterfall, payouts calendar.
 // Mantiene mock (Fase 2/3): ranking por cancha y heatmap $/hora.
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
 import { ClubFinanzasView, type FinanzasData } from "./ClubFinanzasView";
 
@@ -108,6 +109,7 @@ async function loadData(): Promise<FinanzasData> {
     { data: courtsRaw },
     { data: resMonth },
     { data: resTxnsMonth },
+    { data: takeRateConfig },
   ] = await Promise.all([
     supabase
       .from("transactions")
@@ -169,7 +171,16 @@ async function loadData(): Promise<FinanzasData> {
       .in("status", CAPTURED_STATUSES)
       .gte("created_at", monthStart.toISOString())
       .not("ref_id", "is", null),
+    getAdminClient()
+      .from("platform_config")
+      .select("value")
+      .eq("key", "take_rate_pct")
+      .maybeSingle(),
   ]);
+  const takeRatePct =
+    typeof takeRateConfig?.value === "number"
+      ? takeRateConfig.value
+      : Number(takeRateConfig?.value ?? 10);
 
   // Resolver nombres de customers para las txns de hoy (1 query extra).
   const customerIds = Array.from(
@@ -452,6 +463,7 @@ async function loadData(): Promise<FinanzasData> {
     payouts: payoutsMapped,
     nextPayout,
     courtRanking,
+    takeRatePct: Number.isFinite(takeRatePct) ? takeRatePct : 10,
   };
 }
 
@@ -486,5 +498,6 @@ function emptyData(clubId: string | null): FinanzasData {
     payouts: [],
     nextPayout: null,
     courtRanking: [],
+    takeRatePct: 10,
   };
 }

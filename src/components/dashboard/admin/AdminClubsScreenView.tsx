@@ -213,6 +213,8 @@ function RowMenu({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
+          padding: 0,
+          lineHeight: 1,
         }}
       >
         <Icon name="more-horizontal" size={12} color="var(--muted-fg)" />
@@ -231,14 +233,15 @@ function RowMenu({
               zIndex: 41,
               background: "#fff",
               border: "1px solid var(--border)",
-              borderRadius: 10,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              minWidth: 200,
+              borderRadius: 12,
+              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+              width: 240,
               overflow: "hidden",
               color: "#0a0a0a",
+              fontSize: 12,
             }}
           >
-            {items.map((it, idx) => (
+            {items.map((it) => (
               <button
                 key={it.key}
                 onClick={it.onClick}
@@ -246,7 +249,12 @@ function RowMenu({
                 style={{
                   ...TEAM_ITEM_STYLE,
                   color: it.danger ? "#dc2626" : "#0a0a0a",
-                  borderTop: idx === 0 ? 0 : "1px solid var(--border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--muted)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
                 }}
               >
                 <Icon name={it.icon} size={13} color={it.iconColor ?? "var(--muted-fg)"} />
@@ -264,15 +272,14 @@ function RowMenu({
 const TEAM_ITEM_STYLE: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: 10,
   width: "100%",
-  padding: "9px 12px",
+  padding: "9px 14px",
   background: "transparent",
   border: 0,
   cursor: "pointer",
   fontFamily: "inherit",
   fontSize: 12,
-  fontWeight: 700,
   textAlign: "left",
 };
 

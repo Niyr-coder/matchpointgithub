@@ -120,10 +120,12 @@ cobro de reservas, aplicar el mismo helper.
 
 ## Admin oversight (Stage 4) ✅
 
-`adminListClubMemberships` (admin-only) + `AdminMembershipsScreen`
-(`/dashboard/admin/admin-memberships`): lista cross-club de membresías con club,
-miembro, tier, vence, estado + total estimado en cuotas activas. Sidebar admin
-bajo "Monetización".
+`adminListClubMemberships` (admin-only) + `AdminClubMembresiasScreen`
+(`/dashboard/admin/admin-memberships`): overview cross-club real con socios
+activos, pendientes, valor mensual estimado (`price_cents / duration_months`),
+comisión estimada con `platform_config.take_rate_pct`, ranking por club y lista
+de membresías con club, miembro, tier, vence y estado. Sidebar admin bajo
+"Monetización".
 
 **Payouts/take rate**: pendiente hasta que exista el cron de payouts (la cuota
 ya respeta `platform_config.take_rate_pct` conceptualmente; ver `02-payments.md §6`).

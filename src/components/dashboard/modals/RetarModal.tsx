@@ -1,21 +1,30 @@
-// RetarModal — migrado desde ui_kits/dashboard/RetarModal.jsx
-// Escucha window event 'mp-open-retar' con detail = { id?, name, level, sport, city, av, avBg }
-//
-// Wireup a backend:
-//  · "Enviar reto" llama a `createMatch` con mode='singles', teamA=[me], teamB=[opponent].
-//  · `currentUserId` se baja como prop desde `DashboardLayout` → `DashboardModals`.
-//  · Si el evento trae `id` (UUID del rival), se prefilla y el selector queda oculto.
-//    Si no, el paso 1 muestra un `PlayerPicker` para elegir oponente real.
-//  · UX vs CrearMatchModal: aquí el flujo es "reto rápido" (2 pasos) y siempre singles.
-//    En CrearMatchModal el flujo es completo (4 pasos) y permite singles/doubles/mixto.
+// RetarModal — reto rápido en 2 pasos (reglas → cuándo y dónde).
+// Evento `mp-open-retar`: detail opcional { id?, name, level?, sport?, city?, av?, avBg? }.
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
-import { createMatch } from "@/server/actions/matches";
+import Link from "next/link";
+import {
+  createMatch,
+  getMatchConversationId,
+  getRetarHeroContext,
+  getRetarScheduleOptions,
+  type RetarScheduleClubOption,
+} from "@/server/actions/matches";
+import { listCourtsByClub } from "@/server/actions/courts";
+import { listReservations } from "@/server/actions/reservations";
+import { getCurrentPlan } from "@/server/actions/player-subscriptions";
+import {
+  buildStartSlots,
+  computeTakenSlots,
+  dayRangeIso,
+  type ExistingReservation,
+} from "@/lib/booking/court-slots";
 import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
-import { RankedBadge } from "@/components/dashboard/widgets/RankedBadge";
+import type { Court } from "@/lib/schemas/courts";
+import type { RetarHeroWho } from "@/lib/match/retar-hero-present";
 
 type Rival = {
   id?: string;
@@ -31,39 +40,132 @@ type Form = {
   mode: "singles" | "dobles";
   bestOf: 1 | 3 | 5;
   ranked: boolean;
-  stakes: "none" | "bragging" | "dinner" | "custom";
-  customStakes: string;
-  date: "hoy" | "mañ" | "sab" | "dom";
+  dateIso: string;
   time: string;
-  club: string;
+  clubId: string | null;
+  clubName: string;
+  courtId: string | null;
+  courtLabel: string;
   msg: string;
-  yourPartner: string;
-  theirPartner: string;
 };
+
+type DayChip = { iso: string; dow: string; sub: string };
+
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function buildNextDays(count: number): DayChip[] {
+  const subFmt = new Intl.DateTimeFormat("es-EC", { day: "numeric", month: "short" });
+  const out: DayChip[] = [];
+  const base = new Date();
+  base.setHours(12, 0, 0, 0);
+  for (let i = 0; i < count; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const iso = todayIsoFromDate(d);
+    const dow = i === 0 ? "HOY" : i === 1 ? "MAÑ" : weekdayShort(d);
+    out.push({ iso, dow, sub: subFmt.format(d) });
+  }
+  return out;
+}
+
+function todayIsoFromDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function weekdayShort(d: Date): string {
+  const w = d.getDay();
+  return ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"][w] ?? "DÍA";
+}
+
+function dateTimeToIso(dateIso: string, time: string): string {
+  const [h, m] = time.split(":").map((n) => parseInt(n, 10));
+  const [y, mo, da] = dateIso.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, mo - 1, da, h, m, 0, 0).toISOString();
+}
+
+function formatWhenLabel(dateIso: string, time: string): string {
+  const d = new Date(`${dateIso}T12:00:00`);
+  const day = new Intl.DateTimeFormat("es-EC", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(d);
+  return `${day} · ${time}`;
+}
+
+function sportFromRivalLabel(s?: string): "pickleball" | "padel" | "tennis" {
+  if (!s) return "pickleball";
+  const n = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (n.includes("pickle")) return "pickleball";
+  if (n.includes("padel")) return "padel";
+  if (n.includes("tenis") || n.includes("tennis")) return "tennis";
+  return "pickleball";
+}
+
+function initialsFromDisplayName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const INITIAL_FORM: Form = {
   mode: "singles",
   bestOf: 3,
-  ranked: true,
-  stakes: "none",
-  customStakes: "",
-  date: "sab",
+  ranked: false,
+  dateIso: todayIso(),
   time: "19:00",
-  club: "Club Norte Pickleball",
+  clubId: null,
+  clubName: "",
+  courtId: null,
+  courtLabel: "",
   msg: "",
-  yourPartner: "",
-  theirPartner: "",
 };
 
-const YOU = {
-  name: "Camila Aguilar",
-  level: 4.0,
-  av: "CA",
-  avBg: "linear-gradient(135deg,#10b981,#047857)",
-};
-const H2H = { you: 3, rival: 2, total: 5, streak: "2 victorias seguidas" };
+type HeroWho = RetarHeroWho;
+type HeroH2h = { you: number; rival: number; total: number; streak: string | null };
 
-export function RetarModal({ currentUserId }: { currentUserId: string | null }) {
+const FALLBACK_H2H: HeroH2h = { you: 0, rival: 0, total: 0, streak: null };
+
+function defaultYou(initialYou: RetarHeroWho | null | undefined): HeroWho {
+  return (
+    initialYou ?? {
+      name: "",
+      level: 2.5,
+      av: "?",
+      avBg: "linear-gradient(135deg,#10b981,#047857)",
+    }
+  );
+}
+
+function heroPlayerToWho(p: {
+  name: string;
+  level: number;
+  av: string;
+  avBg: string;
+}): HeroWho {
+  return { name: p.name, level: p.level, av: p.av, avBg: p.avBg };
+}
+
+export function RetarModal({
+  currentUserId,
+  initialYou = null,
+}: {
+  currentUserId: string | null;
+  initialYou?: RetarHeroWho | null;
+}) {
   const [open, setOpen] = useState(false);
   const [rival, setRival] = useState<Rival | null>(null);
   const [step, setStep] = useState(0);
@@ -71,20 +173,198 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
   const [form, setForm] = useState<Form>(INITIAL_FORM);
   // Oponente real (UUID). Si llega `id` en el evento, lo prefillamos como Player.
   const [opponent, setOpponent] = useState<Player | null>(null);
+  const [yourPartner, setYourPartner] = useState<Player | null>(null);
+  const [rivalPartner, setRivalPartner] = useState<Player | null>(null);
   const [submitting, startSubmit] = useTransition();
+  const [you, setYou] = useState<HeroWho>(() => defaultYou(initialYou));
+  const [h2h, setH2h] = useState<HeroH2h>(FALLBACK_H2H);
+  const [canRank, setCanRank] = useState(false);
+  const [clubs, setClubs] = useState<RetarScheduleClubOption[]>([]);
+  const [courts, setCourts] = useState<Court[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [pickingClub, setPickingClub] = useState(false);
+  const [createdConvId, setCreatedConvId] = useState<string | null>(null);
+  const [existingReservations, setExistingReservations] = useState<ExistingReservation[]>([]);
+  const [availLoading, setAvailLoading] = useState(false);
   const toast = useToast();
   const router = useRouter();
+  const dayChips = buildNextDays(7);
+  const timeSlots = buildStartSlots(60);
+  const takenSlots = computeTakenSlots(
+    form.dateIso,
+    timeSlots,
+    60,
+    existingReservations,
+  );
+
+  const opponentIdForHero = rival?.id ?? opponent?.id;
+
+  useEffect(() => {
+    if (!open) {
+      setCanRank(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await getCurrentPlan();
+      if (cancelled) return;
+      setCanRank(res.ok && res.data.tier === "premium" && res.data.active);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (initialYou) setYou(initialYou);
+  }, [initialYou]);
+
+  // Precarga perfil + H2H al montar (no esperar a abrir el modal).
+  useEffect(() => {
+    if (!currentUserId) {
+      setYou(defaultYou(null));
+      setH2h(FALLBACK_H2H);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await getRetarHeroContext({
+        opponentId: opponentIdForHero ?? undefined,
+      });
+      if (cancelled || !res.ok) return;
+      setYou(heroPlayerToWho(res.data.me));
+      setH2h({
+        you: res.data.h2h.youWins,
+        rival: res.data.h2h.rivalWins,
+        total: res.data.h2h.total,
+        streak: res.data.h2h.streak,
+      });
+      if (res.data.opponent) {
+        const o = res.data.opponent;
+        setRival((prev) =>
+          prev
+            ? {
+                ...prev,
+                name: o.name,
+                level: o.level,
+                av: o.av,
+                avBg: o.avBg,
+              }
+            : prev,
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId, opponentIdForHero]);
+
+  useEffect(() => {
+    if (!open || !currentUserId || !rival) {
+      setClubs([]);
+      setCourts([]);
+      setPickingClub(false);
+      return;
+    }
+    let cancelled = false;
+    setScheduleLoading(true);
+    void (async () => {
+      const res = await getRetarScheduleOptions({
+        sport: sportFromRivalLabel(rival?.sport),
+      });
+      if (cancelled) return;
+      setScheduleLoading(false);
+      if (!res.ok) return;
+      setClubs(res.data.clubs);
+      setForm((f) => {
+        if (f.clubId) return f;
+        const first = res.data.clubs[0];
+        if (!first) return { ...f, clubId: null, clubName: "" };
+        return { ...f, clubId: first.id, clubName: first.name };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, currentUserId, rival?.sport]);
+
+  useEffect(() => {
+    if (!form.clubId) {
+      setCourts([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await listCourtsByClub({ clubId: form.clubId! });
+      if (cancelled || !res.ok) return;
+      setCourts(res.data);
+      setForm((f) => {
+        if (f.courtId) return f;
+        const first = res.data[0];
+        if (!first) return { ...f, courtId: null, courtLabel: "" };
+        const label = first.name?.trim() || `Cancha ${first.code}`;
+        return { ...f, courtId: first.id, courtLabel: label };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clubId]);
+
+  useEffect(() => {
+    if (!form.clubId || !form.courtId) {
+      setExistingReservations([]);
+      return;
+    }
+    let cancelled = false;
+    setAvailLoading(true);
+    const { from, to } = dayRangeIso(form.dateIso);
+    void (async () => {
+      const res = await listReservations({
+        clubId: form.clubId!,
+        courtId: form.courtId!,
+        from,
+        to,
+        pageSize: 100,
+      });
+      if (cancelled) return;
+      setAvailLoading(false);
+      if (!res.ok) {
+        setExistingReservations([]);
+        return;
+      }
+      setExistingReservations(
+        res.data.map((r) => ({
+          id: r.id,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          status: r.status,
+        })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clubId, form.courtId, form.dateIso]);
+
+  useEffect(() => {
+    if (takenSlots.has(form.time)) {
+      const free = timeSlots.find((s) => !takenSlots.has(s));
+      if (free) setForm((f) => ({ ...f, time: free }));
+    }
+  }, [takenSlots, form.time, timeSlots]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<Partial<Rival>>).detail;
+      const name = detail?.name?.trim() || "Rival";
       const r: Rival = {
         id: detail?.id,
-        name: detail?.name || "Andrés Vega",
-        level: detail?.level ?? 4.5,
-        sport: detail?.sport || "Pádel",
-        city: detail?.city || "Cumbayá",
-        av: detail?.av || "AV",
+        name,
+        level: detail?.level ?? 2.5,
+        sport: detail?.sport,
+        city: detail?.city,
+        av: detail?.av ?? initialsFromDisplayName(name),
         avBg: detail?.avBg || "linear-gradient(135deg,#ca8a04,#facc15)",
       };
       setRival(r);
@@ -97,10 +377,14 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
             }
           : null,
       );
+      setYourPartner(null);
+      setRivalPartner(null);
       setOpen(true);
       setStep(0);
       setDone(false);
-      setForm(INITIAL_FORM);
+      setCreatedConvId(null);
+      setPickingClub(false);
+      setForm({ ...INITIAL_FORM, dateIso: todayIso() });
     };
     window.addEventListener("mp-open-retar", handler);
     return () => window.removeEventListener("mp-open-retar", handler);
@@ -110,30 +394,26 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
   const close = () => setOpen(false);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Mapeo fecha de UI → ISO real para el backend.
-  // El paso 2 solo expone HOY / mar 13 / sáb 17 / dom 18 (mock UI). Para no
-  // cambiar el alcance del wireup, usamos el próximo día de la semana
-  // correspondiente a partir de hoy.
-  const dateToIso = (d: Form["date"], time: string): string => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [h, m] = time.split(":").map((n) => parseInt(n, 10));
-    const target = new Date(today);
-    if (d === "hoy") {
-      // hoy a la hora indicada
-    } else if (d === "mañ") {
-      target.setDate(target.getDate() + 1);
-    } else {
-      // sáb (6) o dom (0)
-      const desired = d === "sab" ? 6 : 0;
-      const diff = (desired - target.getDay() + 7) % 7 || 7;
-      target.setDate(target.getDate() + diff);
-    }
-    target.setHours(h, m, 0, 0);
-    return target.toISOString();
-  };
+  const isDoubles = form.mode === "dobles";
+  const scheduleLine = formatWhenLabel(form.dateIso, form.time);
+  const venueLine =
+    form.clubName +
+    (form.courtLabel ? ` · ${form.courtLabel}` : "");
 
-  const canSend = !!currentUserId && !!opponent;
+  const selectClub = (club: RetarScheduleClubOption) => {
+    setForm((f) => ({
+      ...f,
+      clubId: club.id,
+      clubName: club.name,
+      courtId: null,
+      courtLabel: "",
+    }));
+    setPickingClub(false);
+  };
+  const canSend =
+    !!currentUserId &&
+    !!opponent &&
+    (!isDoubles || (!!yourPartner && !!rivalPartner));
 
   const sendChallenge = () => {
     if (!currentUserId) {
@@ -144,17 +424,48 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
       toast({ icon: "alert-triangle", title: "Elige un oponente" });
       return;
     }
+    if (isDoubles && (!yourPartner || !rivalPartner)) {
+      toast({
+        icon: "alert-triangle",
+        title: "Faltan partners",
+        sub: "En dobles necesitas elegir tu partner y el del rival para armar el 2v2.",
+      });
+      return;
+    }
+    if (!form.clubId || !form.courtId) {
+      toast({
+        icon: "alert-triangle",
+        title: "Elige club y cancha",
+        sub: "Necesitamos un lugar para bloquear el horario en reservas.",
+      });
+      return;
+    }
+    if (takenSlots.has(form.time)) {
+      toast({
+        icon: "alert-triangle",
+        title: "Horario ocupado",
+        sub: "Ese slot ya está reservado. Elige otra hora.",
+      });
+      return;
+    }
     startSubmit(async () => {
-      const playedAt = dateToIso(form.date, form.time);
+      const playedAt = dateTimeToIso(form.dateIso, form.time);
       const res = await createMatch({
-        sport: "pickleball",
-        mode: "singles",
-        clubId: null,
-        courtId: null,
+        sport: sportFromRivalLabel(rival.sport),
+        mode: isDoubles ? "doubles" : "singles",
+        clubId: form.clubId,
+        courtId: form.courtId,
         playedAt,
         durationMin: 60,
-        teamAPlayerIds: [currentUserId],
-        teamBPlayerIds: [opponent.id],
+        teamAPlayerIds: isDoubles
+          ? [currentUserId, yourPartner!.id]
+          : [currentUserId],
+        teamBPlayerIds: isDoubles
+          ? [opponent.id, rivalPartner!.id]
+          : [opponent.id],
+        isRanked: form.ranked,
+        plannedBestOf: form.bestOf,
+        challengeMessage: form.msg.trim() || undefined,
       });
       if (!res.ok) {
         toast({
@@ -164,6 +475,8 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
         });
         return;
       }
+      const convRes = await getMatchConversationId({ matchId: res.data.id });
+      setCreatedConvId(convRes.ok ? convRes.data.conversationId : null);
       toast({ icon: "check-circle-2", title: "Reto enviado" });
       setDone(true);
       router.refresh();
@@ -200,14 +513,14 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
           boxShadow: "0 32px 64px rgba(0,0,0,0.5)",
         }}
       >
-        <RTHero rival={rival} done={done} onClose={close} />
+        <RTHero you={you} h2h={h2h} rival={rival} done={done} onClose={close} />
 
         {!done && (
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              padding: "12px 24px",
+              padding: "14px 24px 12px",
               borderBottom: "1px solid var(--border)",
               background: "#fff",
             }}
@@ -271,9 +584,17 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
           </div>
         )}
 
-        <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
+        <div style={{ flex: 1, overflow: "auto", padding: "14px 22px 22px" }}>
           {done ? (
-            <RTDone you={YOU} rival={rival} form={form} onClose={close} />
+            <RTDone
+              you={you}
+              rival={rival}
+              form={form}
+              scheduleLine={scheduleLine}
+              venueLine={venueLine}
+              conversationId={createdConvId}
+              onClose={close}
+            />
           ) : step === 0 ? (
             <RTStep1
               form={form}
@@ -282,9 +603,28 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
               currentUserId={currentUserId}
               opponent={opponent}
               setOpponent={setOpponent}
+              yourPartner={yourPartner}
+              setYourPartner={setYourPartner}
+              rivalPartner={rivalPartner}
+              setRivalPartner={setRivalPartner}
+              canRank={canRank}
             />
           ) : (
-            <RTStep2 form={form} set={set} rival={rival} />
+            <RTStep2
+              form={form}
+              set={set}
+              rival={rival}
+              dayChips={dayChips}
+              clubs={clubs}
+              courts={courts}
+              scheduleLoading={scheduleLoading}
+              availLoading={availLoading}
+              timeSlots={timeSlots}
+              takenSlots={takenSlots}
+              pickingClub={pickingClub}
+              onTogglePickClub={() => setPickingClub((v) => !v)}
+              onSelectClub={selectClub}
+            />
           )}
         </div>
 
@@ -374,12 +714,25 @@ export function RetarModal({ currentUserId }: { currentUserId: string | null }) 
   );
 }
 
-function RTHero({ rival, done, onClose }: { rival: Rival; done: boolean; onClose: () => void }) {
+function RTHero({
+  you,
+  h2h,
+  rival,
+  done,
+  onClose,
+}: {
+  you: HeroWho;
+  h2h: HeroH2h;
+  rival: Rival;
+  done: boolean;
+  onClose: () => void;
+}) {
   return (
     <div
       style={{
         position: "relative",
-        padding: "20px 24px 18px",
+        padding: "20px 48px 28px 24px",
+        minHeight: 168,
         background: done
           ? "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)"
           : "linear-gradient(135deg, #0a0a0a 0%, #1f1f23 60%, #7c2d12 100%)",
@@ -405,11 +758,14 @@ function RTHero({ rival, done, onClose }: { rival: Rival; done: boolean; onClose
         VS
       </div>
       <button
+        type="button"
+        aria-label="Cerrar"
         onClick={onClose}
         style={{
           position: "absolute",
           top: 14,
           right: 14,
+          zIndex: 2,
           width: 30,
           height: 30,
           borderRadius: "50%",
@@ -424,23 +780,18 @@ function RTHero({ rival, done, onClose }: { rival: Rival; done: boolean; onClose
       >
         <Icon name="x" size={13} color="#fff" />
       </button>
-      <div className="label-mp" style={{ color: done ? "#fbbf24" : "var(--primary)" }}>
-        ● {done ? "Reto enviado" : "Duelo · " + (rival.sport || "Pickleball")}
-      </div>
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginTop: 14,
-          gap: 14,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          alignItems: "start",
+          marginTop: 8,
+          gap: 12,
           position: "relative",
         }}
       >
-        {/* You */}
-        <AvatarBlock who={YOU} side="you" />
-        {/* Score */}
-        <div style={{ textAlign: "center", padding: "0 6px", flexShrink: 0 }}>
+        <AvatarBlock who={you} side="you" />
+        <div style={{ textAlign: "center", padding: "8px 4px 0", justifySelf: "center", alignSelf: "center" }}>
           <div
             className="font-heading"
             style={{
@@ -451,11 +802,11 @@ function RTHero({ rival, done, onClose }: { rival: Rival; done: boolean; onClose
               color: "#fff",
             }}
           >
-            <span style={{ color: "var(--primary)" }}>{H2H.you}</span>
+            <span style={{ color: "var(--primary)" }}>{h2h.you}</span>
             <span style={{ color: "rgba(255,255,255,0.4)", margin: "0 6px", fontSize: 22 }}>
               —
             </span>
-            <span style={{ color: "#fbbf24" }}>{H2H.rival}</span>
+            <span style={{ color: "#fbbf24" }}>{h2h.rival}</span>
           </div>
           <div
             style={{
@@ -467,13 +818,25 @@ function RTHero({ rival, done, onClose }: { rival: Rival; done: boolean; onClose
               marginTop: 4,
             }}
           >
-            Cara a cara · {H2H.total}
+            Cara a cara · {h2h.total}
           </div>
-          <div style={{ fontSize: 9, color: "var(--primary)", fontWeight: 800, marginTop: 4 }}>
-            ● {H2H.streak}
-          </div>
+          {h2h.total === 0 ? (
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(255,255,255,0.45)",
+                fontWeight: 700,
+                marginTop: 4,
+              }}
+            >
+              Aún no se han enfrentado
+            </div>
+          ) : h2h.streak ? (
+            <div style={{ fontSize: 9, color: "var(--primary)", fontWeight: 800, marginTop: 4 }}>
+              ● {h2h.streak}
+            </div>
+          ) : null}
         </div>
-        {/* Rival */}
         <AvatarBlock who={rival} side="rival" />
       </div>
     </div>
@@ -492,14 +855,16 @@ function AvatarBlock({
   return (
     <div
       style={{
-        flex: 1,
+        minWidth: 0,
+        width: "100%",
         display: "flex",
         flexDirection: "column",
         alignItems: isYou ? "flex-start" : "flex-end",
         gap: 8,
+        justifySelf: isYou ? "start" : "end",
       }}
     >
-      <div style={{ position: "relative", display: "inline-block" }}>
+      <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
         <div
           style={{
             width: 56,
@@ -525,7 +890,7 @@ function AvatarBlock({
           style={{
             position: "absolute",
             top: -4,
-            [isYou ? "left" : "right"]: -4,
+            [isYou ? "left" : "right"]: 0,
             padding: "2px 6px",
             borderRadius: 4,
             background: isYou ? "var(--primary)" : "#fbbf24",
@@ -540,8 +905,22 @@ function AvatarBlock({
           {isYou ? "TÚ" : "RIVAL"}
         </span>
       </div>
-      <div style={{ textAlign: isYou ? "left" : "right" }}>
-        <div style={{ fontSize: 11.5, fontWeight: 800, lineHeight: 1.2 }}>{who.name}</div>
+      <div style={{ textAlign: isYou ? "left" : "right", maxWidth: "100%" }}>
+        {who.name ? (
+          <div style={{ fontSize: 11.5, fontWeight: 800, lineHeight: 1.2, wordBreak: "break-word" }}>
+            {who.name}
+          </div>
+        ) : (
+          <div
+            aria-hidden
+            style={{
+              width: 88,
+              height: 12,
+              borderRadius: 4,
+              background: "rgba(255,255,255,0.14)",
+            }}
+          />
+        )}
         <div
           style={{
             display: "inline-flex",
@@ -570,6 +949,11 @@ function RTStep1({
   currentUserId,
   opponent,
   setOpponent,
+  yourPartner,
+  setYourPartner,
+  rivalPartner,
+  setRivalPartner,
+  canRank,
 }: {
   form: Form;
   set: <K extends keyof Form>(k: K, v: Form[K]) => void;
@@ -577,9 +961,25 @@ function RTStep1({
   currentUserId: string | null;
   opponent: Player | null;
   setOpponent: (p: Player | null) => void;
+  yourPartner: Player | null;
+  setYourPartner: (p: Player | null) => void;
+  rivalPartner: Player | null;
+  setRivalPartner: (p: Player | null) => void;
+  canRank: boolean;
 }) {
+  const opponentId = opponent?.id ?? rival.id;
+  const partnerExclude = [currentUserId, opponentId].filter((id): id is string => !!id);
+  const rivalPartnerExclude = [
+    currentUserId,
+    opponentId,
+    yourPartner?.id,
+  ].filter((id): id is string => !!id);
+
+  const pickPartner = (arr: Player[], setter: (p: Player | null) => void) => {
+    setter(arr[0] ?? null);
+  };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Selector de oponente real. Si el evento ya trajo `rival.id`, lo
           mostramos como chip fijo; si no, abrimos el PlayerPicker para elegir. */}
       {!rival.id && (
@@ -610,10 +1010,6 @@ function RTStep1({
         </>
       )}
 
-      <div style={{ margin: "4px 0 8px" }}>
-        <RankedBadge />
-      </div>
-
       <div className="label-mp">Modalidad</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {[
@@ -624,7 +1020,13 @@ function RTStep1({
           return (
             <button
               key={o.k}
-              onClick={() => set("mode", o.k)}
+              onClick={() => {
+                set("mode", o.k);
+                if (o.k === "singles") {
+                  setYourPartner(null);
+                  setRivalPartner(null);
+                }
+              }}
               style={{
                 padding: 11,
                 borderRadius: 10,
@@ -673,49 +1075,30 @@ function RTStep1({
           }}
         >
           <div>
-            <div className="label-mp" style={{ marginBottom: 5 }}>
-              Tu partner
-            </div>
-            <select
-              value={form.yourPartner}
-              onChange={(e) => set("yourPartner", e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                fontSize: 12,
-                fontFamily: "inherit",
-                background: "#fff",
-              }}
-            >
-              <option value="">Sin elegir aún…</option>
-              <option>Diego Carrasco · 4.0</option>
-              <option>Camila Reyes · 3.5</option>
-              <option>Felipe Donoso · 4.1</option>
-            </select>
+            {currentUserId == null ? (
+              <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>Inicia sesión para elegir partners.</div>
+            ) : (
+              <PlayerPicker
+                label="Tu partner"
+                max={1}
+                selected={yourPartner ? [yourPartner] : []}
+                onChange={(arr) => pickPartner(arr, setYourPartner)}
+                excludeIds={partnerExclude}
+              />
+            )}
           </div>
           <div>
-            <div className="label-mp" style={{ marginBottom: 5 }}>
-              Partner del rival
-            </div>
-            <select
-              value={form.theirPartner}
-              onChange={(e) => set("theirPartner", e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                fontSize: 12,
-                fontFamily: "inherit",
-                background: "#fff",
-              }}
-            >
-              <option value="">Lo elige él/ella</option>
-              <option>Sugerir Joaquín Silva · 4.3</option>
-              <option>Sugerir Matías Rojas · 4.6</option>
-            </select>
+            {currentUserId == null ? (
+              <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>Inicia sesión para elegir partners.</div>
+            ) : (
+              <PlayerPicker
+                label="Partner del rival"
+                max={1}
+                selected={rivalPartner ? [rivalPartner] : []}
+                onChange={(arr) => pickPartner(arr, setRivalPartner)}
+                excludeIds={rivalPartnerExclude}
+              />
+            )}
           </div>
         </div>
       )}
@@ -762,18 +1145,23 @@ function RTStep1({
       </div>
 
       <button
-        onClick={() => set("ranked", !form.ranked)}
+        type="button"
+        onClick={() => {
+          if (!canRank) return;
+          set("ranked", !form.ranked);
+        }}
         style={{
           padding: 12,
           borderRadius: 10,
-          border: form.ranked ? "2px solid var(--primary)" : "1px solid var(--border)",
-          background: form.ranked ? "#ecfdf5" : "#fff",
-          cursor: "pointer",
+          border: form.ranked && canRank ? "2px solid var(--primary)" : "1px solid var(--border)",
+          background: form.ranked && canRank ? "#ecfdf5" : "#fff",
+          cursor: canRank ? "pointer" : "not-allowed",
           fontFamily: "inherit",
           textAlign: "left",
           display: "flex",
           gap: 11,
           alignItems: "center",
+          opacity: canRank ? 1 : 0.92,
         }}
       >
         <div
@@ -781,7 +1169,7 @@ function RTStep1({
             width: 32,
             height: 18,
             borderRadius: 9999,
-            background: form.ranked ? "var(--primary)" : "#d4d4d8",
+            background: form.ranked && canRank ? "var(--primary)" : "#d4d4d8",
             position: "relative",
             flexShrink: 0,
           }}
@@ -790,7 +1178,7 @@ function RTStep1({
             style={{
               position: "absolute",
               top: 2,
-              left: form.ranked ? 16 : 2,
+              left: form.ranked && canRank ? 16 : 2,
               width: 14,
               height: 14,
               borderRadius: "50%",
@@ -800,13 +1188,27 @@ function RTStep1({
             }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 900 }}>Cuenta para el ranking</div>
-          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
-            Tu nivel sube o baja según el resultado · diferencia esperada ±0.08
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.35 }}>
+            {canRank ? (
+              "Actívalo si quieres que el resultado mueva tu MP Rating."
+            ) : (
+              <>
+                Solo con{" "}
+                <Link
+                  href="/dashboard/user/mi-plan"
+                  style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  MATCHPOINT+
+                </Link>
+                .
+              </>
+            )}
           </div>
         </div>
-        {form.ranked && (
+        {form.ranked && canRank && (
           <span
             style={{
               padding: "3px 8px",
@@ -823,53 +1225,6 @@ function RTStep1({
           </span>
         )}
       </button>
-
-      <div className="label-mp" style={{ marginTop: 4 }}>
-        ¿Qué se juega? · opcional
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-        {[
-          { k: "none" as const, l: "Nada", i: "circle-dashed" },
-          { k: "bragging" as const, l: "Bragging rights", i: "crown" },
-          { k: "dinner" as const, l: "Cena", i: "utensils" },
-          { k: "custom" as const, l: "Custom", i: "sparkles" },
-        ].map((o) => {
-          const on = form.stakes === o.k;
-          return (
-            <button
-              key={o.k}
-              onClick={() => set("stakes", o.k)}
-              style={{
-                padding: "10px 6px",
-                borderRadius: 8,
-                border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
-                background: on ? "#ecfdf5" : "#fff",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                textAlign: "center",
-              }}
-            >
-              <Icon name={o.i} size={13} color={on ? "var(--primary)" : "#0a0a0a"} />
-              <div style={{ fontSize: 10, fontWeight: 800, marginTop: 5 }}>{o.l}</div>
-            </button>
-          );
-        })}
-      </div>
-      {form.stakes === "custom" && (
-        <input
-          value={form.customStakes}
-          onChange={(e) => set("customStakes", e.target.value)}
-          placeholder="Ej. quien pierde paga el Uber del próximo match…"
-          style={{
-            padding: "9px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            fontSize: 12,
-            fontFamily: "inherit",
-            background: "#fff",
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -878,58 +1233,60 @@ function RTStep2({
   form,
   set,
   rival,
+  dayChips,
+  clubs,
+  courts,
+  scheduleLoading,
+  availLoading,
+  timeSlots,
+  takenSlots,
+  pickingClub,
+  onTogglePickClub,
+  onSelectClub,
 }: {
   form: Form;
   set: <K extends keyof Form>(k: K, v: Form[K]) => void;
   rival: Rival;
+  dayChips: DayChip[];
+  clubs: RetarScheduleClubOption[];
+  courts: Court[];
+  scheduleLoading: boolean;
+  availLoading: boolean;
+  timeSlots: string[];
+  takenSlots: Set<string>;
+  pickingClub: boolean;
+  onTogglePickClub: () => void;
+  onSelectClub: (club: RetarScheduleClubOption) => void;
 }) {
-  const days = [
-    { k: "hoy" as const, d: "HOY", n: "12 may", avail: false },
-    { k: "mañ" as const, d: "MAR", n: "13 may", avail: true },
-    { k: "sab" as const, d: "SÁB", n: "17 may", avail: true, hot: true },
-    { k: "dom" as const, d: "DOM", n: "18 may", avail: true },
-  ];
-  // Slots alineados con la convención de booking: cada hora 09:00–21:00.
-  const slots = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
+  const selectedClub = clubs.find((c) => c.id === form.clubId);
+  const clubSub = selectedClub
+    ? `${selectedClub.city}${rival.city && rival.city !== selectedClub.city ? ` · cerca de ${rival.name.split(" ")[0]}` : ""}`
+    : scheduleLoading
+      ? "Cargando clubes…"
+      : "Elige un club para el duelo";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="label-mp">¿Cuándo?</div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {days.map((d) => {
-          const on = form.date === d.k;
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {dayChips.map((d) => {
+          const on = form.dateIso === d.iso;
           return (
             <button
-              key={d.k}
-              onClick={() => set("date", d.k)}
+              key={d.iso}
+              type="button"
+              onClick={() => set("dateIso", d.iso)}
               style={{
-                flex: 1,
+                flex: "1 1 72px",
+                minWidth: 72,
                 padding: "10px 4px",
                 borderRadius: 8,
                 border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
                 background: on ? "#ecfdf5" : "#fff",
                 cursor: "pointer",
                 fontFamily: "inherit",
-                position: "relative",
               }}
             >
-              {d.hot && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: -6,
-                    right: 4,
-                    padding: "1px 5px",
-                    borderRadius: 4,
-                    background: "#fbbf24",
-                    color: "#0a0a0a",
-                    fontSize: 7.5,
-                    fontWeight: 900,
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  SUGERIDO
-                </span>
-              )}
               <div
                 style={{
                   fontSize: 9,
@@ -938,49 +1295,46 @@ function RTStep2({
                   letterSpacing: "0.1em",
                 }}
               >
-                {d.d}
+                {d.dow}
               </div>
               <div
                 className="font-heading"
                 style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.02em" }}
               >
-                {d.n}
-              </div>
-              <div
-                style={{
-                  fontSize: 8.5,
-                  color: d.avail ? "var(--primary)" : "#dc2626",
-                  fontWeight: 800,
-                  marginTop: 3,
-                }}
-              >
-                {d.avail ? "● libre" : "○ ocupado"}
+                {d.sub}
               </div>
             </button>
           );
         })}
       </div>
 
-      <div className="label-mp" style={{ marginTop: 4 }}>
-        Hora
+      <div className="label-mp" style={{ marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>Hora</span>
+        {availLoading && form.clubId && form.courtId ? (
+          <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700 }}>Actualizando…</span>
+        ) : null}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 5 }}>
-        {slots.map((t) => {
+        {timeSlots.map((t) => {
           const on = form.time === t;
+          const busy = takenSlots.has(t);
           return (
             <button
               key={t}
-              onClick={() => set("time", t)}
+              type="button"
+              disabled={busy}
+              onClick={() => !busy && set("time", t)}
               style={{
                 padding: "9px 4px",
                 borderRadius: 8,
-                border: on ? "2px solid var(--primary)" : "1px solid rgba(16,185,129,0.3)",
-                background: on ? "var(--primary)" : "#ecfdf5",
-                color: on ? "#fff" : "#065f46",
-                cursor: "pointer",
+                border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
+                background: busy ? "#f4f4f5" : on ? "var(--primary)" : "#ecfdf5",
+                color: busy ? "#a1a1aa" : on ? "#fff" : "#065f46",
+                cursor: busy ? "not-allowed" : "pointer",
                 fontSize: 11,
                 fontWeight: 900,
                 fontFamily: "inherit",
+                opacity: busy ? 0.65 : 1,
               }}
             >
               {t}
@@ -988,58 +1342,134 @@ function RTStep2({
           );
         })}
       </div>
+      {form.clubId && form.courtId && !availLoading && timeSlots.every((t) => takenSlots.has(t)) ? (
+        <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700, marginTop: 4 }}>
+          No hay horarios libres este día. Prueba otro día o cancha.
+        </div>
+      ) : null}
 
       <div className="label-mp" style={{ marginTop: 4 }}>
-        Cancha
+        Club y cancha
       </div>
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          padding: 10,
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          background: "#fff",
-        }}
-      >
+      {pickingClub && clubs.length > 0 ? (
         <div
           style={{
-            width: 32,
-            height: 32,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            maxHeight: 160,
+            overflow: "auto",
+            padding: 8,
+            border: "1px solid var(--border)",
             borderRadius: 8,
-            background: "linear-gradient(135deg,#10b981,#064e3b)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
+            background: "#fafafa",
           }}
         >
-          <Icon name="building-2" size={14} color="#fff" />
+          {clubs.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onSelectClub(c)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 8,
+                border:
+                  form.clubId === c.id ? "2px solid var(--primary)" : "1px solid var(--border)",
+                background: form.clubId === c.id ? "#ecfdf5" : "#fff",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900 }}>{c.name}</div>
+              <div style={{ fontSize: 10, color: "var(--muted-fg)", marginTop: 2 }}>{c.city}</div>
+            </button>
+          ))}
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, fontWeight: 900 }}>{form.club}</div>
-          <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-            Cumbayá · 4 canchas · favorito de {rival.name.split(" ")[0]}
-          </div>
-        </div>
-        <button
+      ) : (
+        <div
           style={{
-            padding: "6px 11px",
-            background: "var(--muted)",
-            border: 0,
-            borderRadius: 9999,
-            fontSize: 10,
-            fontWeight: 800,
-            fontFamily: "inherit",
-            cursor: "pointer",
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: 10,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "#fff",
           }}
         >
-          Cambiar
-        </button>
-      </div>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: "linear-gradient(135deg,#10b981,#064e3b)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+            }}
+          >
+            <Icon name="building-2" size={14} color="#fff" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>
+              {form.clubName || "Sin club"}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>{clubSub}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onTogglePickClub}
+            disabled={clubs.length === 0}
+            style={{
+              padding: "6px 11px",
+              background: "var(--muted)",
+              border: 0,
+              borderRadius: 9999,
+              fontSize: 10,
+              fontWeight: 800,
+              fontFamily: "inherit",
+              cursor: clubs.length === 0 ? "not-allowed" : "pointer",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              opacity: clubs.length === 0 ? 0.5 : 1,
+            }}
+          >
+            {clubs.length === 0 ? "Sin clubes" : "Cambiar"}
+          </button>
+        </div>
+      )}
+      {courts.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {courts.map((court) => {
+            const label = court.name?.trim() || `Cancha ${court.code}`;
+            const on = form.courtId === court.id;
+            return (
+              <button
+                key={court.id}
+                type="button"
+                onClick={() => {
+                  set("courtId", court.id);
+                  set("courtLabel", label);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
+                  background: on ? "#ecfdf5" : "#fff",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="label-mp" style={{ marginTop: 4 }}>
         Mensaje · opcional
@@ -1047,6 +1477,7 @@ function RTStep2({
       <div style={{ position: "relative" }}>
         <textarea
           value={form.msg}
+          maxLength={180}
           onChange={(e) => set("msg", e.target.value)}
           placeholder={'"Vamos por la revancha del último set 🔥"'}
           style={{
@@ -1097,33 +1528,24 @@ function RTStep2({
   );
 }
 
-const DAY_LABEL: Record<Form["date"], string> = {
-  hoy: "Hoy",
-  "mañ": "mar 13 may",
-  sab: "sáb 17 may",
-  dom: "dom 18 may",
-};
-
 function RTDone({
   you,
   rival,
   form,
+  scheduleLine,
+  venueLine,
+  conversationId,
   onClose,
 }: {
-  you: typeof YOU;
+  you: HeroWho;
   rival: Rival;
   form: Form;
+  scheduleLine: string;
+  venueLine: string;
+  conversationId: string | null;
   onClose: () => void;
 }) {
-  const dayLabel = DAY_LABEL[form.date];
-  const stakesLabel =
-    form.stakes === "none"
-      ? "—"
-      : form.stakes === "bragging"
-      ? "Bragging rights"
-      : form.stakes === "dinner"
-      ? "Cena"
-      : form.customStakes || "Custom";
+  const router = useRouter();
 
   return (
     <div>
@@ -1178,10 +1600,12 @@ function RTDone({
         {[
           ["Modalidad", form.mode === "singles" ? "Singles · 1v1" : "Dobles · 2v2"],
           ["Formato", form.bestOf === 1 ? "Set único" : "Mejor de " + form.bestOf + " sets"],
-          ["Ranked", form.ranked ? "Sí · cuenta para el ranking" : "No · friendly match"],
-          ["Stakes", stakesLabel],
-          ["Cuándo", dayLabel + " · " + form.time],
-          ["Cancha", form.club],
+          [
+            "Ranking",
+            form.ranked ? "Sí · cuenta para MP Rating" : "No · partido casual",
+          ],
+          ["Cuándo", scheduleLine],
+          ["Lugar", venueLine || "Por confirmar"],
         ].map(([k, v]) => (
           <div
             key={k}
@@ -1251,7 +1675,8 @@ function RTDone({
               <b>{you.name}</b> te retó a un duelo · {form.mode === "singles" ? "1v1" : "2v2"}
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>
-              {dayLabel} · {form.time} · {form.club}
+              {scheduleLine}
+              {venueLine ? ` · ${venueLine}` : ""}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
               <button
@@ -1312,8 +1737,14 @@ function RTDone({
         </button>
         <button
           className="btn btn-primary"
-          style={{ flex: 1, justifyContent: "center" }}
-          onClick={onClose}
+          style={{ flex: 1, justifyContent: "center", opacity: conversationId ? 1 : 0.65 }}
+          disabled={!conversationId}
+          onClick={() => {
+            if (conversationId) {
+              router.push(`/dashboard/user/chat?conv=${conversationId}`);
+            }
+            onClose();
+          }}
         >
           <Icon name="message-circle" size={13} color="#fff" />
           Ir al chat del duelo

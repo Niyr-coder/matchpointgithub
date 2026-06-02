@@ -107,8 +107,18 @@ export function ImageUploader({
       ? { width: height, height, borderRadius: radius }
       : { width: "100%", height, borderRadius: radius };
 
+  const centered = shape === "circle";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        alignItems: centered ? "center" : "stretch",
+        width: centered ? "100%" : undefined,
+      }}
+    >
       <button
         type="button"
         onClick={pickFile}
@@ -164,7 +174,9 @@ export function ImageUploader({
           ) : null}
         </div>
       </button>
-      {error && <div style={{ fontSize: 11, color: "#dc2626" }}>{error}</div>}
+      {error && (
+        <div style={{ fontSize: 11, color: "#dc2626", textAlign: centered ? "center" : "left" }}>{error}</div>
+      )}
       {preview && !busy && !disabled && (
         <button
           type="button"
@@ -176,7 +188,7 @@ export function ImageUploader({
             fontSize: 11,
             fontWeight: 700,
             cursor: "pointer",
-            alignSelf: "flex-start",
+            alignSelf: centered ? "center" : "flex-start",
             padding: 0,
             fontFamily: "inherit",
           }}

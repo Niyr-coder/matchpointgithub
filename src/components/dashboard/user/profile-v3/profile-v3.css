@@ -1,0 +1,275 @@
+/**
+ * Perfil V3 — tipografía alineada al manual MATCHPOINT
+ * (Plus Jakarta Sans títulos/números, Inter cuerpo, JetBrains Mono metadata).
+ */
+
+.mp-profile-v3 {
+  font-family: var(--font-sans);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mp-profile-v3 .font-heading,
+.mp-profile-v3 h1,
+.mp-profile-v3 h2,
+.mp-profile-v3 .profile-v3-h {
+  font-family: var(--font-heading);
+}
+
+.mp-profile-v3 .label-mp {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-v3-name {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: clamp(30px, 5vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+
+.mp-profile-v3 .profile-v3-handle {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-v3-lead {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #262626;
+}
+
+.mp-profile-v3 .profile-v3-meta {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-v3-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.mp-profile-v3 .profile-v3-stat-value {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: 30px;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+}
+
+.mp-profile-v3 .profile-v3-stat-value-lg {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: clamp(28px, 4vw, 32px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.mp-profile-v3 .profile-v3-body {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-v3-body-sm {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-v3-scout-meta {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.mp-profile-v3 .profile-v3-scout-meta-num {
+  font-family: var(--font-heading);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.mp-profile-v3 .profile-v3-tab {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.mp-profile-v3 .profile-v3-tab[aria-selected="true"] {
+  font-weight: 900;
+  color: var(--fg);
+}
+
+.mp-profile-v3 .card-title {
+  margin-top: 4px;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+
+/* Coach AI — celdas de % victoria por golpe (mismo patrón que ProfileScreenView Shots) */
+.mp-profile-v3 .profile-v3-panel {
+  position: relative;
+  min-height: 280px;
+  padding: 20px 22px;
+}
+
+.mp-profile-v3 .profile-v3-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.mp-profile-v3 .profile-v3-shot-cell {
+  padding: 10px 12px;
+  background: var(--muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.mp-profile-v3 .profile-v3-shot-label {
+  font-weight: 800;
+  color: var(--fg);
+}
+
+.mp-profile-v3 .profile-v3-shot-pct {
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: -0.025em;
+  color: var(--fg);
+}
+
+.mp-profile-v3 .profile-v3-shot-cell--strong .profile-v3-shot-pct {
+  color: var(--primary);
+}
+
+.mp-profile-v3 .profile-v3-shot-track {
+  margin-top: 4px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mp-profile-v3 .profile-v3-shot-bar {
+  height: 100%;
+  background: var(--fg);
+  border-radius: inherit;
+}
+
+.mp-profile-v3 .profile-v3-shot-cell--strong .profile-v3-shot-bar {
+  background: var(--primary);
+}
+
+.mp-profile-v3 .profile-v3-mp-lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+
+.mp-profile-v3 .profile-v3-mp-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  border: 1px solid var(--warning-border);
+}
+
+/* Empty states — icono, título y CTA opcional */
+.mp-profile-v3 .profile-empty-state {
+  text-align: center;
+  padding: 32px 20px;
+  border-radius: 10px;
+  background: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.mp-profile-v3 .profile-empty-state--compact {
+  padding: 24px 16px;
+}
+
+.mp-profile-v3 .profile-empty-state__icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mp-profile-v3 .profile-empty-state--compact .profile-empty-state__icon {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+}
+
+.mp-profile-v3 .profile-empty-state__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+.mp-profile-v3 .profile-empty-state--compact .profile-empty-state__title {
+  font-size: 13px;
+}
+
+.mp-profile-v3 .profile-empty-state__text {
+  margin: 8px auto 0;
+  max-width: 280px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted-fg);
+}
+
+.mp-profile-v3 .profile-empty-state__cta {
+  margin-top: 16px;
+  font-size: 11px;
+  padding: 8px 14px;
+  text-decoration: none;
+}

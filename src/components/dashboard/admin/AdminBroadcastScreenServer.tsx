@@ -1,7 +1,7 @@
-// Server: carga las campañas REALES (broadcasts scope=platform) + conteo de
-// destinatarios, y alimenta el rediseño AdminBroadcastView. El composer envía de
-// verdad (createBroadcast/dispatchBroadcast) y el canal Banner publica anuncios.
-// Funnel de aperturas/clicks queda demo (sin tracking aún). Ver 04-placeholders.md.
+// Server: carga campañas REALES (broadcasts scope=platform), destinatarios y
+// aperturas registradas en broadcast_recipients.opened_at. El composer envía
+// in-app vía createBroadcast/dispatchBroadcast y el canal Banner publica anuncios.
+// Clicks y conversión siguen sin tracking. Ver 04-placeholders.md.
 import { getServerClient } from "@/lib/db/client.server";
 import { listBroadcasts } from "@/server/actions/marketing";
 import { AdminBroadcastView, type BroadcastData } from "./AdminBroadcastView";
@@ -35,6 +35,7 @@ function relWhen(status: string, sentAt: string | null, scheduledFor: string | n
 }
 
 async function loadData(): Promise<BroadcastData> {
+  const supabase = await getServerClient();
   const res = await listBroadcasts({ scope: "platform", limit: 50 });
   const broadcasts = (res.ok ? res.data : []).filter((b) => b.status !== "cancelled");
 
@@ -42,7 +43,6 @@ async function loadData(): Promise<BroadcastData> {
   const recCount = new Map<string, number>();
   const openCount = new Map<string, number>();
   if (ids.length > 0) {
-    const supabase = await getServerClient();
     const { data } = await supabase.from("broadcast_recipients").select("broadcast_id,opened_at").in("broadcast_id", ids);
     for (const r of (data ?? []) as unknown as { broadcast_id: string; opened_at: string | null }[]) {
       recCount.set(r.broadcast_id, (recCount.get(r.broadcast_id) ?? 0) + 1);
@@ -70,12 +70,14 @@ async function loadData(): Promise<BroadcastData> {
   });
 
   // Plantillas reales (mig 163).
-  const supabase2 = await getServerClient();
-  const { data: tpls } = await supabase2
-    .from("broadcast_templates")
-    .select("id,name,channel,title,body,cta_label,target_filter,uses")
-    .order("created_at", { ascending: false })
-    .limit(24);
+  const [{ data: tpls }, { count: totalUsers }] = await Promise.all([
+    supabase
+      .from("broadcast_templates")
+      .select("id,name,channel,title,body,cta_label,target_filter,uses")
+      .order("created_at", { ascending: false })
+      .limit(24),
+    supabase.from("profiles").select("id", { count: "exact", head: true }),
+  ]);
   const templates = (tpls ?? []).map((t) => ({
     id: t.id as string,
     name: t.name as string,
@@ -87,7 +89,7 @@ async function loadData(): Promise<BroadcastData> {
     uses: (t.uses as number) ?? 0,
   }));
 
-  return { campaigns, templates };
+  return { campaigns, templates, totalUsers: totalUsers ?? 0 };
 }
 
 export async function AdminBroadcastScreenServer() {

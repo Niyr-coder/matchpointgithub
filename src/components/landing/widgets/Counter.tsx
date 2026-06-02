@@ -49,8 +49,11 @@ export function Counter({ value, durationMs = 1400 }: Props) {
 
   if (!animatable) return <>{value}</>;
 
+  // El input llega con coma como separador de miles (formato interno de
+  // page.tsx, no ambiguo para el parseo de arriba), pero lo MOSTRAMOS con
+  // convención ecuatoriana (punto de miles) vía es-EC.
   const display = hasThousands
-    ? Math.round(shown).toLocaleString("en-US")
+    ? Math.round(shown).toLocaleString("es-EC")
     : decimals > 0
       ? shown.toFixed(decimals)
       : Math.round(shown).toString();

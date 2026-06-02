@@ -45,6 +45,17 @@ export type CourtItem = {
 
 export type ApplicantInfo = { display_name: string; username: string; email: string | null };
 
+export type ApplicationEventItem = {
+  id: string;
+  kind: string;
+  actorId: string | null;
+  actorRole: string | null;
+  actorName: string | null;
+  payload: Record<string, unknown> | null;
+  note: string | null;
+  createdAt: string;
+};
+
 export type ApplicationDetail = {
   id: string;
   status: string;
@@ -70,6 +81,7 @@ export type ApplicationDetail = {
   courts: CourtItem[];
   documents: DocItem[];
   photos: PhotoItem[];
+  events: ApplicationEventItem[];
 };
 
 export async function ensureAdmin(): Promise<void> {
@@ -97,7 +109,7 @@ export async function loadApplicationDetail(
     .maybeSingle();
   if (!app) return null;
 
-  const [{ data: courts }, { data: docs }, { data: photos }, applicantRes] = await Promise.all([
+  const [{ data: courts }, { data: docs }, { data: photos }, { data: events }, applicantRes] = await Promise.all([
     supabase
       .from("club_application_courts")
       .select("*")
@@ -113,6 +125,11 @@ export async function loadApplicationDetail(
       .select("*")
       .eq("application_id", applicationId)
       .order("ordinal"),
+    supabase
+      .from("club_application_events")
+      .select("id,kind,actor_id,actor_role,payload,note,created_at")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: false }),
     app.applicant_id
       ? supabase
           .from("profiles")
@@ -147,6 +164,24 @@ export async function loadApplicationDetail(
   if (app.applicant_id) {
     const { data: userRes } = await supabase.auth.admin.getUserById(app.applicant_id as string);
     applicantEmail = userRes.user?.email ?? null;
+  }
+
+  const eventActorIds = Array.from(
+    new Set((events ?? []).map((e) => e.actor_id as string | null).filter((v): v is string => Boolean(v))),
+  );
+  const actorNameById = new Map<string, string>();
+  if (eventActorIds.length > 0) {
+    const { data: actors } = await supabase
+      .from("profiles")
+      .select("id,display_name,username")
+      .in("id", eventActorIds);
+    for (const actor of actors ?? []) {
+      const label =
+        (actor.display_name as string | null)?.trim() ||
+        ((actor.username as string | null) ? `@${actor.username}` : null) ||
+        "Usuario";
+      actorNameById.set(actor.id as string, label);
+    }
   }
 
   return {
@@ -203,5 +238,18 @@ export async function loadApplicationDetail(
       caption: (p.caption as string | null) ?? null,
       url: photoUrls[i],
     })),
+    events: (events ?? []).map((e) => {
+      const actorId = (e.actor_id as string | null) ?? null;
+      return {
+        id: e.id as string,
+        kind: e.kind as string,
+        actorId,
+        actorRole: (e.actor_role as string | null) ?? null,
+        actorName: actorId ? actorNameById.get(actorId) ?? null : null,
+        payload: (e.payload as Record<string, unknown> | null) ?? null,
+        note: (e.note as string | null) ?? null,
+        createdAt: e.created_at as string,
+      };
+    }),
   };
 }

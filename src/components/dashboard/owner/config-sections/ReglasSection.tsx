@@ -277,7 +277,7 @@ function RuleModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            style={{ background: "transparent", border: 0, cursor: "pointer", padding: 4 }}
+            style={{ background: "transparent", border: 0, cursor: "pointer", padding: 4, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
             aria-label="Cerrar"
           >
             <Icon name="x" size={18} color="var(--muted-fg)" />

@@ -167,6 +167,11 @@ export function ClubClientesScreenView({ data }: { data: ClientesData }) {
             border: 0,
             cursor: isPh(c) ? "not-allowed" : "pointer",
             opacity: isPh(c) ? 0.5 : 1,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
           }}
         >
           <Icon name="more-horizontal" size={13} />

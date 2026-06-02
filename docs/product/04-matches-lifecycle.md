@@ -78,5 +78,9 @@ Detrás del flag **`match_reliability_enabled`** (mig 124, default OFF).
 `reportNoShow`). Pendiente: **badge de fiabilidad** en perfil / `AdminUsersScreen`.
 Mientras el flag `match_reliability_enabled` esté OFF (default), no se ve.
 
+**Admin (Ola 3):** `admin-matches` lista matches recientes, disputas, no-shows y
+`player_reliability`. Soporte puede cancelar matches, cerrar disputas, descartar
+reportes de no-show y editar contadores de fiabilidad.
+
 **Cancelaciones abusivas**: el contador `cancellations` existe pero aún no se
 incrementa en `cancelMatch` (TODO del sub-stage); por ahora solo penaliza no-show.

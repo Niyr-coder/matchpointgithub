@@ -1,9 +1,9 @@
 "use server";
 
 // Payouts: aggregate captured transactions per club into payout rows.
-// Simplified: payout = sum(captured tx during period) - 10% MP commission.
-// Real Stripe Connect transfer scheduled by a worker; this just creates the
-// pending row and marks it processing.
+// MATCHPOINT no usa PSP: payout = cobros capturados del periodo - comisión.
+// Esta acción solo prepara filas de seguimiento; la transferencia real a
+// clubes/partners se hace manualmente fuera de la app.
 import "server-only";
 
 import { z } from "zod";
@@ -12,15 +12,14 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-
-const COMMISSION_PCT = 0.1;
+import { getTakeRatePct } from "@/server/queries/platform-config";
 
 async function requireAdmin(): Promise<string> {
   const supabase = await getServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
   const { data } = await supabase
     .from("role_assignments")
     .select("role")
@@ -28,7 +27,7 @@ async function requireAdmin(): Promise<string> {
     .eq("role", "admin")
     .is("revoked_at", null)
     .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
+  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
   return user.id;
 }
 
@@ -37,7 +36,7 @@ async function requireClubStaff(clubId: string): Promise<string> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
   const { data: roles } = await supabase
     .from("role_assignments")
     .select("role,club_id")
@@ -48,7 +47,7 @@ async function requireClubStaff(clubId: string): Promise<string> {
       r.role === "admin" ||
       (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
   );
-  if (!ok) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff required");
+  if (!ok) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere staff del club");
   return user.id;
 }
 
@@ -78,9 +77,9 @@ export async function listPayouts(input: unknown): Promise<ActionResult<unknown[
 }
 
 // ── processPendingPayouts ──────────────────────────────────────────────
-// Admin-triggered. Creates one pending payout per active club summing
-// captured transactions in the [periodStart, periodEnd] window, minus
-// commission. Skips clubs with $0 net. Marks each row as `processing`.
+// Acción admin. Crea una fila de payout por club activo sumando transacciones
+// capturadas en el rango, menos comisión. No transfiere dinero: deja cada fila
+// en `processing` para que soporte marque la transferencia manual cuando ocurra.
 const ProcessSchema = z.object({
   periodStart: z.string(),
   periodEnd: z.string(),
@@ -92,6 +91,7 @@ export async function processPendingPayouts(
   return runAction(ProcessSchema, input, async ({ periodStart, periodEnd }) => {
     const adminId = await requireAdmin();
     const supabase = await getServerClient();
+    const commissionPct = (await getTakeRatePct()) / 100;
 
     const { data: clubs } = await supabase
       .from("clubs")
@@ -128,7 +128,7 @@ export async function processPendingPayouts(
       );
       if (grossCents <= 0) continue;
 
-      const commissionCents = Math.round(grossCents * COMMISSION_PCT);
+      const commissionCents = Math.round(grossCents * commissionPct);
       const netCents = grossCents - commissionCents;
 
       const { error: insErr } = await supabase.from("payouts").insert({
@@ -190,24 +190,24 @@ export async function processRefund(
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
+    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
 
     const { data: tx } = await supabase
       .from("transactions")
       .select("club_id,amount_cents,status")
       .eq("id", transactionId)
       .single();
-    if (!tx) throw new MpError("REFUNDS.TX_NOT_FOUND", "Transaction not found", 404);
+    if (!tx) throw new MpError("REFUNDS.TX_NOT_FOUND", "Transacción no encontrada", 404);
     await requireClubStaff(tx.club_id as string);
     if (tx.status !== "captured") {
       throw new MpError(
         "REFUNDS.NOT_CAPTURED",
-        `Cannot refund transaction with status '${tx.status}'`,
+        `No se puede reembolsar una transacción en estado '${tx.status}'`,
         409,
       );
     }
     if (amountCents > (tx.amount_cents as number)) {
-      throw new MpError("REFUNDS.AMOUNT_EXCEEDS", "Refund exceeds tx amount", 422);
+      throw new MpError("REFUNDS.AMOUNT_EXCEEDS", "El reembolso excede el monto de la transacción", 422);
     }
 
     const { data: refund, error } = await supabase
@@ -222,7 +222,7 @@ export async function processRefund(
       .single();
     if (error) throw new MpError("REFUNDS.CREATE_FAILED", error.message, 500);
 
-    // Mark the transaction refunded (full refund) or leave captured (partial).
+    // Marca la transacción como reembolsada solo si el reembolso cubre el total.
     if (amountCents === (tx.amount_cents as number)) {
       await supabase
         .from("transactions")

@@ -77,7 +77,7 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
       i: "plug",
       t: "Integraciones",
       items: [
-        ["Stripe", "○ Sin configurar"],
+        ["PSP de pagos", "○ No implementado"],
         ["Google Maps", "○ Sin configurar"],
         ["OneSignal Push", "○ Sin configurar"],
         ["Mailgun (email)", "○ Sin configurar"],

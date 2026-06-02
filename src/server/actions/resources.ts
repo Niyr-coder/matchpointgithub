@@ -8,7 +8,7 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireUserId } from "@/lib/auth/session";
 import {
   ResourceCreateSchema,
   ResourceListParamsSchema,
@@ -36,18 +36,15 @@ function mapResource(row: Record<string, unknown>): Resource {
 }
 
 async function requireCoach(): Promise<string> {
+  const userId = await requireUserId();
   const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
   const { data: coach } = await supabase
     .from("coach_profiles")
     .select("id")
-    .eq("id", user.id)
+    .eq("id", userId)
     .maybeSingle();
   if (!coach) throw new AuthError("AUTH.ROLE_REQUIRED", "Coach profile required");
-  return user.id;
+  return userId;
 }
 
 export async function listResources(input: unknown): Promise<ActionResult<Resource[]>> {

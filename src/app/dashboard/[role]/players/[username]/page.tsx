@@ -19,8 +19,11 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import { Icon } from "@/components/Icon";
-import { ProfileScreenView } from "@/components/dashboard/user/ProfileScreenView";
-import { loadProfileFor } from "@/components/dashboard/user/ProfileScreen";
+import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
+import { ProfileV3ScreenView } from "@/components/dashboard/user/profile-v3/ProfileV3ScreenView";
+import { loadProfileFor } from "@/components/dashboard/user/loadProfileFor.server";
+import { getRetarHeroContext } from "@/server/actions/matches";
+import { trustBadgeMeta } from "@/lib/ui/trust-badge";
 
 export default async function PublicPlayerProfilePage({
   params,
@@ -60,6 +63,7 @@ export default async function PublicPlayerProfilePage({
   // Premium: ilimitado. Guest sin sesión: cap conservador de 10.
   let viewerIsPremium = false;
   let initialFriendship: "none" | "pending" | "friends" = "none";
+  let visitorRetarContext = null;
   if (session.authenticated) {
     const viewerSummary = await getProfileSummary(session.session.userId);
     viewerIsPremium = isPlanActive(viewerSummary).tier === "premium";
@@ -91,6 +95,11 @@ export default async function PublicPlayerProfilePage({
 
   const data = await loadProfileFor(profile.id, { matchHistoryCap });
 
+  if (session.authenticated && viewerIsPremium) {
+    const h2hRes = await getRetarHeroContext({ opponentId: profile.id });
+    if (h2hRes.ok) visitorRetarContext = h2hRes.data;
+  }
+
   // Badge de suspensión: si el target tiene una suspensión activa (mig 173),
   // mostramos un banner arriba del perfil. El perfil sigue visible — solo lo
   // marcamos. El motivo NO se expone públicamente; solo admin lo ve en
@@ -107,11 +116,12 @@ export default async function PublicPlayerProfilePage({
   return (
     <>
       {suspension && <SuspendedAccountBanner />}
-      <ProfileScreenView
+      <ProfileV3ScreenView
         data={data}
         viewerMode="public"
         viewerIsPremium={viewerIsPremium}
         initialFriendship={initialFriendship}
+        visitorRetarContext={visitorRetarContext}
       />
     </>
   );
@@ -158,7 +168,7 @@ function OfficialAccountView({
   const handle = profile.username ?? "matchpoint";
   const bio =
     profile.bio ??
-    "Cuenta oficial de MATCHPOINT EC. Te enviamos novedades, recordatorios y respuestas de soporte por aquí. Si tienes dudas, escríbenos por chat — un humano del equipo te responde.";
+    "Cuenta oficial de MATCHPOINT EC. Te enviamos novedades y recordatorios oficiales por este canal informativo. Para pedir ayuda, usa la sección Soporte.";
 
   return (
     <>
@@ -240,23 +250,7 @@ function OfficialAccountView({
                   {name}
                   <span className="dot">.</span>
                 </div>
-                <span
-                  title="Cuenta oficial de la app"
-                  aria-label="Cuenta oficial de la app"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    background: "var(--primary)",
-                    color: "#fff",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon name="check" size={13} color="#fff" />
-                </span>
+                <MpBadge {...trustBadgeMeta("official")} variant="icon-only" size="md" />
               </div>
               <div
                 style={{
@@ -298,7 +292,7 @@ function OfficialAccountView({
           <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
             <Link href="/dashboard/user/chat" className="btn btn-primary">
               <Icon name="message-square" size={12} />
-              Ir al chat
+              Ver mensajes oficiales
             </Link>
           </div>
         </div>
@@ -317,8 +311,7 @@ function OfficialAccountView({
       >
         <Icon name="info" size={14} color="var(--muted-fg)" />
         <div style={{ fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.5 }}>
-          Este perfil solo envía notificaciones oficiales. No puedes responder
-          ni jugar contra él — pero puedes escribir al equipo desde el chat.
+          Este perfil solo envía avisos oficiales. No puedes responder ni jugar contra él; para soporte, usa la sección Soporte.
         </div>
       </div>
     </>

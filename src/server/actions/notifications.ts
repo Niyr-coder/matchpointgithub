@@ -122,15 +122,16 @@ export async function markAllNotificationsRead(
   );
 }
 
-// ── dismissNotification (delete from feed) ─────────────────────────────
+// ── dismissNotification (compat: mark as read) ─────────────────────────
+// Mantiene el nombre por compatibilidad con /notifications/:id/dismiss.
+// La tabla no tiene dismissed_at y RLS no permite DELETE al usuario, así que
+// este endpoint solo marca la notificación como leída.
 export async function dismissNotification(
   input: unknown,
 ): Promise<ActionResult<{ ok: true }>> {
   return runAction(z.object({ id: UuidSchema }), input, async ({ id }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
-    // RLS revokes DELETE on notifications from authenticated; fall back to
-    // marking as read + setting a payload flag so the feed can hide it.
     const { error } = await supabase
       .from("notifications")
       .update({ read_at: new Date().toISOString() } as never)
@@ -195,6 +196,36 @@ export async function updateMyPreferences(
   return runAction(UpdatePreferencesSchema, input, async ({ items }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
+    const kinds = Array.from(new Set(items.map((i) => i.kind)));
+    const { data: catalogRows, error: catalogError } = await supabase
+      .from("notification_kinds")
+      .select("kind, allowed_roles")
+      .in("kind", kinds);
+    if (catalogError) throw new MpError("NOTIFICATIONS.DB_ERROR", catalogError.message, 500);
+
+    const catalog = new Map(
+      ((catalogRows ?? []) as Array<{ kind: string; allowed_roles: string[] | null }>).map(
+        (row) => [row.kind, row.allowed_roles ?? []],
+      ),
+    );
+    for (const item of items) {
+      const allowedRoles = catalog.get(item.kind);
+      if (!allowedRoles) {
+        throw new MpError(
+          "NOTIFICATIONS.UNKNOWN_KIND",
+          `El tipo de notificación "${item.kind}" no existe.`,
+          400,
+        );
+      }
+      if (!allowedRoles.includes(item.role)) {
+        throw new MpError(
+          "NOTIFICATIONS.ROLE_NOT_ALLOWED",
+          `El rol "${item.role}" no puede configurar "${item.kind}".`,
+          400,
+        );
+      }
+    }
+
     const rows = items.map((i) => ({
       user_id: userId,
       role: i.role,

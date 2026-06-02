@@ -6,6 +6,7 @@ import { MarketingShell } from "../MarketingShell";
 import { ContactSalesForm } from "../forms/ContactSalesForm";
 import type { SalesLeadType } from "@/lib/schemas/sales-leads";
 import { trackPricingEvent } from "@/lib/telemetry/pricing";
+import { MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
 
 const CONTACT_ANCHOR = "contacto-ventas";
 
@@ -46,75 +47,80 @@ const PLAYER_TIERS: Tier[] = [
   },
   {
     name: "MATCHPOINT+",
-    priceMonth: 5,
+    priceMonth: MP_PLUS_PLAN.priceCents / 100,
     desc: "Para quienes juegan varias veces por semana y arman partidos.",
     features: [
       "Todo lo del plan Free",
-      "Reservas sin tope mensual",
-      "Estadísticas históricas detalladas",
-      "Ranking premium con analytics",
-      "Crear juegos / matches sin límite",
-      "Soporte prioritario",
+      "Teams con roster e invitaciones ampliadas",
+      "Coach AI en vista previa / early access",
+      "Historial público de perfil completo",
+      "Pago manual por transferencia o DeUna",
     ],
-    cta: "Activar MATCHPOINT+",
-    ctaTarget: { kind: "link", href: "/dashboard/user?upgrade=premium" },
+    cta: MP_PLUS_PLAN.requestCta,
+    ctaTarget: { kind: "link", href: "/dashboard/user/mi-plan?upgrade=premium" },
     highlight: true,
   },
 ];
 
 const CLUB_TIERS: Tier[] = [
   {
-    name: "Starter",
-    priceMonth: 0,
-    desc: "Para clubes que recién están armando su agenda online.",
+    name: "Club Starter",
+    priceMonth: 49.99,
+    desc: "Para clubes que quieren ordenar reservas, staff y pagos manuales.",
     features: [
-      "Hasta 2 canchas activas",
+      "Perfil público del club",
       "Calendario de reservas",
-      "Hasta 50 reservas/mes",
-      "Soporte por email",
-    ],
-    cta: "Empezar gratis",
-    ctaTarget: { kind: "link", href: "/soy-club" },
-    highlight: false,
-  },
-  {
-    name: "Pro",
-    priceMonth: 29,
-    desc: "Para clubes activos con varios deportes y empleados de mostrador.",
-    features: [
-      "Canchas ilimitadas",
-      "Reservas ilimitadas",
-      "Roster de empleados y check-in",
-      "Pagos por transferencia + DeUna",
-      "Eventos y torneos del club",
-      "Soporte prioritario",
+      "Pagos por transferencia, DeUna o caja",
+      "Onboarding asistido inicial",
     ],
     cta: "Hablar con ventas",
     ctaTarget: {
       kind: "contact",
       preset: {
         leadType: "club",
-        message: "Me interesa el plan Pro para clubes.",
+        message: "Me interesa Club Starter para mi club.",
       },
     },
-    highlight: true,
+    highlight: false,
   },
   {
-    name: "Partner",
-    priceMonth: null,
-    desc: "Organizaciones que corren torneos en múltiples clubes.",
+    name: "Club Pro",
+    priceMonth: 149.99,
+    desc: "Para clubes que quieren operar, vender y medir mejor.",
     features: [
-      "Multi-club bajo un mismo brand",
-      "Brackets, ligas y rankings dedicados",
-      "Comisión negociada por torneo",
-      "Onboarding personalizado",
+      "Canchas ilimitadas",
+      "Reservas ilimitadas",
+      "Roster de empleados y check-in",
+      "Pagos por transferencia + DeUna",
+      "Eventos y torneos del club",
+      "Marketing, membresías y reportes",
     ],
     cta: "Hablar con ventas",
     ctaTarget: {
       kind: "contact",
       preset: {
-        leadType: "partner",
-        message: "Me interesa el plan Partner para organizadores multi-club.",
+        leadType: "club",
+        message: "Me interesa Club Pro para mi club.",
+      },
+    },
+    highlight: true,
+  },
+  {
+    name: "Club Fundador",
+    priceMonth: 49.99,
+    desc: "Club Pro a precio Starter por 90 días para pilotos reales.",
+    features: [
+      "Setup gratis",
+      "Carga inicial de canchas y staff",
+      "Primera campaña acompañada",
+      "Revisión quincenal durante el piloto",
+    ],
+    cta: "Quiero ser Club Fundador",
+    ctaTarget: {
+      kind: "contact",
+      preset: {
+        leadType: "club",
+        message: "Me interesa entrar como Club Fundador.",
       },
     },
     highlight: false,
@@ -176,7 +182,7 @@ function TierCard({
           margin: "6px 0 8px",
         }}
       >
-        {t.priceMonth == null ? "A medida" : `$${t.priceMonth}`}
+        {t.priceMonth == null ? "A medida" : `USD ${t.priceMonth}`}
         {t.priceMonth != null && t.priceMonth > 0 && (
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--muted-fg)" }}> /mes</span>
         )}
@@ -196,7 +202,17 @@ function TierCard({
         ))}
       </ul>
       {t.ctaTarget.kind === "link" ? (
-        <Link href={t.ctaTarget.href} className={btnClass} style={btnStyle}>
+        <Link
+          href={t.ctaTarget.href}
+          className={btnClass}
+          style={btnStyle}
+          onClick={() =>
+            trackPricingEvent({
+              name: "pricing_tier_cta_clicked",
+              props: { tier_key: t.name.toLowerCase().replace(/\s+/g, "_"), audience: "pricing", billing_period: "monthly" },
+            })
+          }
+        >
           {t.cta}
         </Link>
       ) : (
@@ -204,7 +220,13 @@ function TierCard({
           type="button"
           className={btnClass}
           style={btnStyle}
-          onClick={() => onContact((t.ctaTarget as { kind: "contact"; preset: SalesPreset }).preset)}
+          onClick={() => {
+            trackPricingEvent({
+              name: "pricing_tier_cta_clicked",
+              props: { tier_key: t.name.toLowerCase().replace(/\s+/g, "_"), audience: "pricing", billing_period: "monthly" },
+            });
+            onContact((t.ctaTarget as { kind: "contact"; preset: SalesPreset }).preset);
+          }}
         >
           {t.cta}
         </button>
@@ -246,7 +268,7 @@ export function PreciosPageView() {
         <>
           <strong style={{ color: "#0a0a0a" }}>¿Cómo cobramos?</strong>
           <br />
-          Sin comisión por reserva del club. Hoy aceptamos pagos por transferencia bancaria y DeUna (Ecuador). A partir de <strong style={{ color: "#0a0a0a" }}>Octubre 2026</strong> activamos cobro automático con tarjeta vía Stripe Connect — los planes y bullets ya están adaptados para esa transición.
+          Sin comisión por reserva del club. Hoy aceptamos pagos por transferencia bancaria, DeUna y cobro en club. El PSP queda como roadmap, no como promesa de beta.
         </>
       }
     >
@@ -274,7 +296,7 @@ export function PreciosPageView() {
             Para jugadores<span style={{ color: "var(--primary)" }}>.</span>
           </h2>
           <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-            Activas Premium con un comprobante de transferencia o DeUna.
+            Solicitas MATCHPOINT+ con un comprobante de transferencia o DeUna.
           </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -308,7 +330,7 @@ export function PreciosPageView() {
             Para clubes<span style={{ color: "var(--primary)" }}>.</span>
           </h2>
           <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-            Solo pagas la suscripción del plan; sin porcentaje por reserva.
+            Starter USD 49.99/mes, Pro USD 149.99/mes y Club Fundador por piloto.
           </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
@@ -352,12 +374,12 @@ export function PreciosPageView() {
           No. Solo pagas la suscripción de tu plan; cada reserva o cobro que recibe el club te llega
           íntegro.
           <br /><br />
-          <strong style={{ color: "#0a0a0a" }}>¿Cómo activo Premium?</strong> Desde tu dashboard
-          pides el upgrade, haces la transferencia o DeUna, subes el comprobante y nosotros lo
-          aprobamos en menos de 24 h. Tu plan queda activo 30 días desde la aprobación.
+          <strong style={{ color: "#0a0a0a" }}>¿Cómo solicito MATCHPOINT+?</strong> Desde tu dashboard
+          pides el plan, haces la transferencia o DeUna, subes el comprobante y el equipo lo
+          aprueba manualmente. Tu plan queda activo desde la aprobación.
           <br /><br />
           <strong style={{ color: "#0a0a0a" }}>¿Puedo cambiar de plan después?</strong> Sí, en
-          cualquier momento. Sin permanencia. Si bajas de Premium a Free, el resto del mes ya pagado
+          cualquier momento. Sin permanencia. Si bajas de MATCHPOINT+ a Free, el resto del mes ya pagado
           sigue activo.
           <br /><br />
           <strong style={{ color: "#0a0a0a" }}>¿Cómo se cobra a los jugadores en el club?</strong>{" "}

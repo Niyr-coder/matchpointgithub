@@ -19,6 +19,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -42,13 +43,13 @@ async function requireAdminUserId(): Promise<string> {
 }
 
 async function writeAuditLog(params: {
+  admin: ReturnType<typeof getAdminClient>;
   entity: string;
   entityId: string;
   action: string;
   diff?: Record<string, unknown>;
 }): Promise<void> {
-  const supabase = await getServerClient();
-  const { error } = await supabase.rpc("fn_admin_audit_log", {
+  const { error } = await params.admin.rpc("fn_admin_audit_log", {
     p_entity: params.entity,
     p_entity_id: params.entityId,
     p_action: params.action,
@@ -56,6 +57,52 @@ async function writeAuditLog(params: {
   });
   // No bloquear la mutación si el audit falla; solo loguear.
   if (error) console.error("[admin-event-registrations] audit log failed", error);
+}
+
+async function getEventNotificationPayload(
+  admin: ReturnType<typeof getAdminClient>,
+  eventId: string,
+): Promise<Record<string, unknown>> {
+  const { data: event } = await admin
+    .from("events")
+    .select("id,name,slug,starts_at,ends_at")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  return {
+    event_id: eventId,
+    event_name: event?.name ?? "tu evento",
+    event_slug: event?.slug ?? null,
+    starts_at: event?.starts_at ?? null,
+    ends_at: event?.ends_at ?? null,
+  };
+}
+
+async function enqueueEventRegistrationNotification(params: {
+  admin: ReturnType<typeof getAdminClient>;
+  userIds: string[];
+  kind:
+    | "event_registration_cancelled"
+    | "event_registration_transferred"
+    | "event_registration_no_show";
+  payload: Record<string, unknown>;
+  logContext: string;
+}): Promise<void> {
+  const userIds = Array.from(new Set(params.userIds.filter(Boolean)));
+  if (userIds.length === 0) return;
+
+  const jobs = userIds.map((uid) => ({
+    user_id: uid,
+    role: "user",
+    kind: params.kind,
+    channel: "inapp",
+    payload: params.payload,
+    status: "pending",
+  }));
+  const { error } = await params.admin.from("notification_jobs").insert(jobs as never);
+  if (error) {
+    console.error(`[${params.logContext}] enqueue notification failed:`, error.message);
+  }
 }
 
 // ── removeEventRegistrationAdmin ───────────────────────────────────────
@@ -88,9 +135,10 @@ export async function removeEventRegistrationAdmin(
   input: unknown,
 ): Promise<ActionResult<EventRegistrationRow>> {
   return runAction(RemoveSchema, input, async ({ registrationId, reason }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data: existing } = await supabase
+    const adminUserId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: existing } = await admin
       .from("event_registrations")
       .select("id,event_id,user_id,status,paid_transaction_id,created_at")
       .eq("id", registrationId)
@@ -102,7 +150,7 @@ export async function removeEventRegistrationAdmin(
       throw new MpError("EVENT_REG.ALREADY_CANCELLED", "Ya estaba cancelada", 409);
     }
 
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await admin
       .from("event_registrations")
       .update({ status: "cancelled" } as never)
       .eq("id", registrationId)
@@ -113,6 +161,7 @@ export async function removeEventRegistrationAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "event_registrations",
       entityId: registrationId,
       action: "event_registration.admin_remove",
@@ -124,6 +173,20 @@ export async function removeEventRegistrationAdmin(
         paidTransactionId: existing.paid_transaction_id ?? null,
         refundPending: existing.paid_transaction_id != null,
       },
+    });
+
+    const eventPayload = await getEventNotificationPayload(admin, existing.event_id as string);
+    await enqueueEventRegistrationNotification({
+      admin,
+      userIds: [existing.user_id as string],
+      kind: "event_registration_cancelled",
+      payload: {
+        ...eventPayload,
+        registration_id: registrationId,
+        reason: reason ?? null,
+        previous_status: existing.status,
+      },
+      logContext: "removeEventRegistrationAdmin",
     });
 
     return mapReg(updated);
@@ -140,9 +203,10 @@ export async function markEventAttendanceAdmin(
   input: unknown,
 ): Promise<ActionResult<EventRegistrationRow>> {
   return runAction(AttendanceSchema, input, async ({ registrationId, attended }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data: existing } = await supabase
+    const adminUserId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: existing } = await admin
       .from("event_registrations")
       .select("id,event_id,user_id,status,paid_transaction_id,created_at")
       .eq("id", registrationId)
@@ -159,7 +223,7 @@ export async function markEventAttendanceAdmin(
     }
 
     const nextStatus = attended ? "attended" : "registered";
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await admin
       .from("event_registrations")
       .update({ status: nextStatus } as never)
       .eq("id", registrationId)
@@ -170,6 +234,7 @@ export async function markEventAttendanceAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "event_registrations",
       entityId: registrationId,
       action: "event_registration.admin_mark_attendance",
@@ -199,9 +264,10 @@ export async function markEventNoShowAdmin(
   input: unknown,
 ): Promise<ActionResult<EventRegistrationRow>> {
   return runAction(NoShowSchema, input, async ({ registrationId, reason }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data: existing } = await supabase
+    const adminUserId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: existing } = await admin
       .from("event_registrations")
       .select("id,event_id,user_id,status,paid_transaction_id,created_at")
       .eq("id", registrationId)
@@ -216,8 +282,15 @@ export async function markEventNoShowAdmin(
         409,
       );
     }
+    if (existing.status === "no_show") {
+      throw new MpError(
+        "EVENT_REG.ALREADY_NO_SHOW",
+        "La inscripción ya estaba marcada como no-show",
+        409,
+      );
+    }
 
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await admin
       .from("event_registrations")
       .update({ status: "no_show" } as never)
       .eq("id", registrationId)
@@ -231,13 +304,13 @@ export async function markEventNoShowAdmin(
     let txMarkedFailed = false;
     const txId = existing.paid_transaction_id as string | null;
     if (txId) {
-      const { data: tx } = await supabase
+      const { data: tx } = await admin
         .from("transactions")
         .select("status")
         .eq("id", txId)
         .maybeSingle();
       if (tx && tx.status !== "captured" && tx.status !== "refunded" && tx.status !== "failed") {
-        await supabase
+        await admin
           .from("transactions")
           .update({ status: "failed" } as never)
           .eq("id", txId);
@@ -246,6 +319,7 @@ export async function markEventNoShowAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "event_registrations",
       entityId: registrationId,
       action: "event_registration.admin_mark_no_show",
@@ -255,6 +329,22 @@ export async function markEventNoShowAdmin(
         linkedTransactionId: txId,
         txMarkedFailed,
       },
+    });
+
+    const eventPayload = await getEventNotificationPayload(admin, existing.event_id as string);
+    await enqueueEventRegistrationNotification({
+      admin,
+      userIds: [existing.user_id as string],
+      kind: "event_registration_no_show",
+      payload: {
+        ...eventPayload,
+        registration_id: registrationId,
+        reason: reason ?? null,
+        previous_status: existing.status,
+        linked_transaction_id: txId,
+        tx_marked_failed: txMarkedFailed,
+      },
+      logContext: "markEventNoShowAdmin",
     });
 
     return mapReg(updated);
@@ -271,9 +361,10 @@ export async function transferEventSlotAdmin(
   input: unknown,
 ): Promise<ActionResult<EventRegistrationRow>> {
   return runAction(TransferSchema, input, async ({ registrationId, toUserId }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data: existing } = await supabase
+    const adminUserId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: existing } = await admin
       .from("event_registrations")
       .select("id,event_id,user_id,status,paid_transaction_id,created_at")
       .eq("id", registrationId)
@@ -297,7 +388,7 @@ export async function transferEventSlotAdmin(
     }
 
     // Verificar que el perfil destino existe.
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from("profiles")
       .select("id")
       .eq("id", toUserId)
@@ -307,7 +398,7 @@ export async function transferEventSlotAdmin(
     }
 
     // Verificar que el destino no esté ya inscrito al mismo evento.
-    const { data: dup } = await supabase
+    const { data: dup } = await admin
       .from("event_registrations")
       .select("id,status")
       .eq("event_id", existing.event_id as string)
@@ -323,7 +414,7 @@ export async function transferEventSlotAdmin(
     }
 
     const fromUserId = existing.user_id as string;
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await admin
       .from("event_registrations")
       .update({ user_id: toUserId } as never)
       .eq("id", registrationId)
@@ -342,6 +433,7 @@ export async function transferEventSlotAdmin(
     }
 
     await writeAuditLog({
+      admin,
       entity: "event_registrations",
       entityId: registrationId,
       action: "event_registration.admin_transfer",
@@ -350,6 +442,39 @@ export async function transferEventSlotAdmin(
         toUserId,
         eventId: existing.event_id ?? null,
       },
+    });
+
+    const eventPayload = await getEventNotificationPayload(admin, existing.event_id as string);
+    const eventName = String(eventPayload.event_name ?? "tu evento");
+    await enqueueEventRegistrationNotification({
+      admin,
+      userIds: [fromUserId],
+      kind: "event_registration_transferred",
+      payload: {
+        ...eventPayload,
+        registration_id: registrationId,
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        transfer_direction: "out",
+        title: "Tu cupo fue transferido",
+        body: `Tu cupo para ${eventName} fue transferido por administración.`,
+      },
+      logContext: "transferEventSlotAdmin",
+    });
+    await enqueueEventRegistrationNotification({
+      admin,
+      userIds: [toUserId],
+      kind: "event_registration_transferred",
+      payload: {
+        ...eventPayload,
+        registration_id: registrationId,
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        transfer_direction: "in",
+        title: "Recibiste un cupo",
+        body: `Administración te asignó un cupo para ${eventName}.`,
+      },
+      logContext: "transferEventSlotAdmin",
     });
 
     return mapReg(updated);

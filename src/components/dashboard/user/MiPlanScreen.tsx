@@ -1,4 +1,5 @@
 // Server: trae plan vigente del user + historial de subscriptions.
+import { Suspense } from "react";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
@@ -55,5 +56,15 @@ async function loadData(): Promise<{
 
 export async function MiPlanScreen() {
   const data = await loadData();
-  return <MiPlanScreenView {...data} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="card" style={{ padding: 24, color: "var(--muted-fg)", fontSize: 13 }}>
+          Cargando tu plan…
+        </div>
+      }
+    >
+      <MiPlanScreenView {...data} />
+    </Suspense>
+  );
 }

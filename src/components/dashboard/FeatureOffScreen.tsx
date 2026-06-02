@@ -5,7 +5,6 @@ import { Icon } from "@/components/Icon";
 const LABELS: Record<string, string> = {
   "coach-ai": "Coach AI",
   quedadas: "Quedadas",
-  "admin-theme-designer": "Theme designer",
   "club-membresias": "Membresías",
 };
 

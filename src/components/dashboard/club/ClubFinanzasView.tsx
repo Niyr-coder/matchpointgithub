@@ -1,11 +1,9 @@
 "use client";
 // Club Owner · Finanzas v2 — command center financiero. Fase 1 cableada a
 // datos reales vía ClubFinanzasScreen (KPIs, 30-day stack, sources, txns,
-// payouts calendar, hero waterfall). Mantiene mock para Fase 2/3 (ranking
-// por cancha, heatmap $/hora) y para fuentes que aún no tienen tabla
-// (cuenta bancaria destino, pagos a staff). Botones con toast "próximamente".
+// payouts calendar, hero waterfall y ranking por cancha). Lo no modelado se
+// muestra como no disponible; no se inventan heatmaps ni cuenta bancaria.
 // Ver docs/product/02-payments.md.
-import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "@/components/dashboard/widgets/PolHero";
 import { useToast } from "@/components/dashboard/ToastProvider";
@@ -68,6 +66,7 @@ export type FinanzasData = {
     occ: number;
     color: string;
   }>;
+  takeRatePct: number;
 };
 
 function fmtMoney(cents: number, sign: "" | "-" = ""): string {
@@ -79,19 +78,8 @@ function fmtDeltaPct(pct: number): string {
   const arrow = pct > 0 ? "+" : "−";
   return `${arrow}${Math.abs(pct)}%`;
 }
-const HEATMAP = [
-  [0, 0, 0, 0, 0, 8, 18, 28, 22, 18, 32, 42, 40, 32, 28, 30, 52, 68, 72, 68, 52, 28, 12, 0],
-  [0, 0, 0, 0, 0, 6, 15, 25, 20, 15, 28, 40, 38, 30, 25, 28, 48, 65, 70, 65, 48, 25, 10, 0],
-  [0, 0, 0, 0, 0, 6, 16, 26, 20, 16, 30, 42, 40, 32, 26, 30, 50, 68, 72, 68, 50, 28, 12, 0],
-  [0, 0, 0, 0, 0, 8, 18, 28, 22, 18, 32, 45, 42, 32, 28, 32, 52, 70, 75, 72, 52, 28, 12, 0],
-  [0, 0, 0, 0, 0, 10, 22, 32, 28, 22, 38, 52, 48, 40, 32, 38, 62, 82, 88, 85, 72, 42, 22, 8],
-  [0, 0, 0, 0, 0, 15, 32, 52, 68, 80, 92, 98, 95, 88, 72, 68, 82, 95, 95, 82, 68, 48, 28, 12],
-  [0, 0, 0, 0, 0, 12, 28, 48, 62, 75, 88, 95, 92, 82, 68, 62, 75, 88, 88, 72, 52, 32, 18, 8],
-];
-const DAYS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const KIND_BG: Record<string, string> = { Reserva: "#10b981", Inscripción: "#fbbf24", Clase: "#0c4a6e", "Pro shop": "#7c3aed", Reembolso: "#dc2626", Disputa: "#a1a1aa" };
 const KIND_INIT_BG: Record<string, string> = { Reserva: "#10b981", Inscripción: "#fbbf24", Clase: "#0c4a6e", "Pro shop": "#7c3aed", Reembolso: "#dc2626" };
-const HEAT_C = (v: number) => (v > 80 ? "var(--primary)" : v > 50 ? "#34d399" : v > 25 ? "#fde68a" : v > 5 ? "#fef3c7" : "#fafafa");
 
 const PERIOD_LABEL: Record<string, string> = { hoy: "Hoy", sem: "Esta semana", mes: "Este mes", anio: "Este año" };
 
@@ -104,9 +92,42 @@ const PAYOUT_STATUS_COLOR: Record<"PROGRAMADO" | "PAGADO" | "ESTIMADO", string> 
 
 export function ClubFinanzasView({ data }: { data: FinanzasData }) {
   const toast = useToast();
-  // Period selector aún visual-only: Fase 3 lo cablea a refetch con searchParams.
-  const [period, setPeriod] = useState(data.period);
   const soon = (title: string) => toast({ icon: "sparkles", title });
+  const period = data.period;
+  const exportCsv = () => {
+    const rows = [
+      ["tipo", "fecha_hora", "persona", "concepto", "metodo", "monto_usd", "estado"],
+      ...data.txns.map((t) => [
+        "transaccion",
+        t.timeHM,
+        t.who,
+        t.kind,
+        t.method,
+        (t.amountCents / 100).toFixed(2),
+        t.status,
+      ]),
+      ...data.payouts.map((p) => [
+        "payout",
+        p.when,
+        "",
+        p.label,
+        "",
+        (p.netCents / 100).toFixed(2),
+        p.status,
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `finanzas-club-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ icon: "download", title: "CSV exportado" });
+  };
 
   // ── Waterfall derivado del próximo payout (o ceros si no hay) ──
   const np = data.nextPayout;
@@ -118,7 +139,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
   const refundsForPayout = np?.refundsCents ?? 0;
   const waterfall = [
     { l: "Revenue bruto", v: fmtMoney(np?.grossCents ?? 0), sign: "+", color: "#fff", sub: undefined as string | undefined, bold: false },
-    { l: "Comisión MATCHPOINT · 10%", v: fmtMoney(np?.commissionCents ?? 0, "-"), sign: "–", color: "#dc2626", sub: "sobre revenue bruto", bold: false },
+    { l: `Comisión MATCHPOINT · ${data.takeRatePct}%`, v: fmtMoney(np?.commissionCents ?? 0, "-"), sign: "–", color: "#dc2626", sub: "según platform_config.take_rate_pct", bold: false },
     { l: "Pagos a staff", v: fmtMoney(staffPayCents, "-"), sign: "–", color: "#fbbf24", sub: "sin payroll · próximamente", bold: false },
     { l: `Reembolsos${data.refundCount ? ` · ${data.refundCount} txns` : ""}`, v: fmtMoney(refundsForPayout, "-"), sign: "–", color: "#a1a1aa", sub: refundsForPayout === 0 ? "absorbidos por MP" : undefined, bold: false },
     { l: "Neto al banco", v: heroNet, sign: "=", color: "var(--primary)", sub: undefined, bold: true },
@@ -167,15 +188,13 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
         sub="Tu revenue, tus payouts, y dónde está cada dólar. De la pelota a tu banco, sin sorpresas."
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ display: "inline-flex", padding: 3, borderRadius: 9999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)" }}>
-              {([["hoy", "Hoy"], ["sem", "Semana"], ["mes", "Mes"], ["anio", "Año"]] as const).map(([k, l]) => (
-                <button key={k} onClick={() => setPeriod(k)} style={{ padding: "6px 12px", borderRadius: 9999, background: period === k ? "#fff" : "transparent", color: period === k ? "#0a0a0a" : "rgba(255,255,255,0.7)", border: 0, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
-              ))}
+            <div style={{ display: "inline-flex", padding: "7px 12px", borderRadius: 9999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", color: "#fff", fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              {PERIOD_LABEL[period]}
             </div>
             <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Estado de cuenta · próximamente")}>
               <Icon name="file-text" size={13} color="#fff" />Estado de cuenta
             </button>
-            <button className="btn btn-primary" onClick={() => toast({ icon: "download", title: "CSV exportado (demo)" })}>
+            <button className="btn btn-primary" onClick={exportCsv}>
               <Icon name="download" size={13} color="#fff" />Exportar CSV
             </button>
           </div>
@@ -340,33 +359,20 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
             <div>
               <div className="label-mp">$ por hora · semana típica</div>
               <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "4px 0 0" }}>Cuándo entra la plata<span className="dot">.</span></h2>
-              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>Pico actual: <b style={{ color: "#0a0a0a" }}>sáb 18:00 · $98/h</b></div>
+              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>No disponible hasta cruzar reservas, horarios reales y revenue por franja.</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              <span>$0</span>
-              {[8, 30, 55, 80, 100].map((t) => (
-                <div key={t} style={{ width: 20, height: 10, background: HEAT_C(t), border: "1px solid var(--border)" }} />
-              ))}
-              <span>$100+</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 9px", borderRadius: 9999, background: "var(--muted)", fontSize: 9, color: "var(--muted-fg)", fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Pendiente de modelo
             </div>
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 460 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "32px repeat(24, 1fr)", gap: 2, marginBottom: 3 }}>
-                <div />
-                {Array.from({ length: 24 }, (_, i) => (
-                  <div key={i} style={{ fontSize: 8, textAlign: "center", color: "var(--muted-fg)", fontWeight: 700 }}>{i % 3 === 0 ? i : ""}</div>
-                ))}
-              </div>
-              {HEATMAP.map((row, di) => (
-                <div key={di} style={{ display: "grid", gridTemplateColumns: "32px repeat(24, 1fr)", gap: 2, marginBottom: 2 }}>
-                  <div style={{ fontSize: 9, fontWeight: 900, color: "var(--muted-fg)", textAlign: "right", paddingRight: 4, display: "flex", alignItems: "center", justifyContent: "flex-end", letterSpacing: "0.08em" }}>{DAYS[di]}</div>
-                  {row.map((v, hi) => (
-                    <div key={hi} title={DAYS[di] + " " + hi + ":00 · $" + v + "/h"} style={{ height: 18, background: HEAT_C(v), borderRadius: 2 }} />
-                  ))}
-                </div>
-              ))}
+          <div style={{ border: "1px dashed var(--border)", borderRadius: 12, padding: 22, background: "#fafafa" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+              <Icon name="calendar-clock" size={20} color="var(--muted-fg)" />
             </div>
+            <div style={{ fontSize: 13, fontWeight: 900 }}>Heatmap no disponible</div>
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+              Para activarlo necesitamos persistir el revenue por slot o derivarlo de reservas con tarifa aplicada por hora. Hasta entonces no mostramos valores estimados.
+            </p>
           </div>
         </div>
       </div>
@@ -436,10 +442,10 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
           <button onClick={() => soon("Cambiar cuenta destino · próximamente")} style={{ marginTop: 14, padding: 12, background: "var(--muted)", borderRadius: 10, border: 0, width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
             <div style={{ fontSize: 10.5, color: "var(--muted-fg)", fontWeight: 700 }}>Cuenta destino</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-              <div style={{ width: 32, height: 22, borderRadius: 4, background: "#0a0a0a", color: "#fff", fontSize: 8, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center", letterSpacing: "0.1em" }}>BP</div>
+              <div style={{ width: 32, height: 22, borderRadius: 4, background: "#0a0a0a", color: "#fff", fontSize: 8, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center", letterSpacing: "0.1em" }}>—</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 800 }}>Banco Pichincha ····5421</div>
-                <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>Cuenta ahorros · titular Club Norte Pickleball S.A.</div>
+                <div style={{ fontSize: 11.5, fontWeight: 800 }}>Cuenta no disponible en este panel</div>
+                <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>Configúrala desde Pagos & Payouts.</div>
               </div>
               <Icon name="chevron-right" size={14} color="var(--muted-fg)" />
             </div>

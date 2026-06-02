@@ -73,18 +73,14 @@ Convención:
   (3) `mv_team_ranking` con su gating de visibilidad, (4) `transferOnInactive`
   como flag global que dispare `forceTransferCaptainAdmin` automático.
 
-### Motor de juego de Quedadas — formatos no-Americano "Pronto"
-- **Archivos**: `QuedadaManagePanel.tsx` (sub-tab Juego) + `QuedadaDetailView.tsx`.
-- **Estado**: el motor de juego rediseñado (mig 141) entrega **Americano** en
-  Stage 1. Los demás formatos (`round_robin`, `mexicano`, `kotc`, `canguil`,
-  `libre`) muestran una tarjeta honesta "Pronto" en la zona de Juego (gestión y
-  detalle del jugador). El resto del flujo (organizar, parejas, pagos, cierre)
-  funciona para todos los formatos.
-- **Para quitarlo**: Stage 2 — implementar el motor por formato (round_robin →
-  mexicano → kotc → canguil → libre) reusando el patrón de Americano. Ver
-  `docs/product/06-quedadas.md`.
-- **Guard**: `generateAmericanoRound` corta con `QUEDADAS.FORMAT_UNSUPPORTED` si
-  el formato no es americano (no se puede generar ronda por error).
+### Motor de juego de Quedadas — ✅ MERGEADO (registry por formato)
+- **Estado**: `QuedadaManagePanel`, `QuedadaDetailView` y `QuedadaGameView` ya
+  montan juego para `americano`, `mexicano`, `round_robin`, `kotc`, `canguil` y
+  `libre`. La generación usa `generateQuedadaRound` + registry de engines; Libre
+  crea partidos manuales.
+- **Residual**: los algoritmos sociales son MVP; cuando se quiera optimizar
+  rotaciones perfectas o KOTC avanzado, hacerlo sobre
+  `src/lib/quedadas/engines/`.
 
 ### Página de gestión de Quedadas — solo header (reestructuración paso a paso)
 - **Archivo**: `src/components/dashboard/user/QuedadaManagePanel.tsx` (return final).
@@ -96,56 +92,34 @@ Convención:
 - **Para quitarlo**: volver a cablear `nav`/`body` en el return (o rehacerlos)
   conforme se defina la nueva estructura de la página.
 
-### Motor rolling de Quedadas — backend listo, UI a medio cablear
+### Motor rolling de Quedadas — pausado
 - **Archivos**: `src/lib/quedadas/americano.ts` (`pickNextCourtMatch`),
   `src/server/actions/quedadas.ts` (`startAmericanoRolling`, `reportRollingGame`),
   mig 143 (`engine_mode`, `court_match_no`, round nullable).
-- **Estado**: Stage 1 (backend) + Stage 2 (UI gestión) hechos: el carrusel del
-  header permite cargar el marcador inline (`reportRollingGame`) → auto-asigna el
-  siguiente partido en esa cancha; botón "Llenar canchas" (`startAmericanoRolling`).
-  Falta: (Stage 3) `QuedadaGameView` aún agrupa por ronda — se rompe en
-  `engine_mode='rolling'` (hay que mostrar por cancha/cronológico), y la vista del
-  jugador (`QuedadaDetailView`/`getQuedadaPlayerView`) no expone `engine_mode`.
-- **Para quitarlo**: completar Stage 3. Ver `docs/product/06-quedadas.md`.
+- **Estado**: el helper de emparejamiento y parte de la UI existen, pero la
+  activación está bloqueada en servidor/UI para evitar una experiencia incompleta.
+  El modo por rondas es la ruta activa para los motores automáticos.
+- **Para quitarlo**: completar vista por cancha/cronológica para organizador y
+  jugador, reactivar `startAmericanoRolling` y volver a permitir `engine_mode='rolling'`.
 
-### Centro de ayuda del jugador (`AyudaGuiasScreen`) — contenido mock, sin CMS
+### Centro de ayuda del jugador (`AyudaGuiasScreen`) — ✅ MERGEADO (Help CMS)
 
-`src/components/dashboard/user/AyudaGuiasScreen.tsx` (section `ayuda` del rol
-`user`) es el rediseño del centro de ayuda: hero+search, categorías con
-drill-down, más leídos, videos y glosario. **No hay CMS de artículos todavía**:
+`src/components/dashboard/user/AyudaGuiasScreen.tsx` ahora carga datos reales
+del Help CMS (`help_articles` publicados). El rediseño conserva hero+search,
+categorías con drill-down, más leídos, videos, glosario, visor de artículo con
+TOC y feedback. Si no hay contenido publicado, muestra estados vacíos honestos.
 
-- Lo que SÍ funciona: el search filtra en vivo el contenido visible
-  (categorías, artículos populares, glosario), el drill-down de categoría, las
-  sugerencias rápidas y "Ir a Soporte" (→ `/dashboard/user/chat`).
-- Lo que es placeholder honesto: las hojas (artículo, video, término de
-  glosario, destacado) disparan un toast "Centro de artículos · próximamente"
-  en vez de abrir contenido. Las categorías sin data (todas menos `torneos`)
-  muestran el estado "Estamos escribiendo estas guías" + CTA a soporte.
+### Admin Ayuda y guías (`AdminAyudaGuiasScreen`) — ✅ MERGEADO (CMS mínimo)
 
-Cuando exista el CMS: reemplazar `CATEGORY_DATA`/`POPULAR`/`VIDEOS`/`GLOSSARY`
-por fetch real y cambiar los `onClick={() => soon(...)}` por navegación al
-artículo. Mantener el visual idéntico.
+Section `admin-ayuda-guias` gestiona `help_articles`: crear borrador, editar,
+publicar y archivar. También muestra métricas reales de vistas, feedback y
+búsquedas sin resultado desde `help_feedback`/`help_search_logs`.
 
-### Editor de personalización (flair) — localStorage + SIN gating MP+ (re-cableo pendiente)
+### Personalización de perfil — retirada
 
-El section `personalizar` del rol `user` ahora renderiza `PersonalizacionFlairView.tsx`
-(editor à-la-carte estilo Discord: banner, accent, marco de avatar, aro, card
-style, esquinas, friendship card, nameplate, pronombres, tagline, bandera,
-featured stats/badge). **Estado actual = demo de UI**:
-
-- Persiste en **localStorage** (`mp-persona-v1`), NO en `profiles`.
-- **NO está gateado por MATCHPOINT+** ni resuelto cross-surface (perfil, ranking,
-  roster, amigos no leen este flair todavía). La save bar avisa "solo tú los ves
-  por ahora".
-- Decisión de producto pendiente: este modelo à-la-carte **contradice** el
-  sistema curado gateado (`PersonalizacionScreen` + `PersonalizacionScreenClient`
-  + `PROFILE_THEMES` + bundles), que quedó **intacto y sin importar** para
-  re-cablear el backend.
-
-**Gaps de gobernanza a cerrar al re-cablear** (ver `matchpoint-personalization-governance`):
-columnas en `profiles` por cada eje, gating MP+ (`canUsePreset`/`isPlanActive`) +
-banner de upsell, render cross-surface, path admin para los ejes pagos, y decidir
-si se mantiene "tema cohesivo" o se migra a à-la-carte.
+El sistema anterior fue desconectado completo: ya no hay sections de usuario,
+pantallas admin, actions, helpers ni tablas vivas para personalización de
+perfil. El nuevo diseño queda pendiente y debe crear sus propios contratos.
 
 ### Soporte del jugador (`SoporteScreen`) — tickets/status demo, canales reales
 
@@ -170,112 +144,76 @@ Al cablear ticketing real: tabla de tickets + RLS + estados + notif al agente, y
 reemplazar los toasts demo por el flujo real. Considerar si se unifica con el
 canal de Mensajes `kind=support` en vez de un sistema paralelo.
 
-### Landing de ventas MATCHPOINT+ (`MatchPointPlusScreen`) — facturación DEMO
+### MATCHPOINT+ user (`MiPlanScreen`) — ruta real
 
-Section `mp-plus` del rol `user` (sidebar "Mi cuenta"): landing aspiracional de
-venta de MP+ (hero, features, comparación Free vs MP+, testimonios, FAQ, CTA).
+La ruta oficial del rol `user` para plan premium es `mi-plan`
+(`/dashboard/user/mi-plan`). El sidebar apunta ahí tanto para usuarios Free como
+Premium, y el alias legacy `mp-plus` sigue resolviendo a `MiPlanScreen` para no
+romper links existentes.
 
-**⚠️ El modelo de facturación mostrado NO es el real.** El prototipo muestra
-prueba 14 días + tarjeta, precios **$9.99/mes** y **$79.99/año**, plan anual,
-IVA 12% y auto-renovación. El modelo real (`player-subscriptions.ts`,
-`docs/product/00-matchpoint-plus.md`) es: **$5/mes** (`PREMIUM_PRICE_CENTS_PER_MONTH = 500`),
-sin PSP/tarjeta, sin trial, transferencia/DeUna, **sin recurrencia automática**,
-activación admin. Tampoco hay "sin anuncios" (no hay anuncios) y el IVA EC es 15%.
+`MatchPointPlusScreen` queda como componente legacy descolgado: su prototipo de
+facturación no coincide con el modelo real (`player-subscriptions.ts`,
+`docs/product/00-matchpoint-plus.md`), que usa transferencia/DeUna, comprobante
+manual y activación admin.
 
-Los CTA solo muestran toast "próximamente" (NO disparan cobro). Testimonios y
-features son de muestra. Decisión de producto pendiente: adaptar precio/copy/FAQ
-al modelo real (o definir si se introduce plan anual + trial). La gestión real
-del plan vigente sigue en `MiPlanScreen` (`mi-plan`).
+### Patrocinadores admin (`AdminPatrocinadoresScreen`) — backend Fase 1
 
-### Patrocinadores admin (`AdminPatrocinadoresScreen`) — CRM/inventario DEMO
+Section `admin-sponsors` (sidebar admin → "Monetización"). Ya tiene modelo base:
+`sponsors`, `sponsor_slots`, `sponsor_placements` y `sponsor_placement_events`.
+La pantalla admin crea/edita/pausa/reactiva marcas, slots y placements, y muestra
+KPIs desde eventos reales (sin revenue, CTR ni inventario ficticio).
 
-Section `admin-sponsors` (sidebar admin → "Monetización"). CRM de marcas +
-inventario de slots + brand kit con previews de cómo se renderiza cada marca en
-cada superficie (quedada, perfil, Coach AI, mapa, shop, comprobante, email,
-ranking). **No hay backend de patrocinadores**: marcas, slots, métricas
-(spend/impresiones/CTR/ocupación) y placements son **datos de muestra**. Los
-botones de mutación (añadir/pausar marca, reemplazar logo, guardar brand kit,
-ver métricas/reporte) muestran toast "próximamente"; el drawer y los filtros sí
-funcionan (estado local).
+Pendiente fuera de Fase 1: renderizar `active_sponsor_placements` en cada
+superficie pública/cliente y llamar `recordSponsorPlacementEvent` desde esos
+componentes para impresiones/clics reales.
 
-Al cablear: tablas `sponsors` + `sponsor_slots` + `sponsor_placements` con RLS
-admin, métricas reales, y **render real de los placements** en cada superficie
-(cada preview tiene que volverse un componente que lea el placement vendido).
-Es además un sistema de monetización nuevo → revisar take rate / facturación.
+### Buscar Match (`BuscoPartidoScreen`) — feature real gateada
 
-### Buscar Match (rediseño lobby) — DEMO sobre feature real des-importada
+El section `busco-partido` renderiza la feature real `BuscoPartidoScreen` +
+`BuscoPartidoScreenView`: avisos de búsqueda, postulaciones y acciones
+`match-seeks`. Mantiene el gate `match_seeks_enabled`; con el flag apagado,
+la pantalla muestra `BuscoPartidoComingSoon`.
 
-El section `busco-partido` ahora renderiza `BuscarMatchView.tsx` (rediseño tipo
-lobby: match destacado, slots vacíos con "+", % de fit, ranked, vistas
-cards/lista/mapa, cinta "se acaba de abrir"). **Es mock**: matches, fit, viewing
-y "just opened" son datos de muestra; "Unirme"/"Crear match"/"alerta" muestran
-toast "próximamente".
+`BuscarMatchView.tsx` queda como prototipo visual descolgado. No debe volver al
+dispatcher sin mapear su modelo de lobby al dominio real de match-seeks.
 
-⚠️ Reemplaza temporalmente la feature REAL `BuscoPartidoScreen` +
-`BuscoPartidoScreenView` (flag `match_seeks_enabled` + actions `match-seeks`:
-avisos de búsqueda + aplicaciones), que quedó **preservada y des-importada** de
-`[role]/[section]/page.tsx`. Modelos distintos: el real es "avisos + aplicaciones",
-el diseño es "matches con cupos/fit". Al re-cablear: decidir si el modelo migra a
-"matches con slots" o si el diseño se mapea sobre match-seeks; restaurar el gate
-por feature flag.
-
-### Admin Planes premium (rediseño analytics) — DEMO + regresión de la cola
+### Admin Planes premium — cola real + resumen real limitado
 
 El section `admin-plans` ahora renderiza `AdminMatchPointPlusScreen.tsx`
-(rediseño: KPIs financieros MRR/ARPU/churn, planes editables, funnel, features
-más usados, tabla de suscriptores, códigos promo + modal). **Es mock.**
+(rediseño con tabs). Estado actual:
 
-🔴 **Regresión operativa conocida (a propósito, decisión del usuario):** reemplaza
-la pantalla real `AdminPlansScreen` + `AdminPlansScreenView`, que es la **cola de
-aprobación de pagos** de MATCHPOINT+ (`approvePlanSubscriptionAdmin`) y de
-featuring de clubes (`approveClubFeaturingAdmin`). Quedó **preservada y
-des-importada**. **Mientras esto esté activo, el admin NO puede aprobar pagos MP+
-ni featuring desde la UI** — la activación de suscripciones pagas se rompe hasta
-re-cablear.
+- **Cola de aprobación**: real y operativa. Usa `ApprovalQueue` con
+  `approvePlanSubscriptionAdmin` / `rejectPlanSubscriptionAdmin` para pagos
+  MATCHPOINT+ y `approveClubFeaturingAdmin` / `rejectClubFeaturingAdmin` para
+  featuring de clubes.
+- **Resumen**: muestra solo datos reales disponibles: suscripciones activas,
+  pendientes, featuring activo y montos de registros recientes.
+- **Planes & precios**: ya no aparece como tab visible; no hay modelo de promos,
+  trial, plan anual ni precios editables en backend.
 
-Además el modelo del diseño es ficticio: precios $9.99/mes y $7999/año, trials,
-MRR/ARPU/funnel, promo codes — nada de eso existe. El real es $5/mes,
-transferencia/DeUna, sin trial/anual/recurrencia/promos.
+Pendiente: instrumentar eventos de producto si se quiere funnel real de paywall,
+uso por feature, clicks o conversiones.
 
-Al re-cablear: **prioritario** restaurar la cola de aprobación (o mergearla en
-esta pantalla); luego decidir si se introducen las métricas/promos reales.
-
-### Admin Membresías de club (rediseño analytics) — DEMO
+### Admin Membresías de club — ✅ MERGEADO (overview real)
 
 Section `admin-memberships` ahora renderiza `AdminClubMembresiasScreen.tsx`
-(overview agregado: comisión MP, MRR/socios/churn por plataforma, issues a
-revisar, ranking de clubes por MRR, plantillas globales). **Es mock**: MRR,
-churn, comisión 8% (la take rate real vive en `platform_config`, sin payouts
-todavía), issues y plantillas son datos de muestra; botones → toast demo.
+(server) y usa `adminListClubMemberships` real. Calcula socios activos,
+pendientes, clubes con historial, valor mensual estimado (`price_cents /
+duration_months`) y comisión estimada usando `platform_config.take_rate_pct`.
+También restaura la lista cross-club real. No muestra churn, issues ni plantillas
+globales porque no hay backend para esas señales.
 
-Reemplaza la pantalla real `AdminMembershipsScreen` + `AdminMembershipsScreenView`
-(`adminListClubMemberships`: lista cross-club **read-only** real), preservada y
-des-importada. **Sin regresión operativa** — las membresías las aprueba el staff
-del club, no el admin (ver `docs/product/07-club-memberships.md`). Al re-cablear:
-sustituir los agregados mock por métricas reales (MRR derivado de
-`club_membership_tiers.price_cents` × activos, churn de transiciones de estado) y
-restaurar/mergear la lista cross-club real.
+### Club Membresías (rediseño) — ✅ MERGEADO (operativo parcial)
 
-### Club Membresías (rediseño) — DEMO + regresión de la cola de aprobación
+Section `club-membresias` (owner + manager) renderiza `ClubMembresiasScreen.tsx`.
+El CRUD de tiers (`club_membership_tiers`) y la cola de socios pendientes están
+cableados a actions reales (`saveClubMembershipTier`, `approveClubMembership`,
+`rejectClubMembership`, `revokeClubMembership`). Ya no es demo operativo ni bloquea
+la aprobación de pagos de membresía.
 
-Section `club-membresias` (owner + manager) ahora renderiza
-`ClubMembresiasScreen.tsx` (rediseño: KPIs MRR/churn/ARPU, planes con editor
-inline, wizard de crear plan de 3 pasos, tabla de socios con filtros, reglas
-globales). **Es mock**: planes, socios y métricas son datos de muestra; crear/
-editar/archivar plan, exportar y reglas mutan solo estado local o toast.
-
-🔴 **Regresión operativa (decisión del usuario):** reemplaza la pantalla real
-`ClubMembershipsScreen` + `ClubMembershipsView` (CRUD real de tiers +
-**cola de aprobación** de pagos de socios: aprobar/rechazar/revocar). Quedó
-**preservada y des-importada**. **Mientras esto esté activo, el club NO puede
-aprobar pagos de membresía desde la UI** (los socios no se activan). El flujo de
-compra del jugador (`requestClubMembership` → `/pagos/[txId]`) sigue creando
-pendientes, pero el staff no tiene dónde aprobarlos.
-
-Al re-cablear: **prioritario** restaurar/mergear la cola de aprobación y conectar
-los tiers reales (`club_membership_tiers` CRUD vía `saveClubMembershipTier`),
-métricas reales de socios. Las "reglas globales" del diseño (pausas, cancelación,
-invitados) no tienen backend — definir si se implementan.
+Residual: algunas reglas globales del diseño, como pausas/cancelación automática o
+beneficios avanzados, siguen sin modelo persistente completo. Mantenerlas ocultas,
+deshabilitadas o claramente marcadas hasta que exista backend.
 
 ### Admin Métricas v2 — ✅ MERGEADO (rediseño + métricas reales)
 
@@ -399,84 +337,19 @@ se recortó nada):
 `AdminFlagsScreenView` queda como fuente de tipos (`FlagRow` extendido) + respaldo.
 **Sin regresión.**
 
-### Admin Configuración v2 (rediseño) — editor DEMO (no persiste)
+### Admin Configuración v2 — ✅ MERGEADO parcial (platform_config real)
 
-Section `admin-config` ahora renderiza `AdminConfigView.tsx` (settings agrupados
-por dominio con sidebar, editor inline por fila con audit, save bar sticky,
-búsqueda global, grid de integraciones). **Es demo**: no hay tabla
-`platform_settings`; el draft es local y el save bar **descarta al guardar** (no
-persiste).
+Section `admin-config` renderiza `AdminConfigScreenServer` → `AdminConfigView`.
+Las filas con `cfg` leen y persisten keys reales de `platform_config` vía
+`updatePlatformConfig` con audit. Las filas sin `cfg` quedan read-only como
+constantes del app o integraciones pendientes. No hay tabla genérica
+`platform_settings`.
 
-Reemplaza la pantalla real `AdminConfigScreen` + `AdminConfigScreenView`
-(constantes del app + counts reales, read-only), **preservada y des-importada**.
-**Sin regresión operativa** (la vieja tampoco mutaba — "Guardar config" no tenía
-handler). Suavicé claims falsos del prototipo: marca **MATCHPOINT**, dominio
-`matchpoint.top`, "procesador Stripe Connect" → **Transferencia/DeUna** (no hay
-PSP), payouts/refunds → manual, IVA 15%, precio MP+ $5/mes, y reduje las
-integraciones a las plausibles (mapas/email reales; push/SMS pendientes). El
-único config real hoy es `platform_config.take_rate_pct`.
+### Admin de personalización — retirado
 
-Al re-cablear: crear `platform_settings` (o ampliar `platform_config`) + action
-con `setAuditActor`, y conectar solo los settings que tengan efecto real.
-
-### Admin Flair de usuarios (rediseño v2 del kit) — DEMO (regresión consciente del wiring previo)
-
-Section `admin-cosmetics`: `AdminCosmeticsFlairScreen` (server thin passthrough) →
-`AdminFlairUsuariosView` (client). El view ahora es el **rediseño nuevo 1:1**
-del kit (`ui_kits/dashboard/AdminFlairUsuariosScreen.jsx`): tabs **Usuarios /
-Reportes / Analytics / Templates oficiales / Moderación de watermarks** con
-data 100% demo inline y todos los actions en toast "Próximamente".
-
-**Regresión consciente respecto a la versión previa:** el wiring real de
-cosmetic_bundles (otorgar/revocar bundles, editar precio, activar/desactivar
-temas, búsqueda de usuario) **dejó de tener UI** en esta pantalla. Las server
-actions siguen existiendo en `src/server/actions/admin/cosmetics.ts`:
-- `grantBundleToUser` / `revokeBundleFromUser` / `listGrantsForUser`
-- `searchUsersForCosmetics`
-- `setBundlePrice` / `setBundleActive`
-- `setThemeActive` / `setAllThemesActive`
-
-Y el componente original sigue en `AdminCosmeticsScreen.tsx` (sin route
-asignada). Stage 2 = re-wire del nuevo diseño contra esas actions cuando exista
-el modelo per-user de "flair attributes" (template + banner + accent +
-watermark) y `flair_reports` / `blocked_watermarks`. Mientras tanto, para
-otorgar bundles manualmente: server action directa o reactivar
-`AdminCosmeticsScreen` en una ruta auxiliar.
-
-🟡 **Pendiente de backend para que la pantalla nueva sea real:**
-- **Per-user flair attributes**: nuevo modelo en `profiles` o tabla separada
-  `profile_flair` (template + banner + accent + watermark + edited_at). Hoy
-  `profiles.accent_color` es lo único que existe.
-- **Tab Reportes**: `flair_reports (id, reported_user_id, reporter_user_id,
-  field, value, reason, status, created_at, resolved_at, resolved_by)` + RLS
-  + actions `reportFlair` / `resolveFlairReport`.
-- **Tab Moderación de watermarks**: `blocked_watermarks (word)` simple +
-  actions `addBlockedWatermark` / `removeBlockedWatermark`. Solo aplicable
-  cuando exista watermark editable por el usuario (hoy no — los temas son
-  curados).
-- **Tab Templates oficiales**: ya existe el catálogo en `PROFILE_THEMES` +
-  `AdminThemeDesignerView`. El botón "Crear template" del nuevo diseño debe
-  navegar a `admin-theme-designer` (en Stage 2). Por ahora abre el modal con
-  el form y dispara toast al crear.
-
-### Admin Theme Designer (`admin-theme-designer`) — DEMO
-
-Section `admin-theme-designer` (sin item de sidebar; se llega desde el botón
-**"Theme designer"** de `admin-cosmetics`/Flair de usuarios). `AdminThemeDesignerView.tsx`:
-lista de templates (oficiales/borradores/archivados) + editor con secciones
-colapsables (banner+overlay con gradient editor custom, color, avatar, cards,
-nombre, friendship, **cancha visual** con superficie/líneas/estilo/grosor) +
-preview en vivo + save bar. **Es demo**: estado local, no persiste; los
-"templates oficiales" no existen en backend.
-
-El **preview reusa los componentes reales** de Personalización
-(`ProfilePreviewCard`/`FriendshipPreviewCard`/`MatchRowPreview`, ahora exportados
-desde `PersonalizacionFlairView`), así que es fiel al render del usuario. El SVG
-de cancha es el de pickleball completo (viewBox 903×419) parametrizado.
-
-Al re-cablear: modelar templates oficiales (tabla + publish/draft) e integrarlos
-con el catálogo de personalización (`PROFILE_THEMES`) — hoy son dos mundos
-(temas curados gateados vs editor à-la-carte localStorage).
+Las superficies admin anteriores de cosméticos y diseñador fueron removidas con
+el reset. No hay path operativo ni placeholder activo hasta definir el nuevo
+sistema.
 
 ### Club/Owner Canchas v2 (rediseño) — DEMO + regresión temporal
 
@@ -534,21 +407,15 @@ horarios; Pagos → cuenta receptora del club + take rate de `platform_config`;
 Notificaciones → `notification_preferences` por club; Reglas → tabla nueva. Surge,
 salud del perfil y sensor de lluvia son conceptos del diseño sin modelo aún.
 
-### Club/Owner Personal v2 (rediseño) — DEMO
+### Club/Owner Personal — ✅ MERGEADO (roster real)
 
-Section `club-staff` (roles club y owner) ahora renderiza `ClubStaffView.tsx`:
-PolHero + KPIs (headcount/nómina/horas/coaches) + **timeline de turnos en vivo**
-(05:00–22:00 con línea "ahora") + filtro por departamento + búsqueda + cards de
-staff (identidad, semana, sueldo, performance, acciones) + distribución por
-departamento + desglose de nómina. **Es mock.** Reemplaza la real
-`ClubStaffScreen` + `ClubStaffScreenView` (staff del club vía `role_assignments`),
-**preservada y des-importada**.
+Section `club-staff` (owner + manager) renderiza `ClubStaffScreen` +
+`ClubStaffScreenView`: staff real desde `role_assignments` + `profiles`, asignación
+con términos (`assignRole`), revocación (`revokeRole`) y turnos (`shifts`) para ver,
+crear y eliminar horarios.
 
-Al re-cablear (merge): staff desde `role_assignments` del club (manager/coach/
-employee) + perfiles; turnos y nómina **no existen en el modelo** (requieren
-tablas nuevas: turnos/horarios y nómina/sueldos); performance desde métricas
-reales (check-ins, ratings de clases). El descuento de nómina del payout depende
-de modelar payouts (ver finanzas).
+Residual: nómina, sueldo mensual, performance y descuento de payout no tienen modelo
+financiero completo. La UI muestra valores vacíos honestos para esos campos.
 
 ### Empleado Pro shop & bar v2 (rediseño) — ✅ MERGEADO (real, W4 Ola A)
 
@@ -603,10 +470,32 @@ REALES (`listBroadcasts` scope=platform + conteo de `broadcast_recipients`) →
 - **Clicks / conversión**: no hay señal de click separada de la apertura en el
   flujo de notificaciones → el funnel muestra solo hasta Abiertos (no inventa click).
 - ⚠️ **Cron de programadas**: las `scheduled` no se auto-envían (necesita pg_cron +
-  dispatcher SQL, o edge function, que duplica `notify()` — infra, se difiere).
-- **Best-time send**: necesita histórico de aperturas (recién empezamos a recolectar).
+  dispatcher SQL, o edge function, que duplica `notify()` — infra, se difiere). La
+  UI ahora lo indica como "sin worker automático".
+- **Best-time send**: necesita agregación de aperturas por hora. La UI ya no inventa
+  hora ni uplift; muestra recomendación automática no disponible.
 - **A/B test** y **"Generar con IA"**: features nuevas (variantes+tracking / integración
   Anthropic) — fuera de "cablear". `AdminBroadcastScreen`/`...View` reales preservadas.
+
+### Admin oversight de coach/academia — gap cross-superficie
+
+La academia tiene backend real para `coach_profiles`, `classes`, `class_sessions`,
+`class_enrollments`, estudiantes y recursos, y pantallas operativas para coach/user.
+Pero **no existe una pantalla admin dedicada** para supervisar coaches, clases,
+matrículas, verificaciones, reviews o incidencias académicas. No se agrega item de
+sidebar admin hasta tener una screen real con datos y acciones.
+
+Para activar: `AdminAcademiaScreen` o `AdminCoachesScreen` con loaders admin-only
+de coaches/clases/inscripciones, acciones de verificación/suspensión y auditoría,
+más RLS/documentación de la superficie.
+
+### Admin Pagos y Equipo MP — ✅ claims visibles ajustados
+
+- `admin-pagos`: el KPI "Comisión MP" usa `platform_config.take_rate_pct`; ya no
+  muestra 10% fijo si la configuración cambia.
+- `admin-team`: la pantalla usa admins reales desde `role_assignments`, carga desde
+  `tickets` y resoluciones desde `reports`. No hay presencia/last activity real; la
+  UI muestra ese límite explícitamente en vez de simular usuarios online.
 
 ### `RoleScreenStub` — secciones del sidebar sin pantalla real
 
@@ -620,7 +509,7 @@ REALES (`listBroadcasts` scope=platform + conteo de `broadcast_recipients`) →
 
 | Rol | Items sin pantalla real |
 |---|---|
-| `employee` | `e-soporte` (no implementado) — 2 items totales sin pantalla |
+| `employee` | cubierto en sus items principales (`e-soporte` ya existe) |
 | `coach` | 1 item sin pantalla |
 | `manager` | 1 item sin pantalla |
 | `partner` | 1 item sin pantalla |
@@ -805,12 +694,8 @@ server action correspondiente + wire onClick + toast de resultado.
 - [ ] Match result reporting + bracket progression
 - [ ] Email channel real
 - [ ] Cubrir items sin pantalla de employee/coach/manager
-- [x] ~~Customización de perfil — `card_style` no renderiza en listados~~.
-  ✅ Resuelto en Stage 4 (mig 115 abrió SELECT a `profile_cosmetic_grants`,
-  AmigosScreen + TeamScreen resuelven ownership por user, FriendCard +
-  roster filas aplican `cardStyleCss` y `accentHex`). Falta `/players/[username]`
-  card aparte si quieres tematizar más allá del header — el header ya
-  consume `ProfileHeaderCard` con todo.
+- [x] ~~Personalización de perfil V1~~.
+  Retirada por reset completo. El nuevo sistema queda pendiente de diseño.
 - [ ] **Busco partido (match seeks)** — items diferidos de v1:
   - Sidebar item `busco-partido` es visible con el flag `match_seeks_enabled`
     en `false` → lleva a `BuscoPartidoComingSoon` ("Pronto") para todos.
@@ -841,10 +726,3 @@ server action correspondiente + wire onClick + toast de resultado.
     `SolicitarClubScreenView`. `CrearJuegoModal` y `CreateTournamentFlow`
     están pickleball-locked por diseño (correctos con flag OFF; cuando se
     quiera multisport ON en torneos hay que abrir esos flujos).
-- [ ] **Cosmetics: self-service purchase flow** (Stage 4 de customización).
-  Hoy fase 1 es admin grant manual tras pago manual. Falta UI en
-  `/dashboard/user/personalizar` para que el user clickee "Comprar pack
-  X", suba comprobante, y admin apruebe en `/dashboard/admin/admin-cosmetics`
-  (mismo panel hoy ya hace grant, faltaría estado `pending` en
-  `profile_cosmetic_grants` + integrar con flow de comprobantes existentes
-  de MP+).

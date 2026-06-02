@@ -9,6 +9,23 @@
 import { listPaywallFunnelAdmin } from "@/server/actions/admin/paywall-funnel";
 import { Icon } from "@/components/Icon";
 
+const EVENT_LABELS: Record<string, string> = {
+  pricing_page_viewed: "Página de precios vista",
+  pricing_tab_viewed: "Pestaña de precios vista",
+  pricing_toggle_changed: "Cambio de período de cobro",
+  pricing_tier_cta_clicked: "Clic en CTA de plan",
+  pricing_faq_expanded: "Pregunta frecuente abierta",
+  lead_submitted: "Lead comercial enviado",
+};
+
+function eventLabel(eventName: string): string {
+  return EVENT_LABELS[eventName] ?? eventName
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export async function AdminPaywallFunnelScreen() {
   const res = await listPaywallFunnelAdmin({ days: 30 });
 
@@ -28,7 +45,7 @@ export async function AdminPaywallFunnelScreen() {
     );
   }
 
-  const { totalEvents, uniqueUsers, buckets, windowDays } = res.data;
+  const { totalEvents, uniqueUsers, uniqueSessions, uniqueActors, buckets, windowDays } = res.data;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -63,7 +80,9 @@ export async function AdminPaywallFunnelScreen() {
         }}
       >
         <KPI label="Eventos totales" value={totalEvents.toLocaleString("en-US")} icon="activity" />
-        <KPI label="Usuarios únicos" value={uniqueUsers.toLocaleString("en-US")} icon="users" />
+        <KPI label="Usuarios logueados" value={uniqueUsers.toLocaleString("en-US")} icon="users" />
+        <KPI label="Sesiones únicas" value={uniqueSessions.toLocaleString("en-US")} icon="mouse-pointer-click" />
+        <KPI label="Actores únicos" value={uniqueActors.toLocaleString("en-US")} icon="scan-face" />
         <KPI label="Tipos de evento" value={buckets.length.toLocaleString("en-US")} icon="layers" />
       </div>
 
@@ -87,7 +106,7 @@ export async function AdminPaywallFunnelScreen() {
               margin: 0,
             }}
           >
-            Eventos por nombre<span className="dot">.</span>
+            Eventos del funnel<span className="dot">.</span>
           </h2>
           <span style={{ fontSize: 11, color: "var(--muted-fg)", fontFamily: "ui-monospace, monospace" }}>
             ventana · {windowDays}d
@@ -106,7 +125,8 @@ export async function AdminPaywallFunnelScreen() {
               <tr style={{ background: "var(--muted)" }}>
                 <Th>Evento</Th>
                 <Th align="right">Total</Th>
-                <Th align="right">Usuarios únicos</Th>
+                <Th align="right">Usuarios</Th>
+                <Th align="right">Sesiones</Th>
                 <Th align="right">% del total</Th>
               </tr>
             </thead>
@@ -114,15 +134,18 @@ export async function AdminPaywallFunnelScreen() {
               {buckets.map((b) => (
                 <tr key={b.eventName} style={{ borderTop: "1px solid var(--border)" }}>
                   <Td>
-                    <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-                      {b.eventName}
-                    </code>
+                    <span title={b.eventName} style={{ fontWeight: 800 }}>
+                      {eventLabel(b.eventName)}
+                    </span>
                   </Td>
                   <Td align="right" mono>
                     {b.count.toLocaleString("en-US")}
                   </Td>
                   <Td align="right" mono>
                     {b.uniqueUsers.toLocaleString("en-US")}
+                  </Td>
+                  <Td align="right" mono>
+                    {b.uniqueSessions.toLocaleString("en-US")}
                   </Td>
                   <Td align="right" mono>
                     {totalEvents > 0

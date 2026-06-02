@@ -8,6 +8,7 @@
 //   pricing_toggle_changed    — { billing_period }
 //   pricing_tier_cta_clicked  — { tier_key, audience, billing_period }
 //   pricing_faq_expanded      — { faq_key }
+//   lead_submitted            — landing/formulario crea lead de ventas
 //
 // PostHog: cuando esté cableado a futuro, espejamos el call aquí mismo
 // (`window.posthog?.capture(name, props)`) sin tocar callers.
@@ -45,7 +46,8 @@ type PricingEventArgs =
       name: "pricing_tier_cta_clicked";
       props: { tier_key: string; audience: string; billing_period: "monthly" | "annual" } & EventProps;
     }
-  | { name: "pricing_faq_expanded"; props: { faq_key: string } & EventProps };
+  | { name: "pricing_faq_expanded"; props: { faq_key: string } & EventProps }
+  | { name: "lead_submitted"; props: { lead_type: string; source_url?: string | null; lead_id?: string | null } & EventProps };
 
 export function trackPricingEvent(arg: PricingEventArgs): void {
   if (typeof window === "undefined") return;

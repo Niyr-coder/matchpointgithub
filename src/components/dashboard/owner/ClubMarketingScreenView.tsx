@@ -1,14 +1,15 @@
 // Client view de ClubMarketingScreen — layout 1:1 (RoleScreensPolish.jsx 182-277).
 "use client";
-import { useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
 import { RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-import { useToast } from "../ToastProvider";
+import { useToast, type ToastPayload } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
-import { activateBroadcast, createBroadcast } from "@/server/actions/marketing";
+import { activateBroadcast, cancelBroadcast, createBroadcast } from "@/server/actions/marketing";
 import { ClubFeaturingPanel } from "./ClubFeaturingPanel";
 
 export type CampaignCard = {
@@ -47,16 +48,240 @@ function fmtReach(n: number): string {
 
 const PLACEHOLDER_CHANNEL_COUNT = 4;
 
+function PromoMenuItem({
+  icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        padding: "9px 14px",
+        background: "transparent",
+        border: 0,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        fontSize: 12,
+        color: danger ? "#dc2626" : "#0a0a0a",
+        fontWeight: 700,
+        textAlign: "left",
+      }}
+    >
+      <Icon name={icon} size={13} color={danger ? "#dc2626" : "var(--muted-fg)"} />
+      {label}
+    </button>
+  );
+}
+
+function PromoCardMenu({
+  p,
+  isPaused,
+  isPending,
+  onActivate,
+  onCancel,
+  onShare,
+  onStats,
+  onCopyCode,
+}: {
+  p: CampaignCard;
+  isPaused: boolean;
+  isPending: boolean;
+  onActivate: () => void;
+  onCancel: () => void;
+  onShare: () => void;
+  onStats: () => void;
+  onCopyCode: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const canCancel = p.tag === "BORRADOR" || p.tag === "PROGRAMADA";
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  const close = () => setOpen(false);
+
+  return (
+    <div style={{ display: "inline-flex", flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Más acciones"
+        aria-expanded={open}
+        disabled={isPending}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: 37,
+          height: 37,
+          borderRadius: "50%",
+          background: "#fff",
+          border: "1px solid var(--border)",
+          cursor: isPending ? "not-allowed" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          opacity: isPending ? 0.5 : 1,
+        }}
+      >
+        <Icon name="more-horizontal" size={14} />
+      </button>
+      {open && mounted && pos &&
+        createPortal(
+          <>
+            <div
+              role="presentation"
+              onClick={close}
+              style={{ position: "fixed", inset: 0, zIndex: 9998 }}
+            />
+            <div
+              role="menu"
+              style={{
+                position: "fixed",
+                top: pos.top,
+                right: pos.right,
+                zIndex: 9999,
+                background: "#fff",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+                overflow: "hidden",
+                width: 220,
+                fontSize: 12,
+              }}
+            >
+              <PromoMenuItem
+                icon="bar-chart-3"
+                label="Ver estadísticas"
+                onClick={() => {
+                  close();
+                  onStats();
+                }}
+              />
+              <PromoMenuItem
+                icon="copy"
+                label="Copiar código"
+                onClick={() => {
+                  close();
+                  onCopyCode();
+                }}
+              />
+              {!isPaused && (
+                <PromoMenuItem
+                  icon="share-2"
+                  label="Compartir"
+                  onClick={() => {
+                    close();
+                    onShare();
+                  }}
+                />
+              )}
+              {isPaused && (
+                <PromoMenuItem
+                  icon="play"
+                  label="Activar campaña"
+                  onClick={() => {
+                    close();
+                    onActivate();
+                  }}
+                />
+              )}
+              {canCancel && (
+                <>
+                  <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+                  <PromoMenuItem
+                    icon="pause-circle"
+                    danger
+                    label="Pausar campaña"
+                    onClick={() => {
+                      close();
+                      onCancel();
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 function PromoCard({
   p,
   onActivate,
+  onCancel,
   isPending,
+  toast,
 }: {
   p: CampaignCard;
   onActivate: (id: string) => void;
+  onCancel: (id: string) => void;
   isPending: boolean;
+  toast: (t: ToastPayload) => void;
 }) {
   const isPaused = p.tag === "PAUSADA";
+
+  const sharePromo = async () => {
+    const text = `${p.n} · Código: ${p.code}`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: p.n, text });
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      toast({ icon: "check", title: "Texto copiado", sub: "Pégalo donde quieras compartir la promo." });
+    } catch {
+      /* usuario canceló share nativo */
+    }
+  };
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(p.code);
+      toast({ icon: "check", title: "Código copiado" });
+    } catch {
+      toast({ icon: "alert-triangle", title: "No se pudo copiar", sub: "Intenta de nuevo." });
+    }
+  };
+
+  const showStats = () => {
+    toast({
+      icon: "bar-chart-3",
+      title: "Estadísticas",
+      sub: `${p.uses} de ${p.max} usos · Vence ${p.end}`,
+    });
+  };
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       <div
@@ -188,17 +413,26 @@ function PromoCard({
               Activar
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" style={{ flex: 1, fontSize: 10.5 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ flex: 1, fontSize: 10.5 }}
+              onClick={() => void sharePromo()}
+            >
               <Icon name="share-2" size={11} color="#fff" />
               Compartir
             </button>
           )}
-          <button
-            className="btn"
-            style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5 }}
-          >
-            <Icon name="bar-chart-3" size={11} />
-          </button>
+          <PromoCardMenu
+            p={p}
+            isPaused={isPaused}
+            isPending={isPending}
+            onActivate={() => onActivate(p.id)}
+            onCancel={() => onCancel(p.id)}
+            onShare={() => void sharePromo()}
+            onStats={showStats}
+            onCopyCode={() => void copyCode()}
+          />
         </div>
         <div
           style={{
@@ -389,6 +623,18 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
     });
   };
 
+  const handleCancel = (id: string) => {
+    startTransition(async () => {
+      const res = await cancelBroadcast({ id });
+      if (res.ok) {
+        toast({ icon: "check", title: "Campaña pausada" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
+    });
+  };
+
   const hasChannels = data.channels.length > 0;
 
   const liveCount = data.campaigns.filter(
@@ -511,7 +757,14 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           {data.campaigns.map((p) => (
-            <PromoCard key={p.id} p={p} onActivate={handleActivate} isPending={isPending} />
+            <PromoCard
+              key={p.id}
+              p={p}
+              onActivate={handleActivate}
+              onCancel={handleCancel}
+              isPending={isPending}
+              toast={toast}
+            />
           ))}
         </div>
       </div>

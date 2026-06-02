@@ -4,8 +4,12 @@
 // Antes esto vivía en useState+localStorage y causaba flash al hidratar +
 // race conditions cuando el team se borraba desde otra device.
 "use client";
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
+import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
+import { trustBadgeMeta } from "@/lib/ui/trust-badge";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -64,15 +68,6 @@ export type TeamMemberLite = {
   played: number;
   wr: number;
   online: boolean;
-  // Customización del miembro (mig 113/114). Server resuelve ownership.
-  accentHex?: string | null;
-  cardStyleCss?: {
-    background: string;
-    border?: string;
-    boxShadow?: string;
-    backdropFilter?: string;
-    color?: string;
-  } | null;
 };
 
 export type TeamCapsLite = {
@@ -101,7 +96,7 @@ export type TeamLite = {
   name: string;
   tag: string;
   sport: string;
-  accentHex: string | null;
+  colorHex: string | null;
   description: string | null;
   inviteCode: string | null;
   captainId: string;
@@ -533,9 +528,6 @@ const COLORS = [
   "#71717a", // zinc
   "#0a0a0a", // black
 ];
-
-// Colores claros donde el texto blanco no contrasta — usar texto negro.
-const LIGHT_TEXT_COLORS = new Set(["#fbbf24", "#10b981", "#0ea5e9", "#22c55e", "#84cc16", "#f59e0b", "#06b6d4", "#14b8a6"]);
 
 function slugify(input: string): string {
   return input
@@ -1007,26 +999,23 @@ function TeamJoin({
           Teams públicos<span className="dot">.</span>
         </h2>
         <div style={{ display: "flex", gap: 6 }}>
-          {["Todos", "Pádel", "Tenis", "Pickleball"].map((f, i) => (
-            <button
-              key={f}
-              style={{
-                padding: "7px 14px",
-                borderRadius: 9999,
-                fontSize: 11,
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                background: i === 0 ? "#0a0a0a" : "#fff",
-                color: i === 0 ? "#fff" : "#0a0a0a",
-                border: "1px solid " + (i === 0 ? "#0a0a0a" : "var(--border)"),
-              }}
-            >
-              {f}
-            </button>
-          ))}
+          <button
+            style={{
+              padding: "7px 14px",
+              borderRadius: 9999,
+              fontSize: 11,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              cursor: "default",
+              fontFamily: "inherit",
+              background: "#0a0a0a",
+              color: "#fff",
+              border: "1px solid #0a0a0a",
+            }}
+          >
+            Todos
+          </button>
         </div>
       </div>
 
@@ -1120,7 +1109,7 @@ function TeamJoin({
                   >
                     {t.name}
                     {t.isVerified && (
-                      <Icon name="badge-check" size={13} color="#0ea5e9" />
+                      <MpBadge {...trustBadgeMeta("verified")} variant="icon-only" size="sm" />
                     )}
                     {t.isPinned && <Icon name="pin" size={12} color="#b45309" />}
                   </div>
@@ -2076,8 +2065,8 @@ function TeamInvite({
           padding: 0,
           overflow: "hidden",
           position: "relative",
-          background: team.accentHex
-            ? `linear-gradient(120deg, #0a0a0a 0%, #1f2937 60%, ${team.accentHex} 100%)`
+          background: team.colorHex
+            ? `linear-gradient(120deg, #0a0a0a 0%, #1f2937 60%, ${team.colorHex} 100%)`
             : "linear-gradient(120deg, #064e3b 0%, #047857 60%, #10b981 100%)",
           color: "#fff",
         }}
@@ -2461,7 +2450,7 @@ function TeamInvite({
                 : `Te quedan ${rosterMax - team.members.length} cupos.`}
             </div>
             {team.captainPlanTier === "free" && (
-              <a
+              <Link
                 href="/dashboard/user/mi-plan"
                 style={{
                   display: "inline-flex",
@@ -2475,7 +2464,7 @@ function TeamInvite({
                 }}
               >
                 Activa MATCHPOINT+ →
-              </a>
+              </Link>
             )}
           </div>
         </div>
@@ -2662,15 +2651,14 @@ function RosterMemberMenu({
   const itemStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     width: "100%",
-    padding: "9px 12px",
+    padding: "9px 14px",
     background: "transparent",
     border: 0,
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: 12,
-    fontWeight: 700,
     color: "#0a0a0a",
     textAlign: "left",
   };
@@ -2690,6 +2678,8 @@ function RosterMemberMenu({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
+          padding: 0,
+          lineHeight: 1,
         }}
       >
         <Icon name="more-horizontal" size={12} color="var(--muted-fg)" />
@@ -2705,11 +2695,12 @@ function RosterMemberMenu({
               zIndex: 41,
               background: "#fff",
               border: "1px solid var(--border)",
-              borderRadius: 10,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              minWidth: kickMode ? 240 : 168,
+              borderRadius: 12,
+              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+              width: 240,
               overflow: "hidden",
               color: "#0a0a0a",
+              fontSize: 12,
             }}
           >
             {!kickMode ? (
@@ -2721,14 +2712,14 @@ function RosterMemberMenu({
                   </button>
                 )}
                 {canMakeCaptain && (
-                  <button style={{ ...itemStyle, borderTop: hasProfile ? "1px solid var(--border)" : 0 }} onClick={makeCaptain} disabled={pending}>
+                  <button style={itemStyle} onClick={makeCaptain} disabled={pending}>
                     <Icon name="crown" size={13} color="#ca8a04" />
                     {pending ? "Transfiriendo…" : "Hacer capitán"}
                   </button>
                 )}
                 {canKick && (
                   <button
-                    style={{ ...itemStyle, color: "#dc2626", borderTop: hasProfile || canMakeCaptain ? "1px solid var(--border)" : 0 }}
+                    style={{ ...itemStyle, color: "#dc2626" }}
                     onClick={() => setKickMode(true)}
                   >
                     <Icon name="user-x" size={13} color="#dc2626" />
@@ -2787,10 +2778,10 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
   const ROSTER = TEAM.members;
   // Banner con el color elegido del team (mismo gradiente que el preview del
   // form). Sin color → verde por defecto.
-  const teamBanner = TEAM.accentHex
-    ? `linear-gradient(135deg, #0a0a0a 0%, #1f2937 60%, ${TEAM.accentHex} 100%)`
+  const teamBanner = TEAM.colorHex
+    ? `linear-gradient(135deg, #0a0a0a 0%, #1f2937 60%, ${TEAM.colorHex} 100%)`
     : "linear-gradient(135deg, #0a0a0a 0%, #064e3b 60%, #10b981 100%)";
-  const teamAccent = TEAM.accentHex ?? "#fbbf24";
+  const teamAccent = TEAM.colorHex ?? "#fbbf24";
   const accentText = ["#fbbf24", "#10b981", "#0ea5e9"].includes(teamAccent) ? "#0a0a0a" : "#fff";
   const winRate =
     TEAM.wins + TEAM.losses > 0
@@ -2894,27 +2885,11 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               {TEAM.name}
               <span style={{ color: teamAccent }}>.</span>
               {TEAM.isVerified && (
-                <span
-                  title="Verificado por MATCHPOINT"
-                  style={{
-                    marginLeft: 12,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    verticalAlign: "middle",
-                    width: 28,
-                    height: 28,
-                    borderRadius: 9999,
-                    background: "rgba(14,165,233,0.18)",
-                    color: "#7dd3fc",
-                  }}
-                >
-                  <Icon
-                    name="badge-check"
-                    size={18}
-                    color="#7dd3fc"
-                    style={{ margin: "auto" }}
-                  />
-                </span>
+                <MpBadge
+                  {...trustBadgeMeta("verified")}
+                  size="md"
+                  style={{ marginLeft: 12, verticalAlign: "middle" }}
+                />
               )}
             </h1>
             {TEAM.status !== "active" && (
@@ -3051,7 +3026,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
             </span>
           </div>
           {showUpsellMini && (
-            <a
+            <Link
               href="/dashboard/user/mi-plan"
               style={{
                 display: "flex",
@@ -3074,7 +3049,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                 Activa MATCHPOINT+ para 24 miembros
               </span>
               <span style={{ color: "#92400e" }}>→</span>
-            </a>
+            </Link>
           )}
           {/* Roster como cards (no tabla): cada fila es UNA card con fondo +
               borde + redondeo continuos. Grid compartido header/cards. */}
@@ -3108,13 +3083,8 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                   ))}
                 </div>
                 {ROSTER.map((p, i) => {
-                  const memberAccent = p.accentHex ?? null;
-                  const memberCard = p.cardStyleCss ?? null;
-                  const avatarBg = memberAccent
-                    ? `linear-gradient(135deg, ${memberAccent}cc, ${memberAccent})`
-                    : ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                  const avatarBg = ROSTER_AVATARS[i % ROSTER_AVATARS.length];
                   const isMe = !!meUserId && p.userId === meUserId;
-                  const hasCosmetic = !!memberCard;
                   const isLast = i === ROSTER.length - 1;
                   return (
                     <div
@@ -3124,19 +3094,8 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                         gridTemplateColumns: ROSTER_GRID,
                         gap: 12,
                         alignItems: "center",
-                        // Default: fila limpia y aireada (separador hairline), como la
-                        // referencia. Miembros con card cosmética conservan su card
-                        // (personalización — no se toca).
                         padding: "13px 10px",
-                        borderRadius: hasCosmetic ? 12 : 0,
-                        background: memberCard?.background,
-                        border: memberCard?.border,
-                        // El roster es denso: no renderizamos el boxShadow cosmético
-                        // (algunos presets como neon-* glowean fuerte). Color/fondo del
-                        // preset sí se respetan — la personalización completa va en perfil.
-                        color: memberCard?.color,
-                        margin: hasCosmetic ? "5px 0" : undefined,
-                        borderBottom: hasCosmetic || isLast ? undefined : "1px solid var(--border)",
+                        borderBottom: isLast ? undefined : "1px solid var(--border)",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -3176,20 +3135,25 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                             />
                           )}
                         </div>
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                          {isMe && <SelfChip />}
+                        <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 0, minWidth: 0 }}>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                              <NameplateMark size="sm" />
+                            </span>
+                            {isMe && <SelfChip />}
+                          </span>
                         </span>
                       </div>
                       <div>
@@ -3369,7 +3333,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
             Estadísticas avanzadas<span className="dot">.</span>
           </h2>
           {isFreeCaptain && (
-            <a
+            <Link
               href="/dashboard/user/mi-plan"
               style={{
                 fontSize: 11,
@@ -3387,7 +3351,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
             >
               <Icon name="zap" size={12} color="#92400e" />
               Activa MATCHPOINT+
-            </a>
+            </Link>
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

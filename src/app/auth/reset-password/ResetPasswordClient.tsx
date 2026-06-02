@@ -132,12 +132,13 @@ export function ResetPasswordClient({ serverError }: { serverError: string | nul
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: 0 }}>
-              Crea una nueva contraseña. Mínimo 8 caracteres.
+              Crea una nueva contraseña. Mínimo 8 caracteres, con letras y
+              números.
             </p>
 
             <AuthField
               label="Nueva contraseña"
-              hint="Mínimo 8 caracteres"
+              hint="Mínimo 8 caracteres, con letras y números"
               error={f?.password?.[0]}
             >
               <input

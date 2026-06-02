@@ -31,6 +31,7 @@ export type ContactSalesFormProps = {
   description?: string;
   tone?: "light" | "dark";
   ctaLabel?: string;
+  onSuccess?: (leadId: string | null) => void;
 };
 
 export function ContactSalesForm({
@@ -40,6 +41,7 @@ export function ContactSalesForm({
   description = "Cuéntanos sobre tu club, partner o academia. Te contactamos en menos de 24 horas hábiles.",
   tone = "light",
   ctaLabel = "Enviar mensaje",
+  onSuccess,
 }: ContactSalesFormProps) {
   const dark = tone === "dark";
   const [status, setStatus] = useState<Status>("idle");
@@ -73,6 +75,10 @@ export function ContactSalesForm({
           businessName: businessName || undefined,
           message: message || undefined,
           sourceUrl: typeof window !== "undefined" ? window.location.href : undefined,
+          sourceCampaign:
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search).get("utm_campaign") ?? undefined
+              : undefined,
           website, // honeypot — debe ir vacío
         }),
       });
@@ -86,7 +92,9 @@ export function ContactSalesForm({
         setFieldErrors(errBody?.error?.fields ?? {});
         return;
       }
+      const okBody = json as { data?: { id?: string } } | null;
       setStatus("success");
+      onSuccess?.(okBody?.data?.id ?? null);
       setName("");
       setEmail("");
       setPhone("");

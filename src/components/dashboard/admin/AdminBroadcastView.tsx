@@ -4,10 +4,8 @@
 // (ui_kits/dashboard/AdminBroadcastScreen.jsx). data-lucide → <Icon>, botones →
 // toast, marca MATCHPOINT / matchpoint.top.
 //
-// ⚠️ DEMO: KPIs, plantillas, campañas y el cálculo de alcance son mock. Reemplaza
-// la pantalla real AdminBroadcastScreen + AdminBroadcastScreenView (broadcasts
-// reales vía marketing.ts), preservada y des-importada. Enviar/programar/segmentar
-// no persisten todavía. Ver 04-placeholders.md.
+// Campañas, plantillas, audiencia, banner y envío in-app están cableados.
+// Aperturas reales; clicks/conversión, push y email quedan pendientes.
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -19,22 +17,22 @@ import { saveBroadcastTemplate, deleteBroadcastTemplate, type BroadcastTemplate 
 
 type TargetFilter = { city?: string; sport?: string; plan?: string; role?: string };
 type Chip = { k: string; l: string; c: string; filter: TargetFilter };
-// Campaign real (de broadcasts). opened/clicked/converted = null → sin tracking
-// de aperturas aún; sent/reach = nº de destinatarios (broadcast_recipients).
+// Campaign real (de broadcasts). opened viene de broadcast_recipients.opened_at;
+// clicked/converted = null porque no existe tracking de esas señales.
 type Campaign = {
   id: string; kind: "push" | "email" | "banner" | "in-app"; t: string; audience: string;
   reach: number | null; sent: number | null; opened: number | null; clicked: number | null; converted: number | null;
   when: string; st: "sent" | "live" | "scheduled" | "draft";
 };
-export type BroadcastData = { campaigns: Campaign[]; templates: BroadcastTemplate[] };
+export type BroadcastData = { campaigns: Campaign[]; templates: BroadcastTemplate[]; totalUsers: number };
 
 // Reconstruye chips de audiencia desde un target_filter guardado.
 function chipsFromFilter(tf: Record<string, unknown>): Chip[] {
   const out: Chip[] = [];
   if (tf.city) out.push({ k: "city", l: `Ciudad · ${tf.city}`, c: "#0ea5e9", filter: { city: String(tf.city) } });
   if (tf.sport) out.push({ k: "sport", l: `Deporte · ${tf.sport}`, c: "#fbbf24", filter: { sport: String(tf.sport) } });
-  if (tf.plan === "premium") out.push({ k: "mpplus", l: "MP+ subscribers", c: "#10b981", filter: { plan: "premium" } });
-  if (tf.role === "owner") out.push({ k: "owner", l: "Owners de club", c: "#7c3aed", filter: { role: "owner" } });
+  if (tf.plan === "premium") out.push({ k: "mpplus", l: "Suscriptores MP+", c: "#10b981", filter: { plan: "premium" } });
+  if (tf.role === "owner") out.push({ k: "owner", l: "Dueños de club", c: "#7c3aed", filter: { role: "owner" } });
   return out;
 }
 const CHANNEL_ICON: Record<string, string> = { push: "smartphone", email: "mail", inapp: "message-square", banner: "megaphone" };
@@ -46,8 +44,8 @@ const DEFAULT_CHIPS: Chip[] = [
   { k: "sport", l: "Deporte · Pickleball", c: "#fbbf24", filter: { sport: "pickleball" } },
 ];
 const SUGGESTED_CHIPS: Chip[] = [
-  { k: "mpplus", l: "MP+ subscribers", c: "#10b981", filter: { plan: "premium" } },
-  { k: "owner", l: "Owners de club", c: "#7c3aed", filter: { role: "owner" } },
+  { k: "mpplus", l: "Suscriptores MP+", c: "#10b981", filter: { plan: "premium" } },
+  { k: "owner", l: "Dueños de club", c: "#7c3aed", filter: { role: "owner" } },
 ];
 
 const nf = (n: number) => n.toLocaleString("en-US");
@@ -75,14 +73,13 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
       if (res.ok) { toast({ icon: "check", title: "Banner quitado" }); router.refresh(); }
       else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
     });
-  const [channel, setChannel] = useState<"push" | "email" | "banner" | "in-app">("push");
+  const [channel, setChannel] = useState<"push" | "email" | "banner" | "in-app">("in-app");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [cta, setCta] = useState("Ver más");
   const [chips, setChips] = useState<Chip[]>(DEFAULT_CHIPS);
   const [scheduleMode, setScheduleMode] = useState<"now" | "best" | "time">("now");
   const [schedAt, setSchedAt] = useState("");
-  const [abTest, setAbTest] = useState(false);
   const [previewMode, setPreviewMode] = useState<"mobile" | "desktop">("mobile");
   const [tab, setTab] = useState<"all" | "sent" | "scheduled" | "draft">("all");
   const [openCampaign, setOpenCampaign] = useState<string | null>(null);
@@ -104,6 +101,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
   const addChip = (chip: Chip) => setChips((cur) => (cur.some((x) => x.k === chip.k) ? cur : [...cur, chip]));
 
   const campaigns = data.campaigns;
+  const totalUsersLabel = nf(data.totalUsers);
   const counts = {
     all: campaigns.length,
     sent: campaigns.filter((c) => c.st === "sent").length,
@@ -115,13 +113,15 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
   const kpis = [
     { i: "send", l: "Campañas enviadas", v: nf(counts.sent), sub: `${nf(campaigns.length)} en total`, color: "#0a0a0a", up: false },
     { i: "users", l: "Destinatarios", v: nf(totalRecipients), sub: "suma de envíos", color: "var(--primary)", up: false },
-    { i: "clock", l: "Programadas", v: nf(counts.scheduled), sub: "pendientes de envío", color: "#fbbf24", up: false },
+    { i: "clock", l: "Programadas", v: nf(counts.scheduled), sub: "sin worker automático", color: "#fbbf24", up: false },
     { i: "save", l: "Borradores", v: nf(counts.draft), sub: "sin enviar", color: "#dc2626", up: false },
   ];
 
-  // Envío REAL push/email/in-app (banner va por otro flujo). createBroadcast +
-  // dispatchBroadcast. CTA y "best-time" no se persisten (sin backend aún).
-  const CHANNEL_MAP: Record<string, string[]> = { push: ["push"], email: ["email"], "in-app": ["inapp"] };
+  // Envío REAL in-app (banner va por otro flujo). Push/email todavía no tienen
+  // dispatcher externo; se mantienen visibles como próximos canales.
+  // Programar solo
+  // deja la campaña registrada; falta worker/cron que despache automáticamente.
+  const CHANNEL_MAP: Record<string, string[]> = { "in-app": ["inapp"] };
   const sendCampaign = (mode: "now" | "time" | "draft") =>
     startTransition(async () => {
       if (!title && !body) return toast({ icon: "alert-triangle", title: "Escribe un título o mensaje" });
@@ -133,13 +133,17 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
         const d = await dispatchBroadcast({ id: res.data.id });
         toast(d.ok ? { icon: "send", title: "Campaña enviada" } : { icon: "alert-triangle", title: "Creada pero falló el envío", sub: d.error.message });
       } else {
-        toast({ icon: mode === "time" ? "calendar" : "save", title: mode === "time" ? "Campaña programada" : "Borrador guardado" });
+        toast({
+          icon: mode === "time" ? "calendar" : "save",
+          title: mode === "time" ? "Campaña guardada como programada" : "Borrador guardado",
+          sub: mode === "time" ? "Falta activar el worker de despacho automático." : undefined,
+        });
       }
       router.refresh();
     });
 
   // Plantillas reales (mig 163): cargar en el composer / guardar / borrar.
-  const channelFromTemplate = (ch: string): "push" | "email" | "banner" | "in-app" => (ch === "push" ? "push" : ch === "email" ? "email" : ch === "banner" ? "banner" : "in-app");
+  const channelFromTemplate = (ch: string): "push" | "email" | "banner" | "in-app" => (ch === "banner" ? "banner" : "in-app");
   const loadTemplate = (t: BroadcastTemplate) => {
     setChannel(channelFromTemplate(t.channel));
     setTitle(t.title);
@@ -175,7 +179,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
             Comunicaciones<span className="dot">.</span>
           </h1>
           <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
-            Push, email, banner e in-app · base de <b style={{ color: "#0a0a0a" }}>8,412 usuarios</b> · cuota mensual <b style={{ color: "#0a0a0a" }}>142k / 500k</b>
+            In-app y banner reales · base de <b style={{ color: "#0a0a0a" }}>{totalUsersLabel} usuarios</b> · push/email pendientes de dispatcher externo
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -214,8 +218,8 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
             <span className="label-mp" style={{ color: "var(--primary)" }}>● Composer en vivo</span>
             <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>cambios reflejados al instante en el preview →</span>
           </div>
-          <button onClick={() => setAbTest(!abTest)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 9999, background: abTest ? "#0a0a0a" : "#fff", color: abTest ? "#fff" : "#0a0a0a", border: "1px solid " + (abTest ? "#0a0a0a" : "var(--border)"), fontFamily: "inherit", fontSize: 10.5, fontWeight: 800, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            <Icon name="split-square-horizontal" size={11} color={abTest ? "#fff" : undefined} />A/B test {abTest ? "on" : "off"}
+          <button onClick={() => soon("A/B test · requiere variantes y tracking")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 9999, background: "#fff", color: "var(--muted-fg)", border: "1px dashed var(--border)", fontFamily: "inherit", fontSize: 10.5, fontWeight: 800, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            <Icon name="split-square-horizontal" size={11} />A/B test pendiente
           </button>
         </div>
 
@@ -227,14 +231,14 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
               <div className="label-mp" style={{ marginBottom: 8 }}>Canal</div>
               <div className="mp-bcast-channels" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {([
-                  { k: "push", l: "Push", i: "smartphone", sub: "~2,800 dispositivos" },
-                  { k: "email", l: "Email", i: "mail", sub: "8,412 contactos" },
-                  { k: "banner", l: "Banner", i: "megaphone", sub: "Top de la web" },
-                  { k: "in-app", l: "In-app", i: "message-square", sub: "Sesión activa" },
+                  { k: "push", l: "Push", i: "smartphone", sub: "pendiente", disabled: true },
+                  { k: "email", l: "Email", i: "mail", sub: "pendiente", disabled: true },
+                  { k: "banner", l: "Banner", i: "megaphone", sub: "Top de la web", disabled: false },
+                  { k: "in-app", l: "In-app", i: "message-square", sub: "Sesión activa", disabled: false },
                 ] as const).map((c) => {
                   const on = channel === c.k;
                   return (
-                    <button key={c.k} onClick={() => setChannel(c.k)} style={{ padding: 12, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "#ecfdf5" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", flexDirection: "column", gap: 4 }}>
+                    <button key={c.k} disabled={c.disabled} onClick={() => (c.disabled ? soon(`${c.l} · requiere dispatcher externo`) : setChannel(c.k))} style={{ padding: 12, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "#ecfdf5" : "#fff", cursor: c.disabled ? "not-allowed" : "pointer", opacity: c.disabled ? 0.55 : 1, fontFamily: "inherit", textAlign: "left", display: "flex", flexDirection: "column", gap: 4 }}>
                       <Icon name={c.i} size={16} color={on ? "var(--primary)" : "#0a0a0a"} />
                       <span style={{ fontSize: 12, fontWeight: 900, marginTop: 4 }}>{c.l}</span>
                       <span style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>{c.sub}</span>
@@ -292,7 +296,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
                 </span>
               </div>
               <div style={{ padding: 12, borderRadius: 10, border: "1px solid var(--border)", background: "#fafafa", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minHeight: 50 }}>
-                {chips.length === 0 && <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Todos los usuarios · 8,412 personas</span>}
+                {chips.length === 0 && <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Todos los usuarios · {totalUsersLabel} personas</span>}
                 {chips.map((c, i) => (
                   <span key={c.k} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     {i > 0 && <span style={{ fontSize: 9.5, fontWeight: 900, color: "var(--muted-fg)", letterSpacing: "0.14em", padding: "0 2px" }}>Y</span>}
@@ -325,7 +329,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                 {([
                   { k: "now", l: "Ahora", i: "send" },
-                  { k: "best", l: "Best time send", i: "sparkles" },
+                  { k: "best", l: "Sin recomendación", i: "sparkles" },
                   { k: "time", l: "Programar", i: "calendar" },
                 ] as const).map((o) => {
                   const on = scheduleMode === o.k;
@@ -360,7 +364,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
                 </button>
                 <button className="btn btn-primary" style={{ flex: 2 }} disabled={pending} onClick={() => sendCampaign(scheduleMode === "time" ? "time" : "now")}>
                   <Icon name="send" size={13} color="#fff" />
-                  {scheduleMode === "now" ? `Enviar ahora${reach !== null ? ` · ${nf(reach)} personas` : ""}` : scheduleMode === "best" ? "Enviar ahora" : "Programar"}
+                  {scheduleMode === "now" ? `Enviar ahora${reach !== null ? ` · ${nf(reach)} personas` : ""}` : scheduleMode === "best" ? "Enviar ahora" : "Guardar programada"}
                 </button>
               </div>
             )}
@@ -558,28 +562,16 @@ function InAppPreview({ title, body, cta }: { title: string; body: string; cta: 
 }
 
 function BestTimeHint() {
-  const hours = [12, 18, 24, 28, 30, 26, 22, 32, 48, 64, 78, 82, 68, 54, 60, 76, 88, 92, 78, 60, 42, 28, 18, 12];
-  const max = Math.max(...hours);
-  const bestIdx = hours.indexOf(max);
   return (
     <div style={{ padding: 12, borderRadius: 9, background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Icon name="zap" size={12} color="var(--primary)" />
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#065f46" }}>Best time to send</span>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#065f46" }}>Recomendación automática no disponible</span>
         </div>
-        <span className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, color: "var(--primary)" }}>{bestIdx}:00</span>
       </div>
-      <div style={{ display: "flex", gap: 1.5, alignItems: "flex-end", height: 36 }}>
-        {hours.map((h, i) => (
-          <div key={i} style={{ flex: 1, height: (h / max) * 100 + "%", borderRadius: 1.5, background: i === bestIdx ? "var(--primary)" : "rgba(16,185,129,0.25)" }} />
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: "var(--muted-fg)", fontFamily: "ui-monospace, monospace" }}>
-        <span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span>
-      </div>
-      <div style={{ fontSize: 10.5, color: "#065f46", marginTop: 8, lineHeight: 1.4 }}>
-        Tu audiencia abre más a las <b>18:00</b>. Programando ahí esperamos +28% open rate vs envío inmediato.
+      <div style={{ fontSize: 10.5, color: "#065f46", lineHeight: 1.4 }}>
+        MATCHPOINT registra aperturas, pero todavía no calcula una recomendación por hora. Usa “Programar” para escoger una hora manualmente.
       </div>
     </div>
   );
@@ -618,7 +610,7 @@ function CampaignRow({ c, last, onOpen }: { c: Campaign; last: boolean; onOpen: 
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
               <span className="font-heading tabular" style={{ fontSize: 14, fontWeight: 900, color: "var(--primary)" }}>{openRate.toFixed(0)}%</span>
-              <span style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 700 }}>{clickRate !== null ? `open · ${clickRate.toFixed(0)}% click` : "abiertos"}</span>
+              <span style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 700 }}>{clickRate !== null ? `abiertos · ${clickRate.toFixed(0)}% click` : "abiertos"}</span>
             </div>
             <div style={{ height: 3, marginTop: 4, borderRadius: 9999, background: "var(--muted)", overflow: "hidden" }}>
               <div style={{ height: "100%", width: openRate + "%", background: "var(--primary)" }} />
@@ -638,12 +630,11 @@ function CampaignRow({ c, last, onOpen }: { c: Campaign; last: boolean; onOpen: 
 
 function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void; onAction: (t: string) => void }) {
   const km = KIND_META[c.kind];
-  // Funnel real hasta "Abiertos" (tracking de aperturas, mig 164). Click/
-  // conversión no están instrumentados → no se muestran (no se inventan).
+  // Funnel real hasta "Abiertos" (tracking de aperturas). No hay acuse real de
+  // entrega, clicks ni conversión; no se inventan porcentajes.
   const funnel = c.sent
     ? [
-        { l: "Enviados", v: c.sent, pct: 100, color: "#0a0a0a" },
-        { l: "Entregados", v: Math.round(c.sent * 0.985), pct: 98.5, color: "#0a0a0a" },
+        { l: "Destinatarios", v: c.sent, pct: 100, color: "#0a0a0a" },
         { l: "Abiertos", v: c.opened || 0, pct: c.opened ? (c.opened / c.sent) * 100 : 0, color: "var(--primary)" },
       ]
     : null;
@@ -652,7 +643,7 @@ function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 540, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 85% 20%, ${km.c}33, transparent 60%)` }} />
-          <button onClick={close} style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={close} style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
             <Icon name="x" size={13} color="#fff" />
           </button>
           <div style={{ position: "relative" }}>
@@ -662,6 +653,9 @@ function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="users" size={11} color="rgba(255,255,255,0.7)" />{c.audience}</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="clock" size={11} color="rgba(255,255,255,0.7)" />{c.when}</span>
             </div>
+            <p style={{ margin: "12px 0 0", fontSize: 11, color: "rgba(255,255,255,0.68)", lineHeight: 1.5 }}>
+              Clicks, conversión y acuse de entrega quedan pendientes de instrumentación.
+            </p>
           </div>
         </div>
 

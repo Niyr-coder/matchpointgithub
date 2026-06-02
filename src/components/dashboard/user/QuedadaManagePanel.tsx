@@ -45,15 +45,18 @@ import {
   setQuedadaStatus,
   setQuedadaResults,
   cancelQuedada,
-  generateAmericanoRound,
+  generateQuedadaRound,
+  createManualQuedadaGame,
   reportGame,
   deleteRound,
   finishQuedada,
   startAmericanoRolling,
   reportRollingGame,
+  reportQuedada,
 } from "@/server/actions/quedadas";
 import { QuedadaGameView } from "./QuedadaGameView";
 import { individualStandings, type StandingRow, type GameForStandings } from "@/lib/quedadas/standings";
+import { getQuedadaEngine, rosterModeFor, standingsModeFor } from "@/lib/quedadas/engines/registry";
 import type { PaymentAccount, Prize, QuedadaRule } from "@/lib/schemas/quedadas";
 import {
   BankAccountFields,
@@ -348,7 +351,7 @@ function CourtMatchup({ teamA, teamB, nameSize = 12 }: { teamA: string[]; teamB:
   );
 }
 
-type PrevMatch = { seqNo: number; teamA: string[]; teamB: string[]; pointsA: number | null; pointsB: number | null; durationMs: number | null };
+type PrevMatch = { gameId: string; seqNo: number; teamA: string[]; teamB: string[]; pointsA: number | null; pointsB: number | null; durationMs: number | null; played: boolean };
 type CourtMatch = {
   gameId: string;
   seqNo: number; // round_no (modo rondas) o court_match_no (modo rolling)
@@ -392,7 +395,7 @@ function LiveTimer({ since }: { since: string }) {
   return <span className="tabular">{fmtClock(Number.isNaN(start) ? 0 : now - start)}</span>;
 }
 
-function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number | null; initialB: number | null; saving: boolean; onSave: (a: number, b: number) => void }) {
+function ScoreEditor({ initialA, initialB, saving, onSave, compact = false }: { initialA: number | null; initialB: number | null; saving: boolean; onSave: (a: number, b: number) => void; compact?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [a, setA] = useState(String(initialA ?? 0));
   const [b, setB] = useState(String(initialB ?? 0));
@@ -408,6 +411,15 @@ function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number 
     }
   };
   const busy = submitted || saving;
+  // Tamaños tipográficos del marcador. `compact` se usa cuando el marcador vive
+  // dentro de la sección "Partido anterior" del widget de cancha, para no
+  // competir visualmente con el marcador del partido actual.
+  const numFontSize = compact ? 16 : 26;
+  const dashFontSize = compact ? 14 : 20;
+  const cellWidth = compact ? 26 : 40;
+  const dashGap = compact ? 3 : 4;
+  const pencilSize = compact ? 11 : 13;
+  const pencilGap = compact ? 5 : 8;
 
   // Vista por defecto: marcador estático + lapicito (clickeable) a la izquierda,
   // fuera del flujo para no descentrar el marcador.
@@ -420,13 +432,13 @@ function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number 
           disabled={busy}
           aria-label="Editar marcador"
           className="mp-edit-pencil"
-          style={{ position: "absolute", right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: 8, border: 0, background: "transparent", padding: 0, lineHeight: 0, cursor: busy ? "default" : "pointer" }}
+          style={{ position: "absolute", right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: pencilGap, border: 0, background: "transparent", padding: 0, lineHeight: 0, cursor: busy ? "default" : "pointer" }}
         >
-          <Icon name="pencil" size={13} color="currentColor" />
+          <Icon name="pencil" size={pencilSize} color="currentColor" />
         </button>
-        <span className="font-heading tabular" style={{ fontSize: 26, fontWeight: 900, lineHeight: 1 }}>
+        <span className="font-heading tabular" style={{ fontSize: numFontSize, fontWeight: 900, lineHeight: 1 }}>
           {Number.isFinite(na) ? na : 0}
-          <span style={{ color: "var(--primary)", margin: "0 4px" }}>–</span>
+          <span style={{ color: "var(--primary)", margin: `0 ${dashGap}px` }}>–</span>
           {Number.isFinite(nb) ? nb : 0}
         </span>
       </div>
@@ -434,10 +446,10 @@ function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number 
   }
 
   const cell: React.CSSProperties = {
-    width: 40,
+    width: cellWidth,
     textAlign: "center",
     fontFamily: "var(--font-heading, inherit)",
-    fontSize: 26,
+    fontSize: numFontSize,
     fontWeight: 900,
     lineHeight: 1,
     color: "var(--fg)",
@@ -469,7 +481,7 @@ function ScoreEditor({ initialA, initialB, saving, onSave }: { initialA: number 
   return (
     <div onBlur={onBlur} style={{ display: "inline-flex", alignItems: "center", gap: 2, opacity: busy ? 0.45 : 1, pointerEvents: busy ? "none" : undefined, transition: "opacity 150ms var(--ease-out)" }}>
       <input type="number" min={0} max={MAX_POINTS} autoFocus className="mp-no-spin" value={a} onChange={handle(setA)} onFocus={(e) => e.currentTarget.select()} onKeyDown={(e) => e.key === "Enter" && save()} aria-label="Puntos lado A" style={{ ...cell, textAlign: "right" }} />
-      <span className="font-heading" style={{ fontSize: 20, fontWeight: 900, color: "var(--primary)" }}>–</span>
+      <span className="font-heading" style={{ fontSize: dashFontSize, fontWeight: 900, color: "var(--primary)" }}>–</span>
       <input type="number" min={0} max={MAX_POINTS} className="mp-no-spin" value={b} onChange={handle(setB)} onFocus={(e) => e.currentTarget.select()} onKeyDown={(e) => e.key === "Enter" && save()} aria-label="Puntos lado B" style={{ ...cell, textAlign: "left" }} />
     </div>
   );
@@ -574,11 +586,22 @@ function MatchCarouselCard({
                           Partido anterior{m.prev?.durationMs != null ? ` · ${fmtDurMin(m.prev.durationMs)}` : ""}
                         </span>
                         {m.prev && (
-                          <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900, color: "var(--fg)" }}>
-                            {m.prev.pointsA ?? 0}
-                            <span style={{ color: "var(--muted-fg)", margin: "0 2px" }}>–</span>
-                            {m.prev.pointsB ?? 0}
-                          </span>
+                          canReport ? (
+                            <ScoreEditor
+                              key={`prev-${m.prev.gameId}`}
+                              initialA={m.prev.pointsA}
+                              initialB={m.prev.pointsB}
+                              saving={reporting}
+                              onSave={(a, b) => onReport(m.prev!.gameId, a, b)}
+                              compact
+                            />
+                          ) : (
+                            <span className="font-heading tabular" style={{ flexShrink: 0, fontSize: 14, fontWeight: 900, color: "var(--fg)" }}>
+                              {m.prev.pointsA ?? 0}
+                              <span style={{ color: "var(--muted-fg)", margin: "0 2px" }}>–</span>
+                              {m.prev.pointsB ?? 0}
+                            </span>
+                          )
                         )}
                       </div>
                       {m.prev ? (
@@ -982,6 +1005,7 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
   const [cat, setCat] = useState<string>("all");
   const [reportFor, setReportFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [reporting, startReport] = useTransition();
   // Asignación directa de cupo desde el chip "Sin cupo" (roster individual).
   const [assignFor, setAssignFor] = useState<string | null>(null);
   const [assigning, startAssign] = useTransition();
@@ -1005,8 +1029,7 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
 
   const joined = data.participants.filter((p) => p.status === "joined");
   const multiCat = data.categories.length > 1;
-  // Roster individual (americano/singles): 1 jugador por cupo → asignación directa.
-  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+  const individualRoster = rosterModeFor(data.quedada.format, data.quedada.match_mode) === "individual";
 
   // Categorías con al menos un cupo libre (para el picker de asignación directa).
   // Devuelve [{ id, name, freeSlot }] con el cupo libre más bajo.
@@ -1085,10 +1108,26 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
   };
 
   const submitReport = () => {
+    if (!reportFor || reporting) return;
+    const trimmed = reason.trim();
+    if (trimmed.length < 3) {
+      toast({ icon: "alert-triangle", title: "Escribe al menos 3 caracteres" });
+      return;
+    }
     const name = reportFor ? nameOf(reportFor) : "";
-    setReportFor(null);
-    setReason("");
-    toast({ icon: "flag", title: "Reporte registrado", sub: `${name} — demo, aún no se guarda.` });
+    startReport(async () => {
+      const res = await reportQuedada({
+        quedadaId: data.quedada.id,
+        reason: `Jugador reportado: ${name} (${reportFor}). Motivo: ${trimmed}`,
+      });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo reportar", sub: res.error.message });
+        return;
+      }
+      setReportFor(null);
+      setReason("");
+      toast({ icon: "flag", title: "Reporte enviado", sub: "Gracias, lo revisaremos." });
+    });
   };
 
   return (
@@ -1235,11 +1274,10 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
               rows={3}
               style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10, fontFamily: "inherit", fontSize: 13, outline: "none", background: "#fff", color: "var(--fg)", resize: "vertical" }}
             />
-            <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>Demo: el reporte aún no se guarda ni se notifica.</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setReportFor(null)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Cancelar</button>
-              <button type="button" onClick={submitReport} className="btn" style={{ background: "#dc2626", color: "#fff", border: "1px solid #dc2626" }}>
-                <Icon name="flag" size={13} color="#fff" /> Reportar
+              <button type="button" onClick={() => setReportFor(null)} disabled={reporting} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Cancelar</button>
+              <button type="button" onClick={submitReport} disabled={reporting} className="btn" style={{ background: "#dc2626", color: "#fff", border: "1px solid #dc2626", opacity: reporting ? 0.65 : 1 }}>
+                <Icon name="flag" size={13} color="#fff" /> {reporting ? "Enviando…" : "Reportar"}
               </button>
             </div>
           </div>
@@ -1563,7 +1601,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
   const paidCount = data ? data.participants.filter((p) => p.paid).length : 0;
   const sm = q ? quedadaStatusMeta(q.status) : null;
-  const isAmericano = q?.format === "americano";
+  const engine = q ? getQuedadaEngine(q.format) : null;
 
   // Categoría principal (la primera por orden): contexto para "Generar ronda" y
   // para el partido destacado del header en Americano.
@@ -1578,7 +1616,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const catGames = data && mainCategory ? data.games.filter((g) => g.category_id === mainCategory.id) : [];
   const currentRoundNo = catGames.reduce((m, g) => Math.max(m, g.round_no ?? 0), 0);
   const isRolling = q?.engine_mode === "rolling";
-  const seqWord = isRolling ? "Partido" : "Ronda";
+  const seqWord = isRolling ? "Partido" : engine?.roundLabel ?? "Ronda";
 
   const sideNames = (g: ManageGame, side: "a" | "b"): string[] =>
     (side === "a" ? [g.side_a_p1, g.side_a_p2] : [g.side_b_p1, g.side_b_p2])
@@ -1597,12 +1635,14 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     startedAt: g.created_at,
     prev: prev
       ? {
+          gameId: prev.id,
           seqNo: seqOf(prev),
           teamA: sideNames(prev, "a"),
           teamB: sideNames(prev, "b"),
           pointsA: prev.points_a,
           pointsB: prev.points_b,
           durationMs: Date.parse(prev.updated_at) - Date.parse(prev.created_at) || null,
+          played: prev.status === "played",
         }
       : null,
   });
@@ -1610,7 +1650,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   // Carrusel: un slide por cancha. Por cada cancha, el ÚLTIMO partido es el actual
   // y el anterior es el historial (catGames viene ordenado por created_at asc).
   const courtMatches: CourtMatch[] = (() => {
-    if (!data || !isAmericano || !mainCategory) return [];
+    if (!data || !engine || !mainCategory) return [];
     const byCourt = new Map<number, ManageGame[]>();
     for (const g of catGames) {
       if (g.court_no == null) continue;
@@ -1693,7 +1733,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const standingsPlayers =
     data && mainCategory ? data.pairs.filter((p) => p.category_id === mainCategory.id).map((p) => p.player_a_id) : [];
   const standings: StandingRow[] =
-    isAmericano && standingsPlayers.length > 0
+    q && standingsModeFor(q.format, q.match_mode) === "individual" && standingsPlayers.length > 0
       ? individualStandings(catGames as GameForStandings[], standingsPlayers, nameById)
       : [];
 
@@ -1753,14 +1793,14 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     return [...byCourt.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => toHistory(g));
   })();
 
-  // Generar la siguiente ronda del Americano (modo rondas).
+  // Generar la siguiente ronda desde el motor del formato.
   const genRound = () => {
     if (!mainCategory) {
       toast({ icon: "alert-triangle", title: "Crea una categoría primero" });
       return;
     }
     startBusy(async () => {
-      const res = await generateAmericanoRound({ quedadaId, categoryId: mainCategory.id });
+      const res = await generateQuedadaRound({ quedadaId, categoryId: mainCategory.id });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo generar la ronda", sub: res.error.message });
         return;
@@ -1830,9 +1870,8 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     !!q &&
     (q.status === "registration_closed" || q.status === "live" || q.status === "finished");
   // Gestión = setup; Juego = el motor (partidos + resultados/podio).
-  // En americano el roster es individual → la pestaña se llama "Jugadores".
   // Orden del flujo: la gente se inscribe y paga primero, luego se arma el roster.
-  const rosterLabel = q?.format === "americano" ? "Jugadores" : "Parejas";
+  const rosterLabel = q && rosterModeFor(q.format, q.match_mode) === "individual" ? "Jugadores" : "Parejas";
   const gestionTabs: { k: TabKey; label: string }[] = [
     { k: "resumen", label: "Resumen" },
     { k: "pagos", label: "Pagos" },
@@ -1873,8 +1912,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     </button>
   );
 
-  // Acción primaria contextual al estado (avanza el flujo) + compartir vista
-  // jugador. En americano "en vivo" la primaria es Generar ronda (como el mock).
+  // Acción primaria contextual al estado (avanza el flujo) + compartir vista jugador.
   const headerButtons =
     q && data?.canManage ? (
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
@@ -1884,18 +1922,18 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
         {data.isCreator && q.status === "registration_closed" && (
           <HeaderBtn onClick={() => changeStatus("live")} disabled={busy} icon="play" tone="primary">Iniciar quedada</HeaderBtn>
         )}
-        {data.isCreator && q.status === "live" && isAmericano && isRolling && (
+        {data.isCreator && q.status === "live" && q.format === "americano" && isRolling && (
           <HeaderBtn onClick={startRolling} disabled={busy} icon="layout-grid" tone="primary">Llenar canchas</HeaderBtn>
         )}
-        {data.isCreator && q.status === "live" && isAmericano && !isRolling && (
-          <HeaderBtn onClick={genRound} disabled={busy} icon="plus" tone="primary">Generar ronda</HeaderBtn>
+        {data.isCreator && q.status === "live" && engine?.canGenerateRound && !isRolling && (
+          <HeaderBtn onClick={genRound} disabled={busy} icon="plus" tone="primary">Generar {engine.roundLabel.toLowerCase()}</HeaderBtn>
         )}
         <HeaderBtn onClick={sharePlayerView} icon="share-2" tone="ghost">Compartir vista jugador</HeaderBtn>
       </div>
     ) : null;
 
   // Card propia (columna a la derecha) con el carrusel de partidos en cancha.
-  const nextMatchCard = data && isAmericano ? (
+  const nextMatchCard = data ? (
     <MatchCarouselCard
       matches={courtMatches}
       seqWord={seqWord}
@@ -1915,7 +1953,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
         data.isCreator
           ? isRolling
             ? "Pulsa “Llenar canchas” para empezar."
-            : "Genera la primera ronda para empezar."
+            : "Genera o crea el primer partido para empezar."
           : "El organizador aún no generó partidos."
       }
     />
@@ -2003,8 +2041,8 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const estadoValue =
     q == null
       ? "—"
-      : isAmericano && q.status === "live" && currentRoundNo > 0
-        ? `Ronda ${currentRoundNo} en vivo`
+      : q.status === "live" && currentRoundNo > 0
+        ? `${engine?.roundLabel ?? "Ronda"} ${currentRoundNo} en vivo`
         : sm?.label ?? q.status;
   const statsRow = (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
@@ -2013,7 +2051,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           <StatCard label="Estado" value={estadoValue} sub={startRel(q.starts_at)} valueColor={quedadaStatusSolid(q.status)} />
           <StatCard label="Jugadores" value={`${joinedCount} confirmados`} sub={cuposSub} />
           <StatCard label="Cobros" value={`${paidCount}/${joinedCount} pagados`} sub={pendingPay === 0 ? "Todos al día" : `${pendingPay} pendiente${pendingPay > 1 ? "s" : ""}`} />
-          <StatCard label="Formato" value={FORMAT_LABEL[q.format] ?? q.format} sub={isAmericano ? "Ranking individual" : q.match_mode === "singles" ? "Singles" : "Dobles"} />
+          <StatCard label="Formato" value={FORMAT_LABEL[q.format] ?? q.format} sub={engine ? `${engine.tableEntityLabel} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}` : q.match_mode === "singles" ? "Singles" : "Dobles"} />
         </>
       ) : (
         [0, 1, 2, 3].map((i) => (
@@ -2223,12 +2261,12 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           </div>
           <div className="mp-quedada-side" style={{ maxWidth: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
             {nextMatchCard}
-            {data && isAmericano && <InsightCard {...insights} />}
+            {data && <InsightCard {...insights} />}
           </div>
         </div>
       )}
 
-      {activePageTab === "partidos" && data && isAmericano && (
+      {activePageTab === "partidos" && data && (
         <PartidosTabView
           matches={courtMatches}
           standings={standings}
@@ -2249,11 +2287,6 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           history={gameHistory}
           lastPerCourt={lastPerCourt}
         />
-      )}
-      {activePageTab === "partidos" && (!data || !isAmericano) && (
-        <div key="partidos-empty" className="mp-tab-in card" style={{ padding: 22, color: "var(--muted-fg)", fontSize: 13 }}>
-          La vista de juego está disponible para el formato Americano.
-        </div>
       )}
 
       {activePageTab === "roster" && data && (
@@ -3030,14 +3063,15 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const q = data.quedada;
-  const isAmericano = q.format === "americano";
+  const engine = getQuedadaEngine(q.format);
+  const standingsMode = engine.standingsMode(q.match_mode);
   const hasGames = data.games.length > 0;
   const finished = q.status === "finished";
   const cancelled = q.status === "cancelled";
 
   const generateRound = (categoryId: string) => {
     startTx(async () => {
-      const res = await generateAmericanoRound({ quedadaId: q.id, categoryId });
+      const res = await generateQuedadaRound({ quedadaId: q.id, categoryId });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo generar la ronda", sub: res.error.message });
         return;
@@ -3048,6 +3082,18 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
         title: `Ronda ${res.data.roundNo} generada`,
         sub: byes > 0 ? `${byes} jugador(es) descansan esta ronda` : undefined,
       });
+      await onChanged();
+    });
+  };
+
+  const createManualGame = (args: { categoryId: string; sideA: string[]; sideB: string[]; courtNo: number | null }) => {
+    startTx(async () => {
+      const res = await createManualQuedadaGame({ quedadaId: q.id, ...args });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo crear el partido", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: `Partido ${res.data.roundNo} creado` });
       await onChanged();
     });
   };
@@ -3087,7 +3133,7 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
   const doFinish = async () => {
     const ok = await confirm({
       title: "Cerrar quedada",
-      body: "Se calcula el podio individual por categoría (ranking por puntos a favor) y la quedada pasa a finalizada. ¿Cerrar?",
+      body: "Se calcula el podio según el motor del formato y la quedada pasa a finalizada. ¿Cerrar?",
       confirmLabel: "Cerrar y publicar podio",
       cancelLabel: "Cancelar",
     });
@@ -3103,24 +3149,8 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
     });
   };
 
-  if (!isAmericano) {
-    return (
-      <Section label="Juego" title="Motor de juego">
-        <div className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 12, background: "var(--muted)", color: "var(--muted-fg)" }}>
-          <Icon name="clock" size={18} color="var(--muted-fg)" />
-          <div>
-            <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, color: "var(--fg)" }}>Pronto</div>
-            <div style={{ fontSize: 12, marginTop: 2 }}>
-              El motor de juego de este formato todavía no está disponible. Por ahora puedes gestionar parejas y pagos.
-            </div>
-          </div>
-        </div>
-      </Section>
-    );
-  }
-
   return (
-    <Section label="Juego" title="Partidos por categoría" sub="Genera rondas, carga los puntos y mira la tabla.">
+    <Section label="Juego" title="Partidos por categoría" sub={`Motor ${engine.label}: genera o crea partidos, carga puntos y mira la tabla.`}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <QuedadaGameView
           categories={data.categories}
@@ -3130,9 +3160,16 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
           games={data.games}
           meUserId={data.meUserId}
           matchMode={q.match_mode}
+          formatLabel={engine.label}
+          roundLabel={engine.roundLabel}
+          tableEntityLabel={engine.tableEntityLabel}
+          standingsMode={standingsMode}
+          canGenerateRound={engine.canGenerateRound}
+          canManualGame={engine.canManualGame}
           quedadaTargetPoints={data.quedada.target_points}
           canManage
           onGenerateRound={generateRound}
+          onCreateManualGame={createManualGame}
           onReportGame={report}
           onDeleteRound={removeRound}
         />
@@ -3355,7 +3392,7 @@ function DetailsSection({ data, onSaved }: { data: ManageData; onSaved: () => Pr
 function EngineSection({ data, onSaved }: { data: ManageData; onSaved: () => Promise<void> }) {
   const toast = useToast();
   const [pending, start] = useTransition();
-  const isAmericano = data.quedada.format === "americano";
+  const engine = getQuedadaEngine(data.quedada.format);
   const hasGames = data.games.length > 0;
   const [mode, setMode] = useState<"rounds" | "rolling">(data.quedada.engine_mode);
   const [target, setTarget] = useState(data.quedada.target_points != null ? String(data.quedada.target_points) : "");
@@ -3366,7 +3403,7 @@ function EngineSection({ data, onSaved }: { data: ManageData; onSaved: () => Pro
       const res = await updateQuedadaLogistics({
         quedadaId: data.quedada.id,
         targetPoints: target.trim() ? parseInt(target, 10) : null,
-        ...(hasGames ? {} : { engineMode: mode }),
+        ...(hasGames ? {} : { engineMode: mode === "rolling" ? "rounds" : mode }),
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo guardar", sub: res.error.message });
@@ -3378,31 +3415,31 @@ function EngineSection({ data, onSaved }: { data: ManageData; onSaved: () => Pro
   };
 
   return (
-    <Section label="Juego" title="Motor de juego" sub="Cómo se arman los partidos y a cuántos puntos se juega.">
-      {!isAmericano && (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: "8px 10px", background: "var(--muted)", borderRadius: 8 }}>
-          El motor configurable aplica al formato Americano. Otros formatos llegan pronto.
-        </div>
-      )}
+    <Section label="Juego" title="Motor de juego" sub={`Formato ${engine.label}: ${engine.canGenerateRound ? "emparejamiento automático por rondas" : "partidos manuales"}.`}>
       <Field label="Modo de emparejamiento">
         <div style={{ display: "flex", gap: 8 }}>
           {([["rounds", "Por rondas"], ["rolling", "Continuo por cancha"]] as const).map(([v, label]) => {
             const on = mode === v;
+            const rollingWip = v === "rolling";
+            const disabled = hasGames || rollingWip;
             return (
               <button
                 key={v}
                 type="button"
-                disabled={hasGames}
-                onClick={() => setMode(v)}
-                title={hasGames ? "No puedes cambiar el motor con partidos ya generados" : undefined}
-                style={{ flex: 1, padding: "9px 12px", borderRadius: 9, fontSize: 12, fontWeight: 800, cursor: hasGames ? "default" : "pointer", opacity: hasGames && !on ? 0.5 : 1, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)" }}
+                disabled={disabled}
+                onClick={() => !disabled && setMode(v)}
+                title={rollingWip ? "El modo continuo se habilitará cuando la vista por cancha esté completa para jugadores" : hasGames ? "No puedes cambiar el motor con partidos ya generados" : undefined}
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 9, fontSize: 12, fontWeight: 800, cursor: disabled ? "default" : "pointer", opacity: disabled && !on ? 0.5 : 1, border: on ? 0 : "1px solid var(--border)", background: on ? "var(--fg)" : "#fff", color: on ? "#fff" : "var(--muted-fg)" }}
               >
-                {label}
+                {label}{rollingWip ? " · En pausa" : ""}
               </button>
             );
           })}
         </div>
       </Field>
+      <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+        Por ahora usamos rondas. El modo continuo se habilitará cuando la vista por cancha esté completa para jugadores.
+      </div>
       {hasGames && (
         <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
           El modo está bloqueado porque ya hay partidos generados.
@@ -3936,11 +3973,11 @@ function CategoryForm({
   );
 }
 
-// ── 5. Roster por categoría (parejas fijas, o jugadores en americano) ─────────
+// ── 5. Roster por categoría (parejas fijas o jugadores individuales) ──────────
 function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
-  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+  const individualRoster = rosterModeFor(data.quedada.format, data.quedada.match_mode) === "individual";
   const title = individualRoster ? "Jugadores por categoría" : "Parejas por categoría";
-  const sub = individualRoster ? "Asigna un jugador a cada cupo (en americano el compañero rota cada ronda)." : "Asigna parejas a cada cupo.";
+  const sub = individualRoster ? "Asigna un jugador a cada cupo; el motor decide cómo rota en los partidos." : "Asigna parejas a cada cupo.";
   return (
     <Section label="Roster" title={title} sub={sub}>
       {data.categories.length === 0 ? (
@@ -3974,8 +4011,7 @@ function CategorySlots({
   const [, startTx] = useTransition();
   const [open, setOpen] = useState(true);
   const [assigningSlot, setAssigningSlot] = useState<number | null>(null);
-  // Americano = roster individual (1 por cupo); el compañero rota cada ronda.
-  const individualRoster = data.quedada.format === "americano" || data.quedada.match_mode === "singles";
+  const individualRoster = rosterModeFor(data.quedada.format, data.quedada.match_mode) === "individual";
   const isDoubles = !individualRoster && data.quedada.match_mode === "doubles";
   const unitWord = individualRoster ? "jugador" : "pareja";
 

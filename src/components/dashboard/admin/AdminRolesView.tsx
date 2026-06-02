@@ -11,28 +11,54 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { MP_ROLES, type RoleKey } from "@/lib/roles";
+import { roleBadgeMeta } from "@/lib/ui/role-badge";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
+import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 import { assignRole, revokeRole, approveRoleRequest, rejectRoleRequest, searchUsers, listRoleMembers, type RoleMemberDTO } from "@/server/actions/roles";
 import { updateRoleCapability } from "@/server/actions/role-capabilities";
 import type { RolesData, RoleRequest, ClubOption } from "./AdminRolesScreenView";
 
 type Level = "all" | "limited" | "own" | "public" | "none";
-type Role = { k: string; t: string; color: string; scope: string; desc: string };
+type Role = { k: RoleKey; t: string; color: string; icon: string; badge: string; scope: string; desc: string };
 
 // Solo los 7 RoleKeys reales del sistema (sin mod/support/finance del prototipo).
-const ROLES: Role[] = [
-  { k: "admin", t: "Admin", color: "#dc2626", scope: "Plataforma", desc: "Control total de la plataforma. Sin restricciones." },
-  { k: "partner", t: "Partner", color: "#7c3aed", scope: "Club", desc: "Organiza ligas y torneos." },
-  { k: "owner", t: "Owner club", color: "#0a0a0a", scope: "Club", desc: "Dueño de un club registrado." },
-  { k: "manager", t: "Manager club", color: "#0891b2", scope: "Club", desc: "Operación diaria del club." },
-  { k: "coach", t: "Coach", color: "#f59e0b", scope: "Club", desc: "Da clases en clubes asociados." },
-  { k: "employee", t: "Empleado club", color: "#84cc16", scope: "Club", desc: "Recepción, caja, atención." },
-  { k: "user", t: "Usuario", color: "#737373", scope: "End user", desc: "Jugador estándar." },
-];
+const ROLE_ORDER: RoleKey[] = ["admin", "partner", "owner", "manager", "coach", "employee", "user"];
+const ROLE_TITLE: Record<RoleKey, string> = {
+  admin: "Admin",
+  partner: "Partner",
+  owner: "Owner club",
+  manager: "Manager club",
+  coach: "Coach",
+  employee: "Empleado club",
+  user: "Jugador",
+};
+const ROLE_SCOPE: Record<RoleKey, string> = {
+  admin: "Plataforma",
+  partner: "Club",
+  owner: "Club",
+  manager: "Club",
+  coach: "Club",
+  employee: "Club",
+  user: "End user",
+};
+const ROLES: Role[] = ROLE_ORDER.map((k) => {
+  const cfg = MP_ROLES[k];
+  const badge = roleBadgeMeta(k);
+  return {
+    k,
+    t: ROLE_TITLE[k],
+    color: badge.color,
+    icon: badge.icon,
+    badge: badge.label,
+    scope: ROLE_SCOPE[k],
+    desc: cfg.desc,
+  };
+});
 const ROLE_LABEL: Record<string, string> = Object.fromEntries(ROLES.map((r) => [r.k, r.t]));
-const CLUB_SCOPED = new Set(["owner", "manager", "coach", "employee"]);
+const CLUB_SCOPED = new Set<string>(["owner", "manager", "coach", "employee"]);
 const SCOPES = ["Plataforma", "Club", "End user"];
 
 const DOMAINS = [
@@ -252,7 +278,12 @@ export function AdminRolesView({ data }: { data: RolesData }) {
             <div aria-hidden style={{ position: "absolute", top: 0, right: 0, fontFamily: "var(--font-heading)", fontWeight: 900, fontSize: 180, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(8%, -16%)", textTransform: "uppercase", pointerEvents: "none" }}>{sel.t}</div>
             <div style={{ position: "relative", padding: "22px 26px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span className="label-mp" style={{ color: sel.color }}>● Rol seleccionado</span>
+                <MpBadge
+                  {...roleBadgeMeta(sel.k)}
+                  variant="soft"
+                  size="sm"
+                  title="Rol seleccionado"
+                />
                 <span style={{ padding: "2px 8px", borderRadius: 9999, background: "rgba(255,255,255,0.1)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase" }}>{sel.scope}</span>
               </div>
               <div className="mp-roles-hero" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
@@ -404,7 +435,7 @@ function EditPermsModal({ role, levelOf, onClose, onChanged }: { role: Role; lev
             <div className="label-mp" style={{ color: role.color }}>● Editar permisos · {role.t}</div>
             <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", margin: "4px 0 0" }}>Capacidades del rol<span className="dot">.</span></h2>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1, color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
         </div>
         <div style={{ padding: "8px 0", overflowY: "auto" }}>
           {DOMAINS.map((d) => (
@@ -540,7 +571,7 @@ function AssignRoleModal({ clubs, defaultRole, onClose, onDone }: { clubs: ClubO
       <div onMouseDown={(e) => e.stopPropagation()} className="card mp-modal-panel" style={{ padding: 24, width: 480, maxWidth: "100%", display: "flex", flexDirection: "column", gap: 14, maxHeight: "90vh", overflow: "auto", animation: "mpPop 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", margin: 0 }}>Asignar rol<span className="dot">.</span></h2>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1, color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
         </div>
 
         <div>

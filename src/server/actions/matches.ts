@@ -19,6 +19,19 @@ import { AuthError } from "@/lib/auth/session";
 import { IsoDateTimeSchema, MpSportSchema, UuidSchema } from "@/lib/schemas/common";
 import { getPlanForUser } from "@/lib/auth/plan";
 import { getProfileSummary } from "@/lib/auth/profile";
+import {
+  retarGradientForUserId,
+  retarHeroWhoFromUser,
+  retarInitialsFromName,
+  retarLevelFromRating,
+} from "@/lib/match/retar-hero-present";
+import { listClubs } from "@/server/actions/clubs";
+import { sendMessage } from "@/server/actions/messaging";
+import { cancelReservation, createReservation } from "@/server/actions/reservations";
+import {
+  readMatchPlannedMeta,
+  type MatchPlannedMeta,
+} from "@/lib/matches/planned-meta";
 
 // Los tipos generados de Supabase (src/lib/db/types.ts) todavía no incluyen la
 // tabla `matches` — esos tipos se regeneran cuando la migration 053 se aplica.
@@ -55,6 +68,12 @@ const MatchScoreSchema = z.object({
 
 type MatchScore = z.infer<typeof MatchScoreSchema>;
 
+/** Metadata en `score` mientras el partido sigue en `scheduled` (sin sets reportados). */
+type MatchPlannedScore = { planned: MatchPlannedMeta };
+type MatchScorePayload = MatchScore | MatchPlannedScore;
+
+const PlannedBestOfSchema = z.union([z.literal(1), z.literal(3), z.literal(5)]);
+
 const CreateMatchSchema = z
   .object({
     sport: MpSportSchema,
@@ -65,6 +84,9 @@ const CreateMatchSchema = z
     durationMin: z.coerce.number().int().min(15).max(480).default(60),
     teamAPlayerIds: z.array(UuidSchema).min(1).max(2),
     teamBPlayerIds: z.array(UuidSchema).min(1).max(2),
+    isRanked: z.boolean().optional().default(false),
+    plannedBestOf: PlannedBestOfSchema.optional(),
+    challengeMessage: z.string().trim().max(180).optional(),
   })
   .refine((d) => d.teamAPlayerIds.length === d.teamBPlayerIds.length, {
     message: "Los dos equipos deben tener el mismo número de jugadores",
@@ -116,7 +138,7 @@ export type MatchRow = {
   durationMin: number;
   teamAPlayerIds: string[];
   teamBPlayerIds: string[];
-  score: MatchScore | null;
+  score: MatchScorePayload | null;
   reportedBy: string | null;
   reportedAt: string | null;
   confirmedBy: string[];
@@ -139,7 +161,7 @@ type DbMatch = {
   duration_min: number;
   team_a_player_ids: string[];
   team_b_player_ids: string[];
-  score: MatchScore | null;
+  score: MatchScorePayload | null;
   reported_by: string | null;
   reported_at: string | null;
   confirmed_by: string[] | null;
@@ -201,14 +223,51 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
       );
     }
     const baseSupabase = await getServerClient();
-    // Premium gate: solo matches creados por usuarios Premium cuentan para
-    // ranking (is_ranked=true). Free crea matches casuales (is_ranked=false)
-    // que quedan en historial pero no disparan el recálculo ELO. El opponent
-    // se beneficia del rating si el creador es Premium, sin importar su plan.
+    // Premium gate: is_ranked solo si el creador es Premium y pidió ranked.
+    // Free siempre casual; el rival se beneficia del ELO si el match es ranked.
     const creatorPlan = await getPlanForUser(baseSupabase, userId);
-    const isRanked = creatorPlan.tier === "premium";
+    const isRanked = creatorPlan.tier === "premium" && data.isRanked === true;
 
     const supabase = await getMatchesClient();
+    const plannedMeta: MatchPlannedMeta = {};
+    if (data.plannedBestOf) plannedMeta.bestOf = data.plannedBestOf;
+
+    if (data.clubId && data.courtId) {
+      const startsAt = data.playedAt;
+      const endsAt = new Date(
+        new Date(startsAt).getTime() + data.durationMin * 60_000,
+      ).toISOString();
+      const rsvRes = await createReservation({
+        clubId: data.clubId,
+        courtId: data.courtId,
+        startsAt,
+        endsAt,
+        sport: data.sport,
+        visibility: "private",
+        maxPlayers: data.mode === "doubles" ? 4 : 2,
+        notes: "Reserva del reto MATCHPOINT",
+      });
+      if (!rsvRes.ok) {
+        const code = rsvRes.error.code;
+        if (code === "RESERVATION.SLOT_TAKEN") {
+          throw new MpError(
+            "MATCH.SLOT_TAKEN",
+            "Ese horario ya está reservado. Elige otra hora o cancha.",
+            409,
+          );
+        }
+        throw new MpError(
+          "MATCH.RESERVATION_FAILED",
+          rsvRes.error.message,
+          500,
+        );
+      }
+      plannedMeta.reservationId = rsvRes.data.id;
+    }
+
+    const plannedScore: MatchPlannedScore | null =
+      plannedMeta.bestOf || plannedMeta.reservationId ? { planned: plannedMeta } : null;
+
     const { data: row, error } = await supabase
       .from("matches")
       .insert({
@@ -223,13 +282,61 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
         status: "scheduled",
         is_ranked: isRanked,
         created_by: userId,
+        score: plannedScore,
       } as never)
       .select("*")
       .single();
     if (error || !row) {
       throw new MpError("MATCH.CREATE_FAILED", error?.message ?? "No se pudo crear el partido", 500);
     }
-    return rowToMatch(row as DbMatch);
+    const match = rowToMatch(row as DbMatch);
+    const conversationId = await findMatchConversationId(match.id);
+
+    const challengeText = data.challengeMessage?.trim();
+    if (challengeText && conversationId) {
+      const msgRes = await sendMessage({
+        id: conversationId,
+        body: { body: challengeText, kind: "text" },
+      });
+      if (!msgRes.ok) {
+        console.error("[createMatch] challenge message failed:", msgRes.error.message);
+      }
+    }
+
+    if (plannedMeta.reservationId && conversationId && data.clubId && data.courtId) {
+      const base = await getServerClient();
+      const [{ data: clubRow }, { data: courtRow }] = await Promise.all([
+        base.from("clubs").select("name,city").eq("id", data.clubId).maybeSingle(),
+        base.from("courts").select("name,code").eq("id", data.courtId).maybeSingle(),
+      ]);
+      const courtName =
+        (courtRow?.name as string | null)?.trim() ||
+        `Cancha ${(courtRow?.code as string | undefined) ?? "?"}`;
+      const endsAt = new Date(
+        new Date(data.playedAt).getTime() + data.durationMin * 60_000,
+      ).toISOString();
+      const cardRes = await sendMessage({
+        id: conversationId,
+        body: {
+          body: `Reserva confirmada · ${courtName}`,
+          kind: "system",
+          payload: {
+            type: "court-reserved",
+            reservationId: plannedMeta.reservationId,
+            clubName: (clubRow?.name as string | undefined) ?? "Club",
+            courtName,
+            startsAt: data.playedAt,
+            endsAt,
+            matchId: match.id,
+          },
+        },
+      });
+      if (!cardRes.ok) {
+        console.error("[createMatch] reservation card failed:", cardRes.error.message);
+      }
+    }
+
+    return match;
   });
 }
 
@@ -498,6 +605,17 @@ export async function cancelMatch(input: unknown): Promise<ActionResult<MatchRow
       throw new MpError("MATCH.CANCEL_FAILED", updErr?.message ?? "No se pudo cancelar", 500);
     }
 
+    const linkedReservation = readMatchPlannedMeta(row.score).reservationId;
+    if (linkedReservation) {
+      const cancelRsv = await cancelReservation({
+        id: linkedReservation,
+        body: { reason: reason ?? "Partido cancelado" },
+      });
+      if (!cancelRsv.ok) {
+        console.error("[cancelMatch] reservation cancel failed:", cancelRsv.error.message);
+      }
+    }
+
     const conversationId = await findMatchConversationId(matchId);
     const canceller = await getProfileSummary(userId);
 
@@ -671,6 +789,30 @@ export async function rescheduleMatch(input: unknown): Promise<ActionResult<Matc
       );
     }
 
+    const linkedReservation = readMatchPlannedMeta(row.score).reservationId;
+    if (linkedReservation) {
+      const endsAt = new Date(
+        new Date(playedAt).getTime() + row.duration_min * 60_000,
+      ).toISOString();
+      const range = `[${playedAt},${endsAt})`;
+      const base = await getServerClient();
+      const { error: rsvErr } = await base
+        .from("reservations")
+        .update({ during: range } as never)
+        .eq("id", linkedReservation)
+        .eq("organizer_id", userId);
+      if (rsvErr) {
+        if (rsvErr.code === "23P01") {
+          throw new MpError(
+            "MATCH.SLOT_TAKEN",
+            "Ese horario ya está ocupado. Elige otra hora.",
+            409,
+          );
+        }
+        throw new MpError("MATCH.RESERVATION_RESCHEDULE_FAILED", rsvErr.message, 500);
+      }
+    }
+
     const { data: updated, error: updErr } = await supabase
       .from("matches")
       .update({ played_at: playedAt } as never)
@@ -694,5 +836,528 @@ export async function rescheduleMatch(input: unknown): Promise<ActionResult<Matc
     });
 
     return rowToMatch(updated as DbMatch);
+  });
+}
+
+// ── RetarModal hero (perfil + H2H) ─────────────────────────────────────────
+const STARTING_RATING = 2500;
+const SPORT_PRIMARY = "pickleball" as const;
+
+const AV_GRADIENTS = [
+  "linear-gradient(135deg,#7c3aed,#db2777)",
+  "linear-gradient(135deg,#0891b2,#06b6d4)",
+  "linear-gradient(135deg,#ca8a04,#facc15)",
+  "linear-gradient(135deg,#10b981,#047857)",
+  "linear-gradient(135deg,#dc2626,#fb923c)",
+];
+
+const GetMatchConversationSchema = z.object({ matchId: UuidSchema });
+
+export async function getMatchConversationId(
+  input: unknown,
+): Promise<ActionResult<{ conversationId: string }>> {
+  return runAction(GetMatchConversationSchema, input, async ({ matchId }) => {
+    await requireUserId();
+    const conversationId = await findMatchConversationId(matchId);
+    if (!conversationId) {
+      throw new MpError("MATCH.CHAT_NOT_FOUND", "Chat del partido no disponible", 404);
+    }
+    return { conversationId };
+  });
+}
+
+const GetRetarScheduleSchema = z.object({
+  sport: MpSportSchema.default("pickleball"),
+});
+
+export type RetarScheduleClubOption = {
+  id: string;
+  name: string;
+  city: string;
+};
+
+export type RetarScheduleOptions = {
+  userCity: string | null;
+  clubs: RetarScheduleClubOption[];
+};
+
+export async function getRetarScheduleOptions(
+  input: unknown,
+): Promise<ActionResult<RetarScheduleOptions>> {
+  return runAction(GetRetarScheduleSchema, input, async ({ sport }) => {
+    const userId = await requireUserId();
+    const profile = await getProfileSummary(userId);
+
+    const load = async (city?: string) => {
+      const res = await listClubs({ sport, city, page: 1, pageSize: 40 });
+      return res.ok ? res.data : [];
+    };
+
+    let clubs = profile.city ? await load(profile.city) : await load();
+    if (clubs.length === 0 && profile.city) {
+      clubs = await load();
+    }
+
+    return {
+      userCity: profile.city,
+      clubs: clubs.map((c) => ({ id: c.id, name: c.name, city: c.city })),
+    };
+  });
+}
+
+const GetRetarHeroSchema = z.object({
+  opponentId: UuidSchema.optional(),
+});
+
+export type RetarHeroPlayer = {
+  name: string;
+  level: number;
+  av: string;
+  avBg: string;
+  avatarUrl: string | null;
+};
+
+export type RetarHeroH2h = {
+  youWins: number;
+  rivalWins: number;
+  total: number;
+  streak: string | null;
+};
+
+export type ProfileScoutH2hMatch = {
+  date: string;
+  score: string;
+  result: "W" | "L";
+  venue: string;
+};
+
+export type ProfileScoutCommonRival = {
+  name: string;
+  initials: string;
+  tone: string;
+  mineRecord: string;
+  theirRecord: string;
+  edge: "you" | "they" | "even";
+};
+
+export type ProfileScoutMatchup = {
+  myWinPct: number;
+  theirWinPct: number;
+  confidence: "baja" | "media" | "alta";
+  expectedDelta: { ifWin: string; ifLose: string };
+};
+
+export type ProfileScoutPayload = {
+  h2hMatches: ProfileScoutH2hMatch[];
+  commonRivals: ProfileScoutCommonRival[];
+  matchup: ProfileScoutMatchup;
+};
+
+export type RetarHeroContext = {
+  me: RetarHeroPlayer;
+  opponent: RetarHeroPlayer | null;
+  h2h: RetarHeroH2h;
+  scout: ProfileScoutPayload | null;
+};
+
+function gradientForUserId(id: string): string {
+  return retarGradientForUserId(id);
+}
+
+function initialsFromName(name: string): string {
+  return retarInitialsFromName(name);
+}
+
+function levelFromRating(elo: number | null | undefined): number {
+  return retarLevelFromRating(elo);
+}
+
+function winnerFromScore(score: unknown): "a" | "b" | null {
+  if (!score || typeof score !== "object") return null;
+  const winner = (score as { winner?: unknown }).winner;
+  return winner === "a" || winner === "b" ? winner : null;
+}
+
+type RawH2hMatch = {
+  played_at: string;
+  team_a_player_ids: string[] | null;
+  team_b_player_ids: string[] | null;
+  score: unknown;
+  clubs?: { name?: string } | null;
+};
+
+const SCOUT_MONTHS_SHORT = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+
+function fmtScoutMatchDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${String(d.getDate()).padStart(2, "0")} ${SCOUT_MONTHS_SHORT[d.getMonth()]}`;
+}
+
+function scoreTextFromRaw(score: unknown, onTeamA: boolean): string {
+  if (!score || typeof score !== "object") return "—";
+  const sets = (score as { sets?: unknown }).sets;
+  if (!Array.isArray(sets) || sets.length === 0) return "—";
+  return sets
+    .map((s) => {
+      if (!Array.isArray(s) || s.length < 2) return "—";
+      const a = Number(s[0]);
+      const b = Number(s[1]);
+      return onTeamA ? `${a}-${b}` : `${b}-${a}`;
+    })
+    .join(", ");
+}
+
+function isHeadToHeadMatch(
+  match: RawH2hMatch,
+  userId: string,
+  opponentId: string,
+): boolean {
+  const teamA = match.team_a_player_ids ?? [];
+  const teamB = match.team_b_player_ids ?? [];
+  const meOnA = teamA.includes(userId);
+  const meOnB = teamB.includes(userId);
+  if (!meOnA && !meOnB) return false;
+  const oppOnA = teamA.includes(opponentId);
+  const oppOnB = teamB.includes(opponentId);
+  if (!oppOnA && !oppOnB) return false;
+  return !((meOnA && oppOnA) || (meOnB && oppOnB));
+}
+
+function buildH2hMatchRows(
+  matches: RawH2hMatch[],
+  userId: string,
+  opponentId: string,
+  limit = 5,
+): ProfileScoutH2hMatch[] {
+  const rows: ProfileScoutH2hMatch[] = [];
+  for (const match of matches) {
+    if (!isHeadToHeadMatch(match, userId, opponentId)) continue;
+    const teamA = match.team_a_player_ids ?? [];
+    const meOnA = teamA.includes(userId);
+    const winner = winnerFromScore(match.score);
+    if (!winner) continue;
+    const myTeam = meOnA ? "a" : "b";
+    const iWon = winner === myTeam;
+    rows.push({
+      date: fmtScoutMatchDate(match.played_at),
+      score: scoreTextFromRaw(match.score, meOnA),
+      result: iWon ? "W" : "L",
+      venue: match.clubs?.name ? `${match.clubs.name}` : "Sin club",
+    });
+    if (rows.length >= limit) break;
+  }
+  return rows;
+}
+
+type OppRecord = { wins: number; losses: number };
+
+function buildOpponentRecords(matches: RawH2hMatch[], userId: string): Map<string, OppRecord> {
+  const map = new Map<string, OppRecord>();
+  for (const match of matches) {
+    const teamA = match.team_a_player_ids ?? [];
+    const teamB = match.team_b_player_ids ?? [];
+    const meOnA = teamA.includes(userId);
+    const meOnB = teamB.includes(userId);
+    if (!meOnA && !meOnB) continue;
+    const opps = meOnA ? teamB : teamA;
+    const winner = winnerFromScore(match.score);
+    if (!winner) continue;
+    const myTeam = meOnA ? "a" : "b";
+    const iWon = winner === myTeam;
+    for (const oppId of opps) {
+      if (oppId === userId) continue;
+      const item = map.get(oppId) ?? { wins: 0, losses: 0 };
+      if (iWon) item.wins += 1;
+      else item.losses += 1;
+      map.set(oppId, item);
+    }
+  }
+  return map;
+}
+
+function recordLabel(r: OppRecord): string {
+  return `${r.wins}-${r.losses}`;
+}
+
+function recordEdge(mine: OppRecord, theirs: OppRecord): "you" | "they" | "even" {
+  const mTotal = mine.wins + mine.losses;
+  const tTotal = theirs.wins + theirs.losses;
+  const mPct = mTotal > 0 ? mine.wins / mTotal : 0.5;
+  const tPct = tTotal > 0 ? theirs.wins / tTotal : 0.5;
+  if (mPct - tPct >= 0.12) return "you";
+  if (tPct - mPct >= 0.12) return "they";
+  return "even";
+}
+
+function estimateScoutMatchup(
+  meLevel: number,
+  oppLevel: number,
+  h2h: RetarHeroH2h,
+): ProfileScoutMatchup {
+  const diff = meLevel - oppLevel;
+  let myPct = 50 + diff * 12;
+  if (h2h.total > 0) {
+    const hist = (h2h.youWins / h2h.total) * 100;
+    myPct = h2h.total >= 3 ? 0.5 * myPct + 0.5 * hist : 0.65 * myPct + 0.35 * hist;
+  }
+  myPct = Math.round(Math.max(12, Math.min(88, myPct)));
+  const confidence: ProfileScoutMatchup["confidence"] =
+    h2h.total >= 5 ? "alta" : h2h.total >= 2 ? "media" : "baja";
+  const deltaWin = Math.min(0.12, Math.max(0.03, 0.06 + diff * 0.02));
+  const deltaLose = Math.max(-0.1, Math.min(-0.02, -0.04 + diff * 0.01));
+  return {
+    myWinPct: myPct,
+    theirWinPct: 100 - myPct,
+    confidence,
+    expectedDelta: {
+      ifWin: `+${deltaWin.toFixed(2)}`,
+      ifLose: deltaLose.toFixed(2),
+    },
+  };
+}
+
+async function buildProfileScoutPayload(
+  supabase: Awaited<ReturnType<typeof getMatchesClient>>,
+  viewerMatches: RawH2hMatch[],
+  targetMatches: RawH2hMatch[],
+  viewerId: string,
+  targetId: string,
+  me: RetarHeroPlayer,
+  opponent: RetarHeroPlayer,
+  h2h: RetarHeroH2h,
+): Promise<ProfileScoutPayload> {
+  const viewerMap = buildOpponentRecords(viewerMatches, viewerId);
+  const targetMap = buildOpponentRecords(targetMatches, targetId);
+  const commonIds = [...viewerMap.keys()].filter(
+    (id) => id !== targetId && targetMap.has(id),
+  );
+  commonIds.sort((a, b) => {
+    const aSum =
+      (viewerMap.get(a)!.wins + viewerMap.get(a)!.losses) +
+      (targetMap.get(a)!.wins + targetMap.get(a)!.losses);
+    const bSum =
+      (viewerMap.get(b)!.wins + viewerMap.get(b)!.losses) +
+      (targetMap.get(b)!.wins + targetMap.get(b)!.losses);
+    return bSum - aSum;
+  });
+
+  const topIds = commonIds.slice(0, 5);
+  const profiles =
+    topIds.length > 0
+      ? (
+          await supabase
+            .from("profiles")
+            .select("id,display_name")
+            .in("id", topIds)
+        ).data ?? []
+      : [];
+  const nameById = new Map<string, string>();
+  for (const p of profiles) {
+    nameById.set(p.id as string, (p.display_name as string | null) ?? "Jugador");
+  }
+
+  const commonRivals: ProfileScoutCommonRival[] = topIds.map((id) => {
+    const mine = viewerMap.get(id)!;
+    const theirs = targetMap.get(id)!;
+    const name = nameById.get(id) ?? "Jugador";
+    return {
+      name,
+      initials: initialsFromName(name),
+      tone: gradientForUserId(id),
+      mineRecord: recordLabel(mine),
+      theirRecord: recordLabel(theirs),
+      edge: recordEdge(mine, theirs),
+    };
+  });
+
+  return {
+    h2hMatches: buildH2hMatchRows(viewerMatches, viewerId, targetId),
+    commonRivals,
+    matchup: estimateScoutMatchup(me.level, opponent.level, h2h),
+  };
+}
+
+function computeH2h(
+  matches: RawH2hMatch[],
+  userId: string,
+  opponentId: string,
+): RetarHeroH2h {
+  let youWins = 0;
+  let rivalWins = 0;
+  let streakCount = 0;
+  let streakKind: "win" | "loss" | null = null;
+
+  for (const match of matches) {
+    const teamA = match.team_a_player_ids ?? [];
+    const teamB = match.team_b_player_ids ?? [];
+    const meOnA = teamA.includes(userId);
+    const meOnB = teamB.includes(userId);
+    if (!meOnA && !meOnB) continue;
+
+    const oppOnA = teamA.includes(opponentId);
+    const oppOnB = teamB.includes(opponentId);
+    if (!oppOnA && !oppOnB) continue;
+
+    const sameTeam = (meOnA && oppOnA) || (meOnB && oppOnB);
+    if (sameTeam) continue;
+
+    const winner = winnerFromScore(match.score);
+    if (!winner) continue;
+
+    const myTeam = meOnA ? "a" : "b";
+    const iWon = winner === myTeam;
+    if (iWon) youWins += 1;
+    else rivalWins += 1;
+
+    const outcome: "win" | "loss" = iWon ? "win" : "loss";
+    if (streakKind === null) {
+      streakKind = outcome;
+      streakCount = 1;
+    } else if (streakKind === outcome) {
+      streakCount += 1;
+    } else {
+      break;
+    }
+  }
+
+  const total = youWins + rivalWins;
+  let streak: string | null = null;
+  if (total > 0 && streakKind === "win" && streakCount >= 1) {
+    streak =
+      streakCount === 1 ? "1 victoria seguida" : `${streakCount} victorias seguidas`;
+  }
+
+  return { youWins, rivalWins, total, streak };
+}
+
+function playerFromProfile(
+  id: string,
+  displayName: string | null,
+  avatarUrl: string | null,
+  rating: number | null | undefined,
+  username?: string | null,
+): RetarHeroPlayer {
+  const who = retarHeroWhoFromUser(id, displayName, username, rating);
+  return { ...who, avatarUrl };
+}
+
+export async function getRetarHeroContext(
+  input: unknown,
+): Promise<ActionResult<RetarHeroContext>> {
+  return runAction(GetRetarHeroSchema, input, async ({ opponentId }) => {
+    const userId = await requireUserId();
+    const supabase = await getMatchesClient();
+
+    const [meSummary, myStatRow, oppSummary, oppStatRow] = await Promise.all([
+      getProfileSummary(userId),
+      supabase
+        .from("player_stats")
+        .select("current_rating")
+        .eq("user_id", userId)
+        .eq("sport", SPORT_PRIMARY)
+        .maybeSingle(),
+      opponentId
+        ? getProfileSummary(opponentId)
+        : Promise.resolve(null),
+      opponentId
+        ? supabase
+            .from("player_stats")
+            .select("current_rating")
+            .eq("user_id", opponentId)
+            .eq("sport", SPORT_PRIMARY)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const me = playerFromProfile(
+      userId,
+      meSummary.displayName,
+      meSummary.avatarUrl,
+      (myStatRow.data as { current_rating?: number } | null)?.current_rating,
+      meSummary.username,
+    );
+
+    const opponent =
+      opponentId && oppSummary
+        ? playerFromProfile(
+            opponentId,
+            oppSummary.displayName,
+            oppSummary.avatarUrl,
+            (oppStatRow.data as { current_rating?: number } | null)?.current_rating,
+            oppSummary.username,
+          )
+        : null;
+
+    const emptyH2h: RetarHeroH2h = {
+      youWins: 0,
+      rivalWins: 0,
+      total: 0,
+      streak: null,
+    };
+
+    if (!opponentId) {
+      return { me, opponent, h2h: emptyH2h, scout: null };
+    }
+
+    const matchSelect =
+      "played_at,team_a_player_ids,team_b_player_ids,score,clubs(name)";
+
+    const [{ data: rawMatches, error }, { data: targetRawMatches, error: targetError }] =
+      await Promise.all([
+        supabase
+          .from("matches")
+          .select(matchSelect)
+          .eq("status", "confirmed")
+          .or(`team_a_player_ids.cs.{${userId}},team_b_player_ids.cs.{${userId}}`)
+          .order("played_at", { ascending: false })
+          .limit(200),
+        supabase
+          .from("matches")
+          .select(matchSelect)
+          .eq("status", "confirmed")
+          .or(`team_a_player_ids.cs.{${opponentId}},team_b_player_ids.cs.{${opponentId}}`)
+          .order("played_at", { ascending: false })
+          .limit(200),
+      ]);
+
+    if (error) {
+      throw new MpError("MATCH.H2H_FAILED", error.message, 500);
+    }
+    if (targetError) {
+      throw new MpError("MATCH.SCOUT_FAILED", targetError.message, 500);
+    }
+
+    const viewerMatches = (rawMatches ?? []) as RawH2hMatch[];
+    const targetMatches = (targetRawMatches ?? []) as RawH2hMatch[];
+    const h2h = computeH2h(viewerMatches, userId, opponentId);
+    const scout =
+      opponent
+        ? await buildProfileScoutPayload(
+            supabase,
+            viewerMatches,
+            targetMatches,
+            userId,
+            opponentId,
+            me,
+            opponent,
+            h2h,
+          )
+        : null;
+
+    return { me, opponent, h2h, scout };
   });
 }

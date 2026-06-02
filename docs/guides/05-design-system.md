@@ -132,6 +132,20 @@ absoluto en una row → usar **portal** (`createPortal` a `document.body`)
 o el dropdown queda clipped. Pattern visto en `AdminUsersScreenView` (row
 menu via portal).
 
+### `<MpBadge>` — identidad, confianza y plan
+Archivo: `src/components/dashboard/widgets/MpBadge.tsx`
+
+- Úsalo para badges de identidad: rol activo, cuenta oficial, verificado,
+  soporte interno y MATCHPOINT+.
+- Helpers canónicos: `src/lib/ui/role-badge.ts` y
+  `src/lib/ui/trust-badge.ts`.
+- Variantes: `solid`, `soft`, `icon-only`, `dot`; tamaños `sm` y `md`.
+- `Oficial MATCHPOINT` es check verde pequeño junto al nombre. `Verificado`
+  usa celeste (`#0ea5e9`) y `badge-check`; no uses verde para verificación.
+- MATCHPOINT+ es un badge separado, soft verde con corona.
+- No uses `MpBadge` para estados operativos como activo, suspendido,
+  pendiente, cancelado o reembolsado; esos siguen en status pills.
+
 ### Modales
 `src/app/globals.css` define:
 

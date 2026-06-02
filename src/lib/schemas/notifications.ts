@@ -6,7 +6,7 @@ import { IsoDateTimeSchema, MpRoleSchema, UuidSchema } from "./common";
 extendZodWithOpenApi(z);
 
 export const NotificationChannelSchema = z
-  .enum(["inapp", "email", "push", "sms"])
+  .enum(["inapp", "email", "push"])
   .openapi("NotificationChannel");
 
 export const NotificationKindSchema = z

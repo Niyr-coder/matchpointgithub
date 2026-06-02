@@ -10,6 +10,7 @@
 - **Subscription** es un período de tiempo activo (`player_subscriptions`).
   Una subscription activa con `expires_at > now()` mantiene `plan_tier =
   'premium'` en el profile.
+- **Precio vigente**: MATCHPOINT+ cuesta USD 6.99/mes.
 - **No usamos PSP** (Stripe/PayPal). El pago es por transferencia bancaria o
   DeUna (Ecuador), confirmado manualmente por admin. Ver `02-payments.md`.
 
@@ -112,12 +113,15 @@ para subs que vencen en ≤7 días.
 | Kind | Cuándo | Recipient |
 |---|---|---|
 | `plan_expiring_soon` | Cron diario si vence en ≤7d | el user de la sub |
+| `mp_plus_activated` | Admin aprueba comprobante o grant directo | el user de la sub |
+| `mp_plus_revoked` | Admin desactiva MATCHPOINT+ | el user afectado |
 
 Dispatcher (mig 050) renderiza: *"Tu plan Premium expira pronto"* + body con
 days_remaining + deep-link a `/dashboard/user/mi-plan`.
 
-**Falta**: notif al activarse premium (post-aprobación). Hoy no se dispara
-ninguna. Si lo agrego, sumar kind nuevo en migration + branch en dispatcher.
+`mp_plus_activated` y `mp_plus_revoked` se agregaron en la mig 176. Además
+se mantiene el DM de sistema `welcome_premium_activated` al aprobar una
+subscription pendiente.
 
 ## 5. Helper: ¿está activo el plan?
 
@@ -194,38 +198,12 @@ set value = jsonb_set(value, '{free,rosterMax}', '15'::jsonb)
 where key = 'team_caps';
 ```
 
-### 7.2 · Customización de perfil (migrations 113, 114)
+### 7.2 · Personalización de perfil — retirada
 
-Accent color, banner del header y card style del perfil tienen dos tiers de
-gating: **MP+** (subscription) y **bundles cosméticos** (compra única).
-
-**Lo que el plan gatea**:
-- Free: solo puede ver el panel `Personalizar`. Los presets aparecen locked
-  con badge. Toast informativo al click — bundles indican "Pídelo a soporte",
-  MP+ items dirige a `/mi-plan`.
-- Premium: 14 accent colors + 18 banners + 6 card styles (~60% del catálogo,
-  los marcados `bundleKey: 'mp_plus'` en `src/lib/profile/customization-presets.ts`).
-- Premium + bundles: los presets de bundles propios (otorgados por admin)
-  se suman automáticamente — son permanentes y no expiran si MP+ se vence.
-
-**Bundles seed (mig 114)**:
-- `pack_neon` ($5) — accents/banners/card style con glow neón.
-- `pack_gold` ($5) — accent dorado, banners cálidos, card holográfica.
-- `pack_carbon` ($4) — minimalismo oscuro (onyx, graphite, carbon).
-- `pack_sakura` ($4) — rosados, pastel mesh y sakura glass.
-
-Precios editables sin redeploy via `update public.cosmetic_bundles set price_cents=... where key=...`.
-
-**Comportamiento al perder MP+**: los presets elegidos quedan persistidos en
-`profiles.{accent_color, banner_preset, card_style}`. Al render, el server
-component chequea `isPlanActive` y **reverteia a defaults** si el plan
-expiró. Si el user vuelve a comprar MP+, recupera su configuración previa
-automáticamente.
-
-**Killswitch**: `feature_flags.profile_customization`. Si se desactiva, el
-panel UI queda oculto y el server action rechaza mutaciones — los presets
-existentes siguen renderizando hasta que el cron de cleanup los limpie (no
-implementado todavía; ver §29.15 de `docs/architecture/20-database.md`).
+La personalización de perfil V1 ya no es una feature gateada por MATCHPOINT+.
+El sistema anterior fue retirado completo: no hay panel de personalización,
+paquetes cosméticos, grants ni flags activos. El nuevo sistema queda pendiente
+de diseño y deberá documentarse aquí cuando exista una propuesta aprobada.
 
 ### 7.3 · Coach AI (sidebar `user` → `coach-ai`)
 

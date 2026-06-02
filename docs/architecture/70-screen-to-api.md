@@ -260,13 +260,30 @@ READ (Panel al abrir):
 ACTION:
   markNotificationRead({ id })       → UPDATE notifications.read_at
   markAllNotificationsRead({ role }) → UPDATE all WHERE recipient_user_id=me AND role IN (...)
-  dismissNotification({ id })        → soft-delete vía dismissed_at
+  dismissNotification({ id })        → compat pública: UPDATE notifications.read_at
 REALTIME:
-  Suscribe a postgres_changes en notifications WHERE recipient_user_id=eq.{userId}
+  TopBar suscribe canal mp:user:{userId}:role:{role}:notifications
+  con postgres_changes WHERE recipient_user_id=eq.{userId}
+  y descarta eventos cuyo recipient_role no coincide con el rol activo
   → tanto el badge del TopBar como el panel se refrescan automáticamente
 PRODUCTORES DE NOTIFICATIONS:
   Múltiples actions disparan fn_enqueue_notification(p_user_id, p_role, p_kind, p_title, ...)
   Ejemplos: createBroadcast, approveClubApplication, accept/declineTeamInvite, etc.
+```
+
+### `/dashboard/[role]/notificaciones` — preferencias por tipo/canal
+```
+READ:
+  NotificationPreferencesScreen → listNotificationKinds + listMyPreferences
+    → tablas: notification_kinds, notification_preferences
+ACTION:
+  PATCH /api/v1/me/notification-preferences
+    body: { items: [{ role, kind, channel, enabled }] }
+    → UPSERT notification_preferences por (user_id, role, kind, channel)
+NOTAS:
+  - El link vive en el footer del NotificationsPanel ("Preferencias").
+  - La pantalla muestra `inapp`, `email` y `push` según default_channels.
+  - Email/push se señalan como preparados; no prometen envío real fuera de la app.
 ```
 
 ---
@@ -387,17 +404,22 @@ DOWNSTREAM:
 ### `/admin/admin-broadcast` y `/owner/club-marketing`
 ```
 READ:
-  listBroadcasts (filtrado por scope)
+  listBroadcasts (filtrado por scope) + broadcast_recipients
+  broadcast_templates + count profiles (base total de usuarios)
 ACTION:
   createBroadcast({ scope, title, body, channels, scheduledFor? })
     → INSERT broadcasts (status="draft" si no scheduledFor, "scheduled" si sí)
-    → cron o worker después la dispatcha → fn_enqueue_notification por cada recipient
+  dispatchBroadcast({ id })
+    → para envío inmediato: crea recipients + notify() por cada recipient
+  setAnnouncementBanner / clearAnnouncementBanner
+    → UPSERT/UPDATE announcements (banner global)
   cancelBroadcast({ id })
     → UPDATE broadcasts SET status='cancelled' (solo si era draft o scheduled)
 REALTIME:
   Suscribe a broadcasts + broadcast_recipients (para KPIs delivered/opened)
 DOWNSTREAM:
-  - Cuando el dispatcher la procesa: notifications insertadas, el TopBar de cada recipient se actualiza
+  - Cuando dispatchBroadcast procesa: notifications insertadas, el TopBar de cada recipient se actualiza
+  - Las campañas scheduled quedan registradas; falta worker/cron de despacho automático
 ```
 
 ---
@@ -428,7 +450,8 @@ DOWNSTREAM cross-pantalla:
 ```
 READ:
   /coach/c-pagos: transactions WHERE kind='class' AND ref_id IN (mis sessions/lessons)
-  /admin/admin-pagos: listPayouts (todos)
+  /admin/admin-pagos: transactions + refunds + payouts + clubs/profiles/partner_orgs
+    + platform_config.take_rate_pct para KPIs de comisión
 ACTION (admin):
   processPendingPayouts({ periodStart, periodEnd })
     → para cada club active: SUM transactions captured en el período - commission
@@ -438,11 +461,339 @@ ACTION (admin):
 DOWNSTREAM:
   - Coach ve su payout en /coach/c-pagos (filtrado por coach_id=me)
   - Owner ve payouts del club (filtrado por club_id, RLS po_club_select)
+REALTIME:
+  /admin/admin-pagos suscribe a transactions + refunds + payouts
 ```
 
 ---
 
-## 14. Reglas de oro al agregar nuevas mutaciones
+## 14. Dominio · `admin` operativo
+
+### `/admin/admin-mod`
+```
+READ:
+  AdminModScreen → reports(status pending/reviewing) + moderation_actions(30d)
+    + profiles(display_name del reporter)
+ACTION:
+  actOnReport({ id: reportUuid, body })
+    → SELECT reports por UUID real
+    → opcional INSERT user_suspensions si action=suspend|ban y hay target_user_id
+    → INSERT moderation_actions
+    → UPDATE reports.status/reviewed_by/reviewed_at/resolution_notes
+    → notify(report_resolved) al reporter
+REALTIME:
+  reports + moderation_actions (mig 181)
+```
+
+### `/admin/admin-roles`
+```
+READ:
+  AdminRolesScreen → role_assignments + role_requests + clubs/profiles
+ACTION:
+  approveRoleRequest / rejectRoleRequest
+  assignRole / revokeRole
+REALTIME:
+  role_assignments + role_requests (role_requests entra al publication en mig 181)
+```
+
+### `/admin/admin-team`
+```
+READ:
+  role_assignments(role=admin) + profiles + tickets asignados + reports revisados hoy
+ACTION:
+  autoAssignTickets()
+  assignTicket({ id, assigneeId })
+    → si el estado cambia a `in_progress`, encola `ticket_status_changed`
+      al dueño del ticket
+  closeTicket({ id })
+    → UPDATE tickets.status='closed', closed_at=now()
+    → encola `ticket_status_changed` al dueño del ticket
+  "Invitar staff" no crea usuarios; deriva a flujo real de asignar rol admin.
+REALTIME:
+  role_assignments + tickets + reports (reports entra al publication en mig 181)
+DOWNSTREAM:
+  - El dueño recibe bell inapp con link a `/dashboard/user/soporte`.
+  - No hay DM de sistema: es una alerta puntual de estado, no una conversación.
+```
+
+### `/admin/admin-partners`
+```
+READ:
+  AdminPartnersScreen → listAdminPartnersOverview (admin-only)
+    → valida role_assignments(role=admin, revoked_at null)
+    → luego usa getAdminClient() para una vista cross-tenant read-only
+    → tablas: partner_orgs, partner_members, role_assignments(role=partner),
+              partner_club_links, clubs, tournaments, leagues,
+              registrations, transactions(kind=tournament), payouts(scope=partner),
+              profiles
+DERIVED:
+  miembros partner_members, roles partner activos, clubes linkeados, torneos/ligas,
+  inscripciones, ingresos capturados/pending y payouts pendientes/pagados.
+ACTION:
+  read-only. La creación/edición sigue en /api/v1/partners y actions de partner
+  cuando exista un flujo CRM productivo.
+REALTIME:
+  partner_orgs + partner_members + partner_club_links + role_assignments +
+  tournaments + leagues + registrations + transactions + payouts
+```
+
+### `/admin/admin-quedadas`
+```
+READ:
+  AdminQuedadasScreen → listQuedadasAdmin + listQuedadaReports
+    → tablas: quedadas, quedada_participants, quedada_reports, profiles
+ACTION:
+  cancelQuedadaAdmin({ quedadaId })
+    → UPDATE quedadas.status='cancelled' (admin-only)
+  resolveQuedadaReport({ reportId, resolution })
+    → UPDATE quedada_reports.status/resolution metadata
+REALTIME:
+  quedadas + quedada_participants + quedada_reports
+  → pantalla client-state usa callback granular para recargar listQuedadasAdmin
+    + listQuedadaReports sin refrescar dashboards pesados completos.
+DOWNSTREAM:
+  - /dashboard/[role]/quedada/[id] refleja cancelación por realtime.
+  - /dashboard/user/quedadas deja de mostrar la quedada como disponible si se cancela.
+```
+
+### `/admin/admin-matches`
+```
+READ:
+  AdminMatchesScreen → listAdminMatchesData
+    → tablas: matches, match_seeks, match_seek_applications,
+              match_no_shows, player_reliability, profiles
+ACTION:
+  cancelMatchAdmin({ matchId, reason })
+    → UPDATE matches.status='cancelled' + metadata de cancelación
+  cancelMatchSeekAdmin({ seekId })
+    → UPDATE match_seeks.status='cancelled'
+  resolveMatchDisputeAdmin({ matchId, resolution, reason? })
+    → UPDATE matches.status='confirmed'|'cancelled'
+  dismissNoShowAdmin({ reportId })
+    → UPDATE match_no_shows como descartado
+  updatePlayerReliabilityAdmin({ userId, ... })
+    → UPDATE player_reliability
+REALTIME:
+  matches + match_seeks + match_seek_applications + match_no_shows + player_reliability
+  → pantalla client-state usa callback granular para recargar listAdminMatchesData
+    sin router.refresh global.
+DOWNSTREAM:
+  - Chat del partido y "Mis avisos" refrescan cancelaciones/reprogramaciones por realtime.
+  - Badges de fiabilidad se actualizan cuando consumen player_reliability.
+```
+
+### `/admin/admin-reservas`
+```
+READ:
+  AdminReservasScreen → listAdminReservations
+    → tablas: reservations, reservation_payments, transactions,
+              refunds, clubs, courts, profiles
+ACTION:
+  cancelReservationAdmin({ reservationId, reason })
+    → UPDATE reservations.status='cancelled'
+  refundReservationAdmin({ reservationId, reason, refundReference? })
+    → INSERT refunds + UPDATE transactions.status='refunded' / columnas refund_*
+REALTIME:
+  reservations + reservation_payments + transactions + refunds
+  → pantalla client-state usa callback granular para recargar listAdminReservations
+    sin router.refresh global.
+DOWNSTREAM:
+  - /owner|manager/club-reservas y /employee/e-reservas reciben cambios de estado.
+  - /admin/admin-pagos y finanzas del club ven el refund por realtime.
+```
+
+### `/admin/admin-recepcion`
+```
+READ:
+  AdminRecepcionScreen → listAdminReceptionOverview (admin-only, service role read)
+    → tablas: walkins, check_ins, cash_sessions, transactions,
+              sales, products, clubs, profiles
+DERIVED:
+  KPIs cross-club de walk-ins activos, check-ins del día, cajas abiertas,
+  caja capturada, ventas de pro shop y productos bajo stock.
+ACTION:
+  read-only. No replica el POS employee ni ejecuta cobros, check-ins,
+  cierres de caja o ajustes de stock.
+REALTIME:
+  walkins + check_ins + cash_sessions + transactions + sales +
+  products + inventory_movements
+DOWNSTREAM:
+  - Las operaciones se hacen en /employee/e-checkin, /employee/e-walkins,
+    /employee/e-caja y /employee/e-shop.
+  - Soporte financiero sigue en /admin/admin-pagos y reservas en
+    /admin/admin-reservas.
+```
+
+### `/admin/admin-plans`
+```
+READ:
+  AdminMatchPointPlusScreenServer →
+    listPendingPlanSubscriptionsAdmin + listRecentPlanSubscriptionsAdmin
+    listPendingClubFeaturingAdmin + listRecentClubFeaturingAdmin
+    countActiveFeaturedClubsAdmin
+    player_subscriptions count(active, expires_at > now)
+ACTION:
+  approvePlanSubscriptionAdmin / rejectPlanSubscriptionAdmin
+  approveClubFeaturingAdmin / rejectClubFeaturingAdmin
+NO BACKEND:
+  Funnel de paywall, trials, promos, clicks y uso por feature. No se muestran como
+  métricas operativas hasta instrumentar eventos.
+REALTIME:
+  player_subscriptions + club_featuring_subscriptions + transactions + clubs
+```
+
+### `/user/mi-plan` (alias legacy: `/user/mp-plus`)
+```
+READ:
+  MiPlanScreen → getSession + getProfileSummary
+    → tablas: profiles
+  MiPlanScreen → player_subscriptions propias
+    → tablas: player_subscriptions
+ACTION:
+  requestPlanUpgrade({ tier: 'premium', durationMonths })
+    → INSERT transactions(kind='plan', status='pending_proof')
+    → INSERT player_subscriptions(status='pending')
+    → redirige al user a /pagos/[transactionId] para subir comprobante
+DOWNSTREAM:
+  - /admin/admin-pagos ve la transaction pendiente.
+  - /admin/admin-plans ve la subscription pendiente.
+  - Al aprobar el comprobante, el profile queda premium y /user/mi-plan refleja
+    el nuevo plan al refrescar.
+```
+
+### `/admin/admin-memberships`
+```
+READ:
+  AdminClubMembresiasScreen →
+    adminListClubMemberships({}) lee club_memberships + clubs + profiles
+    + club_membership_tiers(price_cents,duration_months)
+    + platform_config.take_rate_pct
+DERIVED:
+  socios activos, pendientes, clubes activos, mensual activo estimado y comisión
+  estimada. No calcula churn ni issues porque no existe tabla de eventos de
+  transición/soporte para esa señal.
+ACTION:
+  read-only. La aprobación/rechazo/revocación la hace el staff del club desde
+  club-membresias.
+```
+
+### `/admin/admin-config`
+```
+READ:
+  AdminConfigScreenServer → getRawPlatformConfig(keys de EDITABLE_CONFIG)
+ACTION:
+  updatePlatformConfig({ key, value }) solo para filas con cfg real.
+READ-ONLY:
+  Constantes de app, branding, integraciones y settings sin fila en
+  platform_config se muestran como informativos; no hay platform_settings.
+```
+
+### Personalización admin retirada
+```
+RETIRADO:
+  La superficie operativa anterior fue desconectada junto con el reset del
+  sistema de personalización. No hay screen, actions ni tablas vivas para
+  administrar cosméticos.
+```
+
+### Personalización de usuario retirada
+```
+RETIRADO:
+  La ruta y el editor anterior fueron removidos. El nuevo sistema de
+  personalización queda pendiente y deberá sumar sus propios contratos.
+```
+
+### Diseñador de temas retirado
+```
+RETIRADO:
+  La pantalla del diseñador anterior fue removida con el reset.
+```
+
+### `/admin/admin-sponsors`
+```
+READ/ACTION:
+  AdminPatrocinadoresScreen → listAdminSponsorsOverview
+    → tablas: sponsors, sponsor_slots, sponsor_placements,
+              sponsor_placement_events
+DERIVED:
+  KPIs honestos: marcas activas, slots, placements activos ahora, monto contratado
+  de placements no archivados, impresiones/clics 30d desde eventos reales.
+ACTION:
+  createSponsor / updateSponsor / setSponsorStatus
+    → INSERT/UPDATE sponsors (admin-only, service role + audit actor)
+  createSponsorSlot / updateSponsorSlot
+    → INSERT/UPDATE sponsor_slots
+  createSponsorPlacement / updateSponsorPlacement / setSponsorPlacementStatus
+    → INSERT/UPDATE sponsor_placements
+  recordSponsorPlacementEvent
+    → valida `active_sponsor_placements` y luego INSERT sponsor_placement_events.
+REALTIME:
+  sponsors + sponsor_slots + sponsor_placements + sponsor_placement_events
+PUBLIC READ:
+  `active_sponsor_placements` expone solo campos públicos de placements activos;
+  no expone contacto, billing ni notas internas del sponsor.
+```
+
+### `/admin/admin-ventas`
+```
+READ:
+  AdminSalesScreen → listAdminSalesLeads
+    → tabla: sales_leads
+DERIVED:
+  KPIs honestos: leads totales, nuevos, demos, ganados, seguimientos vencidos
+  y valor estimado cuando el lead lo tiene registrado.
+ACTION:
+  updateSalesLeadAdmin
+    → UPDATE sales_leads.status/priority/notes/next_follow_up_at/lost_reason
+    → setAuditActor(admin) + updated_by para trazabilidad.
+REALTIME:
+  sales_leads
+DOWNSTREAM:
+  - Nuevos envíos desde /soy-club o /precios aparecen en el inbox admin.
+  - No hay lectura pública de sales_leads; el endpoint público solo inserta.
+```
+
+### `/admin/admin-ayuda-guias`
+```
+READ/ACTION:
+  AdminAyudaGuiasScreen → listAdminHelpOverview
+    → tablas: help_articles, help_article_revisions, help_feedback,
+              help_search_logs
+DERIVED:
+  KPIs reales: artículos por estado, vistas, feedback útil/no útil y
+  búsquedas sin resultado. No hay métricas inventadas.
+ACTION:
+  createHelpArticleDraft / updateHelpArticle / publishHelpArticle /
+  archiveHelpArticle
+    → INSERT/UPDATE help_articles + INSERT help_article_revisions
+    → audit vía tg_audit + setAuditActor(admin)
+REALTIME:
+  help_articles + help_feedback + help_search_logs
+```
+
+### `/user/ayuda` y `/user/ayuda-guias`
+```
+READ:
+  AyudaGuiasScreen → getHelpHomeData
+    → tablas: help_articles (solo status='published' por RLS)
+  getHelpCategoryData(categoryKey)
+  getHelpArticleBySlug(slug)
+ACTION:
+  searchHelp({ query, categoryKey? })
+    → SELECT help_articles publicados
+    → INSERT help_search_logs con results_count
+  recordHelpArticleView({ articleId })
+    → RPC help_record_article_view(articleId), auth requerida y artículo publicado
+  submitHelpFeedback({ articleId, helpful, comment? })
+    → UPSERT help_feedback propio
+    → actualiza contadores honestos en help_articles
+DOWNSTREAM:
+  Admin ayuda ve feedback y misses vía realtime.
+```
+
+---
+
+## 15. Reglas de oro al agregar nuevas mutaciones
 
 1. **Antes de migrar:** verificar si la tabla/función ya existe (ver `feedback_check_schema_before_migrate.md` en memoria). Usar `alter table add column if not exists` en vez de `create table if not exists` cuando solo agregas columnas — el segundo es silencioso ante divergencias.
 

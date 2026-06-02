@@ -115,6 +115,36 @@ export const AcceptApplicantSchema = z
 
 export const CancelMatchSeekSchema = z.object({ seekId: UuidSchema }).openapi("CancelMatchSeek");
 
+export const UpdateMatchSeekSchema = z
+  .object({
+    seekId: UuidSchema,
+    mode: MpMatchModeSchema.optional(),
+    partnerId: UuidSchema.nullable().optional(),
+    skillMin: SkillLevelSchema.nullable().optional(),
+    skillMax: SkillLevelSchema.nullable().optional(),
+    ranked: z.boolean().default(true),
+    windowStart: IsoDateTimeSchema,
+    windowEnd: IsoDateTimeSchema.nullable().optional(),
+    notes: z.string().max(280).nullable().optional(),
+  })
+  .refine((d) => d.mode !== "doubles" || d.partnerId !== undefined, {
+    message: "En dobles debes elegir tu partner",
+    path: ["partnerId"],
+  })
+  .refine((d) => d.mode !== "singles" || d.partnerId == null || d.partnerId === undefined, {
+    message: "En singles no se elige partner",
+    path: ["partnerId"],
+  })
+  .refine(
+    (d) => d.skillMin == null || d.skillMax == null || d.skillMin <= d.skillMax,
+    { message: "El nivel mínimo no puede ser mayor que el máximo", path: ["skillMax"] },
+  )
+  .refine(
+    (d) => d.windowEnd == null || new Date(d.windowEnd) >= new Date(d.windowStart),
+    { message: "La franja debe terminar después de empezar", path: ["windowEnd"] },
+  )
+  .openapi("UpdateMatchSeek");
+
 export const WithdrawApplicationSchema = z
   .object({ applicationId: UuidSchema })
   .openapi("WithdrawApplication");

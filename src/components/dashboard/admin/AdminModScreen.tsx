@@ -56,8 +56,10 @@ async function loadData(): Promise<ModData> {
 
   const cases: CaseRow[] = (openReports ?? []).map((r) => {
     const entity = (r.entity as string) ?? "—";
+    const reportId = r.id as string;
     return {
-      id: `MOD-${(r.id as string).slice(0, 8).toUpperCase()}`,
+      reportId,
+      displayId: `MOD-${reportId.slice(0, 8).toUpperCase()}`,
       t: (r.reason as string) ?? "Reporte",
       who: `${entity} · ${(r.entity_id as string).slice(0, 8)}`,
       sev: severityFor(entity),

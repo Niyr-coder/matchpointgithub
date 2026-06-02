@@ -39,12 +39,16 @@ import {
   SaveQuedadaTemplateSchema,
   QuedadaTemplateIdSchema,
   GenerateAmericanoRoundSchema,
+  GenerateQuedadaRoundSchema,
+  CreateManualQuedadaGameSchema,
   ReportGameSchema,
   RoundIdSchema,
   FinishQuedadaSchema,
 } from "@/lib/schemas/quedadas";
-import { planAmericanoRound, pickNextCourtMatch, type PriorGame, type AmericanoMode } from "@/lib/quedadas/americano";
+import { pickNextCourtMatch, type PriorGame, type AmericanoMode } from "@/lib/quedadas/americano";
+import { getQuedadaEngine, rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { individualStandings, type GameForStandings } from "@/lib/quedadas/standings";
+import { pairStandings } from "@/lib/quedadas/pair-standings";
 import { sendSystemMessage } from "@/lib/messages/system";
 
 // Cooldown del aviso de pago: no reenviar a la misma persona en < 30 min.
@@ -188,17 +192,20 @@ export async function joinQuedada(
       throw new MpError("QUEDADAS.INVITE_ONLY", "Esta quedada es por invitación", 403);
     }
 
-    // Cupo. Si hay categorías, el jugador elige una y se le asigna un cupo libre
-    // (americano = 1 jugador por slot). Si no hay categorías, se usa el cupo
-    // global (max_players).
+    // Cupo. En motores individuales el jugador puede elegir categoría al
+    // inscribirse (1 jugador por slot). En formatos de
+    // parejas fijas, la inscripción es a la quedada y el organizador arma los
+    // slots después; así evitamos medio llenar una pareja con un solo jugador.
     const { data: catRows } = await supabase
       .from("quedada_categories")
       .select("id,max_slots")
       .eq("quedada_id", quedadaId);
     const categories = (catRows ?? []) as Array<{ id: string; max_slots: number | null }>;
+    const matchMode = (q.match_mode as string) === "singles" ? "singles" : "doubles";
+    const individualRoster = rosterModeFor(q.format as string, matchMode) === "individual";
     let assignSlot: { categoryId: string; slotNo: number } | null = null;
 
-    if (categories.length > 0) {
+    if (categories.length > 0 && individualRoster) {
       if (!categoryId) throw new MpError("QUEDADAS.CATEGORY_REQUIRED", "Elige una categoría", 400);
       const cat = categories.find((c) => c.id === categoryId);
       if (!cat) throw new MpError("QUEDADAS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
@@ -215,6 +222,19 @@ export async function joinQuedada(
       }
       if (free === 0) throw new MpError("QUEDADAS.CATEGORY_FULL", "Esa categoría está llena", 409);
       assignSlot = { categoryId, slotNo: free };
+    } else if (categories.length > 0) {
+      const perSlot = individualRoster ? 1 : 2;
+      const capacity = categories.reduce((sum, c) => sum + ((c.max_slots ?? 0) * perSlot), 0);
+      if (capacity > 0) {
+        const { count } = await supabase
+          .from("quedada_participants")
+          .select("user_id", { count: "exact", head: true })
+          .eq("quedada_id", quedadaId)
+          .eq("status", "joined");
+        if ((count ?? 0) >= capacity) {
+          throw new MpError("QUEDADAS.FULL", "La quedada está llena", 409);
+        }
+      }
     } else if (q.max_players != null) {
       const { count } = await supabase
         .from("quedada_participants")
@@ -249,7 +269,25 @@ export async function joinQuedada(
         player_a_id: userId,
         player_b_id: null,
       } as never);
-      if (prErr) throw new MpError("QUEDADAS.CATEGORY_FULL", "Ese cupo se acaba de ocupar, intenta de nuevo", 409);
+      if (prErr) {
+        // Compensación: no dejamos al jugador `joined` sin cupo. Si venía de una
+        // invitación, restauramos ese estado; si era una inscripción nueva,
+        // removemos la fila creada.
+        if (existing) {
+          await supabase
+            .from("quedada_participants")
+            .update({ status: existing.status } as never)
+            .eq("quedada_id", quedadaId)
+            .eq("user_id", userId);
+        } else {
+          await supabase
+            .from("quedada_participants")
+            .delete()
+            .eq("quedada_id", quedadaId)
+            .eq("user_id", userId);
+        }
+        throw new MpError("QUEDADAS.CATEGORY_FULL", "Ese cupo se acaba de ocupar, intenta de nuevo", 409);
+      }
     }
 
     // Avisar al organizador (si no es él mismo).
@@ -272,12 +310,53 @@ export async function leaveQuedada(input: unknown): Promise<ActionResult<{ ok: t
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
+
+    const { data: gamesWithPlayer, error: gamesErr } = await supabase
+      .from("quedada_games")
+      .select("id")
+      .eq("quedada_id", quedadaId)
+      .or(`side_a_p1.eq.${userId},side_a_p2.eq.${userId},side_b_p1.eq.${userId},side_b_p2.eq.${userId}`)
+      .limit(1);
+    if (gamesErr) throw new MpError("QUEDADAS.LEAVE_FAILED", gamesErr.message, 500);
+    if ((gamesWithPlayer ?? []).length > 0) {
+      throw new MpError("QUEDADAS.LEAVE_LOCKED", "Ya hay partidos generados contigo. Pide al organizador que ajuste el roster.", 409);
+    }
+
     const { error } = await supabase
       .from("quedada_participants")
       .update({ status: "cancelled" } as never)
       .eq("quedada_id", quedadaId)
       .eq("user_id", userId);
     if (error) throw new MpError("QUEDADAS.LEAVE_FAILED", error.message, 500);
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+    const { data: slots, error: slotsErr } = await admin
+      .from("quedada_pairs")
+      .select("id,player_a_id,player_b_id")
+      .eq("quedada_id", quedadaId)
+      .or(`player_a_id.eq.${userId},player_b_id.eq.${userId}`);
+    if (slotsErr) throw new MpError("QUEDADAS.LEAVE_FAILED", slotsErr.message, 500);
+
+    for (const slot of (slots ?? []) as Array<{ id: string; player_a_id: string; player_b_id: string | null }>) {
+      if (slot.player_a_id === userId && slot.player_b_id) {
+        const { error: moveErr } = await admin
+          .from("quedada_pairs")
+          .update({ player_a_id: slot.player_b_id, player_b_id: null } as never)
+          .eq("id", slot.id);
+        if (moveErr) throw new MpError("QUEDADAS.LEAVE_FAILED", moveErr.message, 500);
+      } else if (slot.player_b_id === userId) {
+        const { error: clearErr } = await admin
+          .from("quedada_pairs")
+          .update({ player_b_id: null } as never)
+          .eq("id", slot.id);
+        if (clearErr) throw new MpError("QUEDADAS.LEAVE_FAILED", clearErr.message, 500);
+      } else {
+        const { error: deleteErr } = await admin.from("quedada_pairs").delete().eq("id", slot.id);
+        if (deleteErr) throw new MpError("QUEDADAS.LEAVE_FAILED", deleteErr.message, 500);
+      }
+    }
+
     return { ok: true as const };
   });
 }
@@ -451,11 +530,45 @@ export async function reportQuedada(input: unknown): Promise<ActionResult<{ ok: 
   });
 }
 
-// ── getQuedadaManageData (lectura para panel de gestión + detalle/calendario) ─
+// ── getQuedadaManageData (lectura SOLO para panel de gestión) ────────────────
 export async function getQuedadaManageData(input: unknown): Promise<ActionResult<unknown>> {
   return runAction(QuedadaIdSchema, input, async ({ quedadaId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
+
+    // Primero verificamos permiso con datos mínimos. En quedadas abiertas, RLS
+    // permite leer la fila base; no debemos devolver invite_code, banco, pagos ni
+    // co-hosts a alguien que solo puede verla como jugador/espectador.
+    const { data: permissionRow, error: permissionErr } = await supabase
+      .from("quedadas")
+      .select("id,creator_id")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (permissionErr) throw new MpError("QUEDADAS.READ_FAILED", permissionErr.message, 500);
+    if (!permissionRow) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
+
+    const { data: cohostRows, error: cohostErr } = await supabase
+      .from("quedada_cohosts")
+      .select("user_id")
+      .eq("quedada_id", quedadaId);
+    if (cohostErr) throw new MpError("QUEDADAS.READ_FAILED", cohostErr.message, 500);
+
+    const { data: adminRoleRows, error: adminRoleErr } = await supabase
+      .from("role_assignments")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .is("revoked_at", null)
+      .limit(1);
+    if (adminRoleErr) throw new MpError("QUEDADAS.READ_FAILED", adminRoleErr.message, 500);
+
+    const canManage =
+      (adminRoleRows ?? []).length > 0 ||
+      (permissionRow.creator_id as string) === userId ||
+      ((cohostRows ?? []) as Array<{ user_id: string }>).some((c) => c.user_id === userId);
+    if (!canManage) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o co-host puede ver la gestión");
+    }
 
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
@@ -475,10 +588,6 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
       supabase.from("quedada_games").select("id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
     ]);
-
-    const canManage =
-      (q.creator_id as string) === userId ||
-      ((cohosts.data ?? []) as Array<{ user_id: string }>).some((c) => c.user_id === userId);
 
     return {
       quedada: q,
@@ -613,10 +722,9 @@ export async function autoAssignCategory(input: unknown): Promise<ActionResult<{
     const supabase = await getServerClient();
 
     const { data: q } = await supabase.from("quedadas").select("match_mode,format").eq("id", quedadaId).maybeSingle();
-    // En americano el roster es individual (1 por cupo): el compañero rota cada
-    // ronda, así que no se arman parejas fijas. Round_robin/otros = parejas según mode.
-    const individualRoster = (q?.format ?? "") === "americano" || (q?.match_mode ?? "doubles") === "singles";
-    const isDoubles = !individualRoster && (q?.match_mode ?? "doubles") === "doubles";
+    const matchMode = (q?.match_mode ?? "doubles") === "singles" ? "singles" : "doubles";
+    const individualRoster = rosterModeFor((q?.format as string | undefined) ?? "americano", matchMode) === "individual";
+    const isDoubles = !individualRoster && matchMode === "doubles";
 
     const { data: cat } = await supabase.from("quedada_categories").select("max_slots").eq("id", categoryId).maybeSingle();
     const maxSlots = (cat?.max_slots as number | null) ?? 0;
@@ -818,6 +926,9 @@ export async function updateQuedadaLogistics(input: unknown): Promise<ActionResu
     // engine_mode (rondas/rolling): solo se puede cambiar si aún NO hay games
     // (cambiarlo en vivo rompe el modelo de rondas/canchas).
     if (d.engineMode !== undefined) {
+      if (d.engineMode === "rolling") {
+        throw new MpError("QUEDADAS.ROLLING_WIP", "El modo continuo por cancha todavía no está disponible.", 400);
+      }
       const { count } = await supabase
         .from("quedada_games")
         .select("id", { count: "exact", head: true })
@@ -994,17 +1105,14 @@ export async function deleteQuedadaTemplate(input: unknown): Promise<ActionResul
   });
 }
 
-// ════════════════ Motor de juego (rediseño · player-céntrico) ════════════════
-// Stage 1: AMERICANO. Rondas con rotación de compañero/rival, puntos individuales
-// (ver lib/quedadas/americano.ts + standings.ts). El resto de formatos aún no
-// tiene motor → "Pronto" en la UI. Los games referencian jugadores directo (no
-// quedada_pairs), porque la "pareja" es efímera por ronda.
+// ════════════════ Motor de juego (rediseño · registry por formato) ════════════
+// Todos los formatos escriben sobre quedada_rounds + quedada_games; el engine solo
+// decide cómo armar el draft de partidos y cómo se interpreta la tabla.
 
-// Genera la SIGUIENTE ronda de un americano para una categoría.
-export async function generateAmericanoRound(
+export async function generateQuedadaRound(
   input: unknown,
 ): Promise<ActionResult<{ created: number; roundNo: number; byes: number }>> {
-  return runAction(GenerateAmericanoRoundSchema, input, async ({ quedadaId, categoryId }) => {
+  return runAction(GenerateQuedadaRoundSchema, input, async ({ quedadaId, categoryId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
@@ -1014,32 +1122,42 @@ export async function generateAmericanoRound(
       .eq("id", quedadaId)
       .maybeSingle();
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
-    if ((q.format as string) !== "americano") {
-      throw new MpError("QUEDADAS.FORMAT_UNSUPPORTED", "Este formato todavía no tiene motor de juego", 400);
+    const engine = getQuedadaEngine(q.format as string);
+    if (!engine.canGenerateRound) {
+      throw new MpError("QUEDADAS.FORMAT_MANUAL", "Este formato usa partidos manuales", 400);
     }
 
-    // Jugadores asignados a la categoría (desde los slots de quedada_pairs).
     const { data: pairs } = await supabase
       .from("quedada_pairs")
-      .select("player_a_id,player_b_id")
+      .select("id,slot_no,player_a_id,player_b_id")
       .eq("category_id", categoryId);
+    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
+    const perGame = mode === "singles" ? 2 : 4;
     const players = Array.from(
       new Set((pairs ?? []).flatMap((p) => [p.player_a_id, p.player_b_id]).filter((x): x is string => !!x)),
     );
-    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
-    const perGame = mode === "singles" ? 2 : 4;
     if (players.length < perGame) {
       throw new MpError("QUEDADAS.NOT_ENOUGH_PLAYERS", `Necesitas al menos ${perGame} jugadores asignados`, 400);
     }
 
     const { data: prevGames } = await supabase
       .from("quedada_games")
-      .select("round_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2")
+      .select("round_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status")
       .eq("category_id", categoryId);
     const prior = (prevGames ?? []) as PriorGame[];
 
     const courts = (q.courts_count as number | null) ?? 0;
-    const plan = planAmericanoRound(players, prior, mode, courts);
+    const plan = engine.planNextRound({
+      pairs: ((pairs ?? []) as Array<{ id: string; slot_no: number; player_a_id: string; player_b_id: string | null }>).map((p) => ({
+        id: p.id,
+        slot_no: p.slot_no,
+        player_a_id: p.player_a_id,
+        player_b_id: p.player_b_id,
+      })),
+      prior,
+      mode,
+      courts,
+    });
     if (!plan) throw new MpError("QUEDADAS.NOT_ENOUGH_PLAYERS", "No alcanza para armar una ronda", 400);
 
     const { data: roundRow, error: rErr } = await supabase
@@ -1075,6 +1193,82 @@ export async function generateAmericanoRound(
       throw new MpError("QUEDADAS.GAMES_FAILED", gErr.message, 500);
     }
     return { created: rows.length, roundNo: plan.roundNo, byes: plan.byes.length };
+  });
+}
+
+export async function generateAmericanoRound(
+  input: unknown,
+): Promise<ActionResult<{ created: number; roundNo: number; byes: number }>> {
+  return generateQuedadaRound(input);
+}
+
+export async function createManualQuedadaGame(input: unknown): Promise<ActionResult<{ ok: true; roundNo: number }>> {
+  return runAction(CreateManualQuedadaGameSchema, input, async ({ quedadaId, categoryId, sideA, sideB, courtNo }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    const q = await assertCanManageQuedada(quedadaId, userId, "id,creator_id,format,match_mode");
+    const engine = getQuedadaEngine(q.format as string);
+    if (!engine.canManualGame) {
+      throw new MpError("QUEDADAS.MANUAL_UNSUPPORTED", "Este formato se genera desde su motor", 400);
+    }
+    const mode = (q.match_mode as string) === "singles" ? "singles" : "doubles";
+    const expectedSideSize = mode === "doubles" ? 2 : 1;
+    if (sideA.length !== expectedSideSize || sideB.length !== expectedSideSize) {
+      throw new MpError("QUEDADAS.INVALID_GAME", "El partido no coincide con el modo de la quedada", 400);
+    }
+    const repeated = new Set([...sideA, ...sideB]);
+    if (repeated.size !== sideA.length + sideB.length) {
+      throw new MpError("QUEDADAS.INVALID_GAME", "Un jugador no puede estar en ambos lados", 400);
+    }
+    const { data: categoryPairs, error: pairErr } = await supabase
+      .from("quedada_pairs")
+      .select("player_a_id,player_b_id")
+      .eq("quedada_id", quedadaId)
+      .eq("category_id", categoryId);
+    if (pairErr) throw new MpError("QUEDADAS.READ_FAILED", pairErr.message, 500);
+    const allowed = new Set(
+      ((categoryPairs ?? []) as Array<{ player_a_id: string; player_b_id: string | null }>)
+        .flatMap((p) => [p.player_a_id, p.player_b_id])
+        .filter((id): id is string => !!id),
+    );
+    if ([...repeated].some((id) => !allowed.has(id))) {
+      throw new MpError("QUEDADAS.INVALID_GAME", "Todos los jugadores deben estar en la categoría", 400);
+    }
+    const { data: prevGames } = await supabase
+      .from("quedada_games")
+      .select("round_no")
+      .eq("category_id", categoryId);
+    const roundNo = (prevGames ?? []).reduce((m, g) => Math.max(m, (g.round_no as number | null) ?? 0), 0) + 1;
+    const { data: roundRow, error: rErr } = await supabase
+      .from("quedada_rounds")
+      .insert({
+        quedada_id: quedadaId,
+        category_id: categoryId,
+        round_no: roundNo,
+        status: "active",
+        created_by: userId,
+      } as never)
+      .select("id")
+      .single();
+    if (rErr || !roundRow) throw new MpError("QUEDADAS.ROUND_FAILED", rErr?.message ?? "No se pudo crear el partido", 500);
+    const { error: gErr } = await supabase.from("quedada_games").insert({
+      quedada_id: quedadaId,
+      category_id: categoryId,
+      round_id: roundRow.id as string,
+      round_no: roundNo,
+      court_no: courtNo ?? null,
+      side_a_p1: sideA[0],
+      side_a_p2: sideA[1] ?? null,
+      side_b_p1: sideB[0],
+      side_b_p2: sideB[1] ?? null,
+      status: "scheduled",
+      created_by: userId,
+    } as never);
+    if (gErr) {
+      await supabase.from("quedada_rounds").delete().eq("id", roundRow.id as string);
+      throw new MpError("QUEDADAS.GAMES_FAILED", gErr.message, 500);
+    }
+    return { ok: true as const, roundNo };
   });
 }
 
@@ -1159,41 +1353,8 @@ async function assignCourtMatch(
 export async function startAmericanoRolling(
   input: unknown,
 ): Promise<ActionResult<{ filled: number }>> {
-  return runAction(GenerateAmericanoRoundSchema, input, async ({ quedadaId, categoryId }) => {
-    const userId = await requireUserId();
-    const supabase = await getServerClient();
-
-    const { data: q } = await supabase
-      .from("quedadas")
-      .select("format,match_mode,courts_count,engine_mode")
-      .eq("id", quedadaId)
-      .maybeSingle();
-    if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
-    if ((q.format as string) !== "americano") {
-      throw new MpError("QUEDADAS.FORMAT_UNSUPPORTED", "Este formato todavía no tiene motor de juego", 400);
-    }
-    if ((q.engine_mode as string) !== "rolling") {
-      await supabase.from("quedadas").update({ engine_mode: "rolling", updated_at: new Date().toISOString() } as never).eq("id", quedadaId);
-    }
-    const mode = ((q.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
-    const courts = Math.max(1, (q.courts_count as number | null) ?? 1);
-
-    const { data: sched } = await supabase
-      .from("quedada_games")
-      .select("court_no")
-      .eq("category_id", categoryId)
-      .eq("status", "scheduled");
-    const occupied = new Set((sched ?? []).map((g) => g.court_no).filter((x): x is number => x != null));
-
-    let filled = 0;
-    for (let court = 1; court <= courts; court++) {
-      if (occupied.has(court)) continue;
-      const ok = await assignCourtMatch(supabase, { quedadaId, categoryId, courtNo: court, mode, userId, justFinished: [] });
-      if (!ok) break; // ya no alcanzan jugadores libres
-      occupied.add(court);
-      filled++;
-    }
-    return { filled };
+  return runAction(GenerateAmericanoRoundSchema, input, async () => {
+    throw new MpError("QUEDADAS.ROLLING_WIP", "El modo continuo por cancha todavía no está disponible.", 400);
   });
 }
 
@@ -1260,17 +1421,21 @@ export async function finishQuedada(input: unknown): Promise<ActionResult<{ ok: 
     await requireUserId();
     const supabase = await getServerClient();
 
-    const [{ data: catsData }, { data: gamesData }, { data: pairsData }] = await Promise.all([
+    const [{ data: qData }, { data: catsData }, { data: gamesData }, { data: pairsData }] = await Promise.all([
+      supabase.from("quedadas").select("format,match_mode").eq("id", quedadaId).maybeSingle(),
       supabase.from("quedada_categories").select("id").eq("quedada_id", quedadaId),
       supabase
         .from("quedada_games")
         .select("category_id,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status")
         .eq("quedada_id", quedadaId),
-      supabase.from("quedada_pairs").select("category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
+      supabase.from("quedada_pairs").select("id,category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
     ]);
     const cats = (catsData ?? []) as Array<{ id: string }>;
     const games = (gamesData ?? []) as Array<{ category_id: string } & GameForStandings>;
-    const pairs = (pairsData ?? []) as Array<{ category_id: string; player_a_id: string; player_b_id: string | null }>;
+    const pairs = (pairsData ?? []) as Array<{ id: string; category_id: string; player_a_id: string; player_b_id: string | null }>;
+    const engine = getQuedadaEngine((qData?.format as string | undefined) ?? "americano");
+    const mode = ((qData?.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
+    const standingsMode = engine.standingsMode(mode);
 
     // userId → mejor rank entre sus categorías.
     const ranks = new Map<string, number>();
@@ -1285,11 +1450,16 @@ export async function finishQuedada(input: unknown): Promise<ActionResult<{ ok: 
         ),
       );
       if (players.length === 0) continue;
-      const standings = individualStandings(cgames, players);
+      const categoryPairs = pairs.filter((p) => p.category_id === c.id);
+      const standings =
+        standingsMode === "pair" ? pairStandings(cgames, categoryPairs) : individualStandings(cgames, players);
       standings.slice(0, 3).forEach((row, idx) => {
         const rank = idx + 1;
-        const prev = ranks.get(row.userId);
-        if (prev == null || rank < prev) ranks.set(row.userId, rank);
+        const ids = "playerIds" in row && Array.isArray(row.playerIds) ? row.playerIds : [row.userId];
+        for (const uid of ids) {
+          const prev = ranks.get(uid);
+          if (prev == null || rank < prev) ranks.set(uid, rank);
+        }
       });
     }
 
@@ -1321,7 +1491,7 @@ export async function getQuedadaPlayerView(input: unknown): Promise<ActionResult
     const { data: q, error: qErr } = await supabase
       .from("quedadas")
       .select(
-        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,perks_text,prizes,target_points",
+        "id,creator_id,title,description,format,match_mode,visibility,status,starts_at,location_text,fee_cents,perks_text,prizes,rules,target_points",
       )
       .eq("id", quedadaId)
       .maybeSingle();
@@ -1329,7 +1499,7 @@ export async function getQuedadaPlayerView(input: unknown): Promise<ActionResult
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
     const [cats, pairs, parts, rounds, games] = await Promise.all([
-      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,target_points,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
+      supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,target_points,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
       supabase.from("quedada_participants").select("user_id,status,final_rank,profiles!quedada_participants_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),

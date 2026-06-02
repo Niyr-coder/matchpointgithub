@@ -132,9 +132,11 @@ del T&C que aceptan al crear el torneo lo obligan a hacerlo en 7 días.
 
 - Stored en `platform_config.take_rate_pct` (default 10).
 - Helper `getTakeRatePct()` en `src/server/queries/platform-config.ts`.
-- Usado en `AdminPagosScreen` para calcular `commissionTodayCents`.
-- **Pendiente**: aplicarlo automáticamente al crear `payouts` cuando exista
-  el cron que los genere.
+- Usado en `AdminPagosScreen` para calcular `commissionTodayCents` y en la
+  generación manual/cron de payouts.
+- **Mig 178**: `fn_generate_payouts()` genera payouts mensuales por club para el
+  mes cerrado y agenda `cron.schedule('generate-payouts-monthly', '10 8 1 * *')`.
+  El panel admin permite procesarlos manualmente y marcar cada payout como pagado.
 
 ## 7. Sincronía cross-superficie
 
@@ -142,8 +144,17 @@ del T&C que aceptan al crear el torneo lo obligan a hacerlo en 7 días.
 |---|---|
 | `submitPaymentProof` auto-captura tournament | Realtime `transactions` + `registrations` — UserHome mis-torneos pasa pill a accepted, panel partner inscritos actualiza |
 | `markRegistrationPaidByPartner` | Realtime `transactions` — panel partner ve pago verde sin recargar |
-| `approvePaymentProofAdmin` (plan) | UserHome banner premium aparece sin login fresh (`UpgradeBanner` desaparece) |
+| `approvePaymentProofAdmin` (plan/event/featuring) | Encola `payment_captured`; para `kind='plan'` además activa MATCHPOINT+ y encola `mp_plus_activated` |
 | `rejectPaymentProofAdmin` | Notif inapp al user con `payment_proof_rejected` + razón |
+| `markTransactionRefundedAdmin` | Encola `refund_completed` al customer de la transaction |
+| `markPayoutPaid` | Realtime `payouts` — admin pagos remueve el payout de pendientes |
+
+### 7.b · Sponsors
+
+`admin-sponsors` registra monto contratado en `sponsor_placements.contract_amount_cents`
+para control operativo de campañas. No crea `transactions` todavía y no asume cobro
+automático: cualquier facturación/cobro de sponsor sigue siendo proceso manual hasta
+que se defina un flujo contable específico.
 
 ## 8. Permisos por rol
 
@@ -181,8 +192,8 @@ del T&C que aceptan al crear el torneo lo obligan a hacerlo en 7 días.
 
 - [ ] Refunds automáticos al cancelar torneo (queue de refunds pendientes
       para que partner solo confirme transferencia)
-- [ ] Cron que genere payouts mensuales por club/partner restando take_rate
-- [ ] Notif `payment_captured` al user cuando se aprueba su pago
+- [x] Cron que genere payouts mensuales por club restando take_rate
+- [x] Notif `payment_captured` al user cuando se aprueba su pago
 - [ ] Soporte DeUna como método separado (hoy todo cae en `transfer`)
 - [ ] Dashboard de payouts en panel club/partner (hoy ven los rows pero sin
       UI dedicada)

@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MP_ROLES, MP_ROLE_ORDER, type RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
+import { switchRole } from "@/server/actions/auth";
 
 // Dev-only role switcher. Two states:
 //   enabled  (default for admins) → full pill, click to expand list
@@ -26,6 +27,8 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [pos, setPos] = useState<Pos | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const cur = MP_ROLES[current];
 
@@ -71,7 +74,16 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
 
   const change = (rk: RoleKey) => {
     setOpen(false);
-    router.push(`/dashboard/${rk}`);
+    setError(null);
+    startTransition(async () => {
+      const result = await switchRole({ role: rk });
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+      router.push(`/dashboard/${rk}`);
+      router.refresh();
+    });
   };
 
   // ── Drag handlers (pointer = mouse + touch) ──────────────────
@@ -199,8 +211,9 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
               return (
                 <button
                   key={rk}
+                  disabled={isPending}
                   onClick={() => change(rk)}
-                  style={{ width: "100%", display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: on ? "rgba(16,185,129,0.12)" : "transparent", border: 0, borderLeft: on ? "3px solid var(--primary)" : "3px solid transparent", color: "#fff", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ width: "100%", display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: on ? "rgba(16,185,129,0.12)" : "transparent", border: 0, borderLeft: on ? "3px solid var(--primary)" : "3px solid transparent", color: "#fff", textAlign: "left", cursor: isPending ? "wait" : "pointer", fontFamily: "inherit", opacity: isPending && !on ? 0.62 : 1 }}
                 >
                   <div style={{ width: 28, height: 28, borderRadius: 7, background: r.color, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Icon name={r.icon} size={13} color="#fff" />
@@ -214,6 +227,11 @@ export function RoleSwitcher({ current }: { current: RoleKey }) {
               );
             })}
           </div>
+          {error && (
+            <div style={{ padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.08)", color: "#fecaca", fontSize: 10, lineHeight: 1.35 }}>
+              No se pudo cambiar el rol: {error}
+            </div>
+          )}
           <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", lineHeight: 1.4, flex: 1 }}>Switcher de demo · solo admin · arrástralo para moverlo.</div>
             <button

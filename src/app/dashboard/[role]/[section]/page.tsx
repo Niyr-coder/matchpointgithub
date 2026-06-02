@@ -4,6 +4,7 @@ import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 import { FeatureOffScreen } from "@/components/dashboard/FeatureOffScreen";
 import { RoleScreenStub } from "@/components/dashboard/RoleScreenStub";
 import { HelpScreen } from "@/components/dashboard/HelpScreen";
+import { NotificationPreferencesScreen } from "@/components/dashboard/NotificationPreferencesScreen";
 import { AdminClubsScreen } from "@/components/dashboard/admin/AdminClubsScreen";
 import { AdminUsersScreen } from "@/components/dashboard/admin/AdminUsersScreen";
 import { AdminModScreen } from "@/components/dashboard/admin/AdminModScreen";
@@ -40,42 +41,29 @@ import { AdminConfigScreenServer } from "@/components/dashboard/admin/AdminConfi
 import { AdminRolesScreen } from "@/components/dashboard/admin/AdminRolesScreen";
 import { AdminTeamScreen } from "@/components/dashboard/admin/AdminTeamScreen";
 import { AdminUserTeamsScreen } from "@/components/dashboard/admin/AdminUserTeamsScreen";
+import { AdminPartnersScreen } from "@/components/dashboard/admin/AdminPartnersScreen";
 import { AdminAyudaGuiasScreen } from "@/components/dashboard/admin/AdminAyudaGuiasScreen";
 // MERGE: el rediseño v2 está cableado a datos/acciones reales dentro de
 // AdminFlagsScreen (server) → AdminFlagsView (client). Toggle, rollout, crear,
 // borrar y excepciones son reales.
 import { AdminFlagsScreen } from "@/components/dashboard/admin/AdminFlagsScreen";
 // MERGE: AdminBroadcastScreenServer carga campañas REALES (broadcasts) y alimenta
-// el rediseño AdminBroadcastView. Composer envía de verdad (createBroadcast +
+// el rediseño AdminBroadcastView. Composer envía in-app de verdad (createBroadcast +
 // dispatchBroadcast) con audiencia real (countAudience), y el canal Banner publica
-// anuncios globales. Funnel de aperturas/clicks sigue demo (sin tracking).
+// anuncios globales. Aperturas reales; clicks/conversión siguen pendientes.
 import { AdminBroadcastScreenServer } from "@/components/dashboard/admin/AdminBroadcastScreenServer";
-// MERGE: el rediseño "Flair de usuarios" (AdminFlairUsuariosView) ahora se
-// alimenta de datos REALES y recablea lo operativo vía AdminCosmeticsFlairScreen
-// (server): adopción/distribución real de temas, grants recientes reales,
-// grant/revoke de bundles a usuarios (audit), edición de precio/active de
-// bundles y activar/desactivar temas incluidos. Sin regresión del grant. La
-// pantalla previa AdminCosmeticsScreen queda preservada, des-importada. La
-// moderación de flair (reportes/watermarks) queda pendiente de backend (tabla
-// nueva, no aplicada — ver 04-placeholders.md).
-import { AdminCosmeticsFlairScreen } from "@/components/dashboard/admin/AdminCosmeticsFlairScreen";
-import { AdminThemeDesignerView } from "@/components/dashboard/admin/AdminThemeDesignerView";
-import { AdminQuedadasScreen } from "@/components/dashboard/admin/AdminQuedadasScreen";
-// La pantalla real de oversight (adminListClubMemberships, lista cross-club
-// read-only) queda preservada en AdminMembershipsScreen, des-importada. El
-// section "admin-memberships" ahora renderiza el rediseño analytics (demo). No
-// hay regresión operativa (las membresías las aprueba el staff del club).
-import { AdminClubMembresiasScreen } from "@/components/dashboard/admin/AdminClubMembresiasScreen";
+import { AdminQuedadasScreen } from "@/components/dashboard/admin/_juego/AdminQuedadasScreen";
+import { AdminReservasScreen } from "@/components/dashboard/admin/_juego/AdminReservasScreen";
+import { AdminMatchesScreen } from "@/components/dashboard/admin/_juego/AdminMatchesScreen";
+import { AdminRecepcionScreen } from "@/components/dashboard/admin/_juego/AdminRecepcionScreen";
+// Ola 2: el section admin-memberships vuelve al oversight real cross-club.
+import { AdminMembershipsScreen } from "@/components/dashboard/admin/AdminMembershipsScreen";
+import { AdminSalesScreen } from "@/components/dashboard/admin/AdminSalesScreen";
 import { AdminPatrocinadoresScreen } from "@/components/dashboard/admin/AdminPatrocinadoresScreen";
 import { AdminPaywallFunnelScreen } from "@/components/dashboard/admin/AdminPaywallFunnelScreen";
 import { RankingScreen } from "@/components/dashboard/user/RankingScreen";
 import { QuedadasScreen } from "@/components/dashboard/user/QuedadasScreen";
 import { ProfileScreen } from "@/components/dashboard/user/ProfileScreen";
-// Nota: el sistema curado y gateado por MP+ (PersonalizacionScreen +
-// PersonalizacionScreenClient) queda intacto para re-cablear el backend del
-// nuevo editor de flair. Por ahora el section "personalizar" renderiza el
-// editor à-la-carte (localStorage, sin gating todavía).
-import { PersonalizacionFlairView } from "@/components/dashboard/user/PersonalizacionFlairView";
 import { ClubesScreen } from "@/components/dashboard/user/ClubesScreen";
 import { EventosScreen } from "@/components/dashboard/user/EventosScreen";
 import { MensajesScreen } from "@/components/dashboard/user/MensajesScreen";
@@ -83,19 +71,17 @@ import { AmigosScreen } from "@/components/dashboard/user/AmigosScreen";
 import { ShopScreen } from "@/components/dashboard/user/ShopScreen";
 import { SolicitarClubScreen } from "@/components/dashboard/user/SolicitarClubScreen";
 import { TeamScreen } from "@/components/dashboard/user/TeamScreen";
-// El "Busco partido" real (feature flag match_seeks_enabled + match-seeks
-// actions) queda preservado en BuscoPartidoScreen/View, des-importado, para
-// re-cablear el rediseño de lobby al modelo real. Por ahora el section
-// "busco-partido" renderiza el lobby del diseño (mock).
-import { BuscarMatchView } from "@/components/dashboard/user/BuscarMatchView";
+// BuscoPartidoScreen mantiene el gate real `match_seeks_enabled`: flag off
+// renderiza "Pronto"; flag on carga match-seeks/actions/realtime.
+import { BuscoPartidoScreen } from "@/components/dashboard/user/BuscoPartidoScreen";
 import { AcademiaScreen } from "@/components/dashboard/user/AcademiaScreen";
 import { MisClasesScreen } from "@/components/dashboard/user/MisClasesScreen";
 import { CoachAIScreen } from "@/components/dashboard/user/CoachAIScreen";
-import { AyudaGuiasScreen } from "@/components/dashboard/user/AyudaGuiasScreen";
 import { SoporteScreen } from "@/components/dashboard/user/SoporteScreen";
-import { MatchPointPlusScreen } from "@/components/dashboard/user/MatchPointPlusScreen";
 import { MiPlanScreen } from "@/components/dashboard/user/MiPlanScreen";
+import { MatchPointPlusScreen } from "@/components/dashboard/user/MatchPointPlusScreen";
 import { MisReservasScreen } from "@/components/dashboard/user/MisReservasScreen";
+import { AyudaGuiasScreen } from "@/components/dashboard/user/AyudaGuiasScreen";
 import { ClubReservasScreen } from "@/components/dashboard/club/ClubReservasScreen";
 // ClubCanchasScreen: rediseño v2 1:1 del kit + backend real (createCourt /
 // updateCourt + appearance / maintenance mig 168) + "now playing" / "next slot"
@@ -111,10 +97,9 @@ import { ClubMarketingScreen } from "@/components/dashboard/owner/ClubMarketingS
 // en owner/config-sections/). Cada sección lee/escribe su backend respectivo.
 import { ClubConfigScreen } from "@/components/dashboard/club/ClubConfigScreen";
 import { ClubEventosScreen } from "@/components/dashboard/club/ClubEventosScreen";
-// Personal del club: el rediseño v2 (ClubStaffView) sigue demo, PERO ahora vía
-// ClubStaffScreenServer que resuelve el club activo y habilita la asignación REAL
-// de staff (owner → AssignStaffModal con términos → assignRole). Ver 04-placeholders.md.
-import { ClubStaffScreenServer } from "@/components/dashboard/club/ClubStaffScreenServer";
+// Personal del club: roster real desde role_assignments + profiles, con asignación,
+// revocación y turnos cableados a server actions.
+import { ClubStaffScreen } from "@/components/dashboard/club/ClubStaffScreen";
 import { ClubReportesScreen } from "@/components/dashboard/manager/ClubReportesScreen";
 // MERGE: el rediseño v2 (ClubMembresiasScreenView) está cableado a datos/acciones
 // reales vía ClubMembresiasScreen (server) → resuelve el club activo, carga tiers
@@ -139,6 +124,7 @@ import { CoachPagosScreen } from "@/components/dashboard/coach/CoachPagosScreen"
 import { CoachRecursosScreen } from "@/components/dashboard/coach/CoachRecursosScreen";
 import { CoachProfileScreen } from "@/components/dashboard/coach/CoachProfileScreen";
 import { EmployeeCheckinScreen } from "@/components/dashboard/employee/EmployeeCheckinScreen";
+import { EmployeeCourtCalendarScreen } from "@/components/dashboard/employee/EmployeeCourtCalendarScreen";
 import { EmployeeCajaScreen } from "@/components/dashboard/employee/EmployeeCajaScreen";
 // El section "e-shop" renderiza el POS v2 cableado a productos/ventas reales.
 // EmployeeProShopScreen es el server shell (lee catálogo + ventas de hoy) y
@@ -169,20 +155,22 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-roles": () => <AdminRolesScreen />,
     "admin-team": () => <AdminTeamScreen />,
     "admin-user-teams": () => <AdminUserTeamsScreen />,
+    "admin-partners": () => <AdminPartnersScreen />,
     "admin-ayuda-guias": () => <AdminAyudaGuiasScreen />,
     "admin-flags": () => <AdminFlagsScreen />,
     "admin-broadcast": () => <AdminBroadcastScreenServer />,
-    "admin-cosmetics": () => <AdminCosmeticsFlairScreen />,
-    "admin-theme-designer": () => <AdminThemeDesignerView />,
     "admin-quedadas": () => <AdminQuedadasScreen />,
-    "admin-memberships": () => <AdminClubMembresiasScreen />,
+    "admin-matches": () => <AdminMatchesScreen />,
+    "admin-reservas": () => <AdminReservasScreen />,
+    "admin-recepcion": () => <AdminRecepcionScreen />,
+    "admin-memberships": () => <AdminMembershipsScreen />,
+    "admin-ventas": () => <AdminSalesScreen />,
     "admin-sponsors": () => <AdminPatrocinadoresScreen />,
     "admin-paywall-funnel": () => <AdminPaywallFunnelScreen />,
   },
   user: {
     ranking: () => <RankingScreen />,
     perfil: () => <ProfileScreen />,
-    personalizar: () => <PersonalizacionFlairView />,
     clubes: () => <ClubesScreen />,
     eventos: () => <EventosScreen />,
     chat: (sp) => <MensajesScreen searchParams={sp} />,
@@ -190,14 +178,16 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     shop: () => <ShopScreen />,
     "solicitar-club": () => <SolicitarClubScreen />,
     soporte: () => <SoporteScreen />,
+    "mi-plan": () => <MiPlanScreen />,
+    // Landing/gestión MATCHPOINT+ (ventas si free · panel si premium activo).
     "mp-plus": () => <MatchPointPlusScreen />,
     team: () => <TeamScreen />,
-    "busco-partido": () => <BuscarMatchView />,
+    "busco-partido": (sp) => <BuscoPartidoScreen searchParams={sp} />,
     quedadas: () => <QuedadasScreen />,
     "coach-ai": () => <CoachAIScreen />,
     academia: () => <AcademiaScreen />,
     "mis-clases": () => <MisClasesScreen />,
-    "mi-plan": () => <MiPlanScreen />,
+    "ayuda-guias": () => <AyudaGuiasScreen />,
     "mis-reservas": () => <MisReservasScreen />,
     membresias: () => <MisMembresiasScreen />,
   },
@@ -209,7 +199,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-marketing": () => <ClubMarketingScreen />,
     "club-config": () => <ClubConfigScreen />,
     "club-eventos": () => <ClubEventosScreen />,
-    "club-staff": () => <ClubStaffScreenServer />,
+    "club-staff": () => <ClubStaffScreen />,
     "club-membresias": () => <ClubMembresiasScreen />,
   },
   manager: {
@@ -217,7 +207,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-canchas": () => <ClubCanchasScreen />,
     "club-clientes": () => <ClubClientesScreen />,
     "club-eventos": () => <ClubEventosScreen />,
-    "club-staff": () => <ClubStaffScreenServer />,
+    "club-staff": () => <ClubStaffScreen />,
     "club-walkins": () => <EmployeeWalkinsScreen />,
     "club-reportes": () => <ClubReportesScreen />,
     "club-membresias": () => <ClubMembresiasScreen />,
@@ -242,8 +232,9 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
   employee: {
     "e-checkin": () => <EmployeeCheckinScreen />,
     "e-walkins": () => <EmployeeWalkinsScreen />,
+    "e-calendario": (sp) => <EmployeeCourtCalendarScreen searchParams={sp} />,
     "e-caja": () => <EmployeeCajaScreen />,
-    "e-reservas": () => <ClubReservasScreen />,
+    "e-reservas": () => <ClubReservasScreen showReceptionHourHint />,
     "e-shop": () => <EmployeeProShopScreen />,
     "e-soporte": () => <EmployeeSoporteScreen />,
   },
@@ -256,7 +247,6 @@ const SECTION_FLAGS: Record<string, string> = {
   quedadas: "quedadas_enabled",
   "club-membresias": "club_memberships_v2",
   "club-marketing": "club_marketing_enabled",
-  personalizar: "profile_customization",
 };
 
 export default async function RoleSectionPage({
@@ -274,6 +264,10 @@ export default async function RoleSectionPage({
   // contextual compartida por rol.
   if (section === "ayuda") {
     return role === "user" ? <AyudaGuiasScreen /> : <HelpScreen role={role} />;
+  }
+
+  if (section === "notificaciones") {
+    return <NotificationPreferencesScreen role={role} />;
   }
 
   // Gate por feature flag: si la sección está atada a un flag y ese flag está

@@ -175,28 +175,7 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
               <button
                 type="button"
                 onClick={() => setAuthMode("signin")}
-                style={{
-                  padding: "9px 18px",
-                  borderRadius: 9999,
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  background: "transparent",
-                  color: "#fff",
-                  border: "1.5px solid rgba(255,255,255,0.3)",
-                  cursor: "pointer",
-                  transition: "border-color 200ms var(--ease-out), background 200ms var(--ease-out)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.7)";
-                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)";
-                  e.currentTarget.style.background = "transparent";
-                }}
+                className="mp-btn-ghost-dark"
               >
                 Iniciar sesión
               </button>
@@ -478,8 +457,8 @@ export function Nav({ onPaywall: _onPaywall, auth }: Props) {
               </>
             ) : (
               <>
-                <span style={{ color: "var(--primary)" }}>●</span> Acceso anticipado · 370/500
-                cupos gratis
+                <span style={{ color: "var(--primary)" }}>●</span> Acceso anticipado · súmate
+                gratis
               </>
             )}
           </div>

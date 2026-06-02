@@ -7,11 +7,19 @@
 // Modo demo (sin esos campos): muestra canchas y horarios mock; el boton
 // confirmar solo navega a la pantalla "reserva confirmada" sin tocar DB.
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { SkeletonRows } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/dashboard/ToastProvider";
+import {
+  buildGoogleCalendarUrl,
+  buildReservationIcs,
+  downloadIcsFile,
+} from "@/lib/calendar/reservation-ics";
 
 type Sport = "pickleball" | "padel" | "tennis" | "futbol";
+type ReservationVisibility = "private" | "public";
 
 type EventDetail = {
   name?: string;
@@ -43,11 +51,10 @@ const SLOT_OPEN_MIN = 9 * 60;
 const SLOT_CLOSE_MIN = 22 * 60;
 const SLOT_STEP_MIN = 60;
 
-const INVITE_AVATARS = [
-  "linear-gradient(135deg,#10b981,#047857)",
-  "linear-gradient(135deg,#0a0a0a,#374151)",
-  "linear-gradient(135deg,#7c3aed,#db2777)",
-];
+/** Ocupado por otra reserva — rojo suave, alineado al resto del dashboard. */
+const SLOT_TAKEN_BG = "#fee2e2";
+const SLOT_TAKEN_FG = "#b91c1c";
+const SLOT_TAKEN_BORDER = "#fca5a5";
 
 type DayOption = {
   label: string;     // "HOY" / "LUN" / "MAR" …
@@ -82,11 +89,6 @@ function buildStartSlots(duration: Duration): string[] {
   return out;
 }
 
-function slotToMin(slot: string): number {
-  const [h, m] = slot.split(":").map(Number);
-  return h * 60 + m;
-}
-
 function combineLocalIso(dayIso: string, slot: string): string {
   // Construye un Date local desde "YYYY-MM-DD" + "HH:MM" y devuelve ISO UTC.
   const [y, mo, d] = dayIso.split("-").map(Number);
@@ -100,28 +102,39 @@ function addMinutesIso(iso: string, mins: number): string {
   return d.toISOString();
 }
 
-type ExistingReservation = {
-  id: string;
+type BusyRange = {
   startsAt: string;
   endsAt: string;
   status: string;
 };
 
-// Slot S (HH:MM) está ocupado si [S, S+duration) se cruza con cualquier
-// reserva activa de la lista. Ignoramos status='cancelled'.
-function computeTakenSet(
-  dayIso: string,
-  slots: string[],
-  duration: Duration,
-  existing: ExistingReservation[],
-): Set<string> {
+function isLocalDayToday(dayIso: string): boolean {
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return dayIso === todayIso;
+}
+
+// En HOY, bloquea horas cuyo inicio ya pasó (no se puede reservar 09:00 a las 11:00).
+function computePastSlots(dayIso: string, slots: string[]): Set<string> {
+  const past = new Set<string>();
+  if (!isLocalDayToday(dayIso)) return past;
+  const nowMs = Date.now();
+  for (const slot of slots) {
+    const startMs = new Date(combineLocalIso(dayIso, slot)).getTime();
+    if (startMs < nowMs) past.add(slot);
+  }
+  return past;
+}
+
+// Cada celda = 1 h. Ocupación no depende de la duración elegida por el usuario.
+function computeTakenSet(dayIso: string, slots: string[], existing: BusyRange[]): Set<string> {
   const ranges = existing
     .filter((r) => r.status !== "cancelled")
     .map((r) => ({ start: new Date(r.startsAt).getTime(), end: new Date(r.endsAt).getTime() }));
   const taken = new Set<string>();
   for (const slot of slots) {
     const start = new Date(combineLocalIso(dayIso, slot)).getTime();
-    const end = start + duration * 60_000;
+    const end = start + SLOT_STEP_MIN * 60_000;
     for (const r of ranges) {
       if (start < r.end && end > r.start) {
         taken.add(slot);
@@ -132,6 +145,33 @@ function computeTakenSet(
   return taken;
 }
 
+function slotsInRange(start: string, duration: Duration, allSlots: string[]): string[] {
+  const idx = allSlots.indexOf(start);
+  const count = duration / SLOT_STEP_MIN;
+  if (idx < 0) return [];
+  return allSlots.slice(idx, idx + count);
+}
+
+function isStartValid(
+  start: string,
+  duration: Duration,
+  allSlots: string[],
+  taken: Set<string>,
+  past: Set<string>,
+): boolean {
+  const block = slotsInRange(start, duration, allSlots);
+  if (block.length !== duration / SLOT_STEP_MIN) return false;
+  return block.every((s) => !taken.has(s) && !past.has(s));
+}
+
+function formatReservationTimeLabel(start: string, duration: Duration): string {
+  if (duration === 60) return start;
+  const [h, mi] = start.split(":").map(Number);
+  const endMin = h * 60 + mi + duration;
+  const end = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+  return `${start}–${end}`;
+}
+
 type ClubPickerItem = {
   id: string;
   slug: string;
@@ -140,7 +180,418 @@ type ClubPickerItem = {
   sports: string[];
 };
 
+function formatCourtLabel(c: Court, index: number): string {
+  const raw = c.name?.trim() ?? "";
+  if (raw && !/^cancha\s*0$/i.test(raw)) return raw;
+  const n = c.ordinal > 0 ? c.ordinal : index + 1;
+  return `Cancha ${n}`;
+}
+
+function Section({ n, title, hint, children }: { n: number; title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+        <span
+          className="font-heading tabular"
+          style={{
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: "0.12em",
+            color: "#fff",
+            background: "#0a0a0a",
+            borderRadius: 6,
+            padding: "3px 7px",
+            lineHeight: 1.2,
+          }}
+        >
+          {n}
+        </span>
+        <span className="label-mp" style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          {title}
+        </span>
+        {hint ? (
+          <span style={{ fontSize: 10.5, color: "var(--muted-fg)", marginLeft: "auto" }}>{hint}</span>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ChoiceChip({
+  selected,
+  disabled,
+  onClick,
+  children,
+  style,
+}: {
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  style?: CSSProperties;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="mp-press"
+      style={{
+        fontFamily: "inherit",
+        cursor: disabled ? "not-allowed" : "pointer",
+        borderRadius: 10,
+        border: selected ? "2px solid var(--primary)" : "1px solid var(--border)",
+        background: selected ? "#ecfdf5" : "#fff",
+        color: "#0a0a0a",
+        boxShadow: selected ? "inset 0 0 0 1px rgba(16,185,129,0.12)" : "none",
+        opacity: disabled ? 0.55 : 1,
+        transition: "border-color 140ms ease-out, background 140ms ease-out",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function DayPickerRow({
+  days,
+  day,
+  onDay,
+}: {
+  days: DayOption[];
+  day: number;
+  onDay: (index: number) => void;
+}) {
+  const canPrev = day > 0;
+  const canNext = day < days.length - 1;
+
+  const navBtn: CSSProperties = {
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    background: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    padding: 0,
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <button
+        type="button"
+        className="mp-press"
+        aria-label="Día anterior"
+        disabled={!canPrev}
+        onClick={() => onDay(day - 1)}
+        style={{
+          ...navBtn,
+          opacity: canPrev ? 1 : 0.35,
+          cursor: canPrev ? "pointer" : "not-allowed",
+        }}
+      >
+        <Icon name="chevron-left" size={18} />
+      </button>
+
+      <div
+        style={{
+          flex: 1,
+          display: "grid",
+          gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`,
+          gap: 6,
+          minWidth: 0,
+        }}
+      >
+        {days.map((opt, i) => (
+          <ChoiceChip
+            key={opt.iso}
+            selected={day === i}
+            onClick={() => onDay(i)}
+            style={{
+              padding: "8px 4px",
+              textAlign: "center",
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 8,
+                fontWeight: 800,
+                color: "var(--muted-fg)",
+                letterSpacing: "0.06em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {opt.label}
+            </div>
+            <div className="font-heading" style={{ fontSize: 15, fontWeight: 900, lineHeight: 1.1 }}>
+              {opt.dateNum}
+            </div>
+            <div style={{ fontSize: 8, color: "var(--muted-fg)", marginTop: 1 }}>{opt.monthShort}</div>
+          </ChoiceChip>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className="mp-press"
+        aria-label="Día siguiente"
+        disabled={!canNext}
+        onClick={() => onDay(day + 1)}
+        style={{
+          ...navBtn,
+          opacity: canNext ? 1 : 0.35,
+          cursor: canNext ? "pointer" : "not-allowed",
+        }}
+      >
+        <Icon name="chevron-right" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function ReservationTicketSummary({
+  clubName,
+  dayLabel,
+  dateNum,
+  monthShort,
+  timeLabel,
+  courtLabel,
+  durationLabel,
+  price,
+}: {
+  clubName: string;
+  dayLabel: string;
+  dateNum: string;
+  monthShort: string;
+  timeLabel: string;
+  courtLabel: string;
+  durationLabel: string;
+  price: number;
+}) {
+  const barcode = Array.from({ length: 36 }, (_, i) => i);
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        borderRadius: 14,
+        overflow: "hidden",
+        border: "1px solid var(--border)",
+        boxShadow: "0 6px 24px rgba(10,10,10,0.1)",
+      }}
+    >
+      <div style={{ display: "flex", minHeight: 96 }}>
+        <div
+          style={{
+            width: 76,
+            flexShrink: 0,
+            background: "#0a0a0a",
+            color: "#fff",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            padding: "10px 6px",
+          }}
+        >
+          <Icon name="ticket" size={22} color="var(--primary)" />
+          <span
+            className="font-heading"
+            style={{
+              fontSize: 8,
+              fontWeight: 900,
+              letterSpacing: "0.14em",
+              writingMode: "vertical-rl",
+              transform: "rotate(180deg)",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.75)",
+            }}
+          >
+            Reserva
+          </span>
+        </div>
+        <div
+          aria-hidden
+          style={{
+            width: 10,
+            flexShrink: 0,
+            background: "#fafafa",
+            backgroundImage:
+              "radial-gradient(circle at 0 6px, transparent 5px, #d4d4d4 5px, #d4d4d4 6px, transparent 6px)",
+            backgroundSize: "10px 12px",
+            backgroundRepeat: "repeat-y",
+            borderLeft: "1px dashed #d4d4d4",
+            borderRight: "1px dashed #d4d4d4",
+          }}
+        />
+        <div style={{ flex: 1, padding: "12px 14px 10px", background: "#fff", minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                className="font-heading"
+                style={{
+                  fontSize: 9,
+                  fontWeight: 900,
+                  letterSpacing: "0.12em",
+                  color: "var(--primary)",
+                  textTransform: "uppercase",
+                }}
+              >
+                MATCHPOINT
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#0a0a0a",
+                  marginTop: 2,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {clubName}
+              </div>
+            </div>
+            <div
+              className="font-heading tabular"
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                color: "var(--primary)",
+                flexShrink: 0,
+                lineHeight: 1,
+              }}
+            >
+              ${price.toFixed(2)}
+            </div>
+          </div>
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px dashed #e5e5e5",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "6px 12px",
+              fontSize: 10.5,
+            }}
+          >
+            <div>
+              <div style={{ color: "var(--muted-fg)", fontWeight: 700, fontSize: 9, letterSpacing: "0.06em" }}>
+                FECHA
+              </div>
+              <div style={{ fontWeight: 800, marginTop: 2 }}>
+                {dayLabel} {dateNum} {monthShort}
+              </div>
+            </div>
+            <div>
+              <div style={{ color: "var(--muted-fg)", fontWeight: 700, fontSize: 9, letterSpacing: "0.06em" }}>
+                HORA
+              </div>
+              <div style={{ fontWeight: 800, marginTop: 2 }}>{timeLabel}</div>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ color: "var(--muted-fg)", fontWeight: 700, fontSize: 9, letterSpacing: "0.06em" }}>
+                CANCHA · DURACIÓN
+              </div>
+              <div style={{ fontWeight: 800, marginTop: 2 }}>
+                {courtLabel} · {durationLabel}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        aria-hidden
+        style={{
+          height: 26,
+          background: "#fafafa",
+          borderTop: "1px dashed #d4d4d4",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+          padding: "0 12px",
+        }}
+      >
+        {barcode.map((i) => (
+          <span
+            key={i}
+            style={{
+              display: "block",
+              width: i % 4 === 0 ? 3 : i % 2 === 0 ? 2 : 1,
+              height: 14,
+              borderRadius: 1,
+              background: "#0a0a0a",
+              opacity: 0.12 + (i % 5) * 0.04,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SlotLegend() {
+  const items: { c: string; l: string; border?: string; strike?: boolean }[] = [
+    { c: "#fff", l: "Libre" },
+    { c: "var(--primary)", l: "Tu hora" },
+    { c: SLOT_TAKEN_BG, l: "Ocupado", border: SLOT_TAKEN_BORDER, strike: true },
+    { c: "#e7e5e4", l: "Pasada" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+      {items.map((it) => (
+        <span key={it.l} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--muted-fg)" }}>
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 4,
+              border:
+                it.l === "Tu hora"
+                  ? "none"
+                  : `1px solid ${it.border ?? "var(--border)"}`,
+              background: it.c,
+              textDecoration: it.strike ? "line-through" : "none",
+            }}
+          />
+          {it.l}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+type SuccessAction = {
+  id: string;
+  icon: string;
+  label: string;
+  primary?: boolean;
+  onClick: () => void;
+};
+
 export function ReservarCanchaDrawer() {
+  const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [club, setClub] = useState<Club | null>(null);
   const [pickingClub, setPickingClub] = useState(false);
@@ -153,22 +604,56 @@ export function ReservarCanchaDrawer() {
   const [courtId, setCourtId] = useState<string | null>(null);
   const [mockCourtIdx, setMockCourtIdx] = useState(0);
   const [time, setTime] = useState<string | null>(null);
-  const [existing, setExisting] = useState<ExistingReservation[]>([]);
+  const [busyRanges, setBusyRanges] = useState<BusyRange[]>([]);
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: string } | null>(null);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [visibility, setVisibility] = useState<ReservationVisibility>("private");
   const [enter, setEnter] = useState(false);
   // Construido una sola vez al montar para no derivar fechas en cada render.
   const [days] = useState<DayOption[]>(() => buildUpcomingDays(7));
   const selectedDay = days[day] ?? days[0];
 
   const realMode = !!(club?.clubId && club?.clubSlug);
-  const slots = useMemo(() => buildStartSlots(duration), [duration]);
+  const courtsReady = !realMode || courts !== null;
+  // Grilla fija por hora; la duración solo define el bloque seleccionado, no la grilla.
+  const slots = useMemo(() => buildStartSlots(60), []);
   const taken = useMemo(
-    () => computeTakenSet(selectedDay.iso, slots, duration, existing),
-    [selectedDay.iso, slots, duration, existing],
+    () => computeTakenSet(selectedDay.iso, slots, busyRanges),
+    [selectedDay.iso, slots, busyRanges],
   );
+  const pastSlots = useMemo(
+    () => computePastSlots(selectedDay.iso, slots),
+    [selectedDay.iso, slots],
+  );
+
+  const freeStarts = useMemo(
+    () => slots.filter((s) => isStartValid(s, duration, slots, taken, pastSlots)),
+    [slots, duration, taken, pastSlots],
+  );
+
+  const selectedRange = useMemo(() => {
+    if (!time) return new Set<string>();
+    return new Set(slotsInRange(time, duration, slots));
+  }, [time, duration, slots]);
+
+  const canConfirm =
+    !!time &&
+    isStartValid(time, duration, slots, taken, pastSlots) &&
+    !submitting &&
+    (!realMode || (!!club?.clubId && !!courtId && courtsReady && (courts?.length ?? 0) > 0));
+
+  const availEverLoaded = useRef(false);
+
+  // Si cambias día/cancha/duración y el bloque quedó inválido, sugerimos el primer inicio libre.
+  useEffect(() => {
+    if (loadingAvail && !availEverLoaded.current) return;
+    if (time && isStartValid(time, duration, slots, taken, pastSlots)) return;
+    setTime(freeStarts[0] ?? null);
+  }, [loadingAvail, freeStarts, taken, pastSlots, slots, courtId, day, duration, selectedDay.iso, time]);
 
   const done = !!created;
   const courtLabel = (() => {
@@ -178,25 +663,112 @@ export function ReservarCanchaDrawer() {
     }
     return `C${mockCourtIdx + 1}`;
   })();
+  const price = club ? (club.price || 14) * (duration / 60) : 0;
+
+  const confirmedWindow = useMemo(() => {
+    if (!created || !time) return null;
+    const startsAtIso = combineLocalIso(selectedDay.iso, time);
+    const endsAtIso = addMinutesIso(startsAtIso, duration);
+    return {
+      startsAt: new Date(startsAtIso),
+      endsAt: new Date(endsAtIso),
+      timeLabel: formatReservationTimeLabel(time, duration),
+      dateLabel: `${selectedDay.label} ${selectedDay.dateNum} ${selectedDay.monthShort}`,
+    };
+  }, [created, time, selectedDay, duration]);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  const goMisReservas = useCallback(() => {
+    close();
+    router.push("/dashboard/user/mis-reservas");
+  }, [close, router]);
+
+  const addToCalendar = useCallback(() => {
+    if (!confirmedWindow || !club) {
+      toast({ icon: "alert-triangle", title: "No hay datos de la reserva para el calendario." });
+      return;
+    }
+    const title = `Reserva · ${club.name}`;
+    const description = [
+      `Cancha: ${courtLabel}`,
+      `Horario: ${confirmedWindow.timeLabel}`,
+      created?.id ? `ID: ${created.id}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const location = [club.name, club.city].filter(Boolean).join(" · ");
+    const uid = created?.id ?? `demo-${Date.now()}`;
+    const ics = buildReservationIcs({
+      uid,
+      title,
+      description,
+      location,
+      startsAt: confirmedWindow.startsAt,
+      endsAt: confirmedWindow.endsAt,
+    });
+    downloadIcsFile(`matchpoint-reserva-${uid.slice(0, 8)}.ics`, ics);
+    toast({ icon: "calendar-check", title: "Listo para tu calendario", sub: "Descargamos un .ics y abrimos Google Calendar." });
+    const gUrl = buildGoogleCalendarUrl({
+      title,
+      details: description,
+      location,
+      startsAt: confirmedWindow.startsAt,
+      endsAt: confirmedWindow.endsAt,
+    });
+    window.open(gUrl, "_blank", "noopener,noreferrer");
+  }, [confirmedWindow, club, courtLabel, created, toast]);
+
+  const shareReservation = useCallback(async () => {
+    if (!confirmedWindow || !club) return;
+    const text = [
+      "Reserva en MATCHPOINT",
+      `${club.name} · ${courtLabel}`,
+      `${confirmedWindow.dateLabel} · ${confirmedWindow.timeLabel}`,
+      `Total: $${price.toFixed(2)}`,
+    ].join("\n");
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: "Mi reserva MATCHPOINT", text });
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      toast({ icon: "check-check", title: "Copiado al portapapeles" });
+    } catch {
+      toast({ icon: "alert-triangle", title: "No pudimos compartir", sub: "Intenta de nuevo." });
+    }
+  }, [confirmedWindow, club, courtLabel, price, toast]);
+
+  const successActions: SuccessAction[] = useMemo(
+    () => [
+      { id: "mis-reservas", icon: "calendar", label: "Mis reservas", primary: true, onClick: goMisReservas },
+      { id: "calendar", icon: "calendar-plus", label: "Agregar a calendario", onClick: addToCalendar },
+      { id: "share", icon: "share-2", label: "Compartir", onClick: () => void shareReservation() },
+    ],
+    [goMisReservas, addToCalendar, shareReservation],
+  );
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<EventDetail>).detail ?? {};
       const hasFullCtx = !!(detail.clubId && detail.clubSlug);
       setOpen(true);
-      setDay(0);
-      setDuration(60);
       setCourts(null);
       setCourtId(null);
+      setDay(0);
+      setDuration(60);
       setMockCourtIdx(0);
       setTime(null);
-      setExisting([]);
+      setBusyRanges([]);
       setErrorMsg(null);
       setCreated(null);
+      setShowMoreOptions(false);
+      setNotes("");
+      setVisibility("private");
       setPickerQuery("");
-      if (hasFullCtx && detail.name) {
+      if (hasFullCtx) {
         setClub({
-          name: detail.name,
+          name: detail.name?.trim() || "Club",
           city: detail.city,
           price: detail.price,
           sport: detail.sport,
@@ -286,15 +858,24 @@ export function ReservarCanchaDrawer() {
         const res = await fetch(`/api/v1/clubs/${club.clubSlug}/courts`, { cache: "no-store" });
         const json = await res.json();
         if (cancelled) return;
-        if (!res.ok) {
+        if (!res.ok || !json.ok) {
           setErrorMsg(`Canchas: ${json?.error?.message ?? "no se pudieron cargar"}`);
           setCourts([]);
+          setCourtId(null);
           return;
         }
         const list: Court[] = (json.data ?? [])
-          .map((c: Record<string, unknown>) => ({
+          .map((c: Record<string, unknown>, idx: number) => ({
             id: c.id as string,
-            name: (c.name as string) ?? `Cancha ${c.ordinal ?? "?"}`,
+            name: formatCourtLabel(
+              {
+                id: c.id as string,
+                name: (c.name as string) ?? "",
+                ordinal: (c.ordinal as number) ?? 0,
+                active: true,
+              },
+              idx,
+            ),
             ordinal: (c.ordinal as number) ?? 0,
             active: (c.active as boolean) ?? true,
           }))
@@ -315,61 +896,78 @@ export function ReservarCanchaDrawer() {
   }, [open, club?.clubSlug]);
 
   // Carga reservas existentes para el día/cancha en modo real.
-  const loadAvailability = useCallback(async () => {
-    if (!realMode || !club?.clubId || !courtId) return;
-    setLoadingAvail(true);
+  const loadAvailability = useCallback(async (silent = false) => {
+    if (!realMode || !club?.clubSlug || !courtId) return;
+    if (!silent) setLoadingAvail(true);
     try {
       const fromIso = combineLocalIso(selectedDay.iso, "00:00");
       const toIso = addMinutesIso(fromIso, 24 * 60);
-      const params = new URLSearchParams({
-        clubId: club.clubId,
-        courtId,
-        from: fromIso,
-        to: toIso,
-        pageSize: "100",
-      });
-      const res = await fetch(`/api/v1/reservations?${params}`, { cache: "no-store" });
+      const params = new URLSearchParams({ from: fromIso, to: toIso });
+      const res = await fetch(
+        `/api/v1/clubs/${encodeURIComponent(club.clubSlug)}/courts/${encodeURIComponent(courtId)}/availability?${params}`,
+        { cache: "no-store" },
+      );
       const json = await res.json();
-      if (!res.ok) {
+      if (!res.ok || !json.ok) {
         setErrorMsg(`Disponibilidad: ${json?.error?.message ?? "no se pudo cargar"}`);
-        setExisting([]);
+        setBusyRanges([]);
       } else {
-        setExisting(
+        setBusyRanges(
           (json.data ?? []).map((r: Record<string, unknown>) => ({
-            id: r.id as string,
-            startsAt: r.startsAt as string,
-            endsAt: r.endsAt as string,
+            startsAt: (r.startsAt ?? r.starts_at) as string,
+            endsAt: (r.endsAt ?? r.ends_at) as string,
             status: r.status as string,
           })),
         );
+        setErrorMsg((prev) =>
+          prev?.startsWith("Disponibilidad:") || prev === "Falta clubId o cancha." ? null : prev,
+        );
+        availEverLoaded.current = true;
       }
     } catch (err) {
-      setErrorMsg(`Disponibilidad: ${err instanceof Error ? err.message : "error de red"}`);
-      setExisting([]);
+      if (!silent) {
+        setErrorMsg(`Disponibilidad: ${err instanceof Error ? err.message : "error de red"}`);
+        setBusyRanges([]);
+      }
     } finally {
-      setLoadingAvail(false);
+      if (!silent) setLoadingAvail(false);
     }
-  }, [realMode, club?.clubId, courtId, selectedDay.iso]);
+  }, [realMode, club?.clubSlug, courtId, selectedDay.iso]);
+
+  useEffect(() => {
+    availEverLoaded.current = false;
+  }, [courtId, selectedDay.iso]);
 
   useEffect(() => {
     if (!realMode) {
-      // Modo demo: simular 2 slots ocupados.
-      setExisting([]);
+      setBusyRanges([]);
+      availEverLoaded.current = false;
       return;
     }
-    loadAvailability();
+    void loadAvailability(false);
   }, [realMode, loadAvailability]);
 
-  // Si el slot seleccionado quedó ocupado tras cambiar día/cancha/duración,
-  // lo limpiamos para forzar al usuario a re-elegir.
+  // Refresca ocupación en segundo plano (sin skeleton ni parpadeo).
   useEffect(() => {
-    if (time && taken.has(time)) setTime(null);
-    if (time && !slots.includes(time)) setTime(null);
-  }, [time, taken, slots]);
+    if (!open || !realMode) return;
+    const id = window.setInterval(() => {
+      void loadAvailability(true);
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [open, realMode, loadAvailability]);
+
+  // Si el bloque seleccionado quedó inválido, limpiamos la selección.
+  useEffect(() => {
+    if (time && !isStartValid(time, duration, slots, taken, pastSlots)) setTime(null);
+  }, [time, taken, pastSlots, slots, duration]);
 
   const handleConfirm = async () => {
-    if (!time) {
-      setErrorMsg("Elige un horario disponible.");
+    if (!time || !isStartValid(time, duration, slots, taken, pastSlots)) {
+      setErrorMsg(
+        duration === 60
+          ? "Elige una hora libre."
+          : "Elige un bloque de 2 horas seguidas libre.",
+      );
       return;
     }
     setErrorMsg(null);
@@ -379,7 +977,11 @@ export function ReservarCanchaDrawer() {
       return;
     }
     if (!club?.clubId || !courtId) {
-      setErrorMsg("Falta clubId o cancha.");
+      setErrorMsg(
+        courts === null
+          ? "Espera a que carguen las canchas del club."
+          : "Este club no tiene canchas activas para reservar.",
+      );
       return;
     }
     const startsAt = combineLocalIso(selectedDay.iso, time);
@@ -395,8 +997,9 @@ export function ReservarCanchaDrawer() {
           startsAt,
           endsAt,
           sport: club.sport ?? "pickleball",
-          visibility: "private",
+          visibility,
           maxPlayers: 4,
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         }),
       });
       const json = await res.json();
@@ -408,6 +1011,8 @@ export function ReservarCanchaDrawer() {
         }
       } else {
         setCreated({ id: (json.data?.id as string) ?? "—" });
+        window.dispatchEvent(new Event("mp-reservation-created"));
+        router.refresh();
       }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Error de red");
@@ -417,8 +1022,6 @@ export function ReservarCanchaDrawer() {
   };
 
   if (!open) return null;
-  const close = () => setOpen(false);
-  const price = club ? (club.price || 14) * (duration / 60) : 0;
 
   return (
     <div
@@ -487,23 +1090,63 @@ export function ReservarCanchaDrawer() {
               {club?.city ?? "Elige un club para reservar"}
             </div>
           </div>
-          <button
-            onClick={close}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: "50%",
-              background: "var(--muted)",
-              border: 0,
-              cursor: "pointer",
-            }}
-          >
-            <Icon name="x" size={14} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {club && !pickingClub && !done ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPickingClub(true);
+                  setCourts(null);
+                  setCourtId(null);
+                  setTime(null);
+                  setBusyRanges([]);
+                  setErrorMsg(null);
+                }}
+                className="mp-press"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "#fff",
+                  fontSize: 10,
+                  fontWeight: 800,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  color: "var(--muted-fg)",
+                }}
+              >
+                Cambiar club
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Cerrar"
+              className="mp-press"
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                background: "var(--muted)",
+                border: 0,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </div>
         </div>
 
         {pickingClub ? (
-          <div style={{ padding: "16px 22px", overflow: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div
+            className="mp-noscroll"
+            style={{ padding: "16px 22px", overflow: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}
+          >
             <div className="label-mp">Selecciona un club</div>
             <div style={{ position: "relative" }}>
               <input
@@ -608,295 +1251,318 @@ export function ReservarCanchaDrawer() {
           </div>
         ) : !done && club ? (
           <>
-            <div style={{ padding: "16px 22px", overflow: "auto", flex: 1 }}>
+            <div className="mp-noscroll" style={{ padding: "18px 22px 0", overflow: "auto", flex: 1 }}>
               {!realMode && (
                 <div
                   style={{
-                    padding: 10,
+                    padding: 12,
                     background: "#fef3c7",
                     border: "1px solid #fbbf24",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     fontSize: 11,
                     color: "#78350f",
-                    marginBottom: 12,
-                    lineHeight: 1.4,
+                    marginBottom: 16,
+                    lineHeight: 1.45,
                   }}
                 >
-                  Modo demo: este drawer no fue abierto desde un club específico, así que las canchas y horarios son simulados. Abre el drawer desde el listado de clubes para reservar de verdad.
+                  Modo demo: abre el drawer desde <b>Clubes</b> para reservar con disponibilidad real.
                 </div>
               )}
 
-              <div className="label-mp" style={{ marginBottom: 8 }}>1 · Día</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                {days.map((opt, i) => (
-                  <button
-                    key={opt.iso}
-                    onClick={() => setDay(i)}
+              <Section n={1} title="Día">
+                <DayPickerRow days={days} day={day} onDay={setDay} />
+              </Section>
+
+              <Section
+                n={2}
+                title="Cancha"
+                hint={realMode && !courts ? "cargando…" : undefined}
+              >
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(88px, 1fr))", gap: 8 }}>
+                  {realMode
+                    ? (courts ?? []).map((c) => (
+                        <ChoiceChip
+                          key={c.id}
+                          selected={courtId === c.id}
+                          onClick={() => setCourtId(c.id)}
+                          style={{ padding: "10px 8px", fontSize: 11.5, fontWeight: 800 }}
+                        >
+                          {c.name}
+                        </ChoiceChip>
+                      ))
+                    : [1, 2, 3, 4].map((n, idx) => (
+                        <ChoiceChip
+                          key={n}
+                          selected={mockCourtIdx === idx}
+                          onClick={() => setMockCourtIdx(idx)}
+                          style={{ padding: "10px 8px", fontSize: 11.5, fontWeight: 800 }}
+                        >
+                          C{n}
+                        </ChoiceChip>
+                      ))}
+                </div>
+                {realMode && courts && courts.length === 0 ? (
+                  <p style={{ fontSize: 11.5, color: "var(--muted-fg)", margin: "8px 0 0" }}>
+                    Este club no tiene canchas activas.
+                  </p>
+                ) : null}
+              </Section>
+
+              <Section n={3} title="Duración">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {([60, 120] as Duration[]).map((m) => (
+                    <ChoiceChip
+                      key={m}
+                      selected={duration === m}
+                      onClick={() => setDuration(m)}
+                      style={{ padding: "12px 8px", fontSize: 13, fontWeight: 900 }}
+                    >
+                      {m === 60 ? "1 hora" : "2 horas"}
+                    </ChoiceChip>
+                  ))}
+                </div>
+              </Section>
+
+              <Section
+                n={4}
+                title="Hora"
+                hint={
+                  realMode
+                    ? duration === 60
+                      ? `${freeStarts.length} inicios libres`
+                      : `${freeStarts.length} bloques de 2 h libres`
+                    : undefined
+                }
+              >
+                <SlotLegend />
+                {loadingAvail && busyRanges.length === 0 && realMode ? (
+                  <div style={{ padding: "8px 0" }}>
+                    <SkeletonRows rows={3} />
+                  </div>
+                ) : (
+                  <div
                     style={{
-                      flex: 1,
-                      padding: "8px 4px",
-                      borderRadius: 8,
-                      border: day === i ? "2px solid var(--primary)" : "1px solid var(--border)",
-                      background: day === i ? "#ecfdf5" : "#fff",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 8,
                     }}
                   >
-                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted-fg)", letterSpacing: "0.1em" }}>
-                      {opt.label}
-                    </div>
-                    <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em" }}>
-                      {opt.dateNum}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="label-mp" style={{ marginBottom: 8 }}>
-                2 · Cancha{realMode && !courts ? " · cargando…" : ""}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 14 }}>
-                {realMode
-                  ? (courts ?? []).map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setCourtId(c.id)}
-                        style={{
-                          flex: "1 1 auto",
-                          minWidth: 60,
-                          padding: "7px 8px",
-                          borderRadius: 8,
-                          border: courtId === c.id ? "2px solid var(--primary)" : "1px solid var(--border)",
-                          background: courtId === c.id ? "#ecfdf5" : "#fff",
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 11,
-                          fontWeight: 800,
-                        }}
-                      >
-                        {c.name}
-                      </button>
-                    ))
-                  : [1, 2, 3, 4].map((n, idx) => (
-                      <button
-                        key={n}
-                        onClick={() => setMockCourtIdx(idx)}
-                        style={{
-                          flex: 1,
-                          padding: "7px 4px",
-                          borderRadius: 8,
-                          border: mockCourtIdx === idx ? "2px solid var(--primary)" : "1px solid var(--border)",
-                          background: mockCourtIdx === idx ? "#ecfdf5" : "#fff",
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 11,
-                          fontWeight: 800,
-                        }}
-                      >
-                        C{n}
-                      </button>
-                    ))}
-                {realMode && courts && courts.length === 0 && (
-                  <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-                    Este club no tiene canchas activas.
+                    {slots.map((h) => {
+                      const isPast = pastSlots.has(h);
+                      const isTaken = !isPast && taken.has(h);
+                      const isInBlock = selectedRange.has(h);
+                      const isStart = h === time;
+                      const canPick = isStartValid(h, duration, slots, taken, pastSlots);
+                      const disabled = isPast || isTaken;
+                      return (
+                        <button
+                          key={h}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            if (canPick) setTime(h);
+                          }}
+                          className="mp-press"
+                          aria-pressed={isInBlock}
+                          aria-label={
+                            isPast
+                              ? `${h}, horario pasado`
+                              : isTaken
+                                ? `${h}, ocupado`
+                                : isInBlock
+                                  ? `${h}, en tu reserva`
+                                  : canPick
+                                    ? `${h}, inicio de bloque libre`
+                                    : `${h}, no alcanza para ${duration / 60} h`
+                          }
+                          style={{
+                            padding: "11px 6px",
+                            borderRadius: 10,
+                            fontFamily: "inherit",
+                            fontSize: 12,
+                            fontWeight: 900,
+                            border: isInBlock
+                              ? "2px solid var(--primary)"
+                              : isTaken
+                                ? `1px solid ${SLOT_TAKEN_BORDER}`
+                                : "1px solid var(--border)",
+                            background: isInBlock
+                              ? "var(--primary)"
+                              : isTaken
+                                ? SLOT_TAKEN_BG
+                                : isPast
+                                  ? "#e7e5e4"
+                                  : "#fff",
+                            color: isInBlock
+                              ? "#fff"
+                              : isTaken
+                                ? SLOT_TAKEN_FG
+                                : isPast
+                                  ? "#a3a3a3"
+                                  : "#0a0a0a",
+                            cursor: disabled ? "not-allowed" : canPick ? "pointer" : "default",
+                            textDecoration: isTaken ? "line-through" : "none",
+                            opacity: isPast ? 0.7 : !canPick && !disabled ? 0.45 : 1,
+                          }}
+                        >
+                          {h}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-              </div>
+                {duration === 120 ? (
+                  <p style={{ fontSize: 10.5, color: "var(--muted-fg)", margin: "8px 0 0", lineHeight: 1.4 }}>
+                    Toca la hora de inicio: se marcan 2 horas seguidas en verde.
+                  </p>
+                ) : null}
+                {!loadingAvail && realMode && freeStarts.length === 0 ? (
+                  <p style={{ fontSize: 11.5, color: "#b45309", margin: "10px 0 0", fontWeight: 700 }}>
+                    No hay horarios libres este día en esta cancha. Prueba otro día o cancha.
+                  </p>
+                ) : null}
+              </Section>
 
-              <div className="label-mp" style={{ marginBottom: 8 }}>3 · Duración</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                {([60, 120] as Duration[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setDuration(m)}
-                    style={{
-                      flex: 1,
-                      padding: "8px 4px",
-                      borderRadius: 8,
-                      border: duration === m ? "2px solid var(--primary)" : "1px solid var(--border)",
-                      background: duration === m ? "#ecfdf5" : "#fff",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontSize: 11.5,
-                      fontWeight: 900,
-                    }}
-                  >
-                    {m === 60 ? "1 h" : `${m / 60} h`}
-                  </button>
-                ))}
-              </div>
-
-              <div className="label-mp" style={{ marginBottom: 8 }}>
-                4 · Hora{loadingAvail ? " · cargando disponibilidad…" : ""}
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4,1fr)",
-                  gap: 6,
-                  marginBottom: 14,
-                }}
-              >
-                {slots.map((h) => {
-                  const isSel = h === time;
-                  const isTaken = taken.has(h);
-                  return (
-                    <button
-                      key={h}
-                      disabled={isTaken}
-                      onClick={() => setTime(h)}
-                      style={{
-                        padding: "9px 4px",
-                        borderRadius: 8,
-                        fontFamily: "inherit",
-                        border: isSel
-                          ? "2px solid var(--primary)"
-                          : "1px solid " + (isTaken ? "var(--border)" : "rgba(16,185,129,0.3)"),
-                        background: isSel ? "var(--primary)" : isTaken ? "#fafafa" : "#ecfdf5",
-                        color: isSel ? "#fff" : isTaken ? "var(--muted-fg)" : "#065f46",
-                        cursor: isTaken ? "not-allowed" : "pointer",
-                        fontSize: 11.5,
-                        fontWeight: 900,
-                        textDecoration: isTaken ? "line-through" : "none",
-                      }}
-                    >
-                      {h}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="label-mp" style={{ marginBottom: 8 }}>
-                5 · Invitar jugadores · <span style={{ color: "var(--muted-fg)" }}>opcional</span>
-              </div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                {["CA", "JM", "AR"].map((i, idx) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: "50%",
-                      background: INVITE_AVATARS[idx],
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 9.5,
-                      fontWeight: 900,
-                      fontFamily: "Plus Jakarta Sans",
-                    }}
-                  >
-                    {i}
-                  </div>
-                ))}
-                <button
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: "50%",
-                    background: "#fff",
-                    border: "1.5px dashed var(--border)",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon name="plus" size={12} />
-                </button>
-                <span
-                  style={{
-                    fontSize: 10.5,
-                    color: "var(--muted-fg)",
-                    alignSelf: "center",
-                    marginLeft: 4,
-                  }}
-                >
-                  3 / 4 jugadores
-                </span>
-              </div>
-
-              <div style={{ padding: 14, background: "#0a0a0a", color: "#fff", borderRadius: 10 }}>
+              {errorMsg ? (
                 <div
+                  role="alert"
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    marginBottom: 8,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 11.5, fontWeight: 800 }}>
-                      {selectedDay.label} {selectedDay.dateNum} {selectedDay.monthShort} · {time ?? "—"}
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.6)" }}>
-                      {courtLabel} · {duration} min
-                    </div>
-                  </div>
-                  <div
-                    className="font-heading"
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 900,
-                      letterSpacing: "-0.02em",
-                      color: "var(--primary)",
-                    }}
-                  >
-                    ${price.toFixed(2)}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 5, fontSize: 9.5, color: "rgba(255,255,255,0.6)" }}>
-                  <span>
-                    ${(price * 0.67).toFixed(0)} cancha + ${(price * 0.33).toFixed(0)} com.
-                  </span>
-                  <span style={{ marginLeft: "auto" }}>
-                    Dividir entre 4 · ${(price / 4).toFixed(2)} c/u
-                  </span>
-                </div>
-              </div>
-
-              {errorMsg && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: 10,
+                    marginBottom: 12,
+                    padding: 12,
                     background: "#fee2e2",
                     border: "1px solid #fca5a5",
-                    borderRadius: 8,
-                    fontSize: 11.5,
+                    borderRadius: 10,
+                    fontSize: 12,
                     color: "#b91c1c",
+                    lineHeight: 1.4,
                   }}
                 >
                   {errorMsg}
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div
               style={{
-                padding: "14px 22px",
+                padding: "12px 22px 14px",
                 borderTop: "1px solid var(--border)",
-                display: "flex",
-                gap: 8,
+                background: "#fafafa",
               }}
             >
-              <button
-                className="btn"
-                style={{ background: "#fff", border: "1px solid var(--border)" }}
-              >
-                <Icon name="layers" size={13} />
-                Más opciones
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1, opacity: submitting || !time ? 0.6 : 1 }}
-                onClick={handleConfirm}
-                disabled={submitting || !time}
-              >
-                <Icon name="lock" size={13} color="#fff" />
-                {submitting ? "Reservando…" : "Confirmar y pagar"}
-              </button>
+              <ReservationTicketSummary
+                clubName={club?.name ?? "Club"}
+                dayLabel={selectedDay.label}
+                dateNum={selectedDay.dateNum}
+                monthShort={selectedDay.monthShort}
+                timeLabel={time ? formatReservationTimeLabel(time, duration) : "Elige hora"}
+                courtLabel={courtLabel}
+                durationLabel={duration === 60 ? "1 h" : "2 h"}
+                price={price}
+              />
+
+              {showMoreOptions ? (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 12,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "#fff",
+                  }}
+                >
+                  <div className="label-mp" style={{ marginBottom: 8 }}>
+                    Opciones de la reserva
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, marginBottom: 6, color: "var(--muted-fg)" }}>
+                      Visibilidad
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <ChoiceChip
+                        selected={visibility === "private"}
+                        onClick={() => setVisibility("private")}
+                        style={{ padding: "10px 8px", fontSize: 11, fontWeight: 800 }}
+                      >
+                        Solo yo
+                      </ChoiceChip>
+                      <ChoiceChip
+                        selected={visibility === "public"}
+                        onClick={() => setVisibility("public")}
+                        style={{ padding: "10px 8px", fontSize: 11, fontWeight: 800 }}
+                      >
+                        Otros pueden unirse
+                      </ChoiceChip>
+                    </div>
+                    <p style={{ fontSize: 10, color: "var(--muted-fg)", margin: "6px 0 0", lineHeight: 1.4 }}>
+                      {visibility === "private"
+                        ? "Solo tú y el club ven la reserva."
+                        : "Otros jugadores podrán verla y pedir unirse (cuando esté disponible)."}
+                    </p>
+                  </div>
+                  <label style={{ display: "block" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted-fg)" }}>
+                      Notas para el club (opcional)
+                    </span>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      placeholder="Ej. traigo pelotas, clase con coach…"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        marginTop: 6,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        fontSize: 12,
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        minHeight: 72,
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn mp-press"
+                  aria-expanded={showMoreOptions}
+                  onClick={() => setShowMoreOptions((v) => !v)}
+                  style={{
+                    background: showMoreOptions ? "#ecfdf5" : "#fff",
+                    border: showMoreOptions ? "2px solid var(--primary)" : "1px solid var(--border)",
+                  }}
+                >
+                  <Icon
+                    name={showMoreOptions ? "chevron-down" : "layers"}
+                    size={13}
+                    style={showMoreOptions ? { transform: "rotate(180deg)" } : undefined}
+                  />
+                  {showMoreOptions ? "Menos opciones" : "Más opciones"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary mp-press"
+                  style={{ flex: 1, opacity: canConfirm ? 1 : 0.55 }}
+                  onClick={handleConfirm}
+                  disabled={!canConfirm}
+                >
+                  <Icon name="lock" size={13} color="#fff" />
+                  {submitting
+                    ? "Reservando…"
+                    : !time
+                      ? "Elige un horario"
+                      : realMode && !courtId
+                        ? courts === null
+                          ? "Cargando canchas…"
+                          : "Sin canchas activas"
+                        : "Confirmar y pagar"}
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -909,6 +1575,7 @@ export function ReservarCanchaDrawer() {
               flex: 1,
               overflow: "auto",
             }}
+            className="mp-noscroll"
           >
             <div
               style={{
@@ -978,7 +1645,10 @@ export function ReservarCanchaDrawer() {
                   ["Club", club?.name ?? "—"],
                   ["Cancha", courtLabel],
                   ["Fecha", `${selectedDay.label} ${selectedDay.dateNum} ${selectedDay.monthShort}`],
-                  ["Hora", `${time ?? "—"} · ${duration} min`],
+                  [
+                    "Hora",
+                    time ? formatReservationTimeLabel(time, duration) : "—",
+                  ],
                   ["Total", `$${price.toFixed(2)}`],
                 ] as [string, string][]
               ).map(([k, v]) => (
@@ -1000,15 +1670,12 @@ export function ReservarCanchaDrawer() {
 
             <div className="label-mp">Próximos pasos</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {[
-                { i: "users", l: "Invitar jugadores", primary: true },
-                { i: "calendar-plus", l: "Agregar a calendario" },
-                { i: "share-2", l: "Compartir" },
-                { i: "file-text", l: "Recibo · PDF" },
-              ].map((a) => (
+              {successActions.map((a) => (
                 <button
-                  key={a.l}
-                  className="card"
+                  key={a.id}
+                  type="button"
+                  className="card mp-press"
+                  onClick={a.onClick}
                   style={{
                     padding: 11,
                     textAlign: "left",
@@ -1030,12 +1697,15 @@ export function ReservarCanchaDrawer() {
                       marginBottom: 6,
                     }}
                   >
-                    <Icon name={a.i} size={12} color={a.primary ? "#fff" : "#0a0a0a"} />
+                    <Icon name={a.icon} size={12} color={a.primary ? "#fff" : "#0a0a0a"} />
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 900 }}>{a.l}</div>
+                  <div style={{ fontSize: 11, fontWeight: 900 }}>{a.label}</div>
                 </button>
               ))}
             </div>
+            <p style={{ fontSize: 10, color: "var(--muted-fg)", margin: "4px 0 0", lineHeight: 1.4 }}>
+              El recibo en PDF llegará cuando activemos pagos en la app.
+            </p>
 
             <button
               className="btn btn-primary"

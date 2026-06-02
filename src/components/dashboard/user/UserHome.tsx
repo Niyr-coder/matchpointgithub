@@ -1,5 +1,8 @@
 // Server: fetch profile + stats + reservations + torneos + history.
+export const dynamic = "force-dynamic";
+
 import { getServerClient } from "@/lib/db/client.server";
+import { loadUserUpcomingReservations } from "@/server/queries/user-upcoming-reservations";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
 import { listFeaturedTournaments } from "@/server/actions/tournaments";
@@ -39,7 +42,7 @@ async function loadData(): Promise<UserHomeData> {
     profile,
     { data: statsRows },
     { data: rankRows },
-    { data: reservations },
+    upcomingReservations,
     { data: myTournaments },
     { data: history },
   ] = await Promise.all([
@@ -56,14 +59,7 @@ async function loadData(): Promise<UserHomeData> {
       .select("rank,sport,mode")
       .eq("user_id", userId)
       .eq("sport", SPORT_PRIMARY),
-    supabase
-      .from("reservations")
-      .select("id,during,sport,status,court_id,club_id,courts(code,name),clubs(name,city)")
-      .eq("organizer_id", userId)
-      .gte("during", new Date().toISOString())
-      .eq("status", "booked")
-      .order("during", { ascending: true })
-      .limit(3),
+    loadUserUpcomingReservations(supabase, userId, 3),
     // Torneos en los que el user está inscrito (pending/accepted) y aún no
     // han pasado. Reemplaza los "featured" globales con algo más relevante.
     supabase
@@ -124,19 +120,6 @@ async function loadData(): Promise<UserHomeData> {
     .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt))
     .slice(0, 3);
 
-  const reservationsAdapted = (reservations ?? []).map((r: Record<string, unknown>) => {
-    const court = r.courts as { code?: string; name?: string } | null;
-    const club = r.clubs as { name?: string; city?: string } | null;
-    return {
-      id: r.id as string,
-      during: r.during as string,
-      courtLabel: court?.name ?? court?.code ?? "Cancha",
-      clubLabel: club?.name ?? "",
-      city: club?.city ?? null,
-      status: r.status as string,
-    };
-  });
-
   // Cast: tipos generados aún no incluyen `mode` en ranking_snapshots (mig 130).
   const histRows = (history ?? []) as unknown as Array<Record<string, unknown>>;
   const histByMode = (m: "singles" | "doubles") =>
@@ -170,17 +153,22 @@ async function loadData(): Promise<UserHomeData> {
   const [{ data: badgeCatalogRaw }, { data: myUnlocksRaw }] = await Promise.all([
     supabase
       .from("badges")
-      .select("kind,label,icon,sort_order")
+      .select("kind,label,icon,description,criteria_kind,criteria_value,sort_order")
       .eq("active" as never, true as never)
-      .order("sort_order" as never, { ascending: true })
-      .limit(5),
+      .order("sort_order" as never, { ascending: true }),
     supabase
       .from("player_badges")
       .select("badge_kind")
       .eq("user_id" as never, userId as never),
   ]);
   const catalog = (badgeCatalogRaw ?? []) as unknown as Array<{
-    kind: string; label: string; icon: string; sort_order: number;
+    kind: string;
+    label: string;
+    icon: string;
+    description: string | null;
+    criteria_kind: string;
+    criteria_value: number;
+    sort_order: number;
   }>;
   const unlockedKinds = new Set(
     ((myUnlocksRaw ?? []) as unknown as Array<{ badge_kind: string }>).map((r) => r.badge_kind),
@@ -189,6 +177,9 @@ async function loadData(): Promise<UserHomeData> {
     kind: b.kind,
     label: b.label,
     icon: b.icon,
+    description: b.description,
+    criteriaKind: b.criteria_kind,
+    criteriaValue: b.criteria_value,
     on: unlockedKinds.has(b.kind),
   }));
 
@@ -200,7 +191,7 @@ async function loadData(): Promise<UserHomeData> {
     rank: legacyRank?.rank ?? null,
     matchesTotal: (legacyStats?.matches_total as number | undefined) ?? 0,
     ratingsByMode,
-    reservations: reservationsAdapted,
+    reservations: upcomingReservations,
     tournaments: tournamentsAdapted,
     ratingHistory: historiesByMode.singles,
     historiesByMode,

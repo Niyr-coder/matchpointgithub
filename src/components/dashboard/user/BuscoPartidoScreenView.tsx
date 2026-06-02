@@ -1,170 +1,478 @@
 "use client";
 
-// Tablón "Busco partido": feed de avisos de la ciudad + publicar + postularse +
-// gestionar mis avisos (aceptar postulantes). Ver docs/product/03-match-seeks.md.
-//
-// Layout responsive híbrido: Tailwind para breakpoints, tokens en inline style.
-import { useEffect, useMemo, useState, useTransition } from "react";
+// Busco partido — lobby funcional de avisos abiertos. Mantiene el lenguaje visual
+// del mock (scoreboard, slots, cards), pero usa match_seeks reales.
+import { useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
-import {
-  acceptApplicant,
-  applyToMatchSeek,
-  cancelMatchSeek,
-  createMatchSeek,
-} from "@/server/actions/match-seeks";
+import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
+import { acceptApplicant, applyToMatchSeek, cancelMatchSeek, createMatchSeek, updateMatchSeek, withdrawApplication } from "@/server/actions/match-seeks";
 import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
 import type { MatchSeek, MatchSeekApplication } from "@/lib/schemas/match-seeks";
-import type { MyApplicationItem } from "@/server/actions/match-seeks";
-import { useEnabledSports } from "@/components/SportsProvider";
-import { SPORT_META, sportLabel, type Sport } from "@/lib/sports";
+import {
+  SKILL_LEVEL_BANDS,
+  SKILL_LEVEL_MAX,
+  SKILL_LEVEL_MIN,
+  SKILL_LEVEL_PRESETS,
+  SKILL_LEVEL_SPAN,
+  SKILL_LEVEL_STEP,
+  SKILL_LEVEL_TICKS,
+  formatSkillLevel,
+  normalizeSkillLevel,
+  rangeBandSummary,
+  skillLevelToPercent,
+} from "@/lib/mpr/skill-level-bands";
 
-type MineItem = { seek: MatchSeek; applications: MatchSeekApplication[] };
-
-type Props = {
-  meUserId: string;
-  myCity: string | null;
-  myPlanTier: "free" | "premium";
-  feed: MatchSeek[];
-  mine: MineItem[];
-  myApplications: MyApplicationItem[];
-  focusSeekId: string | null;
+type MatchPlayer = { a: string; b: string; title?: string };
+type Match = {
+  id: string;
+  seek: MatchSeek;
+  host: string;
+  hostAv: string;
+  hostBg: string;
+  hostLevel: number | null;
+  sport: string;
+  mode: string;
+  club: string;
+  dist: string;
+  date: string;
+  time: string;
+  startsIn: string;
+  urgency: "hot" | "today" | "tomorrow" | "later";
+  levelRange: [number, number];
+  slotsTotal: number;
+  players: MatchPlayer[];
+  ranked: boolean;
+  fit: number | null;
+  viewing: number;
+  featured?: boolean;
 };
 
-function initials(name: string | null): string {
-  if (!name) return "??";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+type Scope = "para-ti" | "hoy" | "nivel" | "club" | "cerca" | "vacante1" | "ranked";
+type Tab = "feed" | "mine" | "apps";
+type View = "cards" | "list" | "map";
+type SortBy = "relevancia" | "hora" | "ciudad";
+type LevelMode = "all" | "strict" | "flex";
+type Tweaks = Partial<{ view: View; sortBy: SortBy; levelMode: LevelMode }>;
+type MineItem = { seek: MatchSeek; applications: MatchSeekApplication[] };
+type MyApplicationItem = {
+  applicationId: string;
+  status: "pending" | "accepted" | "rejected" | "withdrawn";
+  createdAt: string;
+  seekId: string;
+  sport: MatchSeek["sport"];
+  mode: MatchSeek["mode"];
+  windowStart: string;
+  windowEnd: string | null;
+  ranked: boolean;
+  authorName: string | null;
+  conversationId: string | null;
+};
+
+type Props = {
+  tweaks?: Tweaks;
+  meUserId?: string;
+  myCity?: string | null;
+  myPlanTier?: "free" | "premium";
+  feed?: MatchSeek[];
+  mine?: MineItem[];
+  myApplications?: MyApplicationItem[];
+  focusSeekId?: string | null;
+};
+
+function Lucide({ name, style }: { name: string; style?: React.CSSProperties }) {
+  const width = typeof style?.width === "number" ? style.width : undefined;
+  const height = typeof style?.height === "number" ? style.height : undefined;
+  const color = typeof style?.color === "string" ? style.color : undefined;
+  return <Icon name={name} size={width ?? height ?? 16} color={color} style={style} />;
 }
 
-function formatWindow(startIso: string, endIso: string | null): string {
-  const start = new Date(startIso);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const diff = Math.round((startDay.getTime() - today.getTime()) / 86_400_000);
-  const hh = String(start.getHours()).padStart(2, "0");
-  const mm = String(start.getMinutes()).padStart(2, "0");
-  const dayLabel =
-    diff === 0 ? "Hoy" : diff === 1 ? "Mañana" : start.toLocaleDateString("es-EC", { weekday: "short", day: "numeric", month: "short" });
-  let s = `${dayLabel} · ${hh}:${mm}`;
-  if (endIso) {
-    const end = new Date(endIso);
-    s += `–${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
-  }
-  return s;
+export function BuscoPartidoComingSoon({ reason = "flag" }: { reason?: "flag" | "auth" }) {
+  return <BuscarMatchScreen unavailableReason={reason} />;
 }
 
-function skillLabel(min: number | null, max: number | null): string | null {
-  if (min == null && max == null) return null;
-  if (min != null && max != null) return `Nivel ${min.toFixed(1)} – ${max.toFixed(1)}`;
-  if (min != null) return `Nivel ≥ ${min.toFixed(1)}`;
-  return `Nivel ≤ ${(max as number).toFixed(1)}`;
+export function BuscoPartidoScreenView(props: Props) {
+  return <BuscarMatchScreen {...props} />;
 }
 
-// ── Estado vacío honesto cuando el feature está apagado ──────────────────────
-export function BuscoPartidoComingSoon({ reason }: { reason: "flag" | "auth" }) {
-  return (
-    <div className="card" style={{ padding: 40, textAlign: "center", maxWidth: 560, margin: "40px auto" }}>
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 14,
-          background: "#f0fdf4",
-          color: "var(--primary)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 16,
-        }}
-      >
-        <Icon name="swords" size={26} />
-      </div>
-      <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}>
-        Busco partido<span style={{ color: "var(--primary)" }}>.</span>
-      </h2>
-      <p style={{ color: "var(--muted-fg)", fontSize: 13.5, marginTop: 10 }}>
-        {reason === "auth"
-          ? "Inicia sesión para encontrar rivales cerca de ti."
-          : "Estamos afinando esta función para tu ciudad. Muy pronto vas a poder publicar tu búsqueda y encontrar rivales de tu nivel."}
-      </p>
-    </div>
-  );
-}
-
-// ── Pantalla principal ───────────────────────────────────────────────────────
-export function BuscoPartidoScreenView({ meUserId, myCity, myPlanTier, feed, mine, myApplications, focusSeekId }: Props) {
+function BuscarMatchScreen({
+  tweaks = {},
+  meUserId,
+  myCity,
+  myPlanTier = "free",
+  feed = [],
+  mine = [],
+  myApplications = [],
+  focusSeekId,
+  unavailableReason,
+}: Props & { unavailableReason?: "flag" | "auth" }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"feed" | "mine" | "apps">(focusSeekId ? "mine" : "feed");
-  const [sportFilter, setSportFilter] = useState<string | null>(null);
-  const [modeFilter, setModeFilter] = useState<"singles" | "doubles" | null>(null);
+  const toast = useToast();
+  const { confirm, ask } = usePromptModal();
+  const [scope, setScope] = useState<Scope>("para-ti");
+  const [tab, setTab] = useState<Tab>(focusSeekId ? "mine" : "feed");
+  const [view, setView] = useState<View>(tweaks.view || "cards");
+  const [sortBy, setSortBy] = useState<SortBy>(tweaks.sortBy || "relevancia");
+  const [levelMode, setLevelMode] = useState<LevelMode>(tweaks.levelMode || "flex");
+  const [sport, setSport] = useState<"all" | MatchSeek["sport"]>("all");
+  const [mode, setMode] = useState("all");
+  const [day, setDay] = useState("cualquier");
   const [publishOpen, setPublishOpen] = useState(false);
   const [applyTarget, setApplyTarget] = useState<MatchSeek | null>(null);
+  const [editTarget, setEditTarget] = useState<{ seek: MatchSeek; pendingApplications: number } | null>(null);
+
+  const openEditSeek = (seek: MatchSeek) => {
+    const item = mine.find((m) => m.seek.id === seek.id);
+    const pendingApplications =
+      item?.applications.filter((a) => a.status === "pending" || a.status === "accepted").length ?? 0;
+    setEditTarget({ seek, pendingApplications });
+  };
+  const [managedSeekId, setManagedSeekId] = useState<string | null>(focusSeekId ?? null);
+  const [actionPending, startAction] = useTransition();
 
   useRealtimeRefresh(
     [
       { table: "match_seeks" },
       { table: "match_seek_applications" },
+      { table: "matches" },
     ],
-    { enabled: true },
+    { enabled: !unavailableReason, debounceMs: 1200 },
   );
 
-  const filteredFeed = useMemo(
-    () =>
-      feed.filter(
-        (s) =>
-          (!sportFilter || s.sport === sportFilter) &&
-          (!modeFilter || s.mode === modeFilter) &&
-          s.createdBy !== meUserId,
-      ),
-    [feed, sportFilter, modeFilter, meUserId],
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setView(tweaks.view || "cards"); }, [tweaks.view]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setSortBy(tweaks.sortBy || "relevancia"); }, [tweaks.sortBy]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setLevelMode(tweaks.levelMode || "flex"); }, [tweaks.levelMode]);
+
+  const me = { level: null as number | null, name: "Tú", club: myCity ?? "Tu ciudad" };
+  const isUnavailable = !!unavailableReason;
+  const allMatches = useMemo(() => feed.map((seek) => toMatch(seek, myCity)), [feed, myCity]);
+  const matchesLevel = (m: Match) => {
+    if (levelMode === "all") return true;
+    if (m.seek.skillMin == null && m.seek.skillMax == null) return levelMode === "flex";
+    return true;
+  };
+  const matchesScope = (m: Match) => {
+    if (scope === "para-ti") return true;
+    if (scope === "hoy") return m.date === "Hoy";
+    if (scope === "nivel") return m.seek.skillMin != null || m.seek.skillMax != null;
+    if (scope === "club") return !!m.seek.clubId;
+    if (scope === "cerca") return myCity ? m.seek.city === myCity : true;
+    if (scope === "vacante1") return m.slotsTotal - m.players.length === 1;
+    if (scope === "ranked") return m.ranked;
+    return true;
+  };
+  const matchesDay = (m: Match) => day === "cualquier" ? true : (day === "hoy" ? m.date === "Hoy" : day === "mañana" ? m.date === "Mañana" : true);
+  const matchesMode = (m: Match) => mode === "all" ? true : m.seek.mode === mode;
+  const matchesSport = (m: Match) => sport === "all" ? true : m.seek.sport === sport;
+
+  const filtered = allMatches.filter((m) => matchesLevel(m) && matchesScope(m) && matchesDay(m) && matchesMode(m) && matchesSport(m));
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "hora") {
+      return new Date(a.seek.windowStart).getTime() - new Date(b.seek.windowStart).getTime();
+    }
+    if (sortBy === "ciudad") return a.dist.localeCompare(b.dist);
+    return new Date(a.seek.windowStart).getTime() - new Date(b.seek.windowStart).getTime();
+  });
+
+  const featured = sorted[0] ?? allMatches[0] ?? null;
+  const rest = featured ? sorted.filter((m) => m.id !== featured.id) : [];
+  const mineActive = useMemo(
+    () => mine.filter(({ seek }) => seek.status === "open" || seek.status === "matched"),
+    [mine],
+  );
+
+  const counts: Record<Scope, number> = {
+    "para-ti": allMatches.length,
+    hoy: allMatches.filter((m) => m.date === "Hoy").length,
+    nivel: allMatches.filter((m) => m.seek.skillMin != null || m.seek.skillMax != null).length,
+    club: allMatches.filter((m) => !!m.seek.clubId).length,
+    cerca: allMatches.filter((m) => !myCity || m.seek.city === myCity).length,
+    vacante1: allMatches.filter((m) => m.slotsTotal - m.players.length === 1).length,
+    ranked: allMatches.filter((m) => m.ranked).length,
+  };
+
+  const apply = (seek: MatchSeek) => {
+    if (seek.createdBy === meUserId) {
+      toast({ icon: "info", title: "Este aviso es tuyo", sub: "Revísalo desde Mis avisos." });
+      setTab("mine");
+      return;
+    }
+    setApplyTarget(seek);
+  };
+  const cancelSeek = async (seek: MatchSeek) => {
+    const ok = await confirm({
+      title: "Cancelar aviso",
+      body: "Tu aviso dejará de aparecer en el lobby. Puedes publicar otro cuando quieras.",
+      confirmLabel: "Cancelar aviso",
+      destructive: true,
+    });
+    if (!ok) return;
+    startAction(async () => {
+      const res = await cancelMatchSeek({ seekId: seek.id });
+      if (res.ok) {
+        toast({ icon: "check", title: "Aviso cancelado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  };
+  const accept = async (seek: MatchSeek, app: MatchSeekApplication) => {
+    const ok = await confirm({
+      title: "Aceptar postulación",
+      body: `Se creará un match ${modeLabel(seek.mode).toLowerCase()} y se abrirá el chat del partido.`,
+      confirmLabel: "Aceptar",
+    });
+    if (!ok) return;
+    startAction(async () => {
+      const res = await acceptApplicant({ seekId: seek.id, applicationId: app.id });
+      if (res.ok) {
+        toast({ icon: "check-circle-2", title: "Match creado", sub: "Ya puedes coordinar por el chat." });
+        router.refresh();
+        if (res.data.conversationId) router.push(`/dashboard/user/chat?conv=${res.data.conversationId}`);
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo aceptar", sub: res.error.message });
+      }
+    });
+  };
+  const withdraw = async (app: MyApplicationItem) => {
+    const ok = await confirm({
+      title: "Retirar postulación",
+      body: "El autor ya no podrá aceptarte para este aviso.",
+      confirmLabel: "Retirar",
+    });
+    if (!ok) return;
+    startAction(async () => {
+      const res = await withdrawApplication({ applicationId: app.applicationId });
+      if (res.ok) {
+        toast({ icon: "check", title: "Postulación retirada" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo retirar", sub: res.error.message });
+      }
+    });
+  };
+  const cancelScheduledMatch = async (matchId: string) => {
+    const ok = await confirm({
+      title: "Cancelar partido",
+      body: "Se avisará a los participantes y, si el aviso no expiró, volverá a abrirse.",
+      confirmLabel: "Cancelar partido",
+      destructive: true,
+    });
+    if (!ok) return;
+    startAction(async () => {
+      const res = await cancelMatch({ matchId, reason: "Cancelado desde Busco partido" });
+      if (res.ok) {
+        toast({ icon: "check", title: "Partido cancelado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  };
+  const rescheduleScheduledMatch = async (matchId: string) => {
+    const raw = await ask({
+      title: "Reprogramar partido",
+      label: "Nueva fecha",
+      placeholder: "2026-06-01 19:30",
+      helper: "Usa formato AAAA-MM-DD HH:mm.",
+      required: true,
+      confirmLabel: "Reprogramar",
+      validate: (v) => (parseLocalDateTime(v) ? null : "Usa una fecha válida en formato AAAA-MM-DD HH:mm."),
+    });
+    if (raw == null) return;
+    const playedAt = parseLocalDateTime(raw);
+    if (!playedAt) return;
+    startAction(async () => {
+      const res = await rescheduleMatch({ matchId, playedAt });
+      if (res.ok) {
+        toast({ icon: "check", title: "Partido reprogramado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo reprogramar", sub: res.error.message });
+      }
+    });
+  };
+
+  const renderFeedMatches = () => {
+    if (sorted.length === 0) {
+      return (
+        <div className="card" style={{ padding: 22, textAlign: "center" }}>
+          <div className="label-mp" style={{ marginBottom: 8 }}>Sin resultados</div>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)" }}>Ningún aviso coincide con los filtros actuales. Prueba otro deporte, modalidad o chip de arriba.</p>
+        </div>
+      );
+    }
+    return (
+      <>
+        {featured && (
+          <FeaturedMatch
+            m={featured}
+            isMine={featured.seek.createdBy === meUserId}
+            onApply={apply}
+            onManage={() => {
+              setManagedSeekId(featured.seek.id);
+              setTab("mine");
+              if (featured.seek.status === "open") openEditSeek(featured.seek);
+            }}
+            disabled={actionPending}
+          />
+        )}
+        {view === "map" ? (
+          <MapView matches={sorted} onApply={apply} />
+        ) : view === "list" ? (
+          <ListView matches={rest} me={me} onApply={apply} disabled={actionPending} />
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 16 }}>
+            {rest.map((m) => (
+              <MatchCard key={m.id} m={m} me={me} onApply={apply} disabled={actionPending} />
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const feedBody = isUnavailable ? (
+    <UnavailableState reason={unavailableReason} />
+  ) : allMatches.length === 0 ? (
+    view === "map" ? (
+      <MapView matches={[]} onApply={apply} />
+    ) : view === "list" ? (
+      <ListView matches={[]} me={me} onApply={apply} disabled={actionPending} emptyHint onCreate={() => setPublishOpen(true)} city={myCity} />
+    ) : (
+      <EmptyLobby onCreate={() => setPublishOpen(true)} city={myCity} />
+    )
+  ) : (
+    renderFeedMatches()
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Header
-        myCity={myCity}
-        feedCount={filteredFeed.length}
-        onPublish={() => setPublishOpen(true)}
-      />
-
-      <Tabs tab={tab} setTab={setTab} mineCount={mine.length} appsCount={myApplications.length} />
-
-      {tab === "feed" ? (
-        <>
-          <Filters
-            sportFilter={sportFilter}
-            setSportFilter={setSportFilter}
-            modeFilter={modeFilter}
-            setModeFilter={setModeFilter}
-          />
-          {filteredFeed.length === 0 ? (
-            <EmptyFeed onPublish={() => setPublishOpen(true)} />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredFeed.map((s) => (
-                <FeedCard key={s.id} seek={s} onApply={() => setApplyTarget(s)} />
-              ))}
-            </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-screen-label="Busco Partido" data-sport={sport}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h1 className="font-heading" style={{ fontWeight: 900, fontSize: 44, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: "8px 0 0" }}>
+            Busco partido<span className="dot">.</span>
+          </h1>
+          <p style={{ color: "var(--muted-fg)", fontSize: 13.5, margin: "8px 0 0" }}>
+            <b style={{ color: "#0a0a0a" }}>{allMatches.length} avisos abiertos</b> · <span style={{ color: "var(--primary)" }}>{counts.nivel} con nivel definido</span> · {counts.hoy} hoy
+            {myPlanTier === "premium" ? " · MATCHPOINT+" : ""}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {tab === "feed" && (
+            <>
+              <SegBM options={[{ k: "cards", i: "layout-grid" }, { k: "list", i: "list" }, { k: "map", i: "map" }]} value={view} onChange={(v) => setView(v as View)} />
+              <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} />
+            </>
           )}
-        </>
-      ) : tab === "mine" ? (
-        <MineList mine={mine} focusSeekId={focusSeekId} onRefresh={() => router.refresh()} />
-      ) : (
-        <MyApplicationsList apps={myApplications} />
+          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable}>
+            <Lucide name="plus" style={{ width: 13, height: 13 }} />Publicar aviso
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {[
+          { k: "feed", l: "Cerca de ti", i: "radar", count: allMatches.length },
+          { k: "mine", l: "Mis avisos", i: "clipboard-list", count: mineActive.length },
+          { k: "apps", l: "Mis postulaciones", i: "send", count: myApplications.length },
+        ].map((item) => {
+          const on = tab === item.k;
+          return (
+            <button key={item.k} onClick={() => setTab(item.k as Tab)} style={{
+              display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 15px", borderRadius: 9999,
+              background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "#0a0a0a",
+              border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
+              fontFamily: "inherit", fontSize: 12, fontWeight: 900, cursor: "pointer",
+            }}>
+              <Lucide name={item.i} style={{ width: 13, height: 13, color: on ? "var(--primary)" : "#0a0a0a" }} />
+              {item.l}
+              <span className="tabular" style={{ padding: "1px 7px", borderRadius: 9999, background: on ? "rgba(255,255,255,0.18)" : "var(--muted)", color: on ? "#fff" : "var(--muted-fg)", fontSize: 10, fontWeight: 900 }}>{item.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "feed" && (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {[
+          { k: "para-ti", l: "Para ti", i: "sparkles" },
+          { k: "hoy", l: "Hoy", i: "sun" },
+          { k: "nivel", l: "Con nivel", i: "zap" },
+          { k: "club", l: "Con club", i: "building-2" },
+          { k: "cerca", l: myCity ? `Tu ciudad` : "Todas las ciudades", i: "map-pin" },
+          { k: "vacante1", l: "Falta 1", i: "user-plus" },
+          { k: "ranked", l: "MPR", i: "trophy" },
+        ].map((c) => {
+          const key = c.k as Scope;
+          const on = scope === key;
+          return (
+            <button key={c.k} onClick={() => setScope(key)} style={{
+              display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 9999,
+              background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "#0a0a0a",
+              border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
+              fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
+            }}>
+              <Lucide name={c.i} style={{ width: 12, height: 12, color: on ? "var(--primary)" : "#0a0a0a" }} />
+              {c.l}
+              <span style={{ padding: "1px 6px", borderRadius: 9999, background: on ? "rgba(255,255,255,0.18)" : "var(--muted)", color: on ? "#fff" : "var(--muted-fg)", fontSize: 10, fontWeight: 900, marginLeft: 2 }}>{counts[key] || 0}</span>
+            </button>
+          );
+        })}
+        <span style={{ flex: 1 }} />
+        <FineFilter label="Deporte" value={sport} onChange={(v) => setSport(v as "all" | MatchSeek["sport"])} options={[{ k: "all", l: "Todos" }, { k: "pickleball", l: "Pickleball" }, { k: "padel", l: "Pádel" }, { k: "tennis", l: "Tenis" }]} />
+        <FineFilter label="Modalidad" value={mode} onChange={setMode} options={[{ k: "all", l: "Todas" }, { k: "singles", l: "Singles" }, { k: "doubles", l: "Dobles" }]} />
+        <FineFilter label="Día" value={day} onChange={setDay} options={[{ k: "cualquier", l: "Cualquier día" }, { k: "hoy", l: "Hoy" }, { k: "mañana", l: "Mañana" }]} />
+      </div>
       )}
 
+      {tab === "feed" && feedBody}
+      {tab === "mine" && (
+        <MinePanel
+          items={mineActive}
+          focusedId={managedSeekId ?? focusSeekId}
+          busy={actionPending}
+          onEdit={(seek) => {
+            setManagedSeekId(seek.id);
+            openEditSeek(seek);
+          }}
+          onAccept={accept}
+          onCancelSeek={cancelSeek}
+          onCancelMatch={cancelScheduledMatch}
+          onRescheduleMatch={rescheduleScheduledMatch}
+        />
+      )}
+      {tab === "apps" && <ApplicationsPanel items={myApplications} busy={actionPending} onWithdraw={withdraw} />}
+
+      <div className="card" style={{ padding: 28, marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, background: "linear-gradient(135deg,#fafafa 0%, #fff 50%, #ecfdf5 100%)", flexWrap: "wrap" }}>
+        <div>
+          <div className="label-mp" style={{ color: "var(--primary)" }}>● No encuentras tu match</div>
+          <h2 className="font-heading" style={{ fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em", margin: "6px 0 0", lineHeight: 1 }}>
+            Publica tu aviso<span className="dot">.</span>
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0", maxWidth: 440 }}>
+            En 60 segundos publicas una franja, modalidad y nivel. Cuando alguien se postule, lo aceptas y MATCHPOINT crea el match con chat.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => setTab("mine")}>
+            <Lucide name="clipboard-list" style={{ width: 13, height: 13 }} />Ver mis avisos
+          </button>
+          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable}>
+            <Lucide name="plus-circle" style={{ width: 13, height: 13 }} />Publicar aviso
+          </button>
+        </div>
+      </div>
+
       {publishOpen && (
-        <PublishModal
-          myPlanTier={myPlanTier}
+        <PublishSeekModal
           meUserId={meUserId}
           onClose={() => setPublishOpen(false)}
           onDone={() => {
@@ -173,7 +481,6 @@ export function BuscoPartidoScreenView({ meUserId, myCity, myPlanTier, feed, min
           }}
         />
       )}
-
       {applyTarget && (
         <ApplyModal
           seek={applyTarget}
@@ -185,515 +492,15 @@ export function BuscoPartidoScreenView({ meUserId, myCity, myPlanTier, feed, min
           }}
         />
       )}
-    </div>
-  );
-}
-
-function Header({ myCity, feedCount, onPublish }: { myCity: string | null; feedCount: number; onPublish: () => void }) {
-  return (
-    <div
-      style={{
-        background: "#0a0a0a",
-        color: "#fff",
-        borderRadius: 14.4,
-        padding: 24,
-        position: "relative",
-        overflow: "hidden",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-end",
-        gap: 16,
-        flexWrap: "wrap",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "radial-gradient(ellipse at 90% 10%, rgba(16,185,129,0.22), transparent 55%)",
-        }}
-      />
-      <div style={{ position: "relative" }}>
-        <div className="chip-green" style={{ marginBottom: 10 }}>
-          <span className="chip-dot" />
-          {myCity ?? "Tu ciudad"}
-        </div>
-        <h1
-          className="font-heading"
-          style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", fontSize: 34, margin: 0, lineHeight: 0.95 }}
-        >
-          Busco partido<span className="dot">.</span>
-        </h1>
-        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, margin: "8px 0 0" }}>
-          {feedCount > 0 ? (
-            <>
-              <b style={{ color: "#34d399" }}>{feedCount}</b> {feedCount === 1 ? "jugador busca" : "jugadores buscan"} rival cerca de ti.
-            </>
-          ) : (
-            <>Sé el primero en publicar una búsqueda en tu zona.</>
-          )}
-        </p>
-      </div>
-      <button className="btn btn-primary" style={{ position: "relative", padding: "11px 18px" }} onClick={onPublish}>
-        <Icon name="plus" size={14} color="#fff" />
-        Publicar
-      </button>
-    </div>
-  );
-}
-
-function Tabs({
-  tab,
-  setTab,
-  mineCount,
-  appsCount,
-}: {
-  tab: "feed" | "mine" | "apps";
-  setTab: (t: "feed" | "mine" | "apps") => void;
-  mineCount: number;
-  appsCount: number;
-}) {
-  const opts: { k: "feed" | "mine" | "apps"; label: string }[] = [
-    { k: "feed", label: "Cerca de ti" },
-    { k: "mine", label: `Mis avisos${mineCount ? ` · ${mineCount}` : ""}` },
-    { k: "apps", label: `Mis postulaciones${appsCount ? ` · ${appsCount}` : ""}` },
-  ];
-  return (
-    <div style={{ display: "inline-flex", gap: 4, padding: 4, background: "#f5f5f5", borderRadius: 9999, alignSelf: "flex-start" }}>
-      {opts.map((o) => {
-        const active = tab === o.k;
-        return (
-          <button
-            key={o.k}
-            onClick={() => setTab(o.k)}
-            style={{
-              border: 0,
-              background: active ? "#0a0a0a" : "transparent",
-              color: active ? "#fff" : "#737373",
-              padding: "7px 16px",
-              borderRadius: 9999,
-              fontWeight: 800,
-              fontSize: 11.5,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Filters({
-  sportFilter,
-  setSportFilter,
-  modeFilter,
-  setModeFilter,
-}: {
-  sportFilter: string | null;
-  setSportFilter: (s: string | null) => void;
-  modeFilter: "singles" | "doubles" | null;
-  setModeFilter: (m: "singles" | "doubles" | null) => void;
-}) {
-  const { sports, single } = useEnabledSports();
-  return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-      {/* Selector de deporte oculto cuando solo hay uno habilitado. */}
-      {!single && (
-        <>
-          <span className="label-mp">Deporte</span>
-          {sports.map((s) => {
-            const on = sportFilter === s;
-            return (
-              <Chip key={s} on={on} onClick={() => setSportFilter(on ? null : s)}>
-                {SPORT_META[s].label}
-              </Chip>
-            );
-          })}
-        </>
-      )}
-      <span className="label-mp" style={{ marginLeft: single ? 0 : 8 }}>Modalidad</span>
-      <Chip on={modeFilter === "singles"} onClick={() => setModeFilter(modeFilter === "singles" ? null : "singles")}>
-        Singles
-      </Chip>
-      <Chip on={modeFilter === "doubles"} onClick={() => setModeFilter(modeFilter === "doubles" ? null : "doubles")}>
-        Dobles
-      </Chip>
-    </div>
-  );
-}
-
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "6px 13px",
-        borderRadius: 9999,
-        border: on ? "2px solid var(--primary)" : "1px solid var(--border)",
-        background: on ? "#ecfdf5" : "#fff",
-        color: on ? "#065f46" : "#0a0a0a",
-        fontSize: 11.5,
-        fontWeight: 800,
-        cursor: "pointer",
-        fontFamily: "inherit",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FeedCard({ seek, onApply }: { seek: MatchSeek; onApply: () => void }) {
-  const isDoublesIncomplete = seek.mode === "doubles";
-  const statusLabel = seek.mode === "singles" ? "Busca rival" : "Dobles · busca dupla";
-  const skill = skillLabel(seek.skillMin, seek.skillMax);
-  return (
-    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg,#10b981,#047857)",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 900,
-            fontSize: 15,
-            flexShrink: 0,
-          }}
-        >
-          {initials(seek.authorName)}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
-            <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {seek.authorName ?? "Jugador"}
-            </div>
-            <span
-              style={{
-                fontSize: 8.5,
-                fontWeight: 900,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                padding: "3px 8px",
-                borderRadius: 9999,
-                background: isDoublesIncomplete ? "#fffbeb" : "rgba(16,185,129,0.12)",
-                color: isDoublesIncomplete ? "#b45309" : "var(--primary)",
-                border: isDoublesIncomplete ? "1px solid #fde68a" : "none",
-                flexShrink: 0,
-              }}
-            >
-              {statusLabel}
-            </span>
-          </div>
-          <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-            {sportLabel(seek.sport)} · {seek.mode === "singles" ? "Singles" : "Dobles"}
-            {seek.ranked ? " · Ranked" : ""}
-            {seek.city ? ` · ${seek.city}` : ""}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: "#0a0a0a" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <Icon name="calendar" size={13} color="var(--muted-fg)" />
-          {formatWindow(seek.windowStart, seek.windowEnd)}
-        </span>
-        {skill && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <Icon name="zap" size={13} color="var(--muted-fg)" />
-            {skill}
-          </span>
-        )}
-      </div>
-
-      {seek.notes && (
-        <div style={{ fontSize: 12, color: "#404040", fontStyle: "italic", borderLeft: "3px solid var(--border)", paddingLeft: 10 }}>
-          &quot;{seek.notes}&quot;
-        </div>
-      )}
-
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px dashed var(--border)", paddingTop: 12 }}>
-        <span style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>
-          {seek.applicantsCount} {seek.applicantsCount === 1 ? "postulado" : "postulados"}
-        </span>
-        {seek.myApplicationStatus === "pending" ? (
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "8px 14px",
-              fontSize: 11.5,
-              fontWeight: 800,
-              color: "var(--primary)",
-              background: "#ecfdf5",
-              border: "1px solid rgba(16,185,129,0.3)",
-              borderRadius: 9999,
-            }}
-          >
-            <Icon name="clock" size={13} color="var(--primary)" />
-            Ya te postulaste
-          </span>
-        ) : seek.myApplicationStatus === "rejected" ? (
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>
-            No fuiste elegido
-          </span>
-        ) : (
-          <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 11.5 }} onClick={onApply}>
-            Postularme
-            <Icon name="arrow-right" size={13} color="#fff" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EmptyFeed({ onPublish }: { onPublish: () => void }) {
-  return (
-    <div className="card" style={{ padding: 36, textAlign: "center", color: "var(--muted-fg)" }}>
-      <Icon name="radar" size={28} color="var(--muted-fg)" />
-      <div style={{ fontSize: 14, fontWeight: 700, color: "#0a0a0a", marginTop: 12 }}>
-        Nadie busca rival en tu zona todavía
-      </div>
-      <div style={{ fontSize: 12, marginTop: 4 }}>Publica tu búsqueda y deja que te encuentren.</div>
-      <button className="btn btn-primary" style={{ marginTop: 16, padding: "9px 16px" }} onClick={onPublish}>
-        <Icon name="plus" size={13} color="#fff" />
-        Publicar búsqueda
-      </button>
-    </div>
-  );
-}
-
-// ── Mis avisos ───────────────────────────────────────────────────────────────
-function MineList({ mine, focusSeekId, onRefresh }: { mine: MineItem[]; focusSeekId: string | null; onRefresh: () => void }) {
-  if (mine.length === 0) {
-    return (
-      <div className="card" style={{ padding: 36, textAlign: "center", color: "var(--muted-fg)" }}>
-        <div style={{ fontSize: 13 }}>Aún no has publicado ninguna búsqueda.</div>
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {mine.map((item) => (
-        <MineCard key={item.seek.id} item={item} highlight={item.seek.id === focusSeekId} onRefresh={onRefresh} />
-      ))}
-    </div>
-  );
-}
-
-function MineCard({ item, highlight, onRefresh }: { item: MineItem; highlight: boolean; onRefresh: () => void }) {
-  const { seek, applications } = item;
-  const toast = useToast();
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const pendingApps = applications.filter((a) => a.status === "pending");
-  const isClosed = seek.status !== "open";
-
-  const cancelTheMatch = () => {
-    if (!seek.matchId) return;
-    startTransition(async () => {
-      const res = await cancelMatch({ matchId: seek.matchId });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo cancelar el partido", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "Partido cancelado", sub: "Tu aviso vuelve a estar abierto." });
-      onRefresh();
-    });
-  };
-
-  const accept = (applicationId: string) => {
-    startTransition(async () => {
-      const res = await acceptApplicant({ seekId: seek.id, applicationId });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo aceptar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "¡Partido creado!", sub: "Te llevamos al chat para coordinar." });
-      // Post-creación → al chat del partido (convención: navegar al detalle).
-      if (res.data.conversationId) {
-        router.push(`/dashboard/user/chat?conv=${res.data.conversationId}`);
-      } else {
-        onRefresh();
-      }
-    });
-  };
-
-  const cancel = () => {
-    startTransition(async () => {
-      const res = await cancelMatchSeek({ seekId: seek.id });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "Aviso cancelado" });
-      onRefresh();
-    });
-  };
-
-  return (
-    <div className="card" style={{ padding: 18, border: highlight ? "2px solid var(--primary)" : undefined }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>
-            {sportLabel(seek.sport)} · {seek.mode === "singles" ? "Singles" : "Dobles"}
-            {seek.ranked ? " · Ranked" : ""}
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>
-            {formatWindow(seek.windowStart, seek.windowEnd)}
-            {skillLabel(seek.skillMin, seek.skillMax) ? ` · ${skillLabel(seek.skillMin, seek.skillMax)}` : ""}
-          </div>
-        </div>
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 900,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            padding: "4px 10px",
-            borderRadius: 9999,
-            background: isClosed ? "var(--muted)" : "rgba(16,185,129,0.12)",
-            color: isClosed ? "var(--muted-fg)" : "var(--primary)",
-          }}
-        >
-          {seek.status === "open" ? "Abierto" : seek.status === "matched" ? "Emparejado" : seek.status === "expired" ? "Expirado" : "Cancelado"}
-        </span>
-      </div>
-
-      {seek.status === "open" && (
-        <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-          <div className="label-mp" style={{ marginBottom: 8 }}>
-            Postulantes {pendingApps.length > 0 ? `· ${pendingApps.length}` : ""}
-          </div>
-          {pendingApps.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin postulantes todavía.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {pendingApps.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 10,
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50%",
-                      background: "linear-gradient(135deg,#0a0a0a,#374151)",
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {initials(a.applicantName)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{a.applicantName ?? "Jugador"}</div>
-                    {a.message && (
-                      <div style={{ fontSize: 11, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {a.message}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    style={{ padding: "7px 14px", fontSize: 11, opacity: pending ? 0.6 : 1 }}
-                    disabled={pending}
-                    onClick={() => accept(a.id)}
-                  >
-                    {pending ? "…" : "Aceptar"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <button
-            onClick={cancel}
-            disabled={pending}
-            style={{
-              marginTop: 12,
-              background: "transparent",
-              border: "1px solid var(--border)",
-              color: "#dc2626",
-              padding: "7px 14px",
-              borderRadius: 9999,
-              fontSize: 11,
-              fontWeight: 800,
-              cursor: pending ? "not-allowed" : "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            Cancelar aviso
-          </button>
-        </div>
-      )}
-
-      {seek.status === "matched" && seek.matchId && (
-        <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-          <div style={{ fontSize: 12, color: "var(--muted-fg)", marginBottom: 10 }}>
-            Partido agendado. Si algo cambia, puedes reprogramarlo o cancelarlo —
-            si lo cancelas, tu aviso vuelve a abrirse.
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => setRescheduleOpen(true)}
-              disabled={pending}
-              className="btn"
-              style={{ background: "#fff", border: "1px solid var(--border)", padding: "7px 14px", fontSize: 11 }}
-            >
-              <Icon name="calendar-clock" size={13} />
-              Reprogramar
-            </button>
-            <button
-              onClick={cancelTheMatch}
-              disabled={pending}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border)",
-                color: "#dc2626",
-                padding: "7px 14px",
-                borderRadius: 9999,
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: pending ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {pending ? "Cancelando…" : "Cancelar partido"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {rescheduleOpen && seek.matchId && (
-        <RescheduleModal
-          matchId={seek.matchId}
-          onClose={() => setRescheduleOpen(false)}
+      {editTarget && (
+        <EditSeekModal
+          seek={editTarget.seek}
+          pendingApplications={editTarget.pendingApplications}
+          meUserId={meUserId}
+          onClose={() => setEditTarget(null)}
           onDone={() => {
-            setRescheduleOpen(false);
-            onRefresh();
+            setEditTarget(null);
+            router.refresh();
           }}
         />
       )}
@@ -701,109 +508,490 @@ function MineCard({ item, highlight, onRefresh }: { item: MineItem; highlight: b
   );
 }
 
-// ── Modal: reprogramar partido ───────────────────────────────────────────────
-function RescheduleModal({ matchId, onClose, onDone }: { matchId: string; onClose: () => void; onDone: () => void }) {
-  const toast = useToast();
-  const [pending, startTransition] = useTransition();
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("19:00");
-
-  const submit = () => {
-    if (!date) {
-      toast({ icon: "alert-triangle", title: "Elige una fecha" });
-      return;
-    }
-    const playedAt = new Date(`${date}T${time}:00`).toISOString();
-    startTransition(async () => {
-      const res = await rescheduleMatch({ matchId, playedAt });
-      if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo reprogramar", sub: res.error.message });
-        return;
-      }
-      toast({ icon: "check-circle-2", title: "Partido reprogramado", sub: "Avisamos al otro jugador." });
-      onDone();
-    });
-  };
-
+function FeaturedMatch({
+  m,
+  isMine,
+  onApply,
+  onManage,
+  disabled,
+}: {
+  m: Match;
+  isMine: boolean;
+  onApply: (seek: MatchSeek) => void;
+  onManage: () => void;
+  disabled?: boolean;
+}) {
+  const empty = m.slotsTotal - m.players.length;
+  const alreadyApplied = !!m.seek.myApplicationStatus;
   return (
-    <ModalShell title="Reprogramar partido" onClose={onClose}>
-      <Field label="Nueva fecha y hora">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inputStyle, maxWidth: 120 }} />
+    <div className="card" style={{ padding: 0, overflow: "hidden", background: "#0a0a0a", color: "#fff", position: "relative", border: 0 }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 30%, rgba(16,185,129,0.28), transparent 55%), radial-gradient(ellipse at 5% 90%, rgba(251,191,36,0.10), transparent 55%)" }} />
+      <div style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(8%, -18%)", textTransform: "uppercase", pointerEvents: "none" }}>AVISO</div>
+
+      <div style={{ position: "relative", padding: "24px 28px", display: "grid", gridTemplateColumns: "1.5fr auto 1fr", gap: 28, alignItems: "center" }}>
+        <div>
+          <div className="chip-green" style={{ marginBottom: 10 }}>
+            <span className="chip-dot" />Aviso destacado para ti
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+            <div className="font-heading" style={{ fontWeight: 900, fontSize: 30, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1 }}>
+              {m.sport} · {m.mode}<span style={{ color: "var(--primary)" }}>.</span>
+            </div>
+            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 18, color: "#fbbf24", letterSpacing: "-0.02em" }}>{m.date} · {m.time}</div>
+          </div>
+          <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 12, color: "rgba(255,255,255,0.75)", flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="map-pin" style={{ width: 12, height: 12 }} />{m.club} · {m.dist}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="zap" style={{ width: 12, height: 12, color: "#fbbf24" }} />{levelText(m.seek)}</span>
+            {m.ranked && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--primary)" }}><Lucide name="trophy" style={{ width: 12, height: 12 }} />Cuenta para MPR</span>}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="eye" style={{ width: 12, height: 12 }} />{m.viewing} mirando</span>
+          </div>
         </div>
-      </Field>
-      <ModalFooter>
-        <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={onClose}>
-          Cancelar
-        </button>
-        <button className="btn btn-primary" disabled={pending} onClick={submit} style={{ opacity: pending ? 0.6 : 1 }}>
-          {pending ? "Guardando…" : "Reprogramar"}
-        </button>
-      </ModalFooter>
-    </ModalShell>
+
+        <SlotsRow players={m.players} total={m.slotsTotal} large dark />
+
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+          <div style={{ textAlign: "right" }}>
+            <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)" }}>Empieza en</div>
+            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: "#fff", lineHeight: 1, marginTop: 4 }}>{m.startsIn}</div>
+          </div>
+          <button
+            className={isMine ? "btn" : "btn btn-primary"}
+            style={{
+              padding: "12px 22px",
+              fontSize: 12.5,
+              background: isMine ? "rgba(255,255,255,0.1)" : undefined,
+              color: "#fff",
+              border: isMine ? "1px solid rgba(255,255,255,0.2)" : undefined,
+            }}
+            onClick={() => (isMine ? onManage() : onApply(m.seek))}
+            disabled={disabled || (!isMine && alreadyApplied)}
+          >
+            <Lucide name={isMine ? "clipboard-list" : "arrow-right"} style={{ width: 14, height: 14 }} />
+            {isMine ? "Gestionar aviso" : alreadyApplied ? applicationStatusLabel(m.seek.myApplicationStatus) : "Postularme"}
+          </button>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: empty === 1 ? "#fbbf24" : "rgba(255,255,255,0.5)" }}>
+            {empty === 1 ? "Último cupo" : empty + " cupos libres"}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── Mis postulaciones (las que YO envié) ─────────────────────────────────────
-function MyApplicationsList({ apps }: { apps: MyApplicationItem[] }) {
-  const router = useRouter();
-  if (apps.length === 0) {
-    return (
-      <div className="card" style={{ padding: 36, textAlign: "center", color: "var(--muted-fg)" }}>
-        <div style={{ fontSize: 13 }}>
-          Aún no te postulaste a ningún partido. Mira el tablón &quot;Cerca de ti&quot;.
+function MatchCard({
+  m,
+  me,
+  onApply,
+  disabled,
+}: {
+  m: Match;
+  me: { level: number | null };
+  onApply: (seek: MatchSeek) => void;
+  disabled?: boolean;
+}) {
+  const empty = m.slotsTotal - m.players.length;
+  void me;
+  const urgencyColor = m.urgency === "hot" ? "#dc2626" : m.urgency === "today" ? "#fbbf24" : m.urgency === "tomorrow" ? "#0a0a0a" : "var(--muted-fg)";
+  const alreadyApplied = !!m.seek.myApplicationStatus;
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)" }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.06)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: urgencyColor, animation: m.urgency === "hot" ? "mp-pulse 1.5s infinite" : "none" }} />
+          <span className="font-heading tabular" style={{ fontWeight: 900, fontSize: 13, letterSpacing: "-0.01em" }}>{m.startsIn}</span>
+        </div>
+        <FitChip pct={m.fit} />
+      </div>
+
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div className="font-heading" style={{ fontWeight: 900, fontSize: 17, textTransform: "uppercase", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+            {m.sport} · {m.mode}<span className="dot">.</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Lucide name="map-pin" style={{ width: 11, height: 11 }} />
+            {m.club} · {m.dist}
+          </div>
+        </div>
+
+        <SlotsRow players={m.players} total={m.slotsTotal} />
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", paddingTop: 10, borderTop: "1px dashed var(--border)" }}>
+          <LevelBadge me={me} range={m.levelRange} />
+          {m.ranked && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 9999, background: "rgba(16,185,129,0.1)", color: "var(--primary)", fontSize: 9.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              <Lucide name="trophy" style={{ width: 9, height: 9 }} />MPR
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <span className="tabular" style={{ fontSize: 11.5, fontWeight: 800, color: "#0a0a0a" }}>{m.seek.applicantsCount}<span style={{ color: "var(--muted-fg)", fontWeight: 600 }}> postulantes</span></span>
         </div>
       </div>
+
+      <div style={{ padding: "10px 14px", background: "#fafafa", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Lucide name="eye" style={{ width: 10, height: 10 }} />{m.viewing} mirando
+        </span>
+        <button className="btn btn-primary" style={{ padding: "7px 13px", fontSize: 10.5 }} onClick={() => onApply(m.seek)} disabled={disabled || alreadyApplied}>
+          {alreadyApplied ? applicationStatusLabel(m.seek.myApplicationStatus) : empty === 1 ? <>Tomar último cupo<Lucide name="zap" style={{ width: 11, height: 11, fill: "#fff" }} /></> : <>Postularme<Lucide name="arrow-right" style={{ width: 11, height: 11 }} /></>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SlotsRow({ players, total, large, dark }: { players: MatchPlayer[]; total: number; large?: boolean; dark?: boolean }) {
+  const size = large ? 52 : 38;
+  const fs = large ? 14 : 11;
+  const empty = total - players.length;
+  return (
+    <div style={{ display: "flex", gap: large ? 10 : 8, alignItems: "center" }}>
+      {players.map((p, i) => (
+        <div key={i} style={{ position: "relative" }}>
+          <div style={{ width: size, height: size, borderRadius: "50%", background: p.b, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", border: dark ? "2.5px solid #1f1f1f" : "2px solid #fff", boxShadow: large ? "0 4px 10px rgba(0,0,0,0.25)" : "0 1px 4px rgba(0,0,0,0.08)" }}>
+            <span className="font-heading" style={{ fontSize: fs, fontWeight: 900, letterSpacing: "-0.01em" }}>{p.a}</span>
+          </div>
+          <span style={{ position: "absolute", bottom: -2, right: -2, width: large ? 16 : 12, height: large ? 16 : 12, borderRadius: "50%", background: "var(--primary)", border: dark ? "2px solid #0a0a0a" : "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Lucide name="check" style={{ width: large ? 8 : 6, height: large ? 8 : 6, color: "#fff" }} />
+          </span>
+        </div>
+      ))}
+      {Array.from({ length: empty }).map((_, i) => (
+        <div key={"e" + i} style={{
+          width: size, height: size, borderRadius: "50%",
+          border: "2px dashed " + (dark ? "rgba(16,185,129,0.6)" : "var(--primary)"),
+          background: dark ? "rgba(16,185,129,0.06)" : "rgba(16,185,129,0.04)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "var(--primary)", position: "relative",
+          animation: i === 0 ? "mp-pulse 2.4s infinite" : "none",
+        }}>
+          <Lucide name="plus" style={{ width: large ? 22 : 16, height: large ? 22 : 16 }} />
+          {i === 0 && !large && (
+            <span style={{ position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%)", padding: "1px 5px", borderRadius: 4, background: "var(--primary)", color: "#fff", fontSize: 7.5, fontWeight: 900, letterSpacing: "0.1em", whiteSpace: "nowrap" }}>TÚ</span>
+          )}
+        </div>
+      ))}
+      <div style={{ marginLeft: large ? 6 : 4, paddingLeft: large ? 12 : 8, borderLeft: "1px dashed " + (dark ? "rgba(255,255,255,0.18)" : "var(--border)") }}>
+        <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: large ? 22 : 15, letterSpacing: "-0.02em", color: dark ? "#fff" : "#0a0a0a", lineHeight: 1 }}>
+          {players.length}<span style={{ color: dark ? "rgba(255,255,255,0.3)" : "#a3a3a3" }}>/{total}</span>
+        </div>
+        <div style={{ fontSize: large ? 9.5 : 8.5, color: dark ? "rgba(255,255,255,0.5)" : "var(--muted-fg)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", marginTop: 2 }}>
+          {empty === 1 ? "1 cupo" : empty + " cupos"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LevelBadge({ me, range }: { me: { level: number | null }; range: [number, number] }) {
+  const hasRange = Number.isFinite(range[0]) && Number.isFinite(range[1]);
+  const fits = me.level != null && me.level >= range[0] && me.level <= range[1];
+  const icon = fits ? "check" : hasRange ? "zap" : "minus";
+  const label = fits ? "Encajas" : hasRange ? "Nivel sugerido" : "Nivel flexible";
+  const bg = fits || hasRange ? "rgba(16,185,129,0.1)" : "var(--muted)";
+  const color = fits || hasRange ? "var(--primary)" : "var(--muted-fg)";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 9999, background: bg, color, fontSize: 9.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+      <Lucide name={icon} style={{ width: 9, height: 9 }} />
+      {hasRange ? `${levelNumber(range[0])}-${levelNumber(range[1])}` : "Abierto"} · {label}
+    </span>
+  );
+}
+
+function FitChip({ pct }: { pct: number | null }) {
+  if (pct == null) {
+    return (
+      <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em" }}>
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--primary)" }} />
+        abierto
+      </span>
     );
   }
-
-  const META: Record<MyApplicationItem["status"], { label: string; color: string; bg: string }> = {
-    pending: { label: "Pendiente", color: "#b45309", bg: "#fffbeb" },
-    accepted: { label: "Aceptado", color: "var(--primary)", bg: "#ecfdf5" },
-    rejected: { label: "No te eligieron", color: "var(--muted-fg)", bg: "var(--muted)" },
-    withdrawn: { label: "Retiraste", color: "var(--muted-fg)", bg: "var(--muted)" },
-  };
-
+  const color = pct >= 90 ? "var(--primary)" : pct >= 70 ? "#0a0a0a" : "#a3a3a3";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {apps.map((a) => {
-        const meta = META[a.status];
+    <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, background: pct >= 90 ? "rgba(16,185,129,0.12)" : "var(--muted)", color, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em" }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: color }} />
+      {pct}% match
+    </span>
+  );
+}
+
+function SegBM({ options, value, onChange }: { options: { k: string; i: string }[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div role="group" aria-label="Vista del feed" style={{ display: "inline-flex", background: "#f5f5f5", borderRadius: 9999, padding: 3 }}>
+      {options.map((o) => (
+        <button
+          key={o.k}
+          type="button"
+          aria-pressed={value === o.k}
+          aria-label={o.k === "cards" ? "Tarjetas" : o.k === "list" ? "Lista" : "Mapa"}
+          onClick={() => onChange(o.k)}
+          style={{
+            border: 0,
+            background: value === o.k ? "#0a0a0a" : "transparent",
+            color: value === o.k ? "#fff" : "#737373",
+            padding: "7px 12px",
+            borderRadius: 9999,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            display: "inline-flex",
+            alignItems: "center",
+          }}
+        >
+          <Lucide name={o.i} style={{ width: 13, height: 13 }} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SortMenu({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
+      <Lucide name="arrow-up-down" style={{ width: 12, height: 12, color: "var(--muted-fg)" }} />
+      <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>Ordenar</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none" }}>
+        <option value="relevancia">Relevancia</option>
+        <option value="hora">Más pronto</option>
+        <option value="ciudad">Ciudad</option>
+      </select>
+    </div>
+  );
+}
+
+function FineFilter({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { k: string; l: string }[] }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
+      <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none" }}>
+        {options.map((o) => <option key={o.k} value={o.k}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function ListView({
+  matches,
+  me,
+  onApply,
+  disabled,
+  emptyHint,
+  onCreate,
+  city,
+}: {
+  matches: Match[];
+  me: { level: number | null };
+  onApply: (seek: MatchSeek) => void;
+  disabled?: boolean;
+  emptyHint?: boolean;
+  onCreate?: () => void;
+  city?: string | null;
+}) {
+  return (
+    <div className="card" style={{ padding: 0 }}>
+      <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        <div>Cuándo</div>
+        <div>Match</div>
+        <div>Jugadores</div>
+        <div>Nivel</div>
+        <div style={{ textAlign: "right" }}>Estado</div>
+        <div />
+      </div>
+      {matches.length === 0 && emptyHint ? (
+        <div style={{ padding: "28px 22px", textAlign: "center" }}>
+          <div className="label-mp" style={{ marginBottom: 8 }}>Lista vacía</div>
+          <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--muted-fg)" }}>
+            No hay avisos abiertos{city ? ` en ${city}` : ""}. Publica el primero y aparecerá aquí en formato tabla.
+          </p>
+          {onCreate && (
+            <button type="button" className="btn btn-primary" onClick={onCreate}>
+              <Icon name="plus" size={13} />
+              Publicar aviso
+            </button>
+          )}
+        </div>
+      ) : null}
+      {matches.map((m) => {
+        const empty = m.slotsTotal - m.players.length;
+        const alreadyApplied = !!m.seek.myApplicationStatus;
         return (
-          <div key={a.applicationId} className="card" style={{ padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 800 }}>
-                {sportLabel(a.sport)} · {a.mode === "singles" ? "Singles" : "Dobles"}
-                {a.ranked ? " · Ranked" : ""}
+          <div key={m.id} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center" }}>
+            <div>
+              <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{m.date}</div>
+              <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{m.time}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{m.sport} · {m.mode}</div>
+              <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{m.club} · {m.dist}</div>
+            </div>
+            <SlotsRow players={m.players} total={m.slotsTotal} />
+            <div><LevelBadge me={me} range={m.levelRange} /></div>
+            <div style={{ textAlign: "right" }}>
+              <FitChip pct={m.fit} />
+              <div className="tabular" style={{ fontSize: 12, fontWeight: 800, marginTop: 4 }}>{m.seek.applicantsCount} postulantes</div>
+            </div>
+            <button className="btn btn-primary" style={{ padding: "8px 13px", fontSize: 10.5 }} onClick={() => onApply(m.seek)} disabled={disabled || alreadyApplied}>
+              {alreadyApplied ? applicationStatusLabel(m.seek.myApplicationStatus) : empty === 1 ? "Último cupo" : "Postularme"}<Lucide name="arrow-right" style={{ width: 11, height: 11 }} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MapView({ matches, onApply }: { matches: Match[]; onApply: (seek: MatchSeek) => void }) {
+  const isEmpty = matches.length === 0;
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden", height: 520, position: "relative", background: "radial-gradient(ellipse at 50% 50%, #e7f0ec 0%, #d6e3dd 35%, #c7d6cf 70%, #b6c8c0 100%)" }}>
+      <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, opacity: 0.35 }}>
+        <defs>
+          <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse" patternTransform="rotate(8)">
+            <path d="M 0 40 L 80 40 M 40 0 L 40 80" stroke="#fff" strokeWidth="1.5" fill="none" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
+        <path d="M 0 280 Q 200 240 400 290 T 800 270 T 1200 310" stroke="#fff" strokeWidth="6" fill="none" opacity="0.7" />
+        <path d="M 380 0 Q 360 200 410 360 T 440 720" stroke="#fff" strokeWidth="6" fill="none" opacity="0.7" />
+      </svg>
+
+      {matches.slice(0, 6).map((m, i) => {
+        const positions = [
+          { left: "32%", top: "38%" }, { left: "58%", top: "28%" }, { left: "72%", top: "55%" },
+          { left: "25%", top: "64%" }, { left: "48%", top: "72%" }, { left: "64%", top: "42%" },
+        ];
+        const empty = m.slotsTotal - m.players.length;
+        return (
+          <div key={m.id} style={{ position: "absolute", ...positions[i], transform: "translate(-50%, -100%)" }}>
+            <button type="button" onClick={() => onApply(m.seek)} style={{ background: "#fff", border: "2px solid #0a0a0a", borderRadius: 12, padding: "8px 12px", boxShadow: "0 8px 18px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontFamily: "inherit", cursor: "pointer" }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: m.players[0].b, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 900, fontFamily: "Plus Jakarta Sans" }}>{m.players[0].a}</div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 900 }}>{m.date} · {m.time}</div>
+                <div style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{m.club.slice(0, 16)} · {empty} cupos</div>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>
-                {a.authorName ?? "Jugador"} · {formatWindow(a.windowStart, a.windowEnd)}
+              <span style={{ padding: "2px 7px", borderRadius: 9999, background: "var(--primary)", color: "#fff", fontSize: 9, fontWeight: 900 }}>{m.fit == null ? "OK" : `${m.fit}%`}</span>
+            </button>
+            <div style={{ width: 12, height: 12, background: "#0a0a0a", transform: "rotate(45deg)", margin: "-7px auto 0", position: "relative", zIndex: -1 }} />
+          </div>
+        );
+      })}
+
+      <div style={{ position: "absolute", left: "45%", top: "50%", transform: "translate(-50%, -50%)" }}>
+        <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#3b82f6", border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(59,130,246,0.2), 0 2px 8px rgba(0,0,0,0.25)" }} />
+      </div>
+
+      <div style={{ position: "absolute", bottom: 16, left: 16, background: "#fff", padding: "10px 14px", borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", display: "flex", gap: 14, alignItems: "center", fontSize: 11, fontWeight: 700 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#3b82f6" }} /> Tú</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#0a0a0a" }} /> Aviso abierto</span>
+      </div>
+      <div style={{ position: "absolute", top: 16, right: 16, background: "#fff", padding: "8px 12px", borderRadius: 9999, boxShadow: "0 4px 10px rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <Lucide name="navigation" style={{ width: 12, height: 12, color: "var(--primary)" }} /> Vista referencial
+      </div>
+      {isEmpty && (
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "#fff", padding: "14px 18px", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", textAlign: "center", maxWidth: 280 }}>
+          <div className="label-mp" style={{ marginBottom: 6 }}>Mapa sin avisos</div>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>Cuando haya partidos abiertos en tu zona, verás marcadores aquí.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MinePanel({
+  items,
+  focusedId,
+  busy,
+  onEdit,
+  onAccept,
+  onCancelSeek,
+  onCancelMatch,
+  onRescheduleMatch,
+}: {
+  items: MineItem[];
+  focusedId?: string | null;
+  busy?: boolean;
+  onEdit: (seek: MatchSeek) => void;
+  onAccept: (seek: MatchSeek, app: MatchSeekApplication) => void;
+  onCancelSeek: (seek: MatchSeek) => void;
+  onCancelMatch: (matchId: string) => void;
+  onRescheduleMatch: (matchId: string) => void;
+}) {
+  if (items.length === 0) {
+    return <PanelEmpty icon="clipboard-list" title="Aún no tienes avisos" body="Publica una franja para que otros jugadores se postulen. El diseño del lobby se mantiene aunque todavía no haya datos." />;
+  }
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+      {items.map(({ seek, applications }) => {
+        const pendingApps = applications.filter((a) => a.status === "pending");
+        const isFocused = focusedId === seek.id;
+        return (
+          <div key={seek.id} className="card" style={{ padding: 0, overflow: "hidden", borderColor: isFocused ? "var(--primary)" : "var(--border)", boxShadow: isFocused ? "0 0 0 3px rgba(16,185,129,0.12)" : undefined }}>
+            <div style={{ padding: 16, borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div className="label-mp">{statusLabel(seek.status)}</div>
+                <h3 className="font-heading" style={{ fontSize: 20, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em", margin: "5px 0 0" }}>
+                  {sportLabel(seek.sport)} · {modeLabel(seek.mode)}<span className="dot">.</span>
+                </h3>
+                <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span><Icon name="calendar" size={12} /> {formatDateLabel(seek.windowStart)} · {formatTime(seek.windowStart)}</span>
+                  <span><Icon name="map-pin" size={12} /> {seek.city ?? "Ciudad por definir"}</span>
+                </div>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 900,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  padding: "4px 10px",
-                  borderRadius: 9999,
-                  background: meta.bg,
-                  color: meta.color,
-                }}
-              >
-                {meta.label}
-              </span>
-              {a.status === "accepted" && a.conversationId && (
-                <button
-                  className="btn btn-primary"
-                  style={{ padding: "7px 14px", fontSize: 11 }}
-                  onClick={() => router.push(`/dashboard/user/chat?conv=${a.conversationId}`)}
-                >
-                  <Icon name="message-circle" size={13} color="#fff" />
-                  Ir al chat
-                </button>
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              {seek.notes && <p style={{ margin: 0, fontSize: 13, color: "#0a0a0a" }}>{seek.notes}</p>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <InfoChip icon="users" label={`${pendingApps.length} pendientes`} />
+                <InfoChip icon="zap" label={levelText(seek)} />
+                {seek.ranked && <InfoChip icon="trophy" label="MPR competitivo" accent />}
+              </div>
+              {applications.length === 0 ? (
+                <div style={softBoxStyle}>
+                  <strong>No hay postulantes todavía.</strong>
+                  <span>El aviso sigue visible hasta {formatDateLabel(seek.expiresAt)}.</span>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {applications.map((app) => (
+                    <div key={app.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "#fff" }}>
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 13 }}>{app.applicantName ?? "Jugador"}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>{applicationStatusLabel(app.status)} · {relativeFrom(app.createdAt)}</div>
+                        {app.message && <div style={{ fontSize: 12, color: "#0a0a0a", marginTop: 4 }}>{app.message}</div>}
+                      </div>
+                      {seek.status === "open" && app.status === "pending" && (
+                        <button className="btn btn-primary" style={{ padding: "7px 11px", fontSize: 10.5 }} disabled={busy} onClick={() => onAccept(seek, app)}>
+                          Aceptar
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", background: "#fafafa", display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {seek.status === "open" && (
+                <>
+                  <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={() => onEdit(seek)}>
+                    <Icon name="pencil" size={12} />
+                    Editar aviso
+                  </button>
+                  <button type="button" className="btn btn-outline" style={{ fontSize: 11 }} onClick={() => void onCancelSeek(seek)}>
+                    Cancelar aviso
+                  </button>
+                </>
+              )}
+              {seek.status === "matched" && seek.matchId && (
+                <>
+                  <button className="btn btn-outline" style={{ fontSize: 11 }} onClick={() => onRescheduleMatch(seek.matchId!)}>
+                    Reprogramar
+                  </button>
+                  <button className="btn btn-outline" style={{ fontSize: 11, color: "#dc2626" }} onClick={() => onCancelMatch(seek.matchId!)}>
+                    Cancelar partido
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -813,367 +1001,954 @@ function MyApplicationsList({ apps }: { apps: MyApplicationItem[] }) {
   );
 }
 
-// ── Modal: publicar ──────────────────────────────────────────────────────────
-function PublishModal({
-  myPlanTier,
+function ApplicationsPanel({
+  items,
+  busy,
+  onWithdraw,
+}: {
+  items: MyApplicationItem[];
+  busy?: boolean;
+  onWithdraw: (app: MyApplicationItem) => void;
+}) {
+  const router = useRouter();
+  if (items.length === 0) {
+    return <PanelEmpty icon="send" title="No te postulaste todavía" body="Cuando encuentres un aviso compatible, postúlate y lo verás aquí con su estado." />;
+  }
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1.4fr 120px 130px 180px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        <div>Aviso</div>
+        <div>Cuándo</div>
+        <div>Estado</div>
+        <div />
+      </div>
+      {items.map((app) => (
+        <div key={app.applicationId} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1.4fr 120px 130px 180px", gap: 14, alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 900 }}>{sportLabel(app.sport)} · {modeLabel(app.mode)}</div>
+            <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>Autor: {app.authorName ?? "Jugador"}</div>
+          </div>
+          <div>
+            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{formatDateLabel(app.windowStart)}</div>
+            <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{formatTime(app.windowStart)}</div>
+          </div>
+          <ApplicationPill status={app.status} />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            {app.status === "accepted" && app.conversationId && (
+              <button className="btn btn-primary" style={{ padding: "8px 12px", fontSize: 10.5 }} onClick={() => router.push(`/dashboard/user/chat?conv=${app.conversationId}`)}>
+                Ir al chat
+              </button>
+            )}
+            {app.status === "pending" && (
+              <button className="btn btn-outline" style={{ padding: "8px 12px", fontSize: 10.5 }} disabled={busy} onClick={() => onWithdraw(app)}>
+                Retirar
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PublishSeekModal({
   meUserId,
   onClose,
   onDone,
 }: {
-  myPlanTier: "free" | "premium";
-  meUserId: string;
+  meUserId?: string;
   onClose: () => void;
   onDone: () => void;
 }) {
   const toast = useToast();
-  const { sports, single } = useEnabledSports();
   const [pending, startTransition] = useTransition();
-  const [sport, setSport] = useState<Sport>(sports[0]);
-  const [mode, setMode] = useState<"singles" | "doubles">("singles");
-  const [partner, setPartner] = useState<Player | null>(null);
-  const [skillMin, setSkillMin] = useState<string>("");
-  const [skillMax, setSkillMax] = useState<string>("");
-  const [date, setDate] = useState<string>("");
-  const [time, setTime] = useState<string>("19:00");
-  const [ranked, setRanked] = useState(true);
+  const [sport, setSport] = useState<MatchSeek["sport"]>("pickleball");
+  const [mode, setMode] = useState<MatchSeek["mode"]>("singles");
+  const [date, setDate] = useState(defaultDateInput());
+  const [time, setTime] = useState(defaultTimeInput());
+  const [skillMin, setSkillMin] = useState(3);
+  const [skillMax, setSkillMax] = useState(4);
   const [notes, setNotes] = useState("");
+  const [partner, setPartner] = useState<Player[]>([]);
+  const needsPartner = mode === "doubles";
+  const canSubmit = !!meUserId && (!needsPartner || partner.length === 1);
 
   const submit = () => {
-    if (!date) {
-      toast({ icon: "alert-triangle", title: "Elige una fecha" });
+    if (!canSubmit) {
+      toast({ icon: "alert-triangle", title: needsPartner ? "Elige tu partner" : "Inicia sesión", sub: needsPartner ? "En dobles necesitas publicar con una dupla completa." : undefined });
       return;
     }
-    if (mode === "doubles" && !partner) {
-      toast({ icon: "alert-triangle", title: "Elige tu partner para dobles" });
-      return;
-    }
-    const windowStart = new Date(`${date}T${time}:00`).toISOString();
+    const start = new Date(`${date}T${time}:00`);
+    const end = new Date(start.getTime() + 90 * 60 * 1000);
     startTransition(async () => {
       const res = await createMatchSeek({
         sport,
         mode,
-        partnerId: mode === "doubles" ? partner?.id : null,
-        skillMin: skillMin ? Number(skillMin) : null,
-        skillMax: skillMax ? Number(skillMax) : null,
-        ranked,
-        windowStart,
-        notes: notes || null,
+        partnerId: mode === "doubles" ? partner[0]?.id : null,
+        clubId: null,
+        skillMin,
+        skillMax,
+        ranked: true,
+        windowStart: start.toISOString(),
+        windowEnd: end.toISOString(),
+        notes: notes.trim() || null,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo publicar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: "Aviso publicado", sub: "Te avisamos cuando alguien se postule." });
+      toast({ icon: "check-circle-2", title: "Aviso publicado" });
       onDone();
     });
   };
 
   return (
-    <ModalShell title="Publicar · Busco partido" onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {!single && (
-          <Field label="Deporte">
-            <div style={{ display: "flex", gap: 8 }}>
-              {sports.map((s) => (
-                <Chip key={s} on={sport === s} onClick={() => setSport(s)}>
-                  {SPORT_META[s].label}
-                </Chip>
-              ))}
-            </div>
-          </Field>
-        )}
-
+    <ModalShell title="Publicar aviso" onClose={onClose}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Deporte">
+          <select value={sport} onChange={(e) => setSport(e.target.value as MatchSeek["sport"])} style={inputStyle}>
+            <option value="pickleball">Pickleball</option>
+            <option value="padel">Pádel</option>
+            <option value="tennis">Tenis</option>
+          </select>
+        </Field>
         <Field label="Modalidad">
-          <div style={{ display: "flex", gap: 8 }}>
-            <Chip on={mode === "singles"} onClick={() => { setMode("singles"); setPartner(null); }}>
-              Singles · 1v1
-            </Chip>
-            <Chip on={mode === "doubles"} onClick={() => setMode("doubles")}>
-              Dobles · 2v2
-            </Chip>
-          </div>
+          <ModeSegmented value={mode} onChange={(next) => { setMode(next); setPartner([]); }} />
         </Field>
-
-        {mode === "doubles" && (
-          <Field label="Tu partner">
-            <PlayerPicker
-              label="Con quién juegas"
-              max={1}
-              selected={partner ? [partner] : []}
-              onChange={(arr) => setPartner(arr[0] ?? null)}
-              excludeIds={[meUserId]}
-            />
-          </Field>
-        )}
-
-        <Field label="Nivel del rival (opcional)">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <NumberInput value={skillMin} onChange={setSkillMin} placeholder="mín" />
-            <span style={{ color: "var(--muted-fg)" }}>–</span>
-            <NumberInput value={skillMax} onChange={setSkillMax} placeholder="máx" />
-          </div>
+        <Field label="Fecha">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
         </Field>
-
-        <Field label="¿Cuándo?">
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={inputStyle}
-            />
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              style={{ ...inputStyle, maxWidth: 120 }}
-            />
-          </div>
-        </Field>
-
-        <button
-          onClick={() => setRanked(!ranked)}
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: ranked ? "2px solid var(--primary)" : "1px solid var(--border)",
-            background: ranked ? "#ecfdf5" : "#fff",
-            cursor: "pointer",
-            fontFamily: "inherit",
-            textAlign: "left",
-            display: "flex",
-            gap: 11,
-            alignItems: "center",
-          }}
-        >
-          <Toggle on={ranked} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 900 }}>Cuenta para el ranking</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
-              {myPlanTier === "premium"
-                ? "Tu nivel sube o baja según el resultado."
-                : "Será ranked solo si tienes MATCHPOINT+ al momento de jugar."}
-            </div>
-          </div>
-        </button>
-
-        <Field label="Mensaje (opcional)">
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value.slice(0, 280))}
-            placeholder="Ej. busco alguien de mi nivel para revancha…"
-            style={{ ...inputStyle, minHeight: 64, resize: "none" }}
-          />
+        <Field label="Hora">
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
         </Field>
       </div>
-
-      <ModalFooter>
-        <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={onClose}>
-          Cancelar
-        </button>
-        <button className="btn btn-primary" disabled={pending} onClick={submit} style={{ opacity: pending ? 0.6 : 1 }}>
-          {pending ? "Publicando…" : "Publicar aviso"}
-        </button>
-      </ModalFooter>
+      <LevelRangeSelector min={skillMin} max={skillMax} onChange={(nextMin, nextMax) => { setSkillMin(nextMin); setSkillMax(nextMax); }} />
+      {needsPartner && (
+        <PlayerPicker label="Tu partner" max={1} selected={partner} onChange={setPartner} excludeIds={meUserId ? [meUserId] : []} />
+      )}
+      <Field label="Mensaje">
+        <textarea value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Busco partido competitivo, puedo moverme por la zona." style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+        <button className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Publicar aviso</button>
+      </div>
     </ModalShell>
   );
 }
 
-// ── Modal: postularse ──────────────────────────────────────────────────────
-function ApplyModal({
-  seek,
-  meUserId,
-  onClose,
-  onDone,
-}: {
-  seek: MatchSeek;
-  meUserId: string;
-  onClose: () => void;
-  onDone: () => void;
-}) {
+function ApplyModal({ seek, meUserId, onClose, onDone }: { seek: MatchSeek; meUserId?: string; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
-  const [partner, setPartner] = useState<Player | null>(null);
+  const [partner, setPartner] = useState<Player[]>([]);
   const [message, setMessage] = useState("");
+  const needsPartner = seek.mode === "doubles";
+  const canSubmit = !!meUserId && (!needsPartner || partner.length === 1);
 
   const submit = () => {
-    if (seek.mode === "doubles" && !partner) {
-      toast({ icon: "alert-triangle", title: "En dobles debes traer tu partner" });
+    if (!canSubmit) {
+      toast({ icon: "alert-triangle", title: needsPartner ? "Elige tu partner" : "Inicia sesión" });
       return;
     }
     startTransition(async () => {
       const res = await applyToMatchSeek({
         seekId: seek.id,
-        partnerId: seek.mode === "doubles" ? partner?.id : null,
-        message: message || null,
+        partnerId: needsPartner ? partner[0]?.id : null,
+        message: message.trim() || null,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo postular", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: "¡Postulación enviada!", sub: `${seek.authorName ?? "El autor"} la recibirá.` });
+      toast({ icon: "check-circle-2", title: "Postulación enviada" });
       onDone();
     });
   };
 
   return (
-    <ModalShell title={`Postularte · ${seek.authorName ?? "Jugador"}`} onClose={onClose}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div className="card" style={{ padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700 }}>
-            {sportLabel(seek.sport)} · {seek.mode === "singles" ? "Singles" : "Dobles"} · {formatWindow(seek.windowStart, seek.windowEnd)}
-          </div>
-          {seek.notes && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4 }}>&quot;{seek.notes}&quot;</div>}
+    <ModalShell title="Postularme" onClose={onClose}>
+      <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
+        <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Aviso abierto</div>
+        <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
+          {sportLabel(seek.sport)} · {modeLabel(seek.mode)}<span style={{ color: "var(--primary)" }}>.</span>
+        </h3>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+          <span>{formatDateLabel(seek.windowStart)} · {formatTime(seek.windowStart)}</span>
+          <span>{seek.city ?? "Ciudad por definir"}</span>
+          <span>{levelText(seek)}</span>
         </div>
-
-        {seek.mode === "doubles" && (
-          <Field label="Tu partner">
-            <PlayerPicker
-              label="Con quién juegas"
-              max={1}
-              selected={partner ? [partner] : []}
-              onChange={(arr) => setPartner(arr[0] ?? null)}
-              excludeIds={[meUserId]}
-            />
-          </Field>
-        )}
-
-        <Field label="Mensaje (opcional)">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value.slice(0, 280))}
-            placeholder="Preséntate o propón hora/cancha…"
-            style={{ ...inputStyle, minHeight: 64, resize: "none" }}
-          />
-        </Field>
       </div>
-
-      <ModalFooter>
-        <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={onClose}>
-          Cancelar
-        </button>
-        <button className="btn btn-primary" disabled={pending} onClick={submit} style={{ opacity: pending ? 0.6 : 1 }}>
-          {pending ? "Enviando…" : "Enviar postulación"}
-        </button>
-      </ModalFooter>
+      {needsPartner && (
+        <PlayerPicker label="Tu partner para dobles" max={1} selected={partner} onChange={setPartner} excludeIds={meUserId ? [meUserId] : []} />
+      )}
+      <Field label="Mensaje para el autor">
+        <textarea value={message} maxLength={280} onChange={(e) => setMessage(e.target.value)} placeholder="Cuéntale tu disponibilidad o contexto." style={{ ...inputStyle, minHeight: 88, resize: "vertical" }} />
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+        <button className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Enviar postulación</button>
+      </div>
     </ModalShell>
   );
 }
 
-// ── Primitivas de UI ─────────────────────────────────────────────────────────
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "9px 12px",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  fontSize: 12.5,
-  fontFamily: "inherit",
-  background: "#fff",
-};
-
-function NumberInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (
-    <input
-      type="number"
-      min={1}
-      max={7}
-      step={0.1}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{ ...inputStyle, maxWidth: 100 }}
-    />
+function EditSeekModal({
+  seek,
+  pendingApplications,
+  meUserId,
+  onClose,
+  onDone,
+}: {
+  seek: MatchSeek;
+  pendingApplications: number;
+  meUserId?: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const initialStart = new Date(seek.windowStart);
+  const [date, setDate] = useState(dateInputValue(initialStart));
+  const [time, setTime] = useState(timeInputValue(initialStart));
+  const [mode, setMode] = useState<MatchSeek["mode"]>(seek.mode);
+  const [partner, setPartner] = useState<Player[]>(
+    seek.partnerId ? [{ id: seek.partnerId, username: "partner", displayName: "Partner actual" }] : [],
   );
-}
+  const [skillMin, setSkillMin] = useState(seek.skillMin ?? 3);
+  const [skillMax, setSkillMax] = useState(seek.skillMax ?? 4);
+  const [notes, setNotes] = useState(seek.notes ?? "");
+  const modeLocked = pendingApplications > 0;
+  const needsPartner = mode === "doubles";
+  const canSubmit = !needsPartner || partner.length === 1;
 
-function Toggle({ on }: { on: boolean }) {
+  const submit = () => {
+    if (!canSubmit) {
+      toast({ icon: "alert-triangle", title: "Elige tu partner", sub: "En dobles necesitas publicar con una dupla completa." });
+      return;
+    }
+    const start = new Date(`${date}T${time}:00`);
+    if (!Number.isFinite(start.getTime())) {
+      toast({ icon: "alert-triangle", title: "Fecha u hora inválida" });
+      return;
+    }
+    const end = new Date(start.getTime() + 90 * 60 * 1000);
+    startTransition(async () => {
+      const res = await updateMatchSeek({
+        seekId: seek.id,
+        mode,
+        partnerId: mode === "doubles" ? partner[0]?.id ?? null : null,
+        skillMin,
+        skillMax,
+        ranked: seek.ranked,
+        windowStart: start.toISOString(),
+        windowEnd: end.toISOString(),
+        notes: notes.trim() || null,
+      });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo editar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Aviso actualizado" });
+      onDone();
+    });
+  };
+
   return (
-    <div style={{ width: 32, height: 18, borderRadius: 9999, background: on ? "var(--primary)" : "#d4d4d8", position: "relative", flexShrink: 0 }}>
-      <div
-        style={{
-          position: "absolute",
-          top: 2,
-          left: on ? 16 : 2,
-          width: 14,
-          height: 14,
-          borderRadius: "50%",
-          background: "#fff",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-          transition: "left 0.18s var(--ease-out, ease)",
-        }}
-      />
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span className="label-mp">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  // Cierra con ESC. Animación de entrada Emil-compliant (scale 0.96 → 1).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="mp-modal-overlay"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(10,10,10,0.7)",
-        backdropFilter: "blur(6px)",
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="card mp-modal-pop"
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "92vh",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          padding: 0,
-          background: "#fff",
-        }}
-      >
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="font-heading" style={{ fontWeight: 900, fontSize: 15, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-            {title}
+    <ModalShell title="Editar aviso" onClose={onClose}>
+      <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
+        <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Gestionar aviso abierto</div>
+        <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
+          {sportLabel(seek.sport)}<span style={{ color: "var(--primary)" }}>.</span>
+        </h3>
+      </div>
+      <Field label="Modalidad">
+        <ModeSegmented value={mode} disabled={modeLocked} onChange={(next) => { setMode(next); if (next === "singles") setPartner([]); }} />
+        {modeLocked && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.4 }}>
+            Tienes postulaciones activas: la modalidad queda fija hasta que las gestiones o canceles el aviso.
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--muted)", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <Icon name="x" size={14} />
-          </button>
+        )}
+      </Field>
+      {needsPartner && (
+        <PlayerPicker label="Tu partner" max={1} selected={partner} onChange={setPartner} excludeIds={meUserId ? [meUserId] : []} />
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Fecha">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="Hora">
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
+        </Field>
+      </div>
+      <LevelRangeSelector min={skillMin} max={skillMax} onChange={(nextMin, nextMax) => { setSkillMin(nextMin); setSkillMax(nextMax); }} />
+      <Field label="Mensaje">
+        <textarea value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Busco partido competitivo, puedo moverme por la zona." style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+        <button className="btn btn-primary" onClick={submit} disabled={pending}>Guardar cambios</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModeSegmented({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: MatchSeek["mode"];
+  onChange: (mode: MatchSeek["mode"]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div style={{ display: "inline-flex", gap: 2, padding: 3, background: "#f5f5f5", borderRadius: 9999, opacity: disabled ? 0.55 : 1, pointerEvents: disabled ? "none" : undefined }}>
+      {(["singles", "doubles"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onChange(mode)}
+          disabled={disabled}
+          style={{
+            padding: "7px 14px",
+            borderRadius: 9999,
+            background: value === mode ? "#0a0a0a" : "transparent",
+            color: value === mode ? "#fff" : "var(--muted-fg)",
+            border: 0,
+            fontSize: 10.5,
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            cursor: disabled ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {mode === "singles" ? "Singles" : "Dobles"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LevelRangeSelector({
+  min,
+  max,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  onChange: (min: number, max: number) => void;
+}) {
+  const minPct = skillLevelToPercent(min);
+  const maxPct = skillLevelToPercent(max);
+  const summary = rangeBandSummary(min, max);
+
+  const updateMin = (value: number) => {
+    const next = normalizeSkillLevel(Math.min(value, max));
+    onChange(next, Math.max(max, next));
+  };
+  const updateMax = (value: number) => {
+    const next = normalizeSkillLevel(Math.max(value, min));
+    onChange(Math.min(min, next), next);
+  };
+
+  const applyPreset = (lo: number, hi: number) => onChange(lo, hi);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <style>{`
+        .mp-level-range-input {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 8px;
+          width: 100%;
+          height: 24px;
+          margin: 0;
+          appearance: none;
+          background: transparent;
+          pointer-events: none;
+        }
+        .mp-level-range-input::-webkit-slider-runnable-track {
+          height: 28px;
+          background: transparent;
+          border: 0;
+        }
+        .mp-level-range-input::-webkit-slider-thumb {
+          appearance: none;
+          pointer-events: auto;
+          width: 16px;
+          height: 16px;
+          border-radius: 9999px;
+          border: 2px solid #0a0a0a;
+          background: #fff;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          cursor: grab;
+        }
+        .mp-level-range-input::-moz-range-track {
+          height: 28px;
+          background: transparent;
+          border: 0;
+        }
+        .mp-level-range-input::-moz-range-thumb {
+          pointer-events: auto;
+          width: 14px;
+          height: 14px;
+          border-radius: 9999px;
+          border: 2px solid #0a0a0a;
+          background: #fff;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          cursor: grab;
+        }
+      `}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <div className="label-mp">Rango de nivel MPR</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>
+            {summary || "Elige el rango competitivo recomendado para este aviso."}
+          </div>
         </div>
-        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>{children}</div>
+        <div style={{ textAlign: "right" }}>
+          <div className="font-heading tabular" aria-live="polite" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", whiteSpace: "nowrap" }}>
+            {formatSkillLevel(min)} — {formatSkillLevel(max)}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {SKILL_LEVEL_PRESETS.map((preset) => {
+          const active = min === preset.min && max === preset.max;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => applyPreset(preset.min, preset.max)}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 9999,
+                border: `1px solid ${active ? "#0a0a0a" : "var(--border)"}`,
+                background: active ? "#0a0a0a" : "#fff",
+                color: active ? "#fff" : "var(--muted-fg)",
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "10px 10px 8px", background: "#fafafa" }}>
+        <div style={{ display: "flex", height: 22, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" }}>
+          {SKILL_LEVEL_BANDS.map((band) => {
+            const active = band.max >= min && band.min <= max;
+            const flex = ((band.max - band.min) / SKILL_LEVEL_SPAN) * 100;
+            return (
+              <div
+                key={band.id}
+                title={band.label}
+                aria-label={band.label}
+                style={{
+                  flex: `${flex} 1 0`,
+                  background: active ? band.activeTint : band.tint,
+                  borderRight: "1px solid rgba(10,10,10,0.06)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 0,
+                  transition: "background 160ms var(--ease-out)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 7,
+                    fontWeight: 900,
+                    letterSpacing: "0.12em",
+                    color: active ? "#047857" : "var(--muted-fg)",
+                    lineHeight: 1,
+                  }}
+                >
+                  {band.signal}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            marginTop: 5,
+            height: 14,
+            fontSize: 8,
+            fontWeight: 700,
+            color: "var(--muted-fg)",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {SKILL_LEVEL_BANDS.map((band) => {
+            const active = band.max >= min && band.min <= max;
+            const flex = ((band.max - band.min) / SKILL_LEVEL_SPAN) * 100;
+            return (
+              <span
+                key={`${band.id}-lbl`}
+                title={band.label}
+                style={{
+                  flex: `${flex} 1 0`,
+                  textAlign: "center",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: active ? "#0a0a0a" : "var(--muted-fg)",
+                  padding: "0 1px",
+                }}
+              >
+                {band.label}
+              </span>
+            );
+          })}
+        </div>
+        <div style={{ position: "relative", height: 32, marginTop: 8 }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: 12, height: 3, borderRadius: 9999, background: "#e5e7eb" }} />
+          <div style={{ position: "absolute", left: `${minPct}%`, width: `${maxPct - minPct}%`, top: 12, height: 3, borderRadius: 9999, background: "var(--primary)" }} />
+          {SKILL_LEVEL_TICKS.map((tick) => (
+            <div
+              key={tick}
+              style={{
+                position: "absolute",
+                left: `${skillLevelToPercent(tick)}%`,
+                top: 6,
+                width: 1,
+                height: 14,
+                background: "rgba(10,10,10,0.18)",
+                transform: "translateX(-50%)",
+              }}
+            />
+          ))}
+          <input
+            className="mp-level-range-input"
+            type="range"
+            min={SKILL_LEVEL_MIN}
+            max={SKILL_LEVEL_MAX}
+            step={SKILL_LEVEL_STEP}
+            value={min}
+            onChange={(e) => updateMin(Number(e.target.value))}
+            aria-label="Nivel MPR mínimo"
+            style={{ zIndex: min > SKILL_LEVEL_MAX - 0.4 ? 3 : 2 }}
+          />
+          <input
+            className="mp-level-range-input"
+            type="range"
+            min={SKILL_LEVEL_MIN}
+            max={SKILL_LEVEL_MAX}
+            step={SKILL_LEVEL_STEP}
+            value={max}
+            onChange={(e) => updateMax(Number(e.target.value))}
+            aria-label="Nivel MPR máximo"
+            style={{ zIndex: 2 }}
+          />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9.5, fontWeight: 700, color: "var(--muted-fg)" }}>
+          {SKILL_LEVEL_TICKS.map((tick) => (
+            <span key={tick} className="tabular">{formatSkillLevel(tick)}</span>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function ModalFooter({ children }: { children: React.ReactNode }) {
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
-      {children}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,10,10,0.65)", backdropFilter: "blur(6px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="card" style={{ width: 620, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", padding: 0 }}>
+        <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 18, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em" }}>
+            {title}<span className="dot">.</span>
+          </h3>
+          <button onClick={onClose} aria-label="Cerrar" style={{ width: 30, height: 30, borderRadius: "50%", border: 0, background: "var(--muted)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="label-mp">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function PanelEmpty({ icon, title, body }: { icon: string; title: string; body: string }) {
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: 260 }}>
+        <div style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div className="chip-green" style={{ width: "fit-content", marginBottom: 12 }}><span className="chip-dot" />Estado vacío</div>
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em" }}>{title}<span className="dot">.</span></h3>
+          <p style={{ color: "var(--muted-fg)", fontSize: 13, maxWidth: 420 }}>{body}</p>
+        </div>
+        <div style={{ background: "#0a0a0a", color: "#fff", padding: 28, position: "relative", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.28), transparent 50%)" }} />
+          <div style={{ position: "relative", width: 132, height: 132, borderRadius: "50%", border: "2px dashed rgba(16,185,129,0.5)", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(16,185,129,0.06)" }}>
+            <Icon name={icon} size={42} color="var(--primary)" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyLobby({ onCreate, city }: { onCreate: () => void; city?: string | null }) {
+  return (
+    <>
+      <EmptyFeaturedPreview onCreate={onCreate} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 16 }}>
+        {Array.from({ length: 3 }).map((_, i) => <EmptyMatchCard key={i} index={i} />)}
+      </div>
+      <div className="card" style={{ padding: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div className="label-mp">Sin avisos reales</div>
+          <h3 className="font-heading" style={{ margin: "5px 0 0", fontSize: 22, fontWeight: 900, textTransform: "uppercase" }}>No hay partidos abiertos{city ? ` en ${city}` : ""}<span className="dot">.</span></h3>
+          <p style={{ margin: "7px 0 0", color: "var(--muted-fg)", fontSize: 13 }}>Mantenemos la composición del lobby con estados vacíos estáticos y una acción clara para abrir el primer aviso.</p>
+        </div>
+        <button className="btn btn-primary" onClick={onCreate}><Icon name="plus" size={13} />Publicar aviso</button>
+      </div>
+    </>
+  );
+}
+
+function UnavailableState({ reason }: { reason?: "flag" | "auth" }) {
+  const title = reason === "auth" ? "Inicia sesión para buscar partido" : "Busco partido estará disponible pronto";
+  const body = reason === "auth"
+    ? "Cuando inicies sesión, verás avisos reales de tu ciudad, tus postulaciones y tus avisos publicados."
+    : "La función está protegida por flag. Mientras se activa, dejamos el diseño listo con estados vacíos honestos.";
+  return (
+    <>
+      <EmptyFeaturedPreview locked />
+      <PanelEmpty icon="lock" title={title} body={body} />
+    </>
+  );
+}
+
+function EmptyFeaturedPreview({ onCreate, locked }: { onCreate?: () => void; locked?: boolean }) {
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden", background: "#0a0a0a", color: "#fff", position: "relative", border: 0, minHeight: 190 }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 85% 30%, rgba(16,185,129,0.32), transparent 55%), radial-gradient(ellipse at 5% 90%, rgba(251,191,36,0.12), transparent 55%), linear-gradient(135deg, #0f172a 0%, #0a0a0a 42%, #064e3b 100%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          fontFamily: "Plus Jakarta Sans",
+          fontWeight: 900,
+          fontSize: 220,
+          color: "rgba(255,255,255,0.04)",
+          letterSpacing: "-0.06em",
+          lineHeight: 0.8,
+          transform: "rotate(-6deg) translate(8%, -18%)",
+          textTransform: "uppercase",
+          pointerEvents: "none",
+        }}
+      >
+        {locked ? "LOBBY" : "AVISO"}
+      </div>
+      <div style={{ position: "relative", padding: "24px 28px", display: "grid", gridTemplateColumns: "1.5fr auto 1fr", gap: 28, alignItems: "center" }}>
+        <div>
+          <div className="chip-green" style={{ marginBottom: 10, opacity: locked ? 0.72 : 1 }}>
+            <span className="chip-dot" />{locked ? "Feature protegido" : "Primer aviso disponible"}
+          </div>
+          <h3 className="font-heading" style={{ fontWeight: 900, fontSize: 30, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: 0 }}>
+            {locked ? "Lobby en espera" : "Sé el primero"}<span style={{ color: "var(--primary)" }}>.</span>
+          </h3>
+          <p style={{ margin: "12px 0 0", color: "rgba(255,255,255,0.68)", fontSize: 13, maxWidth: 380 }}>
+            {locked ? "Cuando esté activo verás avisos reales, postulaciones y chats de partido." : "Publica una franja y MATCHPOINT mostrará aquí los partidos abiertos de tu zona."}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#10b981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", border: "2.5px solid rgba(255,255,255,0.15)", boxShadow: "0 4px 14px rgba(16,185,129,0.35)" }}>
+            <span className="font-heading" style={{ fontSize: 14, fontWeight: 900 }}>TÚ</span>
+          </div>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} style={{ width: 52, height: 52, borderRadius: "50%", border: "2px dashed rgba(16,185,129,0.5)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)" }}>
+              <Icon name={locked ? "lock" : "plus"} size={20} color="var(--primary)" />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+          <div style={{ textAlign: "right" }}>
+            <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)" }}>Estado</div>
+            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.45)", lineHeight: 1, marginTop: 4 }}>-</div>
+          </div>
+          {!locked && onCreate && (
+            <button className="btn btn-primary" style={{ padding: "12px 18px", fontSize: 12.5 }} onClick={onCreate}>
+              <Icon name="plus" size={14} />Publicar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyMatchCard({ index }: { index: number }) {
+  const labels = ["Franja libre", "Rival por encontrar", "Dupla pendiente"];
+  return (
+    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14, minHeight: 225 }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <span className="font-heading tabular" style={{ fontWeight: 900, fontSize: 13 }}>Sin aviso</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 10, fontWeight: 900 }}>
+          Vacío
+        </span>
+      </div>
+      <div>
+        <div className="font-heading" style={{ fontWeight: 900, fontSize: 17, textTransform: "uppercase", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+          {labels[index] ?? "Aviso disponible"}<span className="dot">.</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Icon name="map-pin" size={11} />
+          Publica un aviso para llenar este espacio
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} style={{ width: 38, height: 38, borderRadius: "50%", border: "2px dashed var(--border)", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted-fg)" }}>
+            <Icon name={i === 0 ? "user" : "plus"} size={14} color="var(--muted-fg)" />
+          </div>
+        ))}
+      </div>
+      <div style={{ height: 1, borderTop: "1px dashed var(--border)" }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto" }}>
+        <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>0 postulantes</span>
+        <span style={{ padding: "8px 13px", borderRadius: 9999, border: "1px solid var(--border)", color: "var(--muted-fg)", fontSize: 10.5, fontWeight: 900 }}>Estado vacío</span>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationPill({ status }: { status: MyApplicationItem["status"] }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", width: "fit-content", padding: "5px 10px", borderRadius: 9999, background: status === "accepted" ? "rgba(16,185,129,0.12)" : "var(--muted)", color: status === "accepted" ? "var(--primary)" : "var(--muted-fg)", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      {applicationStatusLabel(status)}
+    </span>
+  );
+}
+
+function InfoChip({ icon, label, accent }: { icon: string; label: string; accent?: boolean }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 9999, background: accent ? "rgba(16,185,129,0.1)" : "var(--muted)", color: accent ? "var(--primary)" : "#0a0a0a", fontSize: 10.5, fontWeight: 900 }}>
+      <Icon name={icon} size={11} />
+      {label}
+    </span>
+  );
+}
+
+function toMatch(seek: MatchSeek, myCity?: string | null): Match {
+  const host = seek.authorName ?? "Jugador MATCHPOINT";
+  const total = seek.mode === "doubles" ? 4 : 2;
+  const basePlayers: MatchPlayer[] = [{ a: initials(host), b: gradientFor(seek.createdBy), title: host }];
+  if (seek.mode === "doubles" && seek.partnerId) {
+    basePlayers.push({ a: "DP", b: "linear-gradient(135deg,#0891b2,#06b6d4)", title: "Dupla del autor" });
+  }
+  const applicantSlots = Math.min(seek.applicantsCount, Math.max(0, total - basePlayers.length - 1));
+  for (let i = 0; i < applicantSlots; i++) {
+    basePlayers.push({ a: `P${i + 1}`, b: gradientFor(`${seek.id}-${i}`), title: "Postulante" });
+  }
+  const start = new Date(seek.windowStart);
+  return {
+    id: seek.id,
+    seek,
+    host,
+    hostAv: initials(host),
+    hostBg: gradientFor(seek.createdBy),
+    hostLevel: seek.skillMin,
+    sport: sportLabel(seek.sport),
+    mode: modeLabel(seek.mode),
+    club: seek.clubId ? "Club seleccionado" : "Club por acordar",
+    dist: seek.city ? (seek.city === myCity ? "Tu ciudad" : seek.city) : "Ciudad por definir",
+    date: formatDateLabel(seek.windowStart),
+    time: formatTime(seek.windowStart),
+    startsIn: startsInLabel(start),
+    urgency: urgencyFor(start),
+    levelRange: [seek.skillMin ?? Number.NaN, seek.skillMax ?? Number.NaN],
+    slotsTotal: total,
+    players: basePlayers,
+    ranked: seek.ranked,
+    fit: null,
+    viewing: seek.applicantsCount,
+    featured: false,
+  };
+}
+
+function sportLabel(sport: MatchSeek["sport"]) {
+  if (sport === "tennis") return "Tenis";
+  if (sport === "padel") return "Pádel";
+  return "Pickleball";
+}
+
+function modeLabel(mode: MatchSeek["mode"]) {
+  return mode === "doubles" ? "Dobles" : "Singles";
+}
+
+function statusLabel(status: MatchSeek["status"]) {
+  if (status === "open") return "Abierto";
+  if (status === "matched") return "Con match";
+  if (status === "expired") return "Expirado";
+  return "Cancelado";
+}
+
+function applicationStatusLabel(status: MatchSeekApplication["status"] | MyApplicationItem["status"] | null | undefined) {
+  if (status === "accepted") return "Aceptado";
+  if (status === "rejected") return "Rechazado";
+  if (status === "withdrawn") return "Retirado";
+  if (status === "pending") return "Ya te postulaste";
+  return "Postularme";
+}
+
+function levelText(seek: MatchSeek) {
+  if (seek.skillMin == null && seek.skillMax == null) return "Nivel flexible";
+  if (seek.skillMin != null && seek.skillMax != null) return `Nivel ${levelNumber(seek.skillMin)}-${levelNumber(seek.skillMax)}`;
+  if (seek.skillMin != null) return `Desde nivel ${levelNumber(seek.skillMin)}`;
+  return `Hasta nivel ${levelNumber(seek.skillMax)}`;
+}
+
+function levelNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return Number.isInteger(value) ? value.toFixed(1) : String(value);
+}
+
+function formatDateLabel(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  if (sameDay(d, today)) return "Hoy";
+  if (sameDay(d, tomorrow)) return "Mañana";
+  return d.toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" }).replace(".", "");
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
+}
+
+function startsInLabel(date: Date) {
+  const ms = date.getTime() - Date.now();
+  if (ms <= 0) return "Ahora";
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  if (hours < 24) return rest ? `${hours}h ${rest}m` : `${hours}h`;
+  return formatDateLabel(date.toISOString());
+}
+
+function urgencyFor(date: Date): Match["urgency"] {
+  const hours = (date.getTime() - Date.now()) / 3600000;
+  if (hours <= 3) return "hot";
+  if (sameDay(date, new Date())) return "today";
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (sameDay(date, tomorrow)) return "tomorrow";
+  return "later";
+}
+
+function relativeFrom(iso: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "recién";
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  return formatDateLabel(iso);
+}
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "MP";
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
+}
+
+function gradientFor(id: string) {
+  const gradients = [
+    "linear-gradient(135deg,#10b981,#047857)",
+    "linear-gradient(135deg,#7c3aed,#db2777)",
+    "linear-gradient(135deg,#0891b2,#06b6d4)",
+    "linear-gradient(135deg,#ca8a04,#facc15)",
+    "linear-gradient(135deg,#dc2626,#fb923c)",
+    "linear-gradient(135deg,#0a0a0a,#374151)",
+  ];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
+function defaultDateInput() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dateInputValue(date: Date) {
+  if (!Number.isFinite(date.getTime())) return defaultDateInput();
+  return date.toISOString().slice(0, 10);
+}
+
+function timeInputValue(date: Date) {
+  if (!Number.isFinite(date.getTime())) return defaultTimeInput();
+  return date.toTimeString().slice(0, 5);
+}
+
+function defaultTimeInput() {
+  const d = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+  return d.toTimeString().slice(0, 5);
+}
+
+function parseLocalDateTime(value: string) {
+  const normalized = value.trim().replace(" ", "T");
+  const date = new Date(normalized.length === 16 ? `${normalized}:00` : normalized);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: 10,
+  padding: "10px 12px",
+  fontFamily: "inherit",
+  fontSize: 13,
+  outline: "none",
+};
+
+const softBoxStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 3,
+  padding: 12,
+  borderRadius: 12,
+  background: "#fafafa",
+  border: "1px dashed var(--border)",
+  color: "var(--muted-fg)",
+  fontSize: 12,
+};
+

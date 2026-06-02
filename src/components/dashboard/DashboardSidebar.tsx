@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { MP_ROLES, type RoleKey, type SidebarItem } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { signOutAndRedirect } from "@/server/actions/auth";
+import { ActiveRoleSwitcher, type RoleSwitchOption } from "./ActiveRoleSwitcher";
 
 type Props = {
   role: RoleKey;
@@ -21,6 +22,7 @@ type Props = {
   // Flags efectivos del usuario. Un item con `flag` se oculta si su flag está
   // explícitamente off (ausente o true = visible).
   flags?: Record<string, boolean>;
+  roleSwitchOptions?: RoleSwitchOption[];
 };
 
 // Deriva la sección activa del pathname:
@@ -30,6 +32,7 @@ function activeFromPath(pathname: string, role: RoleKey): string {
   const prefix = `/dashboard/${role}`;
   if (pathname === prefix || pathname === `${prefix}/`) return "home";
   const rest = pathname.slice(prefix.length + 1).split("/")[0];
+  if (role === "user" && rest === "mp-plus") return "mi-plan";
   return rest || "home";
 }
 
@@ -41,18 +44,13 @@ export function DashboardSidebar({
   mobileOpen = false,
   onMobileClose,
   flags,
+  roleSwitchOptions,
 }: Props) {
   const cfg = MP_ROLES[role];
   const itemVisible = (flag?: string) => !(flag && flags?.[flag] === false);
-  // Anexamos un grupo "Ayuda" global para todos los roles, sin tocar la config
-  // estática de roles.ts. /dashboard/[role]/ayuda es global. Header "Ayuda" (no
-  // "Soporte") para no colisionar con el grupo "Soporte" propio del empleado
-  // (key={g.h} duplicada) y porque el item es "Ayuda y guías". Para el user
-  // sumamos "Soporte" aquí (fusionado desde Mi cuenta; la pantalla soporte solo
-  // existe para user).
+  // Anexamos solo "Ayuda y guías" como item global. Las pantallas operativas
+  // como Soporte viven en MP_ROLES para mantener sidebar y screens en sync.
   const helpItems: SidebarItem[] = [{ k: "ayuda", label: "Ayuda y guías", icon: "info" }];
-  if (role === "user") helpItems.push({ k: "soporte", label: "Soporte", icon: "life-buoy" });
-  if (role === "employee") helpItems.push({ k: "e-soporte", label: "Reportar problema", icon: "life-buoy" });
   const groups = [...cfg.sidebar, { h: "Ayuda", items: helpItems }];
   const pathname = usePathname() || "";
   const active = activeFromPath(pathname, role);
@@ -166,6 +164,9 @@ export function DashboardSidebar({
           );
         })}
       </nav>
+      {roleSwitchOptions && roleSwitchOptions.length > 1 && (
+        <ActiveRoleSwitcher current={role} options={roleSwitchOptions} />
+      )}
       <div
         style={{
           padding: 12,

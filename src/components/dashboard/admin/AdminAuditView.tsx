@@ -7,7 +7,7 @@
 // real + refresh en vivo. La severidad/categoría se derivan de entity+action (no
 // son columnas), el resto (actor, ip, ua, diff, timestamp) es real.
 // Ver docs/security/03-audit-log.md y 04-placeholders.md.
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
@@ -48,6 +48,107 @@ const CAT_PILLS = [
 const nf = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const PAGE = 60; // eventos visibles por tanda en el stream
 
+type RangeKey = "1h" | "24h" | "7d" | "30d" | "custom";
+
+const RANGE_MS: Record<Exclude<RangeKey, "custom">, number> = {
+  "1h": 3600000,
+  "24h": 86400000,
+  "7d": 7 * 86400000,
+  "30d": 30 * 86400000,
+};
+
+const RANGE_SHORT: Record<RangeKey, string> = {
+  "1h": "1h",
+  "24h": "24h",
+  "7d": "7d",
+  "30d": "30d",
+  custom: "custom",
+};
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultCustomRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to.getTime() - 6 * 86400000);
+  return { from: isoDate(from), to: isoDate(to) };
+}
+
+function eventInRange(
+  e: Ev,
+  now: number,
+  range: RangeKey,
+  customFrom: string,
+  customTo: string,
+): boolean {
+  const ts = new Date(e.t).getTime();
+  if (range === "custom") {
+    const from = new Date(`${customFrom}T00:00:00`).getTime();
+    const to = new Date(`${customTo}T23:59:59.999`).getTime();
+    if (Number.isNaN(from) || Number.isNaN(to)) return true;
+    return ts >= from && ts <= to;
+  }
+  return now - ts < RANGE_MS[range];
+}
+
+function buildHourBuckets(
+  rangeEvents: Ev[],
+  now: number,
+  range: RangeKey,
+  customFrom: string,
+  customTo: string,
+): number[] {
+  if (range === "1h") {
+    const buckets = Array.from({ length: 12 }, () => 0);
+    rangeEvents.forEach((e) => {
+      const minsAgo = Math.floor((now - new Date(e.t).getTime()) / 60000);
+      if (minsAgo >= 0 && minsAgo < 60) {
+        const idx = 11 - Math.floor(minsAgo / 5);
+        if (idx >= 0 && idx < 12) buckets[idx]++;
+      }
+    });
+    return buckets;
+  }
+  if (range === "24h") {
+    const buckets = Array.from({ length: 24 }, () => 0);
+    rangeEvents.forEach((e) => {
+      const hAgo = Math.floor((now - new Date(e.t).getTime()) / 3600000);
+      if (hAgo >= 0 && hAgo < 24) buckets[23 - hAgo]++;
+    });
+    return buckets;
+  }
+  if (range === "7d") {
+    const buckets = Array.from({ length: 7 }, () => 0);
+    rangeEvents.forEach((e) => {
+      const dAgo = Math.floor((now - new Date(e.t).getTime()) / 86400000);
+      if (dAgo >= 0 && dAgo < 7) buckets[6 - dAgo]++;
+    });
+    return buckets;
+  }
+  if (range === "30d") {
+    const buckets = Array.from({ length: 30 }, () => 0);
+    rangeEvents.forEach((e) => {
+      const dAgo = Math.floor((now - new Date(e.t).getTime()) / 86400000);
+      if (dAgo >= 0 && dAgo < 30) buckets[29 - dAgo]++;
+    });
+    return buckets;
+  }
+  // custom: barras por día entre from y to (máx. 14 para legibilidad)
+  const from = new Date(`${customFrom}T00:00:00`).getTime();
+  const to = new Date(`${customTo}T23:59:59.999`).getTime();
+  const msPerDay = 86400000;
+  const spanDays = Math.max(1, Math.ceil((to - from) / msPerDay));
+  const dayCount = Math.min(14, spanDays);
+  const buckets = Array.from({ length: dayCount }, () => 0);
+  rangeEvents.forEach((e) => {
+    const ts = new Date(e.t).getTime();
+    const dayIdx = Math.floor((ts - from) / msPerDay);
+    if (dayIdx >= 0 && dayIdx < dayCount) buckets[dayIdx]++;
+  });
+  return buckets;
+}
+
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dateLabel = (d: string) => {
   const today = new Date();
@@ -62,7 +163,10 @@ const dateLabel = (d: string) => {
 export function AdminAuditView({ events, now, chainedCount }: { events: AuditEvent[]; now: number; chainedCount: number }) {
   const toast = useToast();
   const router = useRouter();
-  const [range, setRange] = useState("24h");
+  const [range, setRange] = useState<RangeKey>("24h");
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState(() => defaultCustomRange().from);
+  const [customTo, setCustomTo] = useState(() => defaultCustomRange().to);
   const [search, setSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [catF, setCatF] = useState("all");
@@ -75,7 +179,14 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisible(PAGE);
-  }, [search, catF, sevF, activeFilters]);
+  }, [search, catF, sevF, activeFilters, range, customFrom, customTo]);
+
+  const rangeLabel = range === "custom" ? `${customFrom} → ${customTo}` : RANGE_SHORT[range];
+
+  const rangeEvents = useMemo(
+    () => events.filter((e) => eventInRange(e, now, range, customFrom, customTo)),
+    [events, now, range, customFrom, customTo],
+  );
 
   // Refresca datos reales del server cada 15s mientras live tail está on.
   useEffect(() => {
@@ -84,7 +195,7 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
     return () => clearInterval(id);
   }, [liveTail, router]);
 
-  const filtered = events.filter((e) => {
+  const filtered = rangeEvents.filter((e) => {
     if (catF !== "all" && e.cat !== catF) return false;
     if (sevF !== "all" && e.sev !== sevF) return false;
     if (search) {
@@ -107,25 +218,22 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
     (groups[d] ||= []).push(e);
   });
 
-  const today = events.filter((e) => now - new Date(e.t).getTime() < 86400000);
-  // Histograma REAL: eventos por hora en las últimas 24h ([0]=hace 24h … [23]=hora actual).
-  const hourBuckets = Array.from({ length: 24 }, () => 0);
-  today.forEach((e) => {
-    const hAgo = Math.floor((now - new Date(e.t).getTime()) / 3600000);
-    if (hAgo >= 0 && hAgo < 24) hourBuckets[23 - hAgo]++;
-  });
-  const critical = today.filter((e) => e.sev === "critical").length;
-  const actors = new Set(today.map((e) => e.who)).size;
-  const actions = new Set(today.map((e) => e.action)).size;
+  const hourBuckets = useMemo(
+    () => buildHourBuckets(rangeEvents, now, range, customFrom, customTo),
+    [rangeEvents, now, range, customFrom, customTo],
+  );
+  const critical = rangeEvents.filter((e) => e.sev === "critical").length;
+  const actors = new Set(rangeEvents.map((e) => e.who)).size;
+  const actions = new Set(rangeEvents.map((e) => e.action)).size;
 
   const actorTally: Record<string, number> = {};
-  today.forEach((e) => (actorTally[e.who] = (actorTally[e.who] || 0) + 1));
+  rangeEvents.forEach((e) => (actorTally[e.who] = (actorTally[e.who] || 0) + 1));
   const topActors = Object.entries(actorTally).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const actionTally: Record<string, number> = {};
-  today.forEach((e) => (actionTally[e.action] = (actionTally[e.action] || 0) + 1));
+  rangeEvents.forEach((e) => (actionTally[e.action] = (actionTally[e.action] || 0) + 1));
   const topActions = Object.entries(actionTally).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const catTally: Record<string, number> = {};
-  today.forEach((e) => (catTally[e.cat] = (catTally[e.cat] || 0) + 1));
+  rangeEvents.forEach((e) => (catTally[e.cat] = (catTally[e.cat] || 0) + 1));
 
   // Export real de la vista filtrada (descarga client-side).
   const exportData = (fmt: "csv" | "json") => {
@@ -182,8 +290,8 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
 
       {/* KPI STRIP */}
       <div className="mp-spon-kpis" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 12 }}>
-        <AuditHero today={today.length} liveTail={liveTail} buckets={hourBuckets} />
-        <AuditKpi icon="alert-octagon" label="Críticos · 24h" value={String(critical)} sub={critical > 0 ? "Revisar ahora" : "Sin alertas"} danger={critical > 0} />
+        <AuditHero count={rangeEvents.length} liveTail={liveTail} buckets={hourBuckets} range={range} />
+        <AuditKpi icon="alert-octagon" label={`Críticos · ${rangeLabel}`} value={String(critical)} sub={critical > 0 ? "Revisar ahora" : "Sin alertas"} danger={critical > 0} />
         <AuditKpi icon="users" label="Actores únicos" value={String(actors)} sub="admins · staff · sistema" />
         <AuditKpi icon="terminal" label="Acciones únicas" value={String(actions)} sub="tipos distintos" />
         <AuditKpi icon="shield-check" label="Integridad" value={nf(chainedCount)} sub="encadenados · hash chain" emerald />
@@ -209,7 +317,25 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
           />
           <span style={{ position: "absolute", right: 10, top: 9, padding: "3px 7px", borderRadius: 4, background: "var(--muted)", fontSize: 9.5, fontWeight: 900, color: "var(--muted-fg)", letterSpacing: "0.1em" }}>↵</span>
         </div>
-        <SegRange value={range} onChange={setRange} />
+        <div style={{ position: "relative" }}>
+          <SegRange
+            value={range}
+            onChange={(v) => {
+              setRange(v);
+              if (v === "custom") setCustomOpen(true);
+              else setCustomOpen(false);
+            }}
+          />
+          {customOpen && range === "custom" && (
+            <CustomRangePicker
+              from={customFrom}
+              to={customTo}
+              onFrom={setCustomFrom}
+              onTo={setCustomTo}
+              onClose={() => setCustomOpen(false)}
+            />
+          )}
+        </div>
       </div>
 
       {/* ACTIVE FILTERS */}
@@ -237,7 +363,7 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             {CAT_PILLS.map((c) => {
               const on = catF === c.k;
-              const n = c.k === "all" ? filtered.length : events.filter((e) => e.cat === c.k).length;
+              const n = c.k === "all" ? filtered.length : rangeEvents.filter((e) => e.cat === c.k).length;
               return (
                 <button key={c.k} onClick={() => setCatF(c.k)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 9999, background: on ? c.c : "#fff", color: on ? "#fff" : "#0a0a0a", border: "1px solid " + (on ? c.c : "var(--border)"), fontFamily: "inherit", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
                   <Icon name={c.i} size={11} color={on ? "#fff" : undefined} />
@@ -282,9 +408,9 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
 
         {/* SIDE */}
         <div className="mp-audit-side" style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 14 }}>
-          <PulseCard title="Top actores · 24h" rows={topActors.map(([k, v]) => ({ k, v }))} total={today.length} />
-          <PulseCard title="Top acciones · 24h" rows={topActions.map(([k, v]) => ({ k, v }))} total={today.length} />
-          <CategoryCard tally={catTally} total={today.length} />
+          <PulseCard title={`Top actores · ${rangeLabel}`} rows={topActors.map(([k, v]) => ({ k, v }))} total={rangeEvents.length} />
+          <PulseCard title={`Top acciones · ${rangeLabel}`} rows={topActions.map(([k, v]) => ({ k, v }))} total={rangeEvents.length} />
+          <CategoryCard tally={catTally} total={rangeEvents.length} rangeLabel={rangeLabel} />
           <IntegrityCard onExport={() => exportData("csv")} chainedCount={chainedCount} />
         </div>
       </div>
@@ -294,20 +420,46 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
   );
 }
 
-function AuditHero({ today, liveTail, buckets }: { today: number; liveTail: boolean; buckets: number[] }) {
+function heroRangeLabel(range: RangeKey): string {
+  if (range === "1h") return "1h";
+  if (range === "24h") return "24h";
+  if (range === "7d") return "7d";
+  if (range === "30d") return "30d";
+  return "rango";
+}
+
+function heroBucketHint(range: RangeKey, count: number, max: number, bucketLen: number): string {
+  if (count === 0) return "sin actividad en el rango";
+  if (range === "1h") return `pico ${max}/5m · ${Math.round((count / bucketLen) * 10) / 10}/slot promedio`;
+  if (range === "24h") return `pico ${max}/h · ${Math.round((count / 24) * 10) / 10}/h promedio`;
+  if (range === "7d") return `pico ${max}/día · ${Math.round((count / 7) * 10) / 10}/día promedio`;
+  if (range === "30d") return `pico ${max}/día · ${Math.round((count / 30) * 10) / 10}/día promedio`;
+  return `pico ${max} · ${count} en el rango`;
+}
+
+function heroAxisLabels(range: RangeKey): [string, string, string] {
+  if (range === "1h") return ["-60m", "-30m", "ahora"];
+  if (range === "24h") return ["-24h", "-12h", "ahora"];
+  if (range === "7d") return ["-7d", "-3d", "hoy"];
+  if (range === "30d") return ["-30d", "-15d", "hoy"];
+  return ["inicio", "mitad", "fin"];
+}
+
+function AuditHero({ count, liveTail, buckets, range }: { count: number; liveTail: boolean; buckets: number[]; range: RangeKey }) {
   const max = Math.max(1, ...buckets);
   const last = buckets.length - 1;
+  const [a0, a1, a2] = heroAxisLabels(range);
   return (
     <div style={{ position: "relative", overflow: "hidden", borderRadius: 14.4, background: "#0a0a0a", color: "#fff", padding: 18, border: "1px solid rgba(255,255,255,0.06)" }}>
       <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 92% 18%, rgba(220,38,38,0.22), transparent 55%)" }} />
       <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <span className="label-mp" style={{ color: "#fca5a5" }}>● Eventos · 24h</span>
+          <span className="label-mp" style={{ color: "#fca5a5" }}>● Eventos · {heroRangeLabel(range)}</span>
           <div className="font-heading tabular" style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
-            {nf(today)}
+            {nf(count)}
             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", fontWeight: 700, marginLeft: 6 }}>eventos</span>
           </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6, fontFamily: "ui-monospace, monospace" }}>{today === 0 ? "sin actividad en 24h" : `pico ${max}/h · ${Math.round((today / 24) * 10) / 10}/h promedio`}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6, fontFamily: "ui-monospace, monospace" }}>{heroBucketHint(range, count, max, buckets.length)}</div>
         </div>
         {liveTail && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 9999, background: "rgba(16,185,129,0.15)", color: "var(--primary)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -324,9 +476,9 @@ function AuditHero({ today, liveTail, buckets }: { today: number; liveTail: bool
         })}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: "rgba(255,255,255,0.4)", fontFamily: "ui-monospace, monospace", letterSpacing: "0.1em" }}>
-        <span>-24h</span>
-        <span>-12h</span>
-        <span>ahora</span>
+        <span>{a0}</span>
+        <span>{a1}</span>
+        <span>{a2}</span>
       </div>
     </div>
   );
@@ -400,7 +552,7 @@ function PulseCard({ title, rows, total }: { title: string; rows: { k: string; v
   );
 }
 
-function CategoryCard({ tally, total }: { tally: Record<string, number>; total: number }) {
+function CategoryCard({ tally, total, rangeLabel }: { tally: Record<string, number>; total: number; rangeLabel: string }) {
   const items = [
     { k: "pagos", l: "Pagos", c: "#10b981", i: "wallet" },
     { k: "config", l: "Config", c: "#f59e0b", i: "settings" },
@@ -410,7 +562,7 @@ function CategoryCard({ tally, total }: { tally: Record<string, number>; total: 
   ];
   return (
     <div className="card" style={{ padding: 16 }}>
-      <div className="label-mp" style={{ marginBottom: 10 }}>Por categoría · 24h</div>
+      <div className="label-mp" style={{ marginBottom: 10 }}>Por categoría · {rangeLabel}</div>
       <div style={{ height: 12, borderRadius: 9999, background: "var(--muted)", overflow: "hidden", display: "flex", marginBottom: 12 }}>
         {items.map((it) => {
           const n = tally[it.k] || 0;
@@ -479,16 +631,80 @@ function IntegrityCard({ onExport, chainedCount }: { onExport: () => void; chain
   );
 }
 
-function SegRange({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SegRange({ value, onChange }: { value: RangeKey; onChange: (v: RangeKey) => void }) {
+  const opts: { k: RangeKey; l: string; i?: string }[] = [
+    { k: "1h", l: "1h" },
+    { k: "24h", l: "24h" },
+    { k: "7d", l: "7d" },
+    { k: "30d", l: "30d" },
+    { k: "custom", l: "Custom", i: "calendar" },
+  ];
   return (
     <div style={{ display: "inline-flex", background: "#f5f5f5", borderRadius: 9999, padding: 3 }}>
-      {[{ k: "1h", l: "1h" }, { k: "24h", l: "24h" }, { k: "7d", l: "7d" }, { k: "30d", l: "30d" }, { k: "custom", l: "Custom", i: "calendar" }].map((o) => (
-        <button key={o.k} onClick={() => onChange(o.k)} style={{ border: 0, background: value === o.k ? "#0a0a0a" : "transparent", color: value === o.k ? "#fff" : "#737373", padding: "7px 14px", borderRadius: 9999, fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {opts.map((o) => (
+        <button
+          key={o.k}
+          type="button"
+          aria-pressed={value === o.k}
+          onClick={() => onChange(o.k)}
+          style={{ border: 0, background: value === o.k ? "#0a0a0a" : "transparent", color: value === o.k ? "#fff" : "#737373", padding: "7px 14px", borderRadius: 9999, fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}
+        >
           {o.i && <Icon name={o.i} size={11} color={value === o.k ? "#fff" : "#737373"} />}
           {o.l}
         </button>
       ))}
     </div>
+  );
+}
+
+function CustomRangePicker({
+  from,
+  to,
+  onFrom,
+  onTo,
+  onClose,
+}: {
+  from: string;
+  to: string;
+  onFrom: (v: string) => void;
+  onTo: (v: string) => void;
+  onClose: () => void;
+}) {
+  const invalid = from > to;
+  return (
+    <>
+      <div role="presentation" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+      <div
+        className="card"
+        style={{
+          position: "absolute",
+          top: "calc(100% + 8px)",
+          right: 0,
+          zIndex: 41,
+          padding: 14,
+          minWidth: 260,
+          boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+        }}
+      >
+        <div className="label-mp" style={{ marginBottom: 10 }}>Rango personalizado</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700 }}>
+            Desde
+            <input type="date" value={from} max={to} onChange={(e) => onFrom(e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700 }}>
+            Hasta
+            <input type="date" value={to} min={from} onChange={(e) => onTo(e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }} />
+          </label>
+        </div>
+        {invalid && (
+          <div style={{ fontSize: 10.5, color: "#dc2626", marginTop: 8, fontWeight: 700 }}>La fecha inicial debe ser anterior a la final.</div>
+        )}
+        <button type="button" className="btn btn-primary" style={{ width: "100%", marginTop: 12, fontSize: 11 }} disabled={invalid} onClick={onClose}>
+          Aplicar
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -570,7 +786,7 @@ function EventDrawer({ e, close }: { e: Ev; close: () => void }) {
       <div onClick={(evt) => evt.stopPropagation()} style={{ width: "100%", maxWidth: 520, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 20%, rgba(220,38,38,0.18), transparent 60%)" }} />
-          <button onClick={close} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer" }}>
+          <button onClick={close} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
             <Icon name="x" size={13} color="#fff" />
           </button>
           <div style={{ position: "relative" }}>

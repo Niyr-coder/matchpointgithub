@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { cancelMyPlan, requestPlanUpgrade } from "@/server/actions/player-subscriptions";
+import { MP_PLUS_MANAGE_BENEFITS, MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
 
 export type MpPlusManageData = {
   userId: string;
@@ -34,19 +35,9 @@ export type MpPlusManageData = {
   }>;
 };
 
-const BENEFITS: { n: string; h: string; d: string; icon: string }[] = [
-  { n: "21d", h: "Reservas anticipadas", d: "Tres semanas en vez de una. Gana el cupo en hora pico antes que el resto.", icon: "calendar-plus" },
-  { n: "∞", h: "Coach AI ilimitado", d: "Análisis de video y sugerencias tácticas sin tope mensual.", icon: "sparkles" },
-  { n: "⬢", h: "Personalización", d: "Acento, banners, card styles y packs exclusivos del catálogo MP+.", icon: "palette" },
-  { n: "1×", h: "No-show sin recargo", d: "Tu primera inasistencia del mes no penaliza. Una segunda oportunidad.", icon: "shield-check" },
-  { n: "4h", h: "Soporte prioritario", d: "Respuesta en menos de cuatro horas hábiles, no en 48.", icon: "headphones" },
-  { n: "+", h: "Catálogo MP+", d: "Packs, marcos, animaciones y skins solo para socios premium.", icon: "crown" },
-];
-
 function fmtMoney(cents: number, opts: { sign?: "+" | "-" | "" } = {}): string {
   const sign = opts.sign ?? "";
-  const dollars = Math.round(Math.abs(cents) / 100);
-  return `${sign}$${dollars.toLocaleString("en-US")}`;
+  return `${sign}${new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD" }).format(Math.abs(cents) / 100)}`;
 }
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -75,16 +66,26 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
   const handleExtend = (months: number) => {
     startExtend(async () => {
       const res = await requestPlanUpgrade({ tier: "premium", durationMonths: months });
-      if (res.ok) {
+      if (!res.ok) {
+        const pendingTx = res.error.fields?.transactionId?.[0];
         toast({
-          icon: "check-circle-2",
-          title: `Solicitud creada · ${months} meses`,
-          sub: "Sube tu comprobante para activar la extensión.",
+          icon: "alert-triangle",
+          title: "No se pudo solicitar",
+          sub: res.error.message,
         });
-        router.refresh();
-      } else {
-        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+        if (pendingTx) {
+          router.push(`/pagos/${pendingTx}`);
+        } else if (res.error.code === "PLAN.PENDING_EXISTS") {
+          router.push("/dashboard/user/mi-plan");
+        }
+        return;
       }
+      toast({
+        icon: "check-circle-2",
+        title: `Solicitud creada · ${months} ${months === 1 ? "mes" : "meses"}`,
+        sub: "Sube tu comprobante para activar la renovación.",
+      });
+      router.push(`/pagos/${res.data.transactionId}`);
     });
   };
 
@@ -93,7 +94,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
     startCancel(async () => {
       const res = await cancelMyPlan({
         subscriptionId: data.activeSubscription!.id,
-        reason: "Cancelado desde la pantalla Mi plan MP+",
+        reason: "Cancelado desde la pantalla Mi plan MATCHPOINT+",
       });
       if (res.ok) {
         toast({
@@ -186,10 +187,10 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
                   lineHeight: 1.05,
                 }}
               >
-                Eres MP+, {firstName}<span className="dot">.</span>
+                Eres MATCHPOINT+, {firstName}<span className="dot">.</span>
               </h1>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.55 }}>
-                Beneficios activos, próximo cobro y todo tu historial. Cancela cuando quieras — conservas el plan hasta el fin del ciclo pagado.
+                Beneficios activos, renovación sugerida e historial. No hay cobro automático: cada extensión se confirma con comprobante manual.
               </div>
 
               {/* Countdown gigante */}
@@ -220,7 +221,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
                 </span>
               </div>
               <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.7)", marginTop: 12 }}>
-                Vence el <b style={{ color: "#fff" }}>{expiresLabel}</b> · <b style={{ color: "#fff" }}>{fmtMoney(data.nextChargeCents)}{cycleLengthLabel}</b> · método <b style={{ color: "#fff" }}>{data.paymentMethod}</b>
+                Vence el <b style={{ color: "#fff" }}>{expiresLabel}</b> · renovación sugerida <b style={{ color: "#fff" }}>{fmtMoney(data.nextChargeCents)}{cycleLengthLabel}</b> · último método <b style={{ color: "#fff" }}>{data.paymentMethod}</b>
               </div>
             </div>
 
@@ -228,20 +229,22 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "stretch", minWidth: 240 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <button
+                  type="button"
                   className="btn"
                   style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }}
-                  onClick={() => toast({ icon: "sparkles", title: "Cambiar método de pago · próximamente" })}
+                  onClick={() => router.push("/dashboard/user/mi-plan")}
                 >
-                  <Icon name="credit-card" size={13} color="#fff" />
-                  Cambiar método
+                  <Icon name="receipt" size={13} color="#fff" />
+                  Historial y solicitudes
                 </button>
                 <button
+                  type="button"
                   className="btn btn-primary"
                   disabled={extendPending}
-                  onClick={() => handleExtend(6)}
+                  onClick={() => handleExtend(1)}
                 >
                   <Icon name="zap" size={13} color="#fff" />
-                  {extendPending ? "Procesando…" : "Extender 6 meses · −10%"}
+                  {extendPending ? "Procesando…" : `${MP_PLUS_PLAN.renewCta} · ${MP_PLUS_PLAN.priceLabel}`}
                 </button>
               </div>
               <div style={{ marginTop: 4 }}>
@@ -277,8 +280,8 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         <KpiCard label="Días restantes" value={String(data.daysRemaining)} sub={`de ${data.cycleDays} del ciclo`} icon="calendar-clock" accent="var(--primary)" />
         <KpiCard label="Cobrado total" value={fmtMoney(data.totalPaidCents)} sub={`${data.cyclesCompleted} ${data.cyclesCompleted === 1 ? "ciclo completado" : "ciclos completados"}`} icon="wallet" />
-        <KpiCard label="Próximo cobro" value={fmtMoney(data.nextChargeCents)} sub={expiresLabel} icon="receipt" />
-        <KpiCard label="Beneficios" value={String(BENEFITS.length)} sub="activos · ilimitados por ciclo" icon="sparkles" accent="#fbbf24" />
+        <KpiCard label="Renovación sugerida" value={fmtMoney(data.nextChargeCents)} sub="sin cobro automático" icon="receipt" />
+        <KpiCard label="Beneficios" value={String(MP_PLUS_MANAGE_BENEFITS.length)} sub="activos durante el ciclo" icon="sparkles" accent="#fbbf24" />
       </div>
 
       {/* ── Split: beneficios (lista vertical) + historial ── */}
@@ -287,7 +290,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
         <div className="card" style={{ padding: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
             <div className="label-mp">Beneficios activos</div>
-            <span style={{ fontSize: 10, color: "var(--muted-fg)" }}>{BENEFITS.length} incluidos</span>
+            <span style={{ fontSize: 10, color: "var(--muted-fg)" }}>{MP_PLUS_MANAGE_BENEFITS.length} incluidos</span>
           </div>
           <h3
             className="font-heading"
@@ -296,9 +299,9 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
             Lo que tienes activo<span className="dot">.</span>
           </h3>
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {BENEFITS.map((b, i) => (
+            {MP_PLUS_MANAGE_BENEFITS.map((b, i) => (
               <li
-                key={b.h}
+                key={b.title}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "44px 1fr 36px",
@@ -319,13 +322,13 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
                     lineHeight: 1,
                   }}
                 >
-                  {b.n}
+                  {b.metric}
                 </span>
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.02em" }}>
-                    {b.h}
+                    {b.title}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.45 }}>{b.d}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.45 }}>{b.description}</div>
                 </div>
                 <div
                   style={{
@@ -545,7 +548,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
             <div>
               <div style={{ fontSize: 13, fontWeight: 900 }}>¿Pausar o cancelar?</div>
               <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.4 }}>
-                Conservas los beneficios hasta el <b style={{ color: "#0a0a0a" }}>{expiresLabel}</b>. Si te re-suscribes después, arrancas un ciclo nuevo desde cero.
+                Conservas los beneficios hasta el <b style={{ color: "#0a0a0a" }}>{expiresLabel}</b>. Si solicitas MATCHPOINT+ después, arrancas un ciclo nuevo desde cero.
               </div>
             </div>
           </div>

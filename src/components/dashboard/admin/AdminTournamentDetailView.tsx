@@ -14,12 +14,16 @@ import { TournamentActionsBar } from "./tournament-detail/TournamentActionsBar";
 import { TournamentRegistrationsTable } from "./tournament-detail/TournamentRegistrationsTable";
 import { TournamentTransactionsTable } from "./tournament-detail/TournamentTransactionsTable";
 import { TournamentAuditLog } from "./tournament-detail/TournamentAuditLog";
+import { TournamentBracketsPanel } from "./tournament-detail/TournamentBracketsPanel";
+import { AdminOverridesPanel } from "../partner/AdminOverridesPanel";
 
 export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetail }) {
   useRealtimeRefresh([
     { table: "tournaments", filter: `id=eq.${data.tournament.id}` },
     { table: "registrations", filter: `tournament_id=eq.${data.tournament.id}` },
     { table: "transactions", filter: `ref_id=eq.${data.tournament.id}` },
+    { table: "brackets", filter: `tournament_id=eq.${data.tournament.id}` },
+    { table: "bracket_matches" },
   ]);
 
   const acceptedRegs = data.registrations.filter(
@@ -54,6 +58,64 @@ export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetai
         </div>
       </div>
 
+      <div
+        className="card"
+        style={{
+          marginTop: 16,
+          padding: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 14,
+          border: "1px dashed #7c3aed",
+          background: "rgba(124,58,237,0.04)",
+        }}
+      >
+        <div>
+          <div className="label-mp">Gestión completa</div>
+          <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.45 }}>
+            Este detalle cubre soporte, auditoría y acciones administrativas puntuales. La operación
+            completa vive en la vista de gestión: categorías, cronograma, premios, inscritos y
+            bracket visual.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {["Categorías", "Cronograma", "Premios", "Inscripciones", "Brackets"].map((item) => (
+              <span
+                key={item}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 900,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  color: "var(--muted-fg)",
+                }}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+        <Link
+          href={`/dashboard/partner/torneo/${data.tournament.id}`}
+          className="btn btn-primary"
+          style={{ whiteSpace: "nowrap", textDecoration: "none" }}
+        >
+          <Icon name="external-link" size={13} color="#fff" />
+          Abrir gestión
+        </Link>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <AdminOverridesPanel
+          tournamentId={data.tournament.id}
+          status={data.tournament.status}
+        />
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: 16 }}>
         <Kpi
           label="Inscripciones"
@@ -74,6 +136,7 @@ export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetai
       </div>
 
       <TournamentRegistrationsTable regs={data.registrations} />
+      <TournamentBracketsPanel data={data} />
       <TournamentTransactionsTable transactions={data.transactions} />
       <TournamentAuditLog tournamentId={data.tournament.id} />
     </>

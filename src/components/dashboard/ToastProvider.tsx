@@ -43,7 +43,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         <div
           style={{
             position: "fixed",
-            bottom: 24,
+            bottom: "calc(24px + env(safe-area-inset-bottom))",
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 1000,

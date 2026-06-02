@@ -14,5 +14,5 @@ export async function signInAsOwner(page: Page, nextPath = "/dashboard/owner/clu
     page.getByRole("button", { name: /Ingresar/ }).click(),
   ]);
   // Esperar a que el screen de canchas esté renderizado (tab "Gestión" visible).
-  await page.getByRole("button", { name: /Gestión/ }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Gestión", exact: true }).waitFor({ state: "visible" });
 }

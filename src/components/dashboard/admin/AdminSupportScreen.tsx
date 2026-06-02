@@ -21,13 +21,16 @@ function mapPrio(sev: string): "alta" | "media" | "baja" {
 
 async function loadData(): Promise<SupportData> {
   const supabase = await getServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const now = new Date();
   const dayAgo = new Date(now);
   dayAgo.setDate(dayAgo.getDate() - 1);
 
   const { data: tickets } = await supabase
     .from("tickets")
-    .select("id,code,subject,category,severity,status,created_at,opener_id,club_id")
+    .select("id,code,subject,category,severity,status,created_at,opener_id,club_id,assignee_id")
     .in("status", ["open", "in_progress", "waiting_user"])
     .order("created_at", { ascending: false })
     .limit(50);
@@ -54,6 +57,8 @@ async function loadData(): Promise<SupportData> {
       ? clubName.get(t.club_id as string) ?? "Club"
       : userName.get(t.opener_id as string) ?? "Usuario";
     return {
+      ticketId: t.id as string,
+      assigneeId: (t.assignee_id as string | null) ?? null,
       id: `#${(t.code as string) ?? (t.id as string).slice(0, 8).toUpperCase()}`,
       who,
       subj: (t.subject as string) ?? "Ticket",
@@ -73,6 +78,7 @@ async function loadData(): Promise<SupportData> {
   return {
     rows,
     openCount: rows.length,
+    currentAdminId: user?.id ?? "",
     kpis: { slaAtRisk, altaCount, mediaCount, bajaCount },
   };
 }

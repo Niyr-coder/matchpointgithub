@@ -5,18 +5,25 @@
 //   - HTML mínimo con estilos inline (clientes de correo no soportan <style>).
 //   - Contenedor centrado de 600px (ancho estándar para correo).
 //   - Footer con marca y enlace para administrar preferencias.
-//   - Para kinds desconocidos: subject genérico + payload serializado en <pre>.
+//   - Los kinds sin plantilla se saltan en el dispatcher para no enviar payloads
+//     internos por correo.
 //
 // Importante: no asumimos shape estricto del payload — usamos coalesce defensivo.
 
 import { APP_URL } from "@/lib/db/env";
 
+export const EMAIL_TEMPLATE_KINDS = [
+  "event_rescheduled",
+  "tournament_rescheduled",
+  "plan_expiring_soon",
+  "reservation_created",
+] as const;
+
 export type EmailKind =
   | "event_rescheduled"
   | "tournament_rescheduled"
   | "plan_expiring_soon"
-  | "reservation_created"
-  | (string & {});
+  | "reservation_created";
 
 export type EmailRender = {
   subject: string;
@@ -40,6 +47,10 @@ const absUrl = (path: string): string => {
 };
 
 type Payload = Record<string, unknown>;
+
+export function hasEmailTemplate(kind: string): kind is EmailKind {
+  return (EMAIL_TEMPLATE_KINDS as readonly string[]).includes(kind);
+}
 
 const pickStr = (p: Payload, key: string): string | null => {
   const v = p[key];
@@ -199,18 +210,18 @@ const renderTournamentRescheduled = (payload: Payload): EmailRender => {
 
 const renderPlanExpiringSoon = (payload: Payload): EmailRender => {
   const daysRaw = pickStr(payload, "days_remaining") ?? "pocos";
-  const subject = `Tu Premium expira en ${daysRaw} días`;
+  const subject = `Tu MATCHPOINT+ expira en ${daysRaw} días`;
   const renewUrl = absUrl("/dashboard/user/mi-plan");
   const bodyHtml = `
     <p style="margin:0 0 12px 0;">
-      Tu plan <strong>Premium</strong> está por vencer en
+      Tu plan <strong>MATCHPOINT+</strong> está por vencer en
       <strong>${escapeHtml(daysRaw)}</strong> días.
     </p>
     <p style="margin:0 0 12px 0;">
       Renuévalo ahora para no perder beneficios como inscripción anticipada a eventos,
       ranking ponderado y acceso a torneos exclusivos.
     </p>`;
-  const text = `${subject}\n\nTu plan Premium está por vencer en ${daysRaw} días.\nRenuévalo en: ${renewUrl}\n\n— MATCHPOINT`;
+  const text = `${subject}\n\nTu plan MATCHPOINT+ está por vencer en ${daysRaw} días.\nRenuévalo en: ${renewUrl}\n\n— MATCHPOINT`;
   return {
     subject,
     html: layout({
@@ -264,24 +275,6 @@ const renderReservationCreated = (payload: Payload): EmailRender => {
   };
 };
 
-const renderFallback = (kind: string, payload: Payload): EmailRender => {
-  const subject = "Notificación de MATCHPOINT";
-  const serialized = JSON.stringify(payload, null, 2);
-  const bodyHtml = `
-    <p style="margin:0 0 12px 0;">
-      Tienes una nueva notificación (<code>${escapeHtml(kind)}</code>).
-    </p>
-    <pre style="background:#f4f5f7;padding:12px;border-radius:6px;
-                font-size:12px;line-height:1.4;overflow:auto;
-                white-space:pre-wrap;word-break:break-word;">${escapeHtml(serialized)}</pre>`;
-  const text = `${subject}\n\nKind: ${kind}\n\n${serialized}\n\n— MATCHPOINT`;
-  return {
-    subject,
-    html: layout({ title: subject, bodyHtml }),
-    text,
-  };
-};
-
 export function renderEmail(kind: EmailKind, payload: Payload | null | undefined): EmailRender {
   const p: Payload = payload ?? {};
   switch (kind) {
@@ -293,7 +286,7 @@ export function renderEmail(kind: EmailKind, payload: Payload | null | undefined
       return renderPlanExpiringSoon(p);
     case "reservation_created":
       return renderReservationCreated(p);
-    default:
-      return renderFallback(String(kind), p);
   }
+  const exhaustive: never = kind;
+  throw new Error(`Plantilla de email no soportada: ${exhaustive}`);
 }

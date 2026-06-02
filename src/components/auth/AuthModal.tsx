@@ -57,10 +57,14 @@ const inp: CSSProperties = {
 export function AuthModal({
   mode: initialMode = "signup",
   next,
+  notice,
   onClose,
 }: {
   mode?: AuthMode;
   next?: string;
+  // Aviso contextual mostrado sobre el formulario (ej. sesión cerrada por
+  // suspensión). Tono "warning"; no es un error de submit.
+  notice?: string;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -76,6 +80,16 @@ export function AuthModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Scroll-lock: mientras el modal está abierto, congelamos el scroll del
+  // body para que la rueda del ratón no mueva el landing detrás del overlay.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   // Restaurar focus al elemento que abrió el modal cuando se desmonta.
   // Guardamos el `activeElement` al montar y se lo devolvemos al cerrar,
@@ -146,6 +160,7 @@ export function AuthModal({
       >
         <Hero mode={mode} onClose={onClose} />
         <div style={{ padding: 24 }}>
+          {notice && <NoticeBanner message={notice} />}
           {mode === "signup" ? (
             <SignUpForm next={next} onSwitch={() => setMode("signin")} />
           ) : (
@@ -192,6 +207,7 @@ function Hero({ mode, onClose }: { mode: AuthMode; onClose: () => void }) {
         type="button"
         onClick={onClose}
         aria-label="Cerrar"
+        className="mp-press"
         style={{
           position: "absolute",
           top: 14,
@@ -211,7 +227,7 @@ function Hero({ mode, onClose }: { mode: AuthMode; onClose: () => void }) {
         <Icon name="x" size={13} color="#fff" />
       </button>
       <div className="label-mp" style={{ color: "rgba(255,255,255,0.7)" }}>
-        ● {isSignUp ? "Es gratis · < 60 s" : "MATCHPOINT"}
+        ● {isSignUp ? "Es gratis · en menos de 60 s" : "MATCHPOINT"}
       </div>
       <h2
         id="authmodal-title"
@@ -325,7 +341,7 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
           show={showPassword}
           onToggle={() => setShowPassword((s) => !s)}
           autoComplete="new-password"
-          minHint="Mínimo 8 caracteres"
+          minHint="Mínimo 8 caracteres, con letras y números"
         />
         {password.length > 0 && <PasswordStrengthBar level={strength} />}
       </FieldLabel>
@@ -672,6 +688,30 @@ function ErrorBanner({ message }: { message: string }) {
         color: "#991b1b",
         fontSize: 12,
         fontWeight: 700,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+// Aviso contextual (no es error de submit). Tono ámbar. Se muestra sobre el
+// formulario — ej. cuando el proxy cierra la sesión por suspensión y manda
+// ?suspended=1, o cualquier mensaje informativo que abra el modal.
+function NoticeBanner({ message }: { message: string }) {
+  return (
+    <div
+      role="status"
+      style={{
+        marginBottom: 14,
+        padding: "10px 12px",
+        borderRadius: 8,
+        background: "#fffbeb",
+        border: "1px solid #fde68a",
+        color: "#92400e",
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1.45,
       }}
     >
       {message}

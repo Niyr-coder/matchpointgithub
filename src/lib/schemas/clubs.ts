@@ -122,6 +122,8 @@ export const ClubFeaturedSchema = z
     // truncamos en el view a ~120 chars.
     description: z.string().nullable(),
     address: z.string().nullable(),
+    latitude: z.number().min(-90).max(90).nullable(),
+    longitude: z.number().min(-180).max(180).nullable(),
     // null = club no pagó featuring; ISO string si está activo (futuro).
     // En lectura: si <= now(), tratar como null (expirado).
     featuredUntil: z.string().datetime({ offset: true }).nullable(),
@@ -240,6 +242,11 @@ export const ClubSocialViewSchema = z.object({
   // Rol del visitante en relación a este club. Determina afordancias
   // administrativas en el view (edit / volver al panel).
   viewerRole: z.enum(["owner", "manager", "admin", "guest"]),
+  /** Membresía del visitante en este club (para CTA Unir en el hero). */
+  membershipStatus: z.enum(["none", "active", "pending"]),
+  hasMembershipTiers: z.boolean(),
+  cheapestTierId: UuidSchema.nullable(),
+  pendingMembershipTxId: UuidSchema.nullable(),
   upcomingTournaments: z.array(ClubSocialTournamentSchema),
   frequentMembers: z.array(ClubSocialMemberSchema),
   friendsHere: z.array(ClubSocialMemberSchema),

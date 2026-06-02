@@ -20,7 +20,7 @@ const SPORT_LABEL: Record<string, string> = {
   tennis: "Tenis",
 };
 
-const FILTERS = ["Todos", "Pádel", "Pickleball", "Tenis", "Indoor", "Outdoor"];
+const CITY_ALL = "__all__";
 const FEATURED_TAGS = ["Indoor", "Outdoor", "Pro shop", "Café"];
 const SAVED_KEY = "mp-saved-clubs";
 
@@ -57,7 +57,7 @@ const MIN_CARDS = 6;
 type ListItem = (ClubFeatured & { placeholder?: false }) | { placeholder: true; key: string };
 
 export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
-  const [active, setActive] = useState("Todos");
+  const [selectedCity, setSelectedCity] = useState(CITY_ALL);
   const [q, setQ] = useState("");
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const toast = useToast();
@@ -108,17 +108,21 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
 
   const openMapa = () => window.dispatchEvent(new Event("mp-open-mapa"));
 
+  const cityOptions = useMemo(
+    () => Array.from(new Set(clubs.map((c) => c.city).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es")),
+    [clubs],
+  );
+
   const filtered = useMemo(() => {
     return clubs.filter((c) => {
       if (q) {
         const needle = q.toLowerCase();
         if (!c.name.toLowerCase().includes(needle) && !c.city.toLowerCase().includes(needle)) return false;
       }
-      if (active === "Todos" || active === "Indoor" || active === "Outdoor") return true;
-      const key = active.toLowerCase() === "pádel" ? "padel" : active.toLowerCase();
-      return c.sports.some((s) => s === key);
+      if (selectedCity !== CITY_ALL && c.city !== selectedCity) return false;
+      return true;
     });
-  }, [clubs, q, active]);
+  }, [clubs, q, selectedCity]);
 
   // Destacado solo para clubes que pagaron el slot (featured_until > now).
   // Si hay varios pagos vigentes, gana el más reciente en la lista filtrada.
@@ -146,7 +150,7 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar club, comuna o cancha…"
+            placeholder="Buscar club, ciudad o cancha…"
             style={{
               width: "100%",
               padding: "10px 14px 10px 38px",
@@ -159,29 +163,53 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
             }}
           />
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              onClick={() => setActive(f)}
+        {cityOptions.length > 0 && (
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "0 12px",
+              height: 38,
+              borderRadius: 9999,
+              border: "1px solid var(--border)",
+              background: "#fff",
+            }}
+          >
+            <span
               style={{
-                padding: "8px 14px",
-                borderRadius: 9999,
                 fontSize: 11,
                 fontWeight: 800,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                background: active === f ? "#0a0a0a" : "#fff",
-                color: active === f ? "#fff" : "#0a0a0a",
-                border: "1px solid " + (active === f ? "#0a0a0a" : "var(--border)"),
+                color: "var(--muted-fg)",
               }}
             >
-              {f}
-            </button>
-          ))}
-        </div>
+              Ciudad
+            </span>
+            <select
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              style={{
+                border: 0,
+                outline: "none",
+                background: "transparent",
+                fontFamily: "inherit",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                color: "#0a0a0a",
+              }}
+            >
+              <option value={CITY_ALL}>Todas las ciudades</option>
+              {cityOptions.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           onClick={openMapa}
           style={{
@@ -688,9 +716,28 @@ function ClubCard({
               <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 600 }}> / hora</span>
             </div>
           </div>
-          <button className="btn btn-primary" style={{ padding: "7px 12px", fontSize: 10.5 }} onClick={onReservar}>
-            Reservar
-          </button>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <Link
+              href={`/dashboard/clubes/${c.slug}#club-membresias`}
+              className="btn"
+              style={{
+                padding: "7px 12px",
+                fontSize: 10.5,
+                background: "#fff",
+                border: "1px solid var(--border)",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <Icon name="sparkle" size={11} color="var(--color-mp-amber)" />
+              Unir
+            </Link>
+            <button className="btn btn-primary" style={{ padding: "7px 12px", fontSize: 10.5 }} onClick={onReservar}>
+              Reservar
+            </button>
+          </div>
         </div>
       </div>
     </div>

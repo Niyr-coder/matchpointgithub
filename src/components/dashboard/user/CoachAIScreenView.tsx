@@ -7,9 +7,10 @@
 // Si el user no tiene MP+, el hero se mantiene y debajo se muestra un banner
 // de upsell en lugar de la herramienta.
 import { useState } from "react";
-import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { MP_PLUS_COACH_PREVIEW_FEATURES, MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
+import { MpPlusUpsell } from "./MpPlusUpsell";
 
 type Strength = { l: string; s: string };
 type Weakness = { l: string; s: string; priority: "alta" | "media" };
@@ -133,7 +134,7 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                   color: "#34d399",
                 }}
               >
-                Beneficio MATCHPOINT+
+                Vista previa MATCHPOINT+
               </span>
             </div>
             <h1
@@ -147,11 +148,10 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                 lineHeight: 0.92,
               }}
             >
-              Coach AI<span style={{ color: "#34d399" }}>.</span>
+              Coach AI · early access<span style={{ color: "#34d399" }}>.</span>
             </h1>
             <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "rgba(255,255,255,0.82)" }}>
-              Sube un video de tu match y recibe análisis táctico en 60 segundos: tus fortalezas, qué corregir y drills
-              personalizados.
+              Explora una vista previa de análisis táctico con datos demo. El procesamiento real de video todavía está en construcción.
             </p>
           </div>
           {isPremium && (
@@ -166,13 +166,13 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                     color: "#34d399",
                   }}
                 >
-                  Análisis esta semana
+                  Estado de la vista previa
                 </div>
                 <div
                   className="font-heading tabular"
                   style={{ fontSize: 36, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.02em" }}
                 >
-                  3<span style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginLeft: 4 }}>/ ilimitados</span>
+                  Demo<span style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginLeft: 4 }}>/ early access</span>
                 </div>
               </div>
             </div>
@@ -229,7 +229,7 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(false);
-                  toast({ icon: "sparkles", title: "Análisis iniciado · 60 seg" });
+                  toast({ icon: "sparkles", title: "Vista previa iniciada" });
                 }}
                 style={{
                   padding: 40,
@@ -237,7 +237,8 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                   border: "2px dashed " + (dragOver ? "#10b981" : "var(--border)"),
                   background: dragOver ? "rgba(16,185,129,0.05)" : "#fafafa",
                   textAlign: "center",
-                  transition: "all 150ms cubic-bezier(0.16, 1, 0.3, 1)",
+                  transition:
+                    "border-color 150ms var(--ease-out), background 150ms var(--ease-out)",
                 }}
               >
                 <div
@@ -262,12 +263,12 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                   Sube tu video<span className="dot">.</span>
                 </h3>
                 <p style={{ margin: "8px 0 16px", fontSize: 13, color: "var(--muted-fg)" }}>
-                  MP4, MOV o link de YouTube/Drive · máx 500 MB · análisis en ~60 seg
+                  MP4, MOV o link de YouTube/Drive · demo sin procesamiento real todavía
                 </p>
                 <div style={{ display: "inline-flex", gap: 8 }}>
                   <button
                     className="btn btn-primary"
-                    onClick={() => toast({ icon: "sparkles", title: "Análisis iniciado · 60 seg" })}
+                    onClick={() => toast({ icon: "sparkles", title: "Vista previa iniciada" })}
                   >
                     <Icon name="upload" size={13} color="#fff" /> Subir archivo
                   </button>
@@ -311,9 +312,9 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                   </h3>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {[
-                      { n: 1, l: "Subes el video", s: "Match completo o solo el set que quieras analizar." },
-                      { n: 2, l: "AI procesa", s: "Detecta golpes, posiciones, errores y aciertos." },
-                      { n: 3, l: "Recibes tu análisis", s: "Fortalezas, áreas a mejorar, drills y tactic notes." },
+                      { n: 1, l: "Exploras el flujo", s: "Usas la experiencia demo para entender el producto." },
+                      { n: 2, l: "Revisas insights mock", s: "Ves ejemplos de golpes, posiciones, errores y aciertos." },
+                      { n: 3, l: "Validas el formato", s: "Fortalezas, áreas a mejorar, drills y notas tácticas de muestra." },
                     ].map((s) => (
                       <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                         <span
@@ -744,20 +745,14 @@ function ProgressTile({
   );
 }
 
-// Banner de upsell para users sin MATCHPOINT+. Mismo patrón que la pantalla de
-// Personalización: CTA al plan, sin esconder de qué se trata el beneficio.
+// Banner de upsell para users sin MATCHPOINT+: CTA al plan sin esconder de qué
+// se trata el beneficio.
 function CoachAIUpsell() {
-  const features = [
-    { icon: "video", l: "Análisis de video", s: "Sube tu match y la AI lo procesa en ~60 seg." },
-    { icon: "trending-up", l: "Fortalezas y errores", s: "Qué haces bien y qué corregir, con datos." },
-    { icon: "target", l: "Drills personalizados", s: "Un plan para tu próxima sesión de práctica." },
-    { icon: "line-chart", l: "Progreso en el tiempo", s: "Tu Score AI match a match." },
-  ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        {features.map((f) => (
-          <div key={f.l} className="card" style={{ padding: 18 }}>
+        {MP_PLUS_COACH_PREVIEW_FEATURES.map((f) => (
+          <div key={f.title} className="card" style={{ padding: 18 }}>
             <span
               style={{
                 width: 34,
@@ -772,54 +767,20 @@ function CoachAIUpsell() {
             >
               <Icon name={f.icon} size={16} color="#047857" />
             </span>
-            <div style={{ fontSize: 13.5, fontWeight: 800, marginTop: 10 }}>{f.l}</div>
-            <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>{f.s}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginTop: 10 }}>{f.title}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>{f.description}</div>
           </div>
         ))}
       </div>
 
-      <div
-        className="card"
-        style={{
-          padding: 22,
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 14,
-          background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 100%)",
-          color: "#fff",
-        }}
-      >
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flex: 1, minWidth: 240 }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 10,
-              background: "rgba(16,185,129,0.2)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="lock" size={20} color="#34d399" />
-          </div>
-          <div>
-            <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em" }}>
-              Coach AI es un beneficio MATCHPOINT+
-            </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 3 }}>
-              Activa tu plan para subir videos y recibir análisis ilimitados.
-            </div>
-          </div>
-        </div>
-        <Link href="/dashboard/user/mi-plan" className="btn" style={{ background: "#34d399", color: "#0a0a0a", fontWeight: 800 }}>
-          Activar MATCHPOINT+
-          <Icon name="arrow-right" size={12} />
-        </Link>
-      </div>
+      <MpPlusUpsell
+        title="Coach AI es una vista previa MATCHPOINT+"
+        description={`Solicita MATCHPOINT+ para acceder al early access. ${MP_PLUS_PLAN.paymentShort}.`}
+        ctaLabel={MP_PLUS_PLAN.requestCta}
+        icon="lock"
+        features={MP_PLUS_COACH_PREVIEW_FEATURES.slice(0, 2)}
+        trackingSource="coach_ai_lock"
+      />
     </div>
   );
 }

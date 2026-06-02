@@ -9,6 +9,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -77,7 +78,7 @@ export async function updateEventAdmin(
   input: unknown,
 ): Promise<ActionResult<EventRow>> {
   return runAction(UpdateEventAdminSchema, input, async ({ eventId, patch }) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
 
     const { data: existing, error: readErr } = await supabase
@@ -137,7 +138,9 @@ export async function updateEventAdmin(
       );
     }
 
-    const { data: updated, error: updErr } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data: updated, error: updErr } = await admin
       .from("events")
       .update(update as never)
       .eq("id", eventId)
@@ -155,7 +158,7 @@ export async function updateEventAdmin(
         after: (updated as Record<string, unknown>)[key] ?? null,
       };
     }
-    const { error: logErr } = await supabase.rpc("fn_admin_audit_log", {
+    const { error: logErr } = await admin.rpc("fn_admin_audit_log", {
       p_entity: "events",
       p_entity_id: eventId,
       p_action: "event.admin_edit",
@@ -195,7 +198,7 @@ export async function updateEventAdmin(
           payload: payloadBase,
           status: "pending",
         }));
-        const { error: jobErr } = await supabase
+        const { error: jobErr } = await admin
           .from("notification_jobs")
           .insert(jobs as never);
         if (jobErr) {

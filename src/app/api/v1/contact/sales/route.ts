@@ -61,6 +61,7 @@ function renderLeadEmail(input: SalesLeadCreate & { sourceUrl?: string }): {
     input.businessName ? `Negocio: ${input.businessName}` : null,
     input.message ? `\nMensaje:\n${input.message}` : null,
     input.sourceUrl ? `\nPágina: ${input.sourceUrl}` : null,
+    input.sourceCampaign ? `Campaña: ${input.sourceCampaign}` : null,
   ].filter((l): l is string => Boolean(l));
   const text = lines.join("\n");
   const html = `<!doctype html><html><body style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.5">
@@ -72,6 +73,7 @@ function renderLeadEmail(input: SalesLeadCreate & { sourceUrl?: string }): {
       ${input.phone ? `<tr><td><b>Teléfono</b></td><td>${escapeHtml(input.phone)}</td></tr>` : ""}
       ${input.businessName ? `<tr><td><b>Negocio</b></td><td>${escapeHtml(input.businessName)}</td></tr>` : ""}
       ${input.sourceUrl ? `<tr><td><b>Página</b></td><td>${escapeHtml(input.sourceUrl)}</td></tr>` : ""}
+      ${input.sourceCampaign ? `<tr><td><b>Campaña</b></td><td>${escapeHtml(input.sourceCampaign)}</td></tr>` : ""}
     </table>
     ${input.message ? `<p style="margin-top:14px"><b>Mensaje</b></p><p style="white-space:pre-wrap;background:#fafafa;padding:12px;border-radius:6px;border:1px solid #eee">${escapeHtml(input.message)}</p>` : ""}
   </body></html>`;
@@ -156,9 +158,10 @@ export async function POST(req: NextRequest) {
       business_name: input.businessName ?? null,
       message: input.message ?? null,
       source_url: input.sourceUrl ?? null,
+      source_campaign: input.sourceCampaign ?? null,
       ip,
       user_agent: userAgent,
-    })
+    } as never)
     .select("id")
     .single();
 

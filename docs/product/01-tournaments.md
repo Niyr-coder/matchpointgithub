@@ -127,8 +127,9 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
 |---|---|---|---|
 | `tournament_rescheduled` | Cambio de fechas (starts/ends) | jugadores pending+accepted | `updateTournamentByOrganizer` |
 | `tournament_cancelled` | Status → cancelled | jugadores pending+accepted | `setTournamentStatus` / `cancelTournament` |
-| `registration_accepted` | Partner acepta inscripción | jugadores del registration | `updateRegistrationStatus` |
-| `registration_rejected` | Partner rechaza inscripción | jugadores del registration | `updateRegistrationStatus` |
+| `registration_accepted` | Partner/admin acepta inscripción | jugadores del registration | `updateRegistrationStatus` / `markTournamentRegistrationStatusAdmin` |
+| `registration_rejected` | Partner/admin rechaza inscripción | jugadores del registration | `updateRegistrationStatus` / `markTournamentRegistrationStatusAdmin` |
+| `tournament_registration_removed` | Admin remueve/cancela inscripción | jugadores del registration | `removeTournamentRegistrationAdmin` |
 | `payment_proof_rejected` | Admin rechaza comprobante | customer de la tx | `rejectPaymentProofAdmin` |
 
 **Falta** (TODOs):
@@ -161,6 +162,11 @@ Cuando muto un torneo, los cambios tienen que verse en:
     `tournament_prizes`, `registrations` (filtrados por id)
   - Panel `PartnerTorneoActions` se oculta si torneo cerrado
   - `MarkPaidInline` no aparece si `status === 'cancelled'`
+
+### Panel admin
+- `/dashboard/admin/admin-events` abre el detalle admin del torneo con
+  inscripciones, transacciones, audit log y, desde Ola 2, una sección read-only
+  de `brackets` + `bracket_matches` para soporte/scoring.
 
 ### Panel club
 - `getClubSocial` en `clubs.ts` filtra:
@@ -197,6 +203,13 @@ encapsula la chequera (admin global o partner_member owner/admin del
 - `team_id` opcional (dobles puede ser team registrado o ad-hoc)
 - `status` — `pending | accepted | rejected | waitlist` (`withdrawn` para cancelaciones)
 - `paid_transaction_id` — link a transactions
+
+Las acciones admin de soporte (`admin-tournament-registrations.ts`) usan
+admin client tras validar rol. Si el admin cambia a `accepted/rejected`, se
+reusan `registration_accepted/rejected`; si remueve la inscripción, se encola
+`tournament_registration_removed`. La transferencia de cupo de torneos no
+existe todavía porque `player_ids[]` + `team_id` hacen ambiguo si se reemplaza
+un jugador o el equipo completo.
 
 **Bug histórico**: queries que selectban `player_id` (singular) explotaban
 silenciosamente porque la columna no existe. Siempre `player_ids` y resolver

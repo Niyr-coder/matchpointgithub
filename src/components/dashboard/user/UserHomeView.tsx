@@ -1,7 +1,8 @@
 // Client view of UserHome. Receives data ya fetcheada por el server.
 "use client";
 import Link from "next/link";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
+import { getMyUpcomingReservations } from "@/server/actions/reservations";
 import { useRouter } from "next/navigation";
 import { requestPlanUpgrade } from "@/server/actions/player-subscriptions";
 import { MatchPointPlusModal } from "./MatchPointPlusModal";
@@ -11,6 +12,8 @@ import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { OnboardingWizard } from "./OnboardingWizard";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
+import { MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
+import { MpPlusUpsell } from "./MpPlusUpsell";
 
 type ReservationLite = {
   id: string;
@@ -27,6 +30,9 @@ type BadgeLite = {
   kind: string;
   label: string;
   icon: string;
+  description: string | null;
+  criteriaKind: string;
+  criteriaValue: number;
   on: boolean;
 };
 
@@ -116,6 +122,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
     data.meUserId
       ? [
           { table: "reservations", filter: `organizer_id=eq.${data.meUserId}` },
+          { table: "reservations", filter: `for_user_id=eq.${data.meUserId}` },
           { table: "ranking_snapshots", filter: `user_id=eq.${data.meUserId}` },
           { table: "player_stats", filter: `user_id=eq.${data.meUserId}` },
           { table: "tournaments" },
@@ -133,7 +140,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
       <WelcomeBanner data={data} />
       <UpgradeBanner data={data} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-        <ReservasPanel reservations={data.reservations} />
+        <ReservasPanel userId={data.meUserId} initial={data.reservations} />
         <TorneosPanel tournaments={data.tournaments} />
       </div>
       <ClubActivityFeed items={buildActivityItems(data)} />
@@ -142,7 +149,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
           ratingsByMode={data.ratingsByMode}
           historiesByMode={data.historiesByMode}
         />
-        <MyBadgesSection badges={data.badges} />
+        <MyBadgesSection badges={data.badges} matchesTotal={data.matchesTotal} />
         <QuickActionsPanel inviteSlug={data.name.toLowerCase().split(" ")[0]} />
       </div>
       {showWizard && (
@@ -266,13 +273,13 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
           r.error.code === "PLAN.PENDING_EXISTS"
             ? "Ya tienes una solicitud pendiente. Sube el comprobante o espera la aprobación."
             : r.error.message || "No se pudo crear la solicitud.";
-        toast({ icon: "alert-triangle", title: "No se pudo activar", sub: msg });
+        toast({ icon: "alert-triangle", title: "No se pudo solicitar", sub: msg });
         return;
       }
       toast({
         icon: "check-circle-2",
         title: "Solicitud creada",
-        sub: "Sube tu comprobante para activar Premium.",
+        sub: "Sube tu comprobante para que el equipo active MATCHPOINT+.",
       });
       setModalOpen(false);
       router.push(`/pagos/${r.data.transactionId}`);
@@ -287,135 +294,24 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
   if (!isFree && !isExpiringSoon) return null;
 
   const renewing = isExpiringSoon;
-  const title = renewing ? "Tu MATCHPOINT+ está por expirar" : "Activa MATCHPOINT+";
+  const title = renewing ? "Tu MATCHPOINT+ está por expirar" : "Solicita MATCHPOINT+";
   const lead = renewing
-    ? `Tu MATCHPOINT+ expira en ${remaining} ${remaining === 1 ? "día" : "días"}. Renueva para no perder beneficios.`
-    : "Reservas ilimitadas, estadísticas y más por USD 5/mes.";
-  const ctaLabel = renewing ? "Renovar" : "Activar MATCHPOINT+";
+    ? `Tu MATCHPOINT+ expira en ${remaining} ${remaining === 1 ? "día" : "días"}. Solicita una renovación para mantener los beneficios.`
+    : `Teams con más margen, historial completo y Coach AI en vista previa por ${MP_PLUS_PLAN.priceLabel}. ${MP_PLUS_PLAN.paymentShort}.`;
+  const ctaLabel = renewing ? MP_PLUS_PLAN.renewCta : MP_PLUS_PLAN.requestCta;
 
   return (
-    <div
-      className="mp-upgrade-banner"
-      data-closing={closing ? "true" : "false"}
-      style={{
-        marginTop: 16,
-        background:
-          "linear-gradient(135deg, #0a0a0a 0%, #111827 55%, #0a0a0a 100%)",
-        color: "#fff",
-        borderRadius: 14.4,
-        padding: "18px 20px",
-        position: "relative",
-        overflow: "hidden",
-        border: "1px solid rgba(255,255,255,0.06)",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(ellipse at 90% 30%, rgba(250,204,21,0.18), transparent 55%), radial-gradient(ellipse at 10% 80%, rgba(16,185,129,0.14), transparent 60%)",
-          pointerEvents: "none",
-        }}
+    <>
+      <MpPlusUpsell
+        title={title}
+        description={lead}
+        ctaLabel={ctaLabel}
+        onPrimaryClick={() => setModalOpen(true)}
+        onDismiss={handleDismiss}
+        closing={closing}
+        trackingSource={renewing ? "home_renewal_banner" : "home_upgrade_banner"}
+        style={{ marginTop: 16 }}
       />
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-          <div
-            className="mp-upgrade-crown"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "rgba(250,204,21,0.14)",
-              color: "#facc15",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid rgba(250,204,21,0.3)",
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="crown" size={18} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div
-              className="font-heading"
-              style={{
-                fontWeight: 900,
-                fontSize: 16,
-                letterSpacing: "-0.02em",
-                lineHeight: 1.1,
-              }}
-            >
-              {title}
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "rgba(255,255,255,0.65)",
-                marginTop: 4,
-              }}
-            >
-              {lead}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="mp-upgrade-cta"
-            style={{
-              background: "#facc15",
-              color: "#0a0a0a",
-              fontSize: 12,
-              fontWeight: 900,
-              letterSpacing: "0.05em",
-              textTransform: "uppercase",
-              padding: "10px 16px",
-              borderRadius: 10,
-              border: 0,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {ctaLabel} →
-          </button>
-          <button
-            type="button"
-            className="mp-upgrade-close"
-            onClick={handleDismiss}
-            aria-label="Cerrar"
-            style={{
-              background: "transparent",
-              color: "rgba(255,255,255,0.6)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 8,
-              width: 32,
-              height: 32,
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "inherit",
-            }}
-          >
-            ×
-          </button>
-        </div>
-      </div>
 
       {modalOpen && (
         <MatchPointPlusModal
@@ -425,7 +321,7 @@ function UpgradeBanner({ data }: { data: UserHomeData }) {
           onCancel={() => setModalOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -509,7 +405,47 @@ function PanelShell({
 
 const MIN_RESERVAS = 3;
 
-function ReservasPanel({ reservations }: { reservations: ReservationLite[] }) {
+function ReservasPanel({
+  userId,
+  initial,
+}: {
+  userId: string | null;
+  initial: ReservationLite[];
+}) {
+  const [reservations, setReservations] = useState(initial);
+
+  const reload = useCallback(async () => {
+    if (!userId) return;
+    const res = await getMyUpcomingReservations({ limit: 3 });
+    if (res.ok) setReservations(res.data);
+  }, [userId]);
+
+  // Solo hidratar desde SSR cuando el server trae filas; no pisar un refetch
+  // exitoso con initial=[] (race con router.refresh del padre).
+  useEffect(() => {
+    if (initial.length > 0) setReservations(initial);
+  }, [initial]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  useRealtimeRefresh(
+    userId
+      ? [
+          { table: "reservations", filter: `organizer_id=eq.${userId}` },
+          { table: "reservations", filter: `for_user_id=eq.${userId}` },
+        ]
+      : [],
+    { enabled: !!userId, debounceMs: 400, onChange: () => reload() },
+  );
+
+  useEffect(() => {
+    const onCreated = () => reload();
+    window.addEventListener("mp-reservation-created", onCreated);
+    return () => window.removeEventListener("mp-reservation-created", onCreated);
+  }, [reload]);
+
   const padded: (ReservationLite | { placeholder: true; key: string })[] = [...reservations];
   while (padded.length < MIN_RESERVAS) {
     padded.push({ placeholder: true, key: `ph-${padded.length}` });
@@ -581,7 +517,8 @@ function ReservasPanel({ reservations }: { reservations: ReservationLite[] }) {
               </div>
             );
           }
-          const confirmed = it.status === "booked" || it.status === "checked_in";
+          const confirmed =
+            it.status === "booked" || it.status === "confirmed" || it.status === "checked_in";
           const courtSub = [it.courtLabel, it.clubLabel].filter(Boolean).join(" · ");
           return (
             <div
@@ -909,8 +846,8 @@ function MpRatingWidget({
     history.length >= 2
       ? history
       : [
-          { rating: STARTING_RATING_VIEW, snapshotAt: new Date(Date.now() - 30 * 86400_000).toISOString() },
-          { rating: currentRating, snapshotAt: new Date().toISOString() },
+          { rating: STARTING_RATING_VIEW, snapshotAt: "1970-01-01T00:00:00.000Z" },
+          { rating: currentRating, snapshotAt: "1970-01-31T00:00:00.000Z" },
         ];
   const first = sparkPoints[0].rating;
   const diff = currentRating - first;
@@ -1011,52 +948,228 @@ function ModeToggle({
   );
 }
 
-function MyBadgesSection({ badges }: { badges: BadgeLite[] }) {
+// Progreso actual del user para el criterio de una insignia. Solo devolvemos
+// un número cuando tenemos la métrica en vivo en el dashboard (hoy:
+// matches_total). Para criterios sin valor disponible (win_streak, wins_total,
+// tournaments_won, friends_count, top_rank, manual) devolvemos null y la UI
+// cae a mostrar solo el requisito, sin barra de progreso engañosa.
+function badgeProgressCurrent(
+  criteriaKind: string,
+  metrics: { matchesTotal: number },
+): number | null {
+  switch (criteriaKind) {
+    case "matches_total":
+      return metrics.matchesTotal;
+    default:
+      return null;
+  }
+}
+
+// CTA contextual según qué tiene que hacer el user para desbloquear la próxima.
+function badgeCta(
+  criteriaKind: string,
+): { label: string; action: "reservar" | "buscar" } {
+  switch (criteriaKind) {
+    case "top_rank":
+      return { label: "Buscar partido", action: "buscar" };
+    default:
+      // matches_total / win_streak / wins_total / tournaments_won → jugar más.
+      return { label: "Reservar cancha", action: "reservar" };
+  }
+}
+
+function MyBadgesSection({
+  badges,
+  matchesTotal,
+}: {
+  badges: BadgeLite[];
+  matchesTotal: number;
+}) {
   // Data viene del catálogo `badges` + `player_badges` del user (mig 108).
-  // Si por alguna razón no hay badges (instancia recién creada), no mostramos
-  // estado vacío explícito — la card simplemente queda con 0/0.
+  const router = useRouter();
   const total = badges.length;
-  const unlocked = badges.filter((b) => b.on).length;
+  const unlockedBadges = badges.filter((b) => b.on);
+  const unlocked = unlockedBadges.length;
+
+  // "Próxima insignia": la primera bloqueada en orden de sort_order (el catálogo
+  // ya llega ordenado). Es el corazón del widget — un objetivo accionable en vez
+  // de una pared de cuadritos grises.
+  const next = badges.find((b) => !b.on) ?? null;
+
+  const handleCta = (action: "reservar" | "buscar") => {
+    if (action === "reservar") {
+      window.dispatchEvent(new CustomEvent("mp-open-reservar"));
+    } else {
+      router.push("/dashboard/user/busco-partido");
+    }
+  };
+
   return (
-    <div className="card" style={{ padding: 20 }}>
+    <div
+      className="card"
+      style={{ padding: 20, display: "flex", flexDirection: "column" }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="label-mp">Insignias</div>
         <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
           {unlocked} / {total}
         </span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 14 }}>
-        {badges.map((b) => (
-          <div
-            key={b.kind}
-            style={{
-              aspectRatio: "1",
-              borderRadius: 10,
-              background: b.on ? "#f0fdf4" : "#f5f5f5",
-              color: b.on ? "var(--primary)" : "#d4d4d4",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              border: b.on ? "1px solid rgba(16,185,129,0.3)" : "1px solid var(--border)",
-            }}
-          >
-            <Icon name={b.icon} size={16} />
+
+      {next ? (
+        <NextBadgeBlock badge={next} matchesTotal={matchesTotal} onCta={handleCta} />
+      ) : (
+        // Todas desbloqueadas: estado de celebración en vez de grilla vacía.
+        <div
+          style={{
+            marginTop: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "14px 12px",
+            borderRadius: 10,
+            background: "#f0fdf4",
+            border: "1px solid rgba(16,185,129,0.3)",
+          }}
+        >
+          <Icon name="crown" size={18} color="var(--primary)" />
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>
+            {total > 0 ? "Desbloqueaste todas las insignias" : "Pronto habrá insignias por ganar"}
+          </div>
+        </div>
+      )}
+
+      {/* Tira de insignias ya ganadas: conserva la sensación de colección sin la
+          pared de bloqueados. Solo aparece si hay al menos una. */}
+      {unlocked > 0 && (
+        <div
+          style={{
+            marginTop: 14,
+            paddingTop: 14,
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ganadas</span>
+          {unlockedBadges.map((b) => (
             <span
+              key={b.kind}
+              title={b.label}
+              aria-label={b.label}
               style={{
-                fontSize: 8,
-                fontWeight: 900,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                textAlign: "center",
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                background: "#f0fdf4",
+                border: "1px solid rgba(16,185,129,0.3)",
+                color: "var(--primary)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {b.label}
+              <Icon name={b.icon} size={14} />
             </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NextBadgeBlock({
+  badge,
+  matchesTotal,
+  onCta,
+}: {
+  badge: BadgeLite;
+  matchesTotal: number;
+  onCta: (action: "reservar" | "buscar") => void;
+}) {
+  const current = badgeProgressCurrent(badge.criteriaKind, { matchesTotal });
+  const target = badge.criteriaValue;
+  const hasBar = current != null && target > 0;
+  const pct = hasBar ? Math.min(100, Math.round((current / target) * 100)) : 0;
+  const cta = badgeCta(badge.criteriaKind);
+  // El requisito sale de la descripción del catálogo; si falta, fallback al label.
+  const requirement = badge.description ?? badge.label;
+
+  return (
+    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span
+          style={{
+            width: 44,
+            height: 44,
+            flexShrink: 0,
+            borderRadius: 12,
+            background: "var(--surface-2, #f5f5f5)",
+            border: "1px dashed var(--border)",
+            color: "var(--muted-fg)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon name={badge.icon} size={20} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted-fg)" }}>
+            Próxima insignia
           </div>
-        ))}
+          <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.2 }}>{badge.label}</div>
+        </div>
       </div>
+
+      <div style={{ fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>{requirement}</div>
+
+      {hasBar && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div
+            style={{
+              height: 6,
+              borderRadius: 9999,
+              background: "var(--surface-2, #f0f0f0)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                borderRadius: 9999,
+                background: "var(--primary)",
+                transition: "width 600ms var(--ease-out, ease-out)",
+              }}
+            />
+          </div>
+          <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+            {Math.min(current!, target)} / {target}
+          </span>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="mp-press"
+        onClick={() => onCta(cta.action)}
+        style={{
+          alignSelf: "flex-start",
+          padding: "8px 14px",
+          borderRadius: 9999,
+          border: "1px solid var(--border)",
+          background: "#fff",
+          fontFamily: "inherit",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        {cta.label}
+      </button>
     </div>
   );
 }

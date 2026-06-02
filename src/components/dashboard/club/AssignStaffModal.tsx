@@ -68,7 +68,7 @@ export function AssignStaffModal({ clubId, onClose }: { clubId: string; onClose:
       <div onMouseDown={(e) => e.stopPropagation()} className="card" style={{ padding: 0, width: 480, maxWidth: "100%", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", animation: "mpPop 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", margin: 0 }}>Asignar staff<span className="dot">.</span></h2>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1, color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
         </div>
 
         <div style={{ padding: 22, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>

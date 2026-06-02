@@ -1,12 +1,7 @@
 // Admin · Teams de usuarios — server component que carga la lista completa
 // + counts agregados que necesita el view. Va el rediseño completo del kit
-// (`ui_kits/dashboard/AdminTeamsScreen.jsx`). Las acciones que aún no tienen
-// backend (verify, pin, suspend, archive, dissolve, mensaje al capitán,
-// editor de política) viven en la UI pero disparan toast "Pronto" — ver
-// `docs/guides/04-placeholders.md`.
-//
-// Solo "Otorgar logro" está cableado real (mig 164,
-// grantTeamAchievement).
+// (`ui_kits/dashboard/AdminTeamsScreen.jsx`). Las acciones de moderación
+// admin ya están cableadas a backend; el editor de política sigue staged.
 import "server-only";
 
 import { getAdminClient } from "@/lib/db/client.admin";

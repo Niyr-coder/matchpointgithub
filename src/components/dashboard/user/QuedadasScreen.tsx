@@ -4,6 +4,7 @@
 // (patrón ya usado en src/server/actions/quedadas.ts).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { QuedadasScreenView, type QuedadaLite } from "./QuedadasScreenView";
 
 type Row = {
@@ -162,7 +163,8 @@ export async function QuedadasScreen() {
     locationText: r.location_text,
     // Cupo efectivo: categorías (suma de cupos × jugadores/cupo) o max_players global.
     maxPlayers: (() => {
-      const perSlot = r.format === "americano" || r.match_mode === "singles" ? 1 : 2;
+      const mode = r.match_mode === "singles" ? "singles" : "doubles";
+      const perSlot = rosterModeFor(r.format, mode) === "individual" ? 1 : 2;
       const catSlots = slotsByQuedada.get(r.id) ?? 0;
       return catSlots > 0 ? catSlots * perSlot : r.max_players;
     })(),

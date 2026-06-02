@@ -80,7 +80,7 @@ export function EditBioModal({ initialBio, onClose }: { initialBio: string | nul
           <button
             onClick={onClose}
             className="btn"
-            style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }}
+            style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
             aria-label="Cerrar"
           >
             <Icon name="x" size={18} />

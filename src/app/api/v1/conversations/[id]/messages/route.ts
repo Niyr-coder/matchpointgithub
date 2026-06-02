@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const c = r.error.code;
     const status =
       c === "AUTH.UNAUTHENTICATED" ? 401
-      : c === "AUTH.ROLE_REQUIRED" ? 403
+      : c === "AUTH.ROLE_REQUIRED" || c === "MESSAGING.READ_ONLY" ? 403
       : c === "VALIDATION.FAILED" ? 400
       : c === "RATE_LIMIT.EXCEEDED" ? 429
       : 500;

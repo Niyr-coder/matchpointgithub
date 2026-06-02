@@ -34,11 +34,14 @@ export type PaywallEventBucket = {
   eventName: string;
   count: number;
   uniqueUsers: number;
+  uniqueSessions: number;
 };
 
 export type PaywallFunnelSummary = {
   totalEvents: number;
   uniqueUsers: number;
+  uniqueSessions: number;
+  uniqueActors: number;
   buckets: PaywallEventBucket[];
   windowDays: number;
 };
@@ -63,7 +66,7 @@ export async function listPaywallFunnelAdmin(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (admin as any)
       .from("paywall_events")
-      .select("event_name, user_id, occurred_at")
+      .select("event_name, user_id, session_id, occurred_at")
       .gte("occurred_at", since.toISOString())
       .limit(50000);
 
@@ -72,17 +75,31 @@ export async function listPaywallFunnelAdmin(
     const rows = (data ?? []) as Array<{
       event_name: string;
       user_id: string | null;
+      session_id: string | null;
     }>;
 
-    const byEvent = new Map<string, { count: number; users: Set<string> }>();
+    const byEvent = new Map<string, { count: number; users: Set<string>; sessions: Set<string> }>();
     const allUsers = new Set<string>();
+    const allSessions = new Set<string>();
+    const allActors = new Set<string>();
 
     for (const r of rows) {
-      const bucket = byEvent.get(r.event_name) ?? { count: 0, users: new Set<string>() };
+      const bucket = byEvent.get(r.event_name) ?? {
+        count: 0,
+        users: new Set<string>(),
+        sessions: new Set<string>(),
+      };
       bucket.count += 1;
       if (r.user_id) {
         bucket.users.add(r.user_id);
         allUsers.add(r.user_id);
+        allActors.add(`u:${r.user_id}`);
+      } else if (r.session_id) {
+        allActors.add(`s:${r.session_id}`);
+      }
+      if (r.session_id) {
+        bucket.sessions.add(r.session_id);
+        allSessions.add(r.session_id);
       }
       byEvent.set(r.event_name, bucket);
     }
@@ -92,12 +109,15 @@ export async function listPaywallFunnelAdmin(
         eventName,
         count: b.count,
         uniqueUsers: b.users.size,
+        uniqueSessions: b.sessions.size,
       }))
       .sort((a, b) => b.count - a.count);
 
     return {
       totalEvents: rows.length,
       uniqueUsers: allUsers.size,
+      uniqueSessions: allSessions.size,
+      uniqueActors: allActors.size,
       buckets,
       windowDays,
     };

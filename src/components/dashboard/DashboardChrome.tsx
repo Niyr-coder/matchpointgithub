@@ -9,6 +9,7 @@ import { Icon } from "@/components/Icon";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { TopBar } from "./TopBar";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { ActiveRoleSwitcher, type RoleSwitchOption } from "./ActiveRoleSwitcher";
 
 type Props = {
   role: RoleKey;
@@ -19,6 +20,8 @@ type Props = {
   banner?: { message: string; level: "info" | "warn" | "critical"; ctaLabel?: string | null; ctaHref?: string | null } | null;
   /** Flags efectivos del usuario, para gatear items del sidebar. */
   flags?: Record<string, boolean>;
+  /** Otros roles asignados (cambio explícito vía switchRole). */
+  roleSwitchOptions?: RoleSwitchOption[];
   children: ReactNode;
 };
 
@@ -29,11 +32,13 @@ export function DashboardChrome({
   badgeOverrides,
   banner,
   flags,
+  roleSwitchOptions,
   children,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const pathname = usePathname();
+  const isMessagesRoute = /\/dashboard\/[^/]+\/chat\/?$/.test(pathname ?? "");
 
   // Cerrar drawer cuando cambia la ruta (user tapeó un link adentro).
   useEffect(() => {
@@ -67,6 +72,7 @@ export function DashboardChrome({
         mobileOpen={drawerOpen}
         onMobileClose={() => setDrawerOpen(false)}
         flags={flags}
+        roleSwitchOptions={roleSwitchOptions}
       />
       <div
         style={{
@@ -92,7 +98,11 @@ export function DashboardChrome({
             </div>
           );
         })()}
-        <main className="flex flex-col flex-1 gap-4 md:gap-5 p-4 md:p-7 pb-24 md:pb-7">
+        <main
+          className={`flex flex-col flex-1 min-h-0 p-4 md:p-7 md:gap-5 md:pb-7 ${
+            isMessagesRoute ? "gap-0 max-lg:pb-[4.75rem]" : "gap-4 pb-24"
+          }`}
+        >
           {children}
         </main>
       </div>

@@ -28,6 +28,10 @@ import {
 } from "@/lib/schemas/reservations";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
+import {
+  loadUserUpcomingReservations,
+  type UserUpcomingReservation,
+} from "@/server/queries/user-upcoming-reservations";
 
 // Postgres `tstzrange` looks like `[2026-05-17T18:00:00+00:00,2026-05-17T19:30:00+00:00)`.
 // We round-trip it into discrete startsAt/endsAt camelCase fields for the API.
@@ -113,6 +117,19 @@ export async function listReservations(
     const { data, error } = await q;
     if (error) throw new MpError("RESERVATIONS.DB_ERROR", error.message, 500);
     return (data ?? []).map(mapReservation);
+  });
+}
+
+// ── getMyUpcomingReservations (widget inicio jugador) ─────────────────
+const UpcomingSchema = z.object({ limit: z.number().int().min(1).max(10).optional() });
+
+export async function getMyUpcomingReservations(
+  input: unknown = {},
+): Promise<ActionResult<UserUpcomingReservation[]>> {
+  return runAction(UpcomingSchema, input, async ({ limit }) => {
+    const userId = await requireUserId();
+    const supabase = await getServerClient();
+    return loadUserUpcomingReservations(supabase, userId, limit ?? 3);
   });
 }
 
@@ -238,6 +255,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         revalidatePath("/dashboard/owner/club-canchas");
         revalidatePath("/dashboard/manager/club-reservas");
         revalidatePath("/dashboard/manager/club-canchas");
+        revalidatePath("/dashboard/user");
         revalidatePath("/dashboard/user/mis-reservas");
         return reservation;
       },
@@ -317,6 +335,75 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
       payload: { reservationId: cancelled.id, clubId: cancelled.clubId },
     });
     return cancelled;
+  });
+}
+
+// ── markReservationNoShow (recepción) ───────────────────────────────────
+const MarkNoShowSchema = z.object({
+  id: UuidSchema,
+  clubId: UuidSchema,
+  reason: z.string().max(500).optional(),
+});
+
+export async function markReservationNoShow(
+  input: unknown,
+): Promise<ActionResult<Reservation>> {
+  return runAction(MarkNoShowSchema, input, async ({ id, clubId, reason }) => {
+    const userId = await requireUserId();
+    if (!(await isClubStaff(userId, clubId))) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
+    }
+    const supabase = await getServerClient();
+
+    const { data: current, error: getErr } = await supabase
+      .from("reservations")
+      .select("*")
+      .eq("id", id)
+      .eq("club_id", clubId)
+      .single();
+    if (getErr || !current) throw new MpError("RESERVATIONS.NOT_FOUND", "Reserva no encontrada", 404);
+
+    const status = current.status as string;
+    if (!["booked", "confirmed"].includes(status)) {
+      throw new MpError(
+        "RESERVATION.CANNOT_NO_SHOW",
+        `No puedes marcar no-show desde estado «${status}»`,
+        409,
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("reservations")
+      .update({
+        status: "no_show",
+        cancellation_reason: reason ?? "No-show en recepción",
+      } as never)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw new MpError("RESERVATIONS.NO_SHOW_FAILED", error.message, 500);
+
+    const reservation = mapReservation(data);
+    const notifyUserId =
+      (current.for_user_id as string | null) ?? (current.organizer_id as string);
+    if (notifyUserId && notifyUserId !== userId) {
+      await notify({
+        userId: notifyUserId,
+        role: "user",
+        kind: "reservation_no_show",
+        title: "No-show registrado",
+        body: reason ?? "No te presentaste a tu reserva en el club",
+        payload: { reservationId: reservation.id, clubId: reservation.clubId },
+      });
+    }
+
+    revalidatePath("/dashboard/employee");
+    revalidatePath("/dashboard/employee/e-checkin");
+    revalidatePath("/dashboard/employee/e-walkins");
+    revalidatePath("/dashboard/manager/club-walkins");
+    revalidatePath("/dashboard/user");
+    revalidatePath("/dashboard/user/mis-reservas");
+    return reservation;
   });
 }
 

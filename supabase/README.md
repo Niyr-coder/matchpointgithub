@@ -23,5 +23,20 @@ seed.sql      demo data matching the dashboard mocks (added in Fase 2 step 8)
 Migration files are immutable once merged to main — fixes go in a follow-up
 migration, never edit a past one.
 
+## Estado operativo de migraciones
+
+Al 2026-05-30, el proyecto remoto de Supabase tiene historial de migraciones
+desalineado con `supabase/migrations`: varias migraciones locales numeradas
+fueron aplicadas en remoto con versiones timestamp, y también existen cambios
+manuales puntuales. No ejecutes `supabase db push` general ni `migration repair`
+masivo hasta completar un baseline explícito local/remoto.
+
+Antes de desplegar cambios de schema:
+
+1. Compara `supabase migration list` contra los archivos locales.
+2. Identifica equivalencias por nombre/contenido, no solo por número.
+3. Aplica únicamente migraciones follow-up idempotentes y acotadas.
+4. Documenta cualquier SQL aplicado manualmente antes de reparar historial.
+
 See `docs/architecture/20-database.md` for the full schema reference and
 `30-rls.md` for the RLS policy matrix.

@@ -25,6 +25,7 @@ import {
   CancelMatchSeekSchema,
   CreateMatchSeekSchema,
   ListMatchSeeksParamsSchema,
+  UpdateMatchSeekSchema,
   WithdrawApplicationSchema,
   type MatchSeek,
   type MatchSeekApplication,
@@ -205,6 +206,85 @@ export async function cancelMatchSeek(input: unknown): Promise<ActionResult<{ ok
       .eq("id", seekId);
     if (updErr) throw new MpError("MATCH_SEEK.CANCEL_FAILED", updErr.message, 500);
     return { ok: true as const };
+  });
+}
+
+// ── updateMatchSeek ─────────────────────────────────────────────────────────
+export async function updateMatchSeek(input: unknown): Promise<ActionResult<MatchSeek>> {
+  return runAction(UpdateMatchSeekSchema, input, async (data) => {
+    await assertFeatureEnabled();
+    const userId = await requireUserId();
+    const supabase = (await getServerClient()) as unknown as LooseClient;
+
+    const { data: seek, error: selErr } = await supabase
+      .from("match_seeks")
+      .select("id,created_by,status")
+      .eq("id", data.seekId)
+      .maybeSingle();
+    if (selErr) throw new MpError("MATCH_SEEK.DB_ERROR", selErr.message, 500);
+    if (!seek) throw new MpError("MATCH_SEEK.NOT_FOUND", "Aviso no encontrado", 404);
+    if (seek.created_by !== userId) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Este aviso no es tuyo");
+    }
+    if (seek.status !== "open") {
+      throw new MpError("MATCH_SEEK.NOT_EDITABLE", `No se puede editar en estado '${seek.status}'`, 409);
+    }
+
+    const modeChanging = data.mode != null;
+    const partnerChanging = data.partnerId !== undefined;
+    if (modeChanging || partnerChanging) {
+      const { count: appCount, error: appErr } = await supabase
+        .from("match_seek_applications")
+        .select("id", { count: "exact", head: true })
+        .eq("seek_id", data.seekId)
+        .in("status", ["pending", "accepted"]);
+      if (appErr) throw new MpError("MATCH_SEEK.DB_ERROR", appErr.message, 500);
+      if ((appCount ?? 0) > 0) {
+        throw new MpError(
+          "MATCH_SEEK.MODE_LOCKED",
+          "No puedes cambiar la modalidad ni el partner mientras haya postulaciones activas.",
+          409,
+        );
+      }
+    }
+
+    const { data: current, error: curErr } = await supabase
+      .from("match_seeks")
+      .select("mode,partner_id")
+      .eq("id", data.seekId)
+      .maybeSingle();
+    if (curErr) throw new MpError("MATCH_SEEK.DB_ERROR", curErr.message, 500);
+    if (!current) throw new MpError("MATCH_SEEK.NOT_FOUND", "Aviso no encontrado", 404);
+
+    const nextMode = data.mode ?? (current.mode as "singles" | "doubles");
+    let nextPartnerId: string | null =
+      data.partnerId !== undefined ? data.partnerId : (current.partner_id as string | null);
+    if (nextMode === "singles") nextPartnerId = null;
+    if (nextMode === "doubles" && !nextPartnerId) {
+      throw new MpError("MATCH_SEEK.PARTNER_REQUIRED", "En dobles debes elegir tu partner", 400);
+    }
+
+    const { data: row, error: updErr } = await supabase
+      .from("match_seeks")
+      .update({
+        mode: nextMode,
+        partner_id: nextPartnerId,
+        skill_min: data.skillMin ?? null,
+        skill_max: data.skillMax ?? null,
+        ranked: data.ranked,
+        window_start: data.windowStart,
+        window_end: data.windowEnd ?? null,
+        notes: data.notes ?? null,
+      })
+      .eq("id", data.seekId)
+      .select("*")
+      .single();
+    if (updErr || !row) {
+      throw new MpError("MATCH_SEEK.UPDATE_FAILED", updErr?.message ?? "No se pudo editar el aviso", 500);
+    }
+
+    const profile = await getProfileSummary(userId);
+    return toSeek(row as DbSeek, profile.displayName, 0);
   });
 }
 
@@ -572,6 +652,7 @@ export async function acceptApplicant(
       durationMin: 60,
       teamAPlayerIds: teamA,
       teamBPlayerIds: teamB,
+      isRanked: s.ranked,
     });
     if (!matchRes.ok) {
       throw new MpError("MATCH_SEEK.MATCH_CREATE_FAILED", matchRes.error.message, 422);

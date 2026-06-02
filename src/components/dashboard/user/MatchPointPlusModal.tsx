@@ -1,9 +1,10 @@
-// Modal de info del plan MATCHPOINT+ — features + precio + CTA de compra.
-// Se abre desde el botón "Activar MATCHPOINT+" para que el usuario vea
+// Modal de info del plan MATCHPOINT+ — features + precio + CTA de solicitud.
+// Se abre desde el botón "Solicitar MATCHPOINT+" para que el usuario vea
 // qué obtiene antes de entrar al checkout.
 "use client";
 import { useEffect } from "react";
 import { Icon } from "@/components/Icon";
+import { MP_PLUS_MODAL_BENEFITS, MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
 
 type Mode = "activate" | "renew";
 
@@ -17,34 +18,6 @@ type Props = {
 // Brand color para MATCHPOINT+ — ámbar dorado consistente con el header,
 // pill y dot. Lo guardamos en una const para no repetirlo en cada style.
 const GOLD = "#facc15";
-
-const FEATURES: { icon: string; title: string; sub: string }[] = [
-  {
-    icon: "calendar-clock",
-    title: "Reservas prioritarias",
-    sub: "Ventana de reserva extendida y acceso antes que el resto.",
-  },
-  {
-    icon: "bar-chart-3",
-    title: "Estadísticas avanzadas",
-    sub: "Heatmaps, evolución de rating y comparación con tus rivales.",
-  },
-  {
-    icon: "swords",
-    title: "Partidos ranked ilimitados",
-    sub: "Cada match cuenta para el ranking oficial — sube tu ELO sin tope.",
-  },
-  {
-    icon: "trophy",
-    title: "Inscripción directa a torneos",
-    sub: "Cupos VIP en torneos partner y descuentos en eventos seleccionados.",
-  },
-  {
-    icon: "headphones",
-    title: "Soporte prioritario",
-    sub: "WhatsApp directo a nuestro equipo — respuesta en menos de 2h.",
-  },
-];
 
 export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Props) {
   useEffect(() => {
@@ -63,10 +36,12 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
     };
   }, []);
 
-  const ctaLabel = mode === "renew" ? "Renovar 1 mes" : "Activar ahora";
+  const ctaLabel = mode === "renew" ? MP_PLUS_PLAN.renewCta : MP_PLUS_PLAN.requestCta;
 
   return (
     <div
+      role="presentation"
+      onClick={onCancel}
       style={{
         position: "fixed",
         inset: 0,
@@ -129,6 +104,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
             +
           </div>
           <button
+            type="button"
             onClick={onCancel}
             aria-label="Cerrar"
             style={{
@@ -165,7 +141,6 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
                 color: "#0a0a0a",
-                boxShadow: "0 4px 14px rgba(250,204,21,0.35)",
               }}
             >
               <Icon name="crown" size={11} color="#0a0a0a" />
@@ -183,7 +158,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
                 color: "#fff",
               }}
             >
-              {mode === "renew" ? "Renueva tu plan" : "Eleva tu juego"}
+              {mode === "renew" ? "Renueva tu plan" : "Más margen para jugar"}
               <span style={{ color: GOLD }}>.</span>
             </h2>
             <p
@@ -197,12 +172,12 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
             >
               {mode === "renew" ? (
                 <>
-                  Mantén tus beneficios <b style={{ color: "#fff", fontWeight: 800 }}>sin interrupción</b> por otro mes.
+                  Solicita otro ciclo y sube tu comprobante para mantener tus beneficios activos.
                 </>
               ) : (
                 <>
-                  Todo lo del plan gratuito, más lo que de verdad{" "}
-                  <b style={{ color: "#fff", fontWeight: 800 }}>mueve la aguja</b> en tu rendimiento.
+                  Teams con más margen, historial completo y Coach AI en vista previa por{" "}
+                  <b style={{ color: "#fff", fontWeight: 800 }}>{MP_PLUS_PLAN.priceLabel}</b>.
                 </>
               )}
             </p>
@@ -223,7 +198,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
           >
             Qué incluye
           </div>
-          {FEATURES.map((f) => (
+          {MP_PLUS_MODAL_BENEFITS.map((f) => (
             <div
               key={f.title}
               style={{
@@ -272,7 +247,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
                     lineHeight: 1.45,
                   }}
                 >
-                  {f.sub}
+                  {f.description}
                 </div>
               </div>
             </div>
@@ -296,7 +271,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
               className="label-mp"
               style={{ color: "var(--muted-fg)", marginBottom: 4 }}
             >
-              Total mensual
+              {mode === "renew" ? "Renovación (1 mes)" : "Precio mensual"}
             </div>
             <div
               className="font-heading tabular"
@@ -308,7 +283,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
                 color: "#0a0a0a",
               }}
             >
-              USD 5
+              {MP_PLUS_PLAN.priceAmountLabel}
               <span style={{ color: GOLD }}>.</span>
               <span
                 style={{
@@ -329,10 +304,11 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
                 lineHeight: 1.4,
               }}
             >
-              Transferencia o DeUna · sin recurrencia automática
+              {MP_PLUS_PLAN.paymentShort}
             </div>
           </div>
           <button
+            type="button"
             onClick={onCancel}
             style={{
               background: "transparent",
@@ -355,6 +331,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
             Cancelar
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={pending}
             className="btn btn-primary mp-shine"

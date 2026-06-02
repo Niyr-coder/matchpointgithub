@@ -4,10 +4,12 @@
 import "server-only";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireUserId } from "@/lib/auth/session";
 import {
   FriendRequestSchema,
   FriendSchema,
@@ -17,15 +19,6 @@ import {
 } from "@/lib/schemas/social";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
-
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
-}
 
 // ── listMyFriends ──────────────────────────────────────────────────────
 export async function listMyFriends(): Promise<ActionResult<Friend[]>> {
@@ -97,36 +90,103 @@ export async function sendFriendRequest(input: unknown): Promise<ActionResult<Fr
   return runAction(SendFriendRequestSchema, input, async ({ toUserId }) => {
     const fromUserId = await requireUserId();
     if (fromUserId === toUserId) {
-      throw new MpError("FRIENDS.SELF", "Cannot friend yourself", 422);
+      throw new MpError("FRIENDS.SELF", "No puedes agregarte a ti mismo", 422);
     }
     const supabase = await getServerClient();
-    const { data, error } = await supabase
-      .from("friend_requests")
-      .insert({ from_user_id: fromUserId, to_user_id: toUserId, status: "pending" } as never)
-      .select()
-      .single();
-    if (error) {
-      if (error.code === "23505") {
-        throw new MpError("FRIENDS.ALREADY_REQUESTED", "Request already exists", 409);
-      }
-      throw new MpError("FRIENDS.REQUEST_FAILED", error.message, 500);
+    const [a, b] =
+      fromUserId < toUserId ? [fromUserId, toUserId] : [toUserId, fromUserId];
+    const { data: friendship } = await supabase
+      .from("friendships")
+      .select("user_a")
+      .eq("user_a", a)
+      .eq("user_b", b)
+      .maybeSingle();
+    if (friendship) {
+      throw new MpError("FRIENDS.ALREADY_FRIENDS", "Ya son amigos", 409);
     }
+
+    const { data: existing } = await supabase
+      .from("friend_requests")
+      .select("id,status,from_user_id,to_user_id,created_at,responded_at")
+      .eq("from_user_id", fromUserId)
+      .eq("to_user_id", toUserId)
+      .maybeSingle();
+
+    if (existing?.status === "pending") {
+      throw new MpError(
+        "FRIENDS.ALREADY_REQUESTED",
+        "Ya tienes una solicitud pendiente con este jugador",
+        409,
+      );
+    }
+
+    let row: {
+      id: string;
+      from_user_id: string;
+      to_user_id: string;
+      status: string;
+      created_at: string;
+      responded_at: string | null;
+    };
+
+    if (
+      existing &&
+      (existing.status === "accepted" ||
+        existing.status === "rejected" ||
+        existing.status === "cancelled")
+    ) {
+      const { data: reopened, error: reopenErr } = await supabase
+        .from("friend_requests")
+        .update({ status: "pending", responded_at: null } as never)
+        .eq("id", existing.id)
+        .eq("from_user_id", fromUserId)
+        .select()
+        .single();
+      if (reopenErr || !reopened) {
+        throw new MpError(
+          "FRIENDS.REQUEST_FAILED",
+          reopenErr?.message ?? "No se pudo reenviar la solicitud",
+          500,
+        );
+      }
+      row = reopened as typeof row;
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("friend_requests")
+        .insert({ from_user_id: fromUserId, to_user_id: toUserId, status: "pending" } as never)
+        .select()
+        .single();
+      if (error) {
+        if (error.code === "23505") {
+          throw new MpError(
+            "FRIENDS.ALREADY_REQUESTED",
+            "Ya tienes una solicitud pendiente con este jugador",
+            409,
+          );
+        }
+        throw new MpError("FRIENDS.REQUEST_FAILED", error.message, 500);
+      }
+      row = inserted as typeof row;
+    }
+
     await notify({
       userId: toUserId,
       role: "user",
       kind: "friend_request_new",
       title: "Nueva solicitud de amistad",
       body: null,
-      payload: { requestId: data.id, fromUserId },
+      payload: { requestId: row.id, fromUserId },
     });
 
+    revalidatePath("/dashboard/user/amigos");
+
     return FriendRequestSchema.parse({
-      id: data.id,
-      fromUserId: data.from_user_id,
-      toUserId: data.to_user_id,
-      status: data.status,
-      createdAt: data.created_at,
-      respondedAt: null,
+      id: row.id,
+      fromUserId: row.from_user_id,
+      toUserId: row.to_user_id,
+      status: row.status,
+      createdAt: row.created_at,
+      respondedAt: (row.responded_at as string | null) ?? null,
     });
   });
 }
@@ -147,7 +207,20 @@ export async function acceptFriendRequest(
     if (req.to_user_id !== userId) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "Only the recipient can accept");
     }
-    if (req.status !== "pending") {
+    const fromId = req.from_user_id as string;
+    const toId = req.to_user_id as string;
+    const [a, b] = fromId < toId ? [fromId, toId] : [toId, fromId];
+
+    if (req.status === "accepted") {
+      const { data: link } = await supabase
+        .from("friendships")
+        .select("user_a")
+        .eq("user_a", a)
+        .eq("user_b", b)
+        .maybeSingle();
+      if (link) return { ok: true as const };
+      // Reparación: solicitud aceptada sin fila en friendships (bug RLS previo).
+    } else if (req.status !== "pending") {
       throw new MpError(
         "FRIENDS.NOT_PENDING",
         `Request status is '${req.status}'`,
@@ -155,17 +228,35 @@ export async function acceptFriendRequest(
       );
     }
 
-    const [a, b] = (req.from_user_id as string) < (req.to_user_id as string)
-      ? [req.from_user_id, req.to_user_id]
-      : [req.to_user_id, req.from_user_id];
-
-    await supabase
+    const { error: insErr } = await supabase
       .from("friendships")
-      .insert({ user_a: a, user_b: b } as never, { defaultToNull: false });
-    await supabase
-      .from("friend_requests")
-      .update({ status: "accepted", responded_at: new Date().toISOString() } as never)
-      .eq("id", requestId);
+      .insert({ user_a: a, user_b: b } as never);
+    if (insErr && insErr.code !== "23505") {
+      throw new MpError("FRIENDS.ACCEPT_FAILED", insErr.message, 500);
+    }
+
+    if (req.status === "pending") {
+      const { error: updErr } = await supabase
+        .from("friend_requests")
+        .update({ status: "accepted", responded_at: new Date().toISOString() } as never)
+        .eq("id", requestId)
+        .eq("status", "pending");
+      if (updErr) {
+        throw new MpError("FRIENDS.ACCEPT_FAILED", updErr.message, 500);
+      }
+    }
+
+    await notify({
+      userId: fromId,
+      role: "user",
+      kind: "friend_request_accepted",
+      title: "Solicitud de amistad aceptada",
+      body: null,
+      payload: { requestId, friendUserId: userId },
+    });
+
+    revalidatePath("/dashboard/user/amigos");
+    revalidatePath("/dashboard/user");
     return { ok: true as const };
   });
 }
@@ -197,6 +288,18 @@ export async function removeFriend(input: unknown): Promise<ActionResult<{ ok: t
       .eq("user_a", a)
       .eq("user_b", b);
     if (error) throw new MpError("FRIENDS.REMOVE_FAILED", error.message, 500);
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+    await admin
+      .from("friend_requests")
+      .delete()
+      .or(
+        `and(from_user_id.eq.${userId},to_user_id.eq.${other}),and(from_user_id.eq.${other},to_user_id.eq.${userId})`,
+      );
+
+    revalidatePath("/dashboard/user/amigos");
+    revalidatePath("/dashboard/user");
     return { ok: true as const };
   });
 }

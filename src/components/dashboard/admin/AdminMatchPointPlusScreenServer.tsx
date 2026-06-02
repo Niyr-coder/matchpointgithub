@@ -27,21 +27,29 @@ import {
   type PendingClubFeaturingRow,
   type RecentClubFeaturingRow,
 } from "@/server/actions/admin-club-featuring";
+import { getServerClient } from "@/lib/db/client.server";
 import { AdminMatchPointPlusScreen, type AdminPlusData } from "./AdminMatchPointPlusScreen";
 
 export async function AdminMatchPointPlusScreenServer() {
+  const supabase = await getServerClient();
   const [
     pendingRes,
     recentRes,
     pendingFeaturingRes,
     recentFeaturingRes,
     activeFeaturedRes,
+    activePlansRes,
   ] = await Promise.all([
     listPendingPlanSubscriptionsAdmin(),
     listRecentPlanSubscriptionsAdmin({ limit: 30 }),
     listPendingClubFeaturingAdmin(),
     listRecentClubFeaturingAdmin({ limit: 30 }),
     countActiveFeaturedClubsAdmin(),
+    supabase
+      .from("player_subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString()),
   ]);
 
   const pending: PendingPlanSubscriptionRow[] = pendingRes.ok ? pendingRes.data : [];
@@ -62,6 +70,7 @@ export async function AdminMatchPointPlusScreenServer() {
     pendingFeaturing,
     recentFeaturing,
     activeFeaturedCount,
+    activePlanCount: activePlansRes.count ?? 0,
   };
 
   return <AdminMatchPointPlusScreen data={data} />;

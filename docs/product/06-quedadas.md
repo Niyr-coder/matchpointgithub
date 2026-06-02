@@ -30,18 +30,20 @@ guarda un estado mutable que haya que recomputar al cambiar el roster.
 
 ## Formatos
 
-Stage 1 entrega **Americano**. El resto muestra "Pronto" hasta su motor.
+Todas las superficies usan el mismo modelo (`quedada_rounds` + `quedada_games`);
+cada formato solo cambia su motor de emparejamiento, la unidad del roster y la
+tabla.
 
 | Formato | Estado | Mecánica |
 |---|---|---|
-| Americano | ✅ Stage 1 | Rotación individual: cambias compañero/rival cada ronda; ranking individual. |
-| Round Robin | ⏳ Stage 2 | Parejas fijas, todos contra todos; tabla por pareja. |
-| Mexicano | ⏳ Stage 2 | Como americano, pero el emparejamiento de cada ronda lo define el ranking actual (tipo suizo). |
-| Rey de Cancha (KOTC) | ⏳ Stage 2 | El ganador se queda en cancha, el perdedor rota. |
-| Canguil | ⏳ Stage 2 | Rotación al azar cada ronda. |
-| Libre | ⏳ Stage 2 | Sin motor; el organizador anota resultados a mano. |
+| Americano | ✅ Activo | Rotación individual: cambias compañero/rival cada ronda; ranking individual. |
+| Round Robin | ✅ Activo | Parejas fijas, todos contra todos por rondas; tabla por pareja. |
+| Mexicano | ✅ Activo | Rondas por ranking actual: niveles cercanos se cruzan entre sí. |
+| Rey de Cancha (KOTC) | ✅ Activo | Orden por canchas/nivel; los equipos se emparejan según rendimiento reciente. |
+| Canguil | ✅ Activo | Rotación social aleatoria cada ronda. |
+| Libre | ✅ Activo | El organizador crea partidos manuales y carga resultados. |
 
-### Americano (Stage 1)
+### Americano
 
 - **Unidad:** individual.
 - **Puntuación:** puntos a favor acumulados; desempate por diferencia (PF−PC),
@@ -56,11 +58,9 @@ Stage 1 entrega **Americano**. El resto muestra "Pronto" hasta su motor.
   individuales** (1 por cupo de `quedada_pairs`, `player_b` null), no parejas
   fijas — el compañero rota cada ronda. `match_mode` (singles/dobles) solo define
   cuántos juegan por lado en cada game, no la estructura del roster. El motor
-  (`planAmericanoRound`) aplana los cupos en una lista de jugadores. En cambio
-  **round_robin** arma parejas fijas (2 por cupo). El panel detecta esto
-  (`individualRoster = format==='americano' || match_mode==='singles'`) y muestra
-  la pestaña como **"Jugadores"** (vs "Parejas") y asigna 1 por cupo;
-  `autoAssignCategory` llena 1 por cupo en americano.
+  (`planAmericanoRound`) aplana los cupos en una lista de jugadores. El panel usa
+  `rosterModeFor(format, match_mode)` para decidir si la categoría se gestiona por
+  **Jugadores** o por **Parejas**.
 
 **Orden del flujo en gestión:** las pestañas son **Resumen → Pagos → Jugadores/
 Parejas → Configurar** — la gente se inscribe y paga primero, y con los
@@ -68,29 +68,49 @@ confirmados se arma el roster.
 
 ## Server actions (`src/server/actions/quedadas.ts`)
 
-- `generateAmericanoRound({ quedadaId, categoryId })` — arma la siguiente ronda.
-  Solo `format === 'americano'` (sino `QUEDADAS.FORMAT_UNSUPPORTED`).
+- `generateQuedadaRound({ quedadaId, categoryId })` — busca el engine por
+  `format` y arma la siguiente ronda/fecha/turno.
+- `generateAmericanoRound` — alias temporal hacia la action genérica para no
+  romper call sites internos.
+- `createManualQuedadaGame({ quedadaId, categoryId, sideA, sideB, courtNo? })` —
+  crea un partido manual para formato Libre.
 - `reportGame({ gameId, pointsA, pointsB })` — reporta el marcador.
 - `deleteRound({ roundId })` — borra una ronda (games caen por cascade) para
   regenerar.
-- `finishQuedada({ quedadaId })` — calcula el podio individual por categoría y
-  escribe `final_rank` a los 3 primeros; pasa la quedada a `finished`.
+- `finishQuedada({ quedadaId })` — calcula el podio por categoría según el engine
+  (individual o pareja) y escribe `final_rank` a los 3 primeros; pasa la quedada
+  a `finished`.
 - `getQuedadaManageData` — organizador: devuelve `rounds` + `games` + `target`.
 - `getQuedadaPlayerView` — **jugador (read-only)**: misma data del motor SIN
   invite_code/cohosts/payment_account (anti-leak).
 
 ## Superficies (sync cross-superficie)
 
+`/dashboard/user/quedadas` muestra el índice del jugador con data real de
+`QuedadasScreen`: hero compacto, filtros de descubrir (formato/cuándo/precio),
+card destacada para una quedada abierta y agrupación tipo agenda en la pestaña
+`Juego`. Las acciones siguen usando las mismas server actions (`joinQuedada`,
+`leaveQuedada`, `cancelQuedada`, `deleteQuedada`, `reportQuedada`) y el CTA
+`Tu calendario` entra directo al detalle con `?tab=calendario`.
+
 La ruta `/dashboard/[role]/quedada/[id]` bifurca con `QuedadaPageRouter` (client,
 lee `canManage`):
 
 - **Organizador / co-host** → `QuedadaManagePanel` (gestión, con controles).
 - **Jugador inscrito / quedada abierta** → `QuedadaDetailView` (pantalla
-  read-only).
+  read-only) con tabs `Tu calendario`, `Calendario general`, `Detalles` y
+  `Tabla`. El CTA "Tu calendario" abre `/dashboard/user/quedada/[id]?tab=calendario`.
 
-Ambas montan el componente compartido **`QuedadaGameView`** (calendario de rondas
-+ tabla general individual). El organizador lo ve con controles
-(generar ronda / reportar / borrar ronda / cerrar); el jugador, solo lectura.
+El organizador monta el componente compartido **`QuedadaGameView`** con controles
+(generar ronda, crear partido manual, reportar, borrar ronda, cerrar). La vista
+del jugador usa la misma data read-only de `getQuedadaPlayerView`, pero la
+reorganiza player-first: próximo partido propio, schedule por ronda, calendario por
+cancha y tabla derivada según el engine.
+
+**Admin plataforma (mig/app Ola 2):** `/dashboard/admin/admin-quedadas` enlaza
+cada fila a `/dashboard/admin/quedada/[id]`. `getQuedadaManageData` permite
+`role=admin` global para abrir el panel de gestión y soporte puede cancelar la
+quedada o remover participantes con `kickQuedadaParticipantAdmin`.
 
 **Realtime:** `quedada_rounds` y `quedada_games` están en `supabase_realtime`. El
 panel y el detalle del jugador refrescan en vivo (debounce 400ms) cuando el
@@ -156,8 +176,8 @@ está cancelada (solo el creador).
   juegan esa ronda). No los penalices en standings.
 - **Vista del jugador:** usar `getQuedadaPlayerView`, NO `getQuedadaManageData`
   (este último expone datos de gestión).
-- **Formato no-americano:** mostrar "Pronto", no intentar generar rondas
-  (`generateAmericanoRound` corta con `QUEDADAS.FORMAT_UNSUPPORTED`).
+- **Formato y roster:** no hardcodear `format === "americano"` para decidir la UI.
+  Usa `getQuedadaEngine`, `rosterModeFor` y `standingsModeFor`.
 
 ## Modal de detalles (preview desde la tarjeta)
 
@@ -180,8 +200,8 @@ sección Inscritos tiene **tabs por categoría** (Todos + cada categoría, filtr
 por los jugadores asignados en `quedada_pairs`).
 
 **Cupo efectivo:** cuando la quedada tiene categorías, el cupo MÁXIMO se deriva de
-la **suma de `max_slots` de las categorías × jugadores por cupo** (1 en
-americano/singles, 2 en parejas fijas), no del `max_players` global. Sin
+la **suma de `max_slots` de las categorías × jugadores por cupo** (1 en motores
+individuales, 2 en parejas fijas), no del `max_players` global. Sin
 categorías, se usa `max_players`. (`QuedadasScreen` lo calcula y lo pasa como
 `maxPlayers` a la tarjeta y al modal, evitando la inconsistencia "24 inscritos /
 cupo 16".)
@@ -195,8 +215,8 @@ cupo 16".)
 - **Selección de categoría.** `joinQuedada({ quedadaId, categoryId? })`: si la
   quedada tiene categorías, el jugador **elige una** (UI `JoinPickerModal`, lista
   con `taken/maxSlots`, deshabilita llenas) y se le asigna el **cupo libre más
-  bajo** (`1..max_slots`) en `quedada_pairs` (americano = 1 jugador/slot,
-  `player_a` = user). Errores: `QUEDADAS.CATEGORY_REQUIRED`,
+  bajo** (`1..max_slots`) en `quedada_pairs` si el engine usa roster individual
+  (`player_a` = user). Errores: `QUEDADAS.CATEGORY_REQUIRED`,
   `QUEDADAS.CATEGORY_FULL`. Sin categorías → inscripción directa.
 - **RLS:** el insert del cupo va con **`getAdminClient` post-validación** (la RLS
   de `quedada_pairs` solo deja mutar a `can_manage`) + `setAuditActor(userId,"user")`.
@@ -224,18 +244,11 @@ asigna **automáticamente** el siguiente emparejamiento en esa cancha. No hay
   quienes más descansaron y minimizando repetir compañero/rival. **Política sin
   banca:** si los únicos libres son los que recién jugaron y otras canchas siguen,
   la cancha **espera** (no se reasigna); si todas están libres, arma con lo que haya.
-- **Server actions:** `startAmericanoRolling({ quedadaId, categoryId })` marca la
-  quedada como rolling y llena todas las canchas libres con un partido inicial;
-  `reportRollingGame({ gameId, pointsA, pointsB })` marca jugado **y** asigna el
-  siguiente partido en esa cancha (atómico). Reusan RLS `can_manage` +
-  `getServerClient` (sin admin/audit). Standings y realtime sin cambios (los games
-  ya están en el publication; standings se derivan de los played).
-- **WIP (Stage 2/3):** falta cablear la carga del marcador desde el carrusel del
-  header (UI) y adaptar `QuedadaGameView` (hoy agrupa por ronda) al orden por
-  cancha/cronológico cuando `engine_mode='rolling'`. Ver `04-placeholders.md`.
+- **Estado actual:** está pausado. `startAmericanoRolling` corta con
+  `QUEDADAS.ROLLING_WIP` y la UI fuerza `rounds` hasta completar la vista por
+  cancha/cronológica para organizador y jugador.
 
-## Pendientes / fuera de Stage 1
+## Pendientes
 
-- Stage 2: round_robin → mexicano → kotc → canguil → libre (mismo patrón).
-- Stage 3: tablas de rotación fijas para cuentas "bonitas", notif
+- Tablas de rotación fijas para cuentas "bonitas", notif
   `quedada_round_published`, `target_points` en `platform_config`.

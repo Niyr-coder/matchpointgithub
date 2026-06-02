@@ -13,6 +13,8 @@ import { fail } from "@/lib/api/response";
 import { MpError } from "@/lib/api/errors";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { AuthError, ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
+import { ROLE_LOGIN_PRIORITY } from "@/lib/auth/role-route-guard";
+import type { RoleKey } from "@/lib/roles";
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -295,13 +297,15 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
 
     const session = await buildSession();
 
-    // Default active role to first assignment if cookie missing.
+    // Cookie de rol: prioridad staff > user (el orden del SELECT no es estable).
     const c = await cookies();
-    if (!c.get(ACTIVE_ROLE_COOKIE)?.value && session.roles[0]) {
-      c.set(ACTIVE_ROLE_COOKIE, session.roles[0].role, COOKIE_OPTS);
-      if (session.roles[0].clubId) {
-        c.set(ACTIVE_CLUB_COOKIE, session.roles[0].clubId, COOKIE_OPTS);
-      }
+    if (!c.get(ACTIVE_ROLE_COOKIE)?.value && session.roles.length > 0) {
+      const pick =
+        ROLE_LOGIN_PRIORITY.map((r) => session.roles.find((a) => a.role === r)).find(Boolean) ??
+        session.roles[0];
+      c.set(ACTIVE_ROLE_COOKIE, pick.role, COOKIE_OPTS);
+      if (pick.clubId) c.set(ACTIVE_CLUB_COOKIE, pick.clubId, COOKIE_OPTS);
+      else c.delete(ACTIVE_CLUB_COOKIE);
     }
 
     return await buildSession();
@@ -404,19 +408,20 @@ export async function switchRole(input: unknown): Promise<ActionResult<SessionRe
 
     if (error) throw new MpError("AUTH.DB_ERROR", error.message, 500);
 
-    const match = (assignments ?? []).find(
-      (a) =>
-        a.role === data.role &&
-        (data.clubId ? a.club_id === data.clubId : a.club_id === null || data.role === "admin" || data.role === "user" || data.role === "partner") &&
-        (data.partnerId ? a.partner_id === data.partnerId : true),
-    );
-    if (!match) {
+    const activeAssignments = assignments ?? [];
+    const isAdmin = activeAssignments.some((a) => a.role === "admin");
+    let candidates = activeAssignments.filter((a) => a.role === data.role);
+    if (data.clubId) candidates = candidates.filter((a) => a.club_id === data.clubId);
+    if (data.partnerId) candidates = candidates.filter((a) => a.partner_id === data.partnerId);
+    const match = candidates[0];
+    if (!match && !isAdmin) {
       throw new AuthError("AUTH.ROLE_REQUIRED", `Role '${data.role}' not granted to user`);
     }
 
     const c = await cookies();
     c.set(ACTIVE_ROLE_COOKIE, data.role, COOKIE_OPTS);
-    if (data.clubId) c.set(ACTIVE_CLUB_COOKIE, data.clubId, COOKIE_OPTS);
+    const clubForCookie = data.clubId ?? match?.club_id ?? null;
+    if (clubForCookie) c.set(ACTIVE_CLUB_COOKIE, clubForCookie, COOKIE_OPTS);
     else c.delete(ACTIVE_CLUB_COOKIE);
 
     return await buildSession();
@@ -445,13 +450,6 @@ export async function updateProfile(input: unknown): Promise<ActionResult<Profil
     if (data.dominantHand !== undefined) payload.dominant_hand = data.dominantHand;
     if (data.preferredSport !== undefined) payload.preferred_sport = data.preferredSport;
     if (data.skillLevel !== undefined) payload.skill_level = data.skillLevel;
-    // Customización: updateProfile genérico permite editar accent/banner/card
-    // (path admin/legacy). El path normal del user pasa por
-    // setProfileCustomization() en src/server/actions/profile-customization.ts,
-    // que gatea MP+ antes de mutar.
-    if (data.accentColor !== undefined) payload.accent_color = data.accentColor;
-    if (data.bannerPreset !== undefined) payload.banner_preset = data.bannerPreset;
-    if (data.cardStyle !== undefined) payload.card_style = data.cardStyle;
     if (data.locale !== undefined) payload.locale = data.locale;
 
     const { data: updated, error } = await supabase
@@ -540,9 +538,6 @@ function mapProfile(row: Record<string, unknown>): Profile {
     dominantHand: row.dominant_hand ?? null,
     preferredSport: row.preferred_sport ?? null,
     skillLevel: row.skill_level ?? null,
-    accentColor: row.accent_color ?? null,
-    bannerPreset: row.banner_preset ?? null,
-    cardStyle: row.card_style ?? null,
     locale: row.locale ?? "es",
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -587,7 +582,8 @@ export async function signInFromForm(prevState: unknown, formData: FormData) {
     password: formData.get("password"),
   });
   if (result.ok) {
-    const next = (formData.get("next") as string) || "/dashboard/user";
+    const activeRole = (result.data.activeRole ?? "user") as RoleKey;
+    const next = (formData.get("next") as string) || `/dashboard/${activeRole}`;
     // signin ⇒ verificar si ya completó onboarding.
     const supabase = await getServerClient();
     const { data: { user } } = await supabase.auth.getUser();

@@ -44,7 +44,9 @@ language sql stable as $$
       or auth.is_manager_of(p_club_id);
 $$;
 
--- Rol activo (escrito por el middleware vía SET LOCAL app.active_role = ...)
+-- Rol activo. Nota app: hoy Supabase JS/PostgREST no setea este GUC de forma
+-- global por request; usarlo solo en tests/RPCs que hagan SET LOCAL dentro de
+-- la misma transacción.
 create or replace function auth.active_role() returns mp_role
 language sql stable as $$
   select nullif(current_setting('app.active_role', true), '')::mp_role
@@ -95,8 +97,9 @@ $$;
 | `broadcasts` | r/w | r/w own | r/w own | r/w own | – | – | – | – |
 | `reports` | r/w | – | r own-club | r own-club | – | – | r/w self submissions | – |
 | `audit_log` | r | – | r own-club | r own-club | – | – | – | – |
-| `tickets` | r/w | r own | r/w own-club | r/w own-club | – | r/w own-club | r/w self | – |
+| `tickets` | r/w | r own | r/w own-club | r/w own-club | – | r own-club + w self/asignado | r/w self | – |
 | `feature_flags` | r/w | – | – | – | – | – | r effective | – |
+| `help_*` | r/w | r published | r published | r published | r published | r published | r published + feedback/log own | – |
 | `partner_*` | r/w | r/w own | – | – | – | – | – | – |
 
 > `r limited` = solo columnas públicas + columnas necesarias para el contexto (ej. ver nombre de jugador de un partido). Se logra con **vistas** o **column-level masking** (no nativo en Supabase, así que vamos por vistas).
@@ -362,9 +365,26 @@ create policy cash_staff on cash_sessions for all
   with check ( auth.club_staff(club_id) or auth.is_employee_of(club_id) );
 
 alter table transactions enable row level security;
-create policy tx_staff_all on transactions for all
-  using ( auth.club_staff(club_id) or auth.is_employee_of(club_id) )
-  with check ( auth.club_staff(club_id) or auth.is_employee_of(club_id) );
+-- Owner/manager/admin: lectura + mutación financiera del club.
+create policy tx_club_staff_select on transactions for select
+  using (club_id is not null and auth.club_staff(club_id));
+create policy tx_club_staff_insert on transactions for insert
+  with check (club_id is not null and auth.club_staff(club_id));
+create policy tx_club_staff_update on transactions for update
+  using (club_id is not null and auth.club_staff(club_id))
+  with check (club_id is not null and auth.club_staff(club_id));
+
+-- Employee: puede leer el club y crear cobros esperados por flujos de caja/shop,
+-- pero no actualizar/refundear transacciones arbitrarias.
+create policy tx_employee_select on transactions for select
+  using (club_id is not null and auth.is_employee_of(club_id));
+create policy tx_employee_insert on transactions for insert
+  with check (
+    club_id is not null
+    and auth.is_employee_of(club_id)
+    and created_by = auth.uid()
+    and kind in ('reservation', 'proshop_sale', 'custom')
+  );
 
 -- El customer puede ver sus propias transacciones
 create policy tx_customer_select on transactions for select
@@ -382,9 +402,11 @@ create policy tx_coach_select_classes on transactions for select
   );
 
 alter table refunds enable row level security;
-create policy refunds_staff on refunds for all
+create policy refunds_club_staff on refunds for all
   using ( exists(select 1 from transactions t where t.id=transaction_id
-                 and (auth.club_staff(t.club_id) or auth.is_employee_of(t.club_id))) );
+                 and auth.club_staff(t.club_id)) )
+  with check ( exists(select 1 from transactions t where t.id=transaction_id
+                      and auth.club_staff(t.club_id)) );
 ```
 
 ### 4.6 proshop
@@ -496,22 +518,44 @@ create policy rf_visible on resource_files for select
 ### 4.10 messaging — patrón 3.3 (ya visto arriba)
 
 ```sql
+-- Helpers anti-recursión: las policies de mensajería no consultan
+-- conversation_members inline desde otra policy sobre conversation_members.
+create or replace function public.mp_is_conversation_member(
+  p_conversation uuid,
+  p_user uuid,
+  p_active_only boolean default false
+)
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = p_conversation
+      and cm.user_id = p_user
+      and (not p_active_only or cm.left_at is null)
+  );
+$$;
+
+create or replace function public.mp_is_conversation_admin(p_conversation uuid, p_user uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = p_conversation
+      and cm.user_id = p_user
+      and cm.role = 'admin'
+      and cm.left_at is null
+  );
+$$;
+
 alter table conversations enable row level security;
 create policy conv_member_select on conversations for select
-  using ( exists(select 1 from conversation_members cm
-                 where cm.conversation_id=id and cm.user_id=auth.uid() and cm.left_at is null) );
+  using ( public.mp_is_conversation_member(id, auth.uid(), true) );
 create policy conv_creator_insert on conversations for insert with check ( created_by = auth.uid() );
 
 alter table conversation_members enable row level security;
 create policy cm_self_select on conversation_members for select using ( user_id = auth.uid() );
 create policy cm_member_select on conversation_members for select
-  using ( exists(select 1 from conversation_members me
-                 where me.conversation_id=conversation_members.conversation_id
-                   and me.user_id=auth.uid()) );
+  using ( public.mp_is_conversation_member(conversation_id, auth.uid(), false) );
 create policy cm_admin_invite on conversation_members for insert
-  with check ( exists(select 1 from conversation_members me
-                      where me.conversation_id=conversation_members.conversation_id
-                        and me.user_id=auth.uid() and me.role='admin') );
+  with check ( public.mp_is_conversation_admin(conversation_id, auth.uid()) );
 
 -- messages: ya está arriba como patrón 3.3
 ```
@@ -524,12 +568,32 @@ create policy fr_self_visible on friend_requests for select
   using ( from_user_id = auth.uid() or to_user_id = auth.uid() );
 create policy fr_send on friend_requests for insert with check ( from_user_id = auth.uid() );
 create policy fr_respond on friend_requests for update using ( to_user_id = auth.uid() );
+-- Migration 20260602120000: reabrir solicitud propia tras accepted/rejected/cancelled.
+create policy fr_sender_reopen on friend_requests for update
+  to authenticated
+  using ( from_user_id = auth.uid() and status in ('accepted','rejected','cancelled') )
+  with check ( from_user_id = auth.uid() and status = 'pending' );
 
 alter table friendships enable row level security;
 create policy friendships_self on friendships for select
   using ( user_a = auth.uid() or user_b = auth.uid() );
 create policy friendships_delete_self on friendships for delete
   using ( user_a = auth.uid() or user_b = auth.uid() );
+-- Migration 20260601180000: el destinatario inserta al aceptar (pending o
+-- accepted sin fila — reparación de aceptaciones previas sin friendship).
+create policy friendships_insert_pending_accept on friendships for insert
+  to authenticated
+  with check (
+    auth.uid() in (user_a, user_b)
+    and user_a < user_b
+    and exists (
+      select 1 from friend_requests fr
+      where fr.to_user_id = auth.uid()
+        and fr.from_user_id in (user_a, user_b)
+        and fr.to_user_id in (user_a, user_b)
+        and fr.status in ('pending', 'accepted')
+    )
+  );
 
 alter table blocks enable row level security;
 create policy blocks_self on blocks for all using ( blocker_id = auth.uid() );
@@ -762,7 +826,17 @@ revoke insert, update, delete on audit_log from authenticated, anon;
 alter table tickets enable row level security;
 create policy tk_opener_self on tickets for select using ( opener_id = auth.uid() );
 create policy tk_assignee on tickets for select using ( assignee_id = auth.uid() );
-create policy tk_club_staff on tickets for all
+create policy tk_employee_club_select on tickets for select
+  using (club_id is not null and auth.is_employee_of(club_id));
+create policy tk_club_staff_select on tickets for select
+  using (club_id is not null and auth.club_staff(club_id));
+create policy tk_club_staff_update on tickets for update
+  using (club_id is not null and auth.club_staff(club_id))
+  with check (club_id is not null and auth.club_staff(club_id));
+create policy tk_assignee_update on tickets for update
+  using (assignee_id = auth.uid())
+  with check (assignee_id = auth.uid());
+create policy tk_club_staff_delete on tickets for delete
   using ( club_id is not null and auth.club_staff(club_id) );
 create policy tk_admin_all on tickets for all using ( auth.is_admin() );
 create policy tk_user_open on tickets for insert with check ( opener_id = auth.uid() );
@@ -771,11 +845,16 @@ alter table ticket_messages enable row level security;
 create policy tm_visible on ticket_messages for select
   using ( exists(select 1 from tickets t where t.id=ticket_id and
                  (t.opener_id=auth.uid() or t.assignee_id=auth.uid()
-                  or (t.club_id is not null and auth.club_staff(t.club_id))
+                  or (t.club_id is not null and (auth.club_staff(t.club_id) or auth.is_employee_of(t.club_id)))
                   or auth.is_admin()))
           and ( internal = false or auth.uid() <> (select opener_id from tickets where id=ticket_id) )
   );
-create policy tm_post on ticket_messages for insert with check ( author_id = auth.uid() );
+create policy tm_post on ticket_messages for insert with check (
+  author_id = auth.uid()
+  and exists(select 1 from tickets t where t.id=ticket_id
+             and (t.opener_id=auth.uid() or t.assignee_id=auth.uid()
+                  or (t.club_id is not null and auth.club_staff(t.club_id))))
+);
 ```
 
 ### 4.20 feature-flags
@@ -994,7 +1073,7 @@ del server action falla por cualquier razón, el RLS sigue bloqueando.
 
 | Tabla | Caller permitido en RLS | Mutación real |
 |---|---|---|
-| `transactions` (UPDATE/INSERT) | solo staff de club | `submitPaymentProof`, `approvePaymentProofAdmin`, `rejectPaymentProofAdmin` → service role |
+| `transactions` (UPDATE/INSERT) | owner/manager/admin; employee solo INSERT de flujos esperados | `submitPaymentProof`, `approvePaymentProofAdmin`, `rejectPaymentProofAdmin` → service role |
 | `registrations` (UPDATE status) | solo partner/admin del torneo | `updateRegistrationStatus` → service role tras `requirePartnerAdmin` |
 | `tournaments` (UPDATE) | solo partner/admin | `setTournamentStatus`, `updateTournamentByOrganizer` → service role |
 | `player_subscriptions` (INSERT) | `user_id = auth.uid()` ✓ | el INSERT del propio user pasa por anon |
@@ -1033,6 +1112,13 @@ create policy pm_partner_admin on public.partner_members
 **Lección**: cualquier policy que necesite chequear membresía en la misma
 tabla → usar SECURITY DEFINER helper. NO inline.
 
+El mismo patrón aplica a mensajería desde la mig `20260531044148`: las
+policies de `conversation_members`, `conversations`, `messages` y el guard
+read-only del DM oficial MATCHPOINT usan helpers `SECURITY DEFINER`
+(`mp_is_conversation_member`, `mp_is_conversation_admin`,
+`mp_conversation_has_other_system_member`) para no reentrar en RLS de
+`conversation_members`.
+
 ### 9.3 · Tablas nuevas (migs 070+) — políticas resumidas
 
 | Tabla | SELECT | INSERT/UPDATE/DELETE |
@@ -1043,6 +1129,13 @@ tabla → usar SECURITY DEFINER helper. NO inline.
 | `platform_config` | solo admin | mutación manual / service role |
 | `payouts` | admin / club staff / partner admin (cada uno ve los suyos) | solo admin |
 | `coach_commissions` | el coach mismo, staff del club, admin | solo admin |
+| `sponsors`, `sponsor_slots`, `sponsor_placements` | tablas crudas solo admin; público lee `active_sponsor_placements` curada | admin via service role |
+| `sponsor_placement_events` | solo admin | tracking vía server action + service role; sin INSERT público directo |
+| `sales_leads` | solo admin | intake público vía endpoint con service role; cambios de pipeline admin via service role |
+| `help_articles` | authenticated lee `published`; admin todo | admin via service role; vistas vía RPC segura |
+| `help_article_revisions` | solo admin | admin via service role |
+| `help_feedback` | propio + admin | user upsert propio sobre artículos publicados; admin lee |
+| `help_search_logs` | solo admin | user autenticado inserta logs propios de búsqueda |
 
 ### 9.4 · Reading vs writing: cuándo usar qué cliente
 

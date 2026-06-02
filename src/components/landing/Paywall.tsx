@@ -1,6 +1,6 @@
 // Paywall — locked-content modal. CTAs delegate to AuthModal for the real flow.
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 
@@ -26,6 +26,15 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
   const b = BENEFITS[trigger] || BENEFITS.perfil;
   const t = TEXT[trigger] || TEXT.perfil;
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+
+  // Scroll-lock mientras el overlay del paywall está montado.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   if (authMode) {
     return (
@@ -97,6 +106,7 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
+            className="mp-press"
             style={{
               position: "absolute",
               top: 14,
@@ -116,7 +126,7 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
             <Icon name="x" size={13} color="#fff" />
           </button>
           <div className="label-mp" style={{ color: "rgba(255,255,255,0.7)" }}>
-            ● Es gratis · {"< 60 s"}
+            ● Es gratis · en menos de 60 s
           </div>
           <h2
             className="font-heading"
@@ -133,7 +143,7 @@ export function Paywall({ trigger, onClose }: { trigger: PaywallTrigger; onClose
             <span style={{ color: "#fbbf24" }}>.</span>
           </h2>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
-            Únete a 8,412 jugadores ya en Ecuador
+            Únete a la comunidad de pickleball en Ecuador
           </div>
         </div>
         <div style={{ padding: 24 }}>

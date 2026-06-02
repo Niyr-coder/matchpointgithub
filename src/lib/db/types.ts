@@ -2573,39 +2573,6 @@ export type Database = {
           },
         ]
       }
-      cosmetic_bundles: {
-        Row: {
-          active: boolean
-          created_at: string
-          description: string | null
-          key: string
-          label: string
-          price_cents: number
-          sort_order: number
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          created_at?: string
-          description?: string | null
-          key: string
-          label: string
-          price_cents?: number
-          sort_order?: number
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          created_at?: string
-          description?: string | null
-          key?: string
-          label?: string
-          price_cents?: number
-          sort_order?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
       court_blocks: {
         Row: {
           court_id: string
@@ -3221,6 +3188,320 @@ export type Database = {
           {
             foreignKeyName: "friendships_user_b_fkey"
             columns: ["user_b"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      help_article_revisions: {
+        Row: {
+          article_id: string
+          content: Json
+          content_kind: Database["public"]["Enums"]["help_content_kind"]
+          created_at: string
+          created_by: string | null
+          excerpt: string | null
+          id: string
+          revision_no: number
+          snapshot: Json
+          status: Database["public"]["Enums"]["help_article_status"]
+          title: string
+        }
+        Insert: {
+          article_id: string
+          content: Json
+          content_kind: Database["public"]["Enums"]["help_content_kind"]
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          id?: string
+          revision_no: number
+          snapshot: Json
+          status: Database["public"]["Enums"]["help_article_status"]
+          title: string
+        }
+        Update: {
+          article_id?: string
+          content?: Json
+          content_kind?: Database["public"]["Enums"]["help_content_kind"]
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          id?: string
+          revision_no?: number
+          snapshot?: Json
+          status?: Database["public"]["Enums"]["help_article_status"]
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "help_article_revisions_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "help_articles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_article_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_article_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      help_articles: {
+        Row: {
+          archived_at: string | null
+          archived_by: string | null
+          category_key: string
+          category_label: string
+          content: Json
+          content_kind: Database["public"]["Enums"]["help_content_kind"]
+          created_at: string
+          created_by: string | null
+          excerpt: string | null
+          glossary_term: string | null
+          helpful_count: number
+          icon: string | null
+          id: string
+          is_featured: boolean
+          metadata: Json
+          not_helpful_count: number
+          published_at: string | null
+          published_by: string | null
+          reading_minutes: number
+          search_vector: unknown
+          slug: string
+          sort_order: number
+          status: Database["public"]["Enums"]["help_article_status"]
+          tags: string[]
+          title: string
+          updated_at: string
+          updated_by: string | null
+          video_duration_label: string | null
+          video_url: string | null
+          view_count: number
+        }
+        Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
+          category_key: string
+          category_label: string
+          content?: Json
+          content_kind?: Database["public"]["Enums"]["help_content_kind"]
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          glossary_term?: string | null
+          helpful_count?: number
+          icon?: string | null
+          id?: string
+          is_featured?: boolean
+          metadata?: Json
+          not_helpful_count?: number
+          published_at?: string | null
+          published_by?: string | null
+          reading_minutes?: number
+          search_vector?: unknown
+          slug: string
+          sort_order?: number
+          status?: Database["public"]["Enums"]["help_article_status"]
+          tags?: string[]
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          video_duration_label?: string | null
+          video_url?: string | null
+          view_count?: number
+        }
+        Update: {
+          archived_at?: string | null
+          archived_by?: string | null
+          category_key?: string
+          category_label?: string
+          content?: Json
+          content_kind?: Database["public"]["Enums"]["help_content_kind"]
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          glossary_term?: string | null
+          helpful_count?: number
+          icon?: string | null
+          id?: string
+          is_featured?: boolean
+          metadata?: Json
+          not_helpful_count?: number
+          published_at?: string | null
+          published_by?: string | null
+          reading_minutes?: number
+          search_vector?: unknown
+          slug?: string
+          sort_order?: number
+          status?: Database["public"]["Enums"]["help_article_status"]
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          video_duration_label?: string | null
+          video_url?: string | null
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "help_articles_archived_by_fkey"
+            columns: ["archived_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_archived_by_fkey"
+            columns: ["archived_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_articles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      help_feedback: {
+        Row: {
+          article_id: string
+          comment: string | null
+          created_at: string
+          helpful: boolean
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          article_id: string
+          comment?: string | null
+          created_at?: string
+          helpful: boolean
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          article_id?: string
+          comment?: string | null
+          created_at?: string
+          helpful?: boolean
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "help_feedback_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "help_articles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      help_search_logs: {
+        Row: {
+          category_key: string | null
+          created_at: string
+          id: number
+          query: string
+          results_count: number
+          user_id: string | null
+        }
+        Insert: {
+          category_key?: string | null
+          created_at?: string
+          id?: number
+          query: string
+          results_count?: number
+          user_id?: string | null
+        }
+        Update: {
+          category_key?: string | null
+          created_at?: string
+          id?: number
+          query?: string
+          results_count?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "help_search_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_search_logs_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
@@ -5078,74 +5359,11 @@ export type Database = {
           },
         ]
       }
-      profile_cosmetic_grants: {
-        Row: {
-          bundle_key: string
-          granted_at: string
-          granted_by: string | null
-          note: string | null
-          user_id: string
-        }
-        Insert: {
-          bundle_key: string
-          granted_at?: string
-          granted_by?: string | null
-          note?: string | null
-          user_id: string
-        }
-        Update: {
-          bundle_key?: string
-          granted_at?: string
-          granted_by?: string | null
-          note?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "profile_cosmetic_grants_bundle_key_fkey"
-            columns: ["bundle_key"]
-            isOneToOne: false
-            referencedRelation: "cosmetic_bundles"
-            referencedColumns: ["key"]
-          },
-          {
-            foreignKeyName: "profile_cosmetic_grants_granted_by_fkey"
-            columns: ["granted_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profile_cosmetic_grants_granted_by_fkey"
-            columns: ["granted_by"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profile_cosmetic_grants_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profile_cosmetic_grants_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
-          accent_color: string | null
           avatar_url: string | null
-          banner_preset: string | null
           bio: string | null
           birthdate: string | null
-          card_style: string | null
           city: string | null
           country: string | null
           created_at: string
@@ -5168,12 +5386,9 @@ export type Database = {
           username: string
         }
         Insert: {
-          accent_color?: string | null
           avatar_url?: string | null
-          banner_preset?: string | null
           bio?: string | null
           birthdate?: string | null
-          card_style?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
@@ -5196,12 +5411,9 @@ export type Database = {
           username: string
         }
         Update: {
-          accent_color?: string | null
           avatar_url?: string | null
-          banner_preset?: string | null
           bio?: string | null
           birthdate?: string | null
-          card_style?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
@@ -6324,6 +6536,7 @@ export type Database = {
         Row: {
           cancellation_reason: string | null
           cancelled_at: string | null
+          check_in_code: string | null
           club_id: string
           court_id: string
           created_at: string
@@ -6344,6 +6557,7 @@ export type Database = {
         Insert: {
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          check_in_code?: string | null
           club_id: string
           court_id: string
           created_at?: string
@@ -6364,6 +6578,7 @@ export type Database = {
         Update: {
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          check_in_code?: string | null
           club_id?: string
           court_id?: string
           created_at?: string
@@ -6968,43 +7183,43 @@ export type Database = {
       }
       sales_leads: {
         Row: {
-          id: string
-          name: string
-          email: string
-          phone: string | null
-          lead_type: string
           business_name: string | null
-          message: string | null
-          source_url: string | null
+          email: string
+          id: string
           ip: string | null
-          user_agent: string | null
+          lead_type: string
+          message: string | null
+          name: string
           occurred_at: string
+          phone: string | null
+          source_url: string | null
+          user_agent: string | null
         }
         Insert: {
-          id?: string
-          name: string
-          email: string
-          phone?: string | null
-          lead_type: string
           business_name?: string | null
-          message?: string | null
-          source_url?: string | null
+          email: string
+          id?: string
           ip?: string | null
-          user_agent?: string | null
+          lead_type: string
+          message?: string | null
+          name: string
           occurred_at?: string
+          phone?: string | null
+          source_url?: string | null
+          user_agent?: string | null
         }
         Update: {
-          id?: string
-          name?: string
-          email?: string
-          phone?: string | null
-          lead_type?: string
           business_name?: string | null
-          message?: string | null
-          source_url?: string | null
+          email?: string
+          id?: string
           ip?: string | null
-          user_agent?: string | null
+          lead_type?: string
+          message?: string | null
+          name?: string
           occurred_at?: string
+          phone?: string | null
+          source_url?: string | null
+          user_agent?: string | null
         }
         Relationships: []
       }
@@ -7161,6 +7376,281 @@ export type Database = {
           srtext?: string | null
         }
         Relationships: []
+      }
+      sponsor_placement_events: {
+        Row: {
+          event_type: string
+          id: number
+          metadata: Json
+          occurred_at: string
+          pathname: string | null
+          placement_id: string
+          referrer: string | null
+          session_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          event_type: string
+          id?: number
+          metadata?: Json
+          occurred_at?: string
+          pathname?: string | null
+          placement_id: string
+          referrer?: string | null
+          session_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          event_type?: string
+          id?: number
+          metadata?: Json
+          occurred_at?: string
+          pathname?: string | null
+          placement_id?: string
+          referrer?: string | null
+          session_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sponsor_placement_events_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "active_sponsor_placements"
+            referencedColumns: ["placement_id"]
+          },
+          {
+            foreignKeyName: "sponsor_placement_events_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "sponsor_placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsor_placement_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsor_placement_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sponsor_placements: {
+        Row: {
+          body: string | null
+          contract_amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          ends_at: string | null
+          headline: string
+          id: string
+          image_alt: string | null
+          image_url: string | null
+          priority: number
+          slot_id: string
+          sponsor_id: string
+          starts_at: string
+          status: string
+          target_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          contract_amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          ends_at?: string | null
+          headline: string
+          id?: string
+          image_alt?: string | null
+          image_url?: string | null
+          priority?: number
+          slot_id: string
+          sponsor_id: string
+          starts_at?: string
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          contract_amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          ends_at?: string | null
+          headline?: string
+          id?: string
+          image_alt?: string | null
+          image_url?: string | null
+          priority?: number
+          slot_id?: string
+          sponsor_id?: string
+          starts_at?: string
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sponsor_placements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsor_placements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsor_placements_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "sponsor_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsor_placements_sponsor_id_fkey"
+            columns: ["sponsor_id"]
+            isOneToOne: false
+            referencedRelation: "active_sponsor_placements"
+            referencedColumns: ["sponsor_id"]
+          },
+          {
+            foreignKeyName: "sponsor_placements_sponsor_id_fkey"
+            columns: ["sponsor_id"]
+            isOneToOne: false
+            referencedRelation: "sponsors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sponsor_slots: {
+        Row: {
+          base_price_cents: number
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          is_active: boolean
+          key: string
+          label: string
+          max_active_placements: number
+          surface: string
+          updated_at: string
+        }
+        Insert: {
+          base_price_cents?: number
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          label: string
+          max_active_placements?: number
+          surface: string
+          updated_at?: string
+        }
+        Update: {
+          base_price_cents?: number
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          label?: string
+          max_active_placements?: number
+          surface?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sponsors: {
+        Row: {
+          billing_email: string | null
+          brand_color: string | null
+          contact_email: string | null
+          contact_name: string | null
+          contract_ends_on: string | null
+          contract_starts_on: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          notes: string | null
+          slug: string
+          status: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          billing_email?: string | null
+          brand_color?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contract_ends_on?: string | null
+          contract_starts_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          logo_url?: string | null
+          name: string
+          notes?: string | null
+          slug: string
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          billing_email?: string | null
+          brand_color?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contract_ends_on?: string | null
+          contract_starts_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          notes?: string | null
+          slug?: string
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sponsors_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sponsors_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       student_evaluations: {
         Row: {
@@ -7716,24 +8206,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      theme_settings: {
-        Row: {
-          active: boolean
-          key: string
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          key: string
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          key?: string
-          updated_at?: string
-        }
-        Relationships: []
       }
       ticket_attachments: {
         Row: {
@@ -8452,6 +8924,29 @@ export type Database = {
       }
     }
     Views: {
+      active_sponsor_placements: {
+        Row: {
+          body: string | null
+          ends_at: string | null
+          headline: string | null
+          image_alt: string | null
+          image_url: string | null
+          placement_id: string | null
+          priority: number | null
+          slot_key: string | null
+          slot_label: string | null
+          sponsor_brand_color: string | null
+          sponsor_id: string | null
+          sponsor_logo_url: string | null
+          sponsor_name: string | null
+          sponsor_slug: string | null
+          sponsor_website_url: string | null
+          starts_at: string | null
+          surface: string | null
+          target_url: string | null
+        }
+        Relationships: []
+      }
       clubs_public_summary: {
         Row: {
           city: string | null
@@ -9014,6 +9509,10 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      help_record_article_view: {
+        Args: { p_article_id: string }
+        Returns: number
+      }
       longtransactionsenabled: { Args: never; Returns: boolean }
       mp_active_club_id: { Args: never; Returns: string }
       mp_active_role: { Args: never; Returns: string }
@@ -9699,6 +10198,8 @@ export type Database = {
       }
     }
     Enums: {
+      help_article_status: "draft" | "published" | "archived"
+      help_content_kind: "article" | "video" | "glossary"
       mp_cancellation_policy: "flexible_24h" | "moderate_48h" | "strict_7d"
       mp_class_kind: "group" | "clinic" | "camp" | "one_on_one" | "semi_private"
       mp_club_app_event_kind:
@@ -9949,6 +10450,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      help_article_status: ["draft", "published", "archived"],
+      help_content_kind: ["article", "video", "glossary"],
       mp_cancellation_policy: ["flexible_24h", "moderate_48h", "strict_7d"],
       mp_class_kind: ["group", "clinic", "camp", "one_on_one", "semi_private"],
       mp_club_app_event_kind: [

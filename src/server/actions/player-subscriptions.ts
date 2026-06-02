@@ -17,9 +17,35 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
+import { notify } from "@/server/notifications/dispatch";
 
-// Precio por mes en centavos. USD 5/mes premium.
-const PREMIUM_PRICE_CENTS_PER_MONTH = 500;
+// Precio por mes en centavos. MATCHPOINT+ = USD 6.99/mes.
+const PREMIUM_PRICE_CENTS_PER_MONTH = 699;
+
+async function notifyPremiumActivated(args: {
+  userId: string;
+  subscriptionId: string;
+  expiresAt: string;
+  source: "payment" | "admin_grant";
+}) {
+  const expiresLabel = new Date(args.expiresAt).toLocaleDateString("es-EC", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  await notify({
+    userId: args.userId,
+    role: "user",
+    kind: "mp_plus_activated",
+    title: "MATCHPOINT+ activado",
+    body: `Tu plan MATCHPOINT+ está activo hasta el ${expiresLabel}.`,
+    payload: {
+      subscriptionId: args.subscriptionId,
+      expiresAt: args.expiresAt,
+      source: args.source,
+    },
+  });
+}
 
 async function requireUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -69,16 +95,20 @@ export async function requestPlanUpgrade(
     // Rechazar si ya hay otra subscription pending para este user/tier.
     const { data: existingPending } = await supabase
       .from("player_subscriptions")
-      .select("id")
+      .select("id,transaction_id")
       .eq("user_id", userId)
       .eq("tier", tier)
       .eq("status", "pending")
       .maybeSingle();
     if (existingPending) {
+      const pendingTxId = (existingPending.transaction_id as string | null) ?? null;
       throw new MpError(
         "PLAN.PENDING_EXISTS",
-        "Ya tienes una solicitud de upgrade pendiente para este plan",
+        pendingTxId
+          ? "Ya tienes una solicitud pendiente. Sube el comprobante para completarla."
+          : "Ya tienes una solicitud de upgrade pendiente para este plan",
         409,
+        pendingTxId ? { transactionId: [pendingTxId] } : undefined,
       );
     }
 
@@ -238,6 +268,13 @@ export async function approvePlanSubscriptionAdmin(
         e,
       );
     }
+
+    await notifyPremiumActivated({
+      userId: sub.user_id as string,
+      subscriptionId,
+      expiresAt: newExpiry.toISOString(),
+      source: "payment",
+    });
 
     const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
       p_entity: "player_subscriptions",
@@ -415,6 +452,13 @@ export async function grantMatchPointPlusAdmin(
       );
     }
 
+    await notifyPremiumActivated({
+      userId,
+      subscriptionId: sub.id as string,
+      expiresAt: newExpiry.toISOString(),
+      source: "admin_grant",
+    });
+
     return {
       subscriptionId: sub.id as string,
       userId,
@@ -478,6 +522,18 @@ export async function revokeMatchPointPlusAdmin(
         auditErr.message,
       );
     }
+
+    await notify({
+      userId,
+      role: "user",
+      kind: "mp_plus_revoked",
+      title: "MATCHPOINT+ fue desactivado",
+      body: "Tu plan MATCHPOINT+ fue desactivado por soporte. Si crees que es un error, contacta a soporte.",
+      payload: {
+        reason,
+        cancelledCount: cancelled?.length ?? 0,
+      },
+    });
 
     return { userId, cancelledCount: cancelled?.length ?? 0 };
   });

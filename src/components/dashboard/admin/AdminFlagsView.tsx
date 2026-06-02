@@ -30,7 +30,8 @@ const ENVS: FlagEnv[] = ["prod", "staging", "beta", "dev"];
 const IMPACTS: FlagImpact[] = ["low", "med", "high"];
 const IMPACT_LABEL: Record<FlagImpact, string> = { low: "Bajo", med: "Medio", high: "Crítico" };
 const ROLES_FOR_SCOPE = ["admin", "partner", "owner", "manager", "coach", "employee", "user"];
-const ROW_COLS = "1.5fr 78px 130px 1.1fr 84px 96px";
+const FLAGS_TABLE_MIN_WIDTH = 760;
+const ROW_COLS = "minmax(0, 1.4fr) 64px 112px minmax(0, 1fr) 64px 64px";
 
 const agoLabel = (iso: string | null) => {
   if (!iso) return "—";
@@ -112,7 +113,9 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
             <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
               Feature flags<span className="dot">.</span>
             </h1>
-            <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>{data.kpis.totalCount} flags · entornos, rollout gradual, owners, criticidad, excepciones y kill switch — todo con audit</p>
+            <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
+              {data.kpis.totalCount} flags · orden: features cableadas, pendientes de cablear, paywalls y huérfanos al final
+            </p>
           </div>
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={13} color="#fff" />Nuevo flag
@@ -145,10 +148,10 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
       </div>
 
       {/* MAIN GRID */}
-      <div className="mp-flags-grid" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 820 }}>
+      <div className="mp-flags-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
+        <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0 }}>
+          <div style={{ overflowX: "auto", width: "100%" }}>
+            <div style={{ minWidth: FLAGS_TABLE_MIN_WIDTH, width: "100%" }}>
               <div style={{ display: "grid", gridTemplateColumns: ROW_COLS, gap: 14, padding: "11px 20px", background: "#fafafa", borderBottom: "1px solid var(--border)", fontSize: 9, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                 <span>Flag</span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Env <InfoTip text="Entorno donde aplica el flag: prod = la app real que usan los jugadores; staging/beta/dev = ambientes de prueba." /></span>
@@ -388,7 +391,7 @@ function FlagDrawer({ f, clubs, pending, onClose, onSetRollout, onToggle, onDele
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 20%, rgba(124,58,237,0.2), transparent 60%)" }} />
-          <button onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer" }}>
+          <button onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
             <Icon name="x" size={13} color="#fff" />
           </button>
           <div style={{ position: "relative" }}>

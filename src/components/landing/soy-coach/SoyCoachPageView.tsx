@@ -655,7 +655,7 @@ export function SoyCoachPageView() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {TESTIMONIOS.map((t) => (
-            <div key={t.n} className="card p-6 md:p-8" style={{ borderLeft: "3px solid var(--primary)" }}>
+            <div key={t.n} className="card p-6 md:p-8">
               <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
                 {[1, 2, 3, 4, 5].map((s) => (
                   <Icon key={s} name="star" size={14} color="#d97706" />

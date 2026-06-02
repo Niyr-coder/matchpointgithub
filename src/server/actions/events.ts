@@ -6,7 +6,7 @@ import "server-only";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { getActiveClubDiscountPct, applyDiscount, hasActiveClubMembership } from "@/server/queries/club-membership";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
@@ -359,7 +359,7 @@ const CancelEventSchema = z.object({
 
 export async function cancelEvent(input: unknown): Promise<ActionResult<EventRow>> {
   return runAction(CancelEventSchema, input, async ({ eventId, reason }) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("events")
@@ -373,7 +373,9 @@ export async function cancelEvent(input: unknown): Promise<ActionResult<EventRow
     if (existing.status === "finished") {
       throw new MpError("EVENTS.ALREADY_FINISHED", "No se puede cancelar un evento finalizado", 409);
     }
-    const { data, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { data, error } = await admin
       .from("events")
       .update({
         status: "cancelled",

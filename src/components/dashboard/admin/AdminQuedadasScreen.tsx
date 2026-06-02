@@ -5,6 +5,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "../ToastProvider";
 import { SkeletonRows } from "@/components/ui/Skeleton";
@@ -29,10 +30,8 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 const VISIBILITY_LABELS: Record<string, string> = {
-  public: "Pública",
+  open: "Abierta",
   private: "Privada",
-  unlisted: "No listada",
-  friends: "Amigos",
 };
 
 function formatLabel(format: string): string {
@@ -63,9 +62,10 @@ function fmtDate(iso: string): string {
 // Estado → chip. Cualquier estado desconocido cae al estilo neutro.
 const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Borrador", bg: "#f1f5f9", fg: "#475569" },
-  open: { label: "Abierta", bg: "#dcfce7", fg: "#15803d" },
-  full: { label: "Llena", bg: "#fef9c3", fg: "#a16207" },
-  in_progress: { label: "En curso", bg: "#dbeafe", fg: "#1d4ed8" },
+  published: { label: "Publicada", bg: "#f1f5f9", fg: "#475569" },
+  registration_open: { label: "Abierta", bg: "#dcfce7", fg: "#15803d" },
+  registration_closed: { label: "Cerrada", bg: "#fef9c3", fg: "#a16207" },
+  live: { label: "En vivo", bg: "#dbeafe", fg: "#1d4ed8" },
   finished: { label: "Finalizada", bg: "#ede9fe", fg: "#6d28d9" },
   cancelled: { label: "Cancelada", bg: "#fee2e2", fg: "#dc2626" },
 };
@@ -161,18 +161,6 @@ export function AdminQuedadasScreen() {
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px 60px" }}>
       <header style={{ marginBottom: 22 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-            color: "var(--muted-fg)",
-            marginBottom: 6,
-          }}
-        >
-          ● Admin · Quedadas
-        </div>
         <h1
           className="font-heading"
           style={{
@@ -328,23 +316,38 @@ export function AdminQuedadasScreen() {
                       {feeLabel(q.feeCents)} · {fmtDate(q.startsAt)}
                     </div>
                   </div>
-                  {cancelable && (
-                    <button
-                      onClick={() => handleCancel(q)}
-                      disabled={pending}
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                    <Link
+                      href={`/dashboard/admin/quedada/${q.id}`}
                       className="btn"
                       style={{
                         background: "#fff",
-                        border: "1px solid #fecaca",
-                        color: "#dc2626",
+                        border: "1px solid var(--border)",
                         padding: "7px 14px",
                         fontSize: 10.5,
-                        flexShrink: 0,
+                        textDecoration: "none",
                       }}
                     >
-                      Cancelar
-                    </button>
-                  )}
+                      Ver detalle
+                    </Link>
+                    {cancelable && (
+                      <button
+                        onClick={() => handleCancel(q)}
+                        disabled={pending}
+                        className="btn"
+                        style={{
+                          background: "#fff",
+                          border: "1px solid #fecaca",
+                          color: "#dc2626",
+                          padding: "7px 14px",
+                          fontSize: 10.5,
+                          flexShrink: 0,
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

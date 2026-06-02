@@ -127,8 +127,8 @@ export const KNOWN_FLAGS: KnownFlag[] = [
   {
     key: "paywall_enforce_profile_customization",
     label: "Paywall · Personalización de perfil",
-    description: "Encendido = customizaciones premium solo para MP+ o dueños de bundle. Apagado = panel abierto a todos.",
-    surfaces: ["pending: src/server/actions/profile-customization.ts"],
+    description: "Encendido = accent/banner/card avanzados solo para premium o bundles. Free usa presets por defecto.",
+    surfaces: ["pending: personalización de perfil"],
     impact: "low",
     wired: false,
   },
@@ -167,6 +167,27 @@ export const KNOWN_FLAGS: KnownFlag[] = [
 ];
 
 const MAP: Record<string, KnownFlag> = Object.fromEntries(KNOWN_FLAGS.map((f) => [f.key, f]));
+const KNOWN_ORDER = new Map(KNOWN_FLAGS.map((f, i) => [f.key, i]));
+
+/** Prioridad de fila en admin: features cableadas → planeadas → paywalls → huérfanos. */
+function flagSortRank(key: string, known?: KnownFlag): number {
+  if (!known) return 400;
+  if (key.startsWith("paywall_")) return known.wired ? 300 : 320;
+  return known.wired ? 100 : 200;
+}
+
+/** Orden canónico para la tabla de admin (alineado al registro del código). */
+export function sortFlagsByRegistry<T extends { k: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const ra = flagSortRank(a.k, knownFlag(a.k));
+    const rb = flagSortRank(b.k, knownFlag(b.k));
+    if (ra !== rb) return ra - rb;
+    const oa = KNOWN_ORDER.get(a.k) ?? 999;
+    const ob = KNOWN_ORDER.get(b.k) ?? 999;
+    if (oa !== ob) return oa - ob;
+    return a.k.localeCompare(b.k, "es");
+  });
+}
 
 /** Devuelve la metadata del flag si el código lo conoce, o undefined (huérfano). */
 export function knownFlag(key: string): KnownFlag | undefined {

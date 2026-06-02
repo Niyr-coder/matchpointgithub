@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
-import { MP_ROLES, type RoleKey } from "@/lib/roles";
+import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { NotificationsPanel, type RealNotif } from "./NotificationsPanel";
 import { useToast } from "./ToastProvider";
@@ -28,6 +28,8 @@ const SEARCH_PLACEHOLDER: Partial<Record<RoleKey, string>> = {
   employee: "Buscar reserva, código QR…",
 };
 
+const NOTIFICATION_RING_MS = 560;
+
 export function TopBar({
   role,
   contextLabel,
@@ -43,7 +45,6 @@ export function TopBar({
   const [badgePulseKey, setBadgePulseKey] = useState(0);
   const prevUnreadRef = useRef<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const cfg = MP_ROLES[role];
   const cta = CTA_BY_ROLE[role];
   const toast = useToast();
   const [, startTransition] = useTransition();
@@ -52,7 +53,7 @@ export function TopBar({
 
   const triggerRing = useCallback(() => {
     setRinging(true);
-    setTimeout(() => setRinging(false), 700);
+    setTimeout(() => setRinging(false), NOTIFICATION_RING_MS);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -75,11 +76,16 @@ export function TopBar({
   // Fetch inicial — corre apenas se monta el TopBar, así el panel ya tiene
   // datos al primer click.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
 
-  // Realtime — un solo canal para badge + panel. Al llegar cualquier
-  // cambio en notifications del usuario, refetch la lista.
+  useEffect(() => {
+    prevUnreadRef.current = null;
+  }, [role]);
+
+  // Realtime — un canal por rol activo. Supabase solo permite un filtro simple
+  // aquí, así que filtramos recipient_role en el handler antes de refetchear.
   useEffect(() => {
     let cancelled = false;
     let cleanup: (() => void) | null = null;
@@ -89,12 +95,14 @@ export function TopBar({
       const uid = data.user?.id;
       if (!uid || cancelled) return;
       const channel = supabase
-        .channel(`mp-notif-${uid}`)
+        .channel(`mp:user:${uid}:role:${role}:notifications`)
         .on(
           "postgres_changes" as never,
           { event: "*", schema: "public", table: "notifications", filter: `recipient_user_id=eq.${uid}` },
-          () => {
-            refresh();
+          (payload: { new?: { recipient_role?: string } }) => {
+            if (payload.new?.recipient_role === role) {
+              refresh();
+            }
           },
         )
         .subscribe();
@@ -106,7 +114,7 @@ export function TopBar({
       cancelled = true;
       cleanup?.();
     };
-  }, [refresh]);
+  }, [refresh, role]);
 
   // Dispara bell wiggle + badge pop cuando el unread crece via realtime.
   // No dispara en el primer set (prev === null) para no sonar al entrar.
@@ -208,47 +216,25 @@ export function TopBar({
             }}
           />
         </div>
-        {role === "admin" && contextLabel && (
-          <div
+        {contextLabel ? (
+          <span
+            title={contextLabel}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "4px 10px 4px 5px",
+              maxWidth: 180,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              padding: "5px 10px",
               borderRadius: 9999,
-              background: cfg.color,
-              color: "#fff",
+              background: "var(--muted)",
+              color: "var(--muted-fg)",
+              fontSize: 10.5,
+              fontWeight: 800,
             }}
           >
-            <span
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "rgba(255,255,255,0.18)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon name={cfg.icon} size={11} color="#fff" />
-            </span>
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 900,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
-            >
-              ● {cfg.badge}
-            </span>
-            <span style={{ width: 1, height: 12, background: "rgba(255,255,255,0.3)" }} />
-            <span style={{ fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap" }}>
-              {contextLabel.split(" · ")[0]}
-            </span>
-          </div>
-        )}
+            {contextLabel.split(" · ")[0]}
+          </span>
+        ) : null}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         {/* Desktop: CTA con label. Mobile: solo ícono compacto.
@@ -287,10 +273,10 @@ export function TopBar({
             style={{
               width: 36,
               height: 36,
-              border: "1px solid " + (ringing ? "red" : notifOpen ? "#0a0a0a" : "var(--border)"),
+              border: "1px solid " + (notifOpen ? "#0a0a0a" : "var(--border)"),
               borderRadius: 9999,
-              background: ringing ? "red" : notifOpen ? "#0a0a0a" : "#fff",
-              color: ringing || notifOpen ? "#fff" : "#0a0a0a",
+              background: notifOpen ? "#0a0a0a" : "#fff",
+              color: notifOpen ? "#fff" : "#0a0a0a",
               cursor: "pointer",
               position: "relative",
               display: "inline-flex",

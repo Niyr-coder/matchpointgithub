@@ -842,8 +842,8 @@ function CourtSVG({
     <svg
       viewBox="0 0 480 224"
       width={width}
-      height={height}
-      style={{ display: "block" }}
+      height={height === "auto" ? undefined : height}
+      style={{ display: "block", height: height === "auto" ? "auto" : undefined }}
     >
       <g fill="none" strokeLinejoin="miter">
         {/* perímetro */}

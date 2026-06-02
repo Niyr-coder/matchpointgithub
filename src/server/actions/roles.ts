@@ -6,7 +6,7 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -116,6 +116,18 @@ async function notifyStaffEvent(kind: "club_staff_assigned" | "club_staff_remove
   });
 }
 
+async function notifyRoleEvent(kind: "role_assigned" | "role_revoked", userId: string, assignedRole: string, clubId: string | null): Promise<void> {
+  const label = ROLE_LABEL_ES[assignedRole] ?? assignedRole;
+  await notify({
+    userId,
+    role: "user",
+    kind,
+    title: kind === "role_assigned" ? "Nuevo rol asignado" : "Rol revocado",
+    body: kind === "role_assigned" ? `Tu cuenta recibió el rol ${label}.` : `Tu rol ${label} fue removido.`,
+    payload: { role: assignedRole, clubId },
+  });
+}
+
 export async function assignRole(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(
     z.object({
@@ -145,19 +157,20 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
         actorId = await requireAdmin();
       }
       const supabase = await getServerClient();
+      const { data: actorAdminRow } = await supabase
+        .from("role_assignments")
+        .select("id")
+        .eq("user_id", actorId)
+        .eq("role", "admin")
+        .is("revoked_at", null)
+        .maybeSingle();
+      const actorIsAdmin = !!actorAdminRow;
 
       // Términos (Stage 2): si quien asigna es un OWNER (no admin) y es un rol de
       // club, debe aceptar la versión vigente de los términos. Se registra.
       let acceptedTerms: string | null = null;
       if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) {
-        const { data: adminRow } = await supabase
-          .from("role_assignments")
-          .select("id")
-          .eq("user_id", actorId)
-          .eq("role", "admin")
-          .is("revoked_at", null)
-          .maybeSingle();
-        if (!adminRow) {
+        if (!actorIsAdmin) {
           const { data: cfg } = await supabase
             .from("platform_config")
             .select("value")
@@ -171,7 +184,9 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
         }
       }
 
-      const { data, error } = await supabase
+      const admin = getAdminClient();
+      await setAuditActor(admin, actorId, actorIsAdmin ? "admin" : "owner");
+      const { data, error } = await admin
         .from("role_assignments")
         .insert({
           user_id: userId,
@@ -186,7 +201,7 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
       if (error) {
         if (error.code === "23505") {
           // Unique violation: reactivate revoked existing.
-          let q = supabase
+          let q = admin
             .from("role_assignments")
             .update({ revoked_at: null, granted_by: actorId, granted_at: new Date().toISOString(), terms_version: acceptedTerms } as never)
             .eq("user_id", userId)
@@ -194,13 +209,15 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
           q = clubId ? q.eq("club_id", clubId) : q.is("club_id", null);
           const { data: updated, error: upErr } = await q.select("id").single();
           if (upErr) throw new MpError("ROLES.ASSIGN_FAILED", upErr.message, 500);
-          if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
+          if (actorIsAdmin) await notifyRoleEvent("role_assigned", userId, role, clubId ?? null);
+          else if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
           revalidatePath("/dashboard/admin/admin-roles");
           return { id: updated.id as string };
         }
         throw new MpError("ROLES.ASSIGN_FAILED", error.message, 500);
       }
-      if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
+      if (actorIsAdmin) await notifyRoleEvent("role_assigned", userId, role, clubId ?? null);
+      else if (clubId && OWNER_ASSIGNABLE_ROLES.has(role)) await notifyStaffEvent("club_staff_assigned", userId, role, clubId);
       revalidatePath("/dashboard/admin/admin-roles");
       return { id: data.id as string };
     },
@@ -222,19 +239,31 @@ export async function revokeRole(input: unknown): Promise<ActionResult<{ ok: tru
     const asgRole = asg.role as string;
     const asgUser = asg.user_id as string;
     const isStaff = !!asgClub && OWNER_ASSIGNABLE_ROLES.has(asgRole);
+    let actorId: string;
     if (isStaff) {
-      await requireAdminOrClubOwner(asgClub!);
+      actorId = await requireAdminOrClubOwner(asgClub!);
       await assertCapability("sys.roles", { clubId: asgClub! });
     } else {
-      await requireAdmin();
+      actorId = await requireAdmin();
     }
-    const { error } = await supabase
+    const { data: actorAdminRow } = await supabase
+      .from("role_assignments")
+      .select("id")
+      .eq("user_id", actorId)
+      .eq("role", "admin")
+      .is("revoked_at", null)
+      .maybeSingle();
+    const actorIsAdmin = !!actorAdminRow;
+    const admin = getAdminClient();
+    await setAuditActor(admin, actorId, actorIsAdmin ? "admin" : "owner");
+    const { error } = await admin
       .from("role_assignments")
       .update({ revoked_at: new Date().toISOString() } as never)
       .eq("id", assignmentId)
       .is("revoked_at", null);
     if (error) throw new MpError("ROLES.REVOKE_FAILED", error.message, 500);
-    if (isStaff) await notifyStaffEvent("club_staff_removed", asgUser, asgRole, asgClub!);
+    if (actorIsAdmin) await notifyRoleEvent("role_revoked", asgUser, asgRole, asgClub);
+    else if (isStaff) await notifyStaffEvent("club_staff_removed", asgUser, asgRole, asgClub!);
     revalidatePath("/dashboard/admin/admin-roles");
     return { ok: true as const };
   });
@@ -342,7 +371,9 @@ export async function approveRoleRequest(input: unknown): Promise<ActionResult<{
       if (CLUB_SCOPED_ROLES.has(role) && !finalClub) {
         throw new MpError("ROLES.CLUB_REQUIRED", `Role '${role}' requires a club`, 422);
       }
-      const { error: insErr } = await supabase
+      const admin = getAdminClient();
+      await setAuditActor(admin, actorId, "admin");
+      const { error: insErr } = await admin
         .from("role_assignments")
         .insert({
           user_id: req.user_id as string,
@@ -354,7 +385,7 @@ export async function approveRoleRequest(input: unknown): Promise<ActionResult<{
       if (insErr && insErr.code !== "23505") {
         throw new MpError("ROLES.ASSIGN_FAILED", insErr.message, 500);
       }
-      const { error: updErr } = await supabase
+      const { error: updErr } = await admin
         .from("role_requests")
         .update({
           status: "approved",
@@ -393,7 +424,9 @@ export async function rejectRoleRequest(input: unknown): Promise<ActionResult<{ 
         .select("user_id,requested_role")
         .eq("id", requestId)
         .maybeSingle();
-      const { error } = await supabase
+      const admin = getAdminClient();
+      await setAuditActor(admin, actorId, "admin");
+      const { error } = await admin
         .from("role_requests")
         .update({
           status: "rejected",

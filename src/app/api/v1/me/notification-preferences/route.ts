@@ -1,6 +1,12 @@
 import { listMyPreferences, updateMyPreferences } from "@/server/actions/notifications";
 import { httpFail, httpOk } from "@/lib/api/response";
 
+const BAD_REQUEST_CODES = new Set([
+  "VALIDATION.FAILED",
+  "NOTIFICATIONS.UNKNOWN_KIND",
+  "NOTIFICATIONS.ROLE_NOT_ALLOWED",
+]);
+
 export async function GET() {
   const r = await listMyPreferences();
   if (!r.ok) {
@@ -12,8 +18,15 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   let body: unknown;
-  try { body = await req.json(); } catch { return httpFail(400, "VALIDATION.INVALID_JSON", "Body must be JSON"); }
+  try { body = await req.json(); } catch { return httpFail(400, "VALIDATION.INVALID_JSON", "El cuerpo debe ser JSON"); }
   const r = await updateMyPreferences(body);
-  if (!r.ok) return httpFail(r.error.code === "VALIDATION.FAILED" ? 400 : 500, r.error.code, r.error.message, { fields: r.error.fields });
+  if (!r.ok) {
+    return httpFail(
+      BAD_REQUEST_CODES.has(r.error.code) ? 400 : 500,
+      r.error.code,
+      r.error.message,
+      { fields: r.error.fields },
+    );
+  }
   return httpOk(r.data);
 }

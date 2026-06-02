@@ -9,6 +9,7 @@ import {
 // Merge: el rediseño v2 (AdminFlagsView) consume los datos reales que carga este
 // server component. AdminFlagsScreenView queda como fuente de tipos + respaldo.
 import { AdminFlagsView } from "./AdminFlagsView";
+import { sortFlagsByRegistry } from "@/lib/flags/registry";
 
 function titleize(key: string): string {
   return key
@@ -70,14 +71,16 @@ async function loadData(): Promise<FlagsData> {
     name: c.name as string,
   }));
 
+  const sortedRows = sortFlagsByRegistry(rows);
+
   return {
-    rows,
+    rows: sortedRows,
     clubs: clubsLite,
     kpis: {
-      activeCount: rows.filter((r) => r.state === "on").length,
-      rolloutCount: rows.filter((r) => r.state === "rollout").length,
-      totalCount: rows.length,
-      offCount: rows.filter((r) => r.state === "off").length,
+      activeCount: sortedRows.filter((r) => r.state === "on").length,
+      rolloutCount: sortedRows.filter((r) => r.state === "rollout").length,
+      totalCount: sortedRows.length,
+      offCount: sortedRows.filter((r) => r.state === "off").length,
     },
   };
 }

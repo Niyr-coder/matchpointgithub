@@ -10,7 +10,8 @@ import { actOnReport } from "@/server/actions/moderation";
 
 export type Severity = "alta" | "media" | "baja";
 export type CaseRow = {
-  id: string;
+  reportId: string;
+  displayId: string;
   t: string;
   who: string;
   sev: Severity;
@@ -46,7 +47,6 @@ function CasePlaceholder() {
         background: "#fafafa",
         border: "1px dashed var(--border)",
         borderRadius: 12,
-        borderLeft: "3px solid var(--border)",
         opacity: 0.6,
       }}
     >
@@ -113,7 +113,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
   const { ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();
 
-  const handleAction = async (id: string, action: "suspend" | "warn" | "dismiss") => {
+  const handleAction = async (reportId: string, action: "suspend" | "warn" | "dismiss") => {
     const isSuspend = action === "suspend";
     const isWarn = action === "warn";
     const reason = await ask({
@@ -128,7 +128,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
     if (reason == null) return;
     startTransition(async () => {
       const res = await actOnReport({
-        id,
+        id: reportId,
         body: { action, reason, durationHours: action === "suspend" ? 168 : undefined },
       });
       if (res.ok)
@@ -172,9 +172,9 @@ export function AdminModScreenView({ data }: { data: ModData }) {
           {hasCases
             ? data.cases.map((c) => (
                 <div
-                  key={c.id}
+                  key={c.reportId}
                   className="card"
-                  style={{ padding: 16, borderLeft: "3px solid " + SEV_COLOR[c.sev] }}
+                  style={{ padding: 16 }}
                 >
                   <div
                     style={{
@@ -195,7 +195,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
                             letterSpacing: "0.14em",
                           }}
                         >
-                          {c.id}
+                          {c.displayId}
                         </span>
                         <RSPill bg={SEV_COLOR[c.sev]}>{c.sev}</RSPill>
                       </div>
@@ -225,7 +225,6 @@ export function AdminModScreenView({ data }: { data: ModData }) {
                       fontSize: 11,
                       color: "#0a0a0a",
                       fontStyle: "italic",
-                      borderLeft: "2px solid " + SEV_COLOR[c.sev],
                     }}
                   >
                     {c.evidence}
@@ -234,7 +233,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
                     <button
                       className="btn btn-primary"
                       style={{ fontSize: 10.5 }}
-                      onClick={() => handleAction(c.id, "suspend")}
+                      onClick={() => handleAction(c.reportId, "suspend")}
                       disabled={isPending}
                     >
                       <Icon name="ban" size={11} />
@@ -243,7 +242,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
                     <button
                       className="btn"
                       style={{ background: "#fff", border: RS_BORDER, fontSize: 10.5 }}
-                      onClick={() => handleAction(c.id, "warn")}
+                      onClick={() => handleAction(c.reportId, "warn")}
                       disabled={isPending}
                     >
                       <Icon name="alert-triangle" size={11} />
@@ -252,7 +251,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
                     <button
                       className="btn"
                       style={{ background: "#fff", border: RS_BORDER, fontSize: 10.5 }}
-                      onClick={() => handleAction(c.id, "dismiss")}
+                      onClick={() => handleAction(c.reportId, "dismiss")}
                       disabled={isPending}
                     >
                       <Icon name="check" size={11} />

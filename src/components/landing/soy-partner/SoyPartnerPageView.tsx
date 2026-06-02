@@ -9,7 +9,7 @@ const BENEFITS = [
   {
     i: "trophy",
     t: "Inscripciones online",
-    d: "Tus jugadores se inscriben y pagan en 60 segundos. Cero hojas de cálculo, cero transferencias para confirmar.",
+    d: "Tus jugadores se inscriben en 60 segundos y suben comprobante cuando el pago es por transferencia o DeUna.",
     stat: "92%",
     sub: "inscritos sin pedirles nada",
   },
@@ -31,7 +31,7 @@ const BENEFITS = [
 
 const INCLUDED = [
   "Panel del organizador (calendario · brackets · pagos)",
-  "Cobro online por inscripción · Stripe + DeUna",
+  "Cobro por inscripción · transferencia + DeUna",
   "Comunicación masiva (push + email) a los inscritos",
   "Página pública del torneo con tu marca",
   "Resultados en vivo y publicación en ranking",
@@ -42,7 +42,7 @@ const INCLUDED = [
 const FAQ: [string, string][] = [
   ["¿Cuánto cuesta publicar un torneo?", "Publicar es gratis. Solo cobramos 8% sobre las inscripciones que se paguen vía MATCHPOINT. Si tu torneo se paga en efectivo, no pagas comisión."],
   ["¿Necesito tener un club registrado?", "No. Cualquier organizador o asociación puede publicar torneos. Si además operas un club, mira /soy-club."],
-  ["¿Puedo cobrar inscripciones en USD y DeUna?", "Sí, ambas. El dinero llega a tu cuenta bancaria ecuatoriana en máximo 7 días después del torneo."],
+  ["¿Puedo cobrar inscripciones en USD y DeUna?", "Sí. En beta el cobro sigue siendo manual: transferencia, DeUna o pago en el club, con comprobantes registrados en MATCHPOINT."],
   ["¿Los puntos del torneo cuentan para el ranking?", "Sí, si el torneo se marca como ranked. MATCHPOINT aplica ELO según el resultado de cada partido oficial."],
   ["¿Cuánto demora la aprobación?", "Menos de 24 horas. Tu equipo revisa el formato, fechas y premios y te confirma por WhatsApp."],
 ];
@@ -276,7 +276,7 @@ export function SoyPartnerPageView() {
                   {([
                     ["Torneo de 64 inscritos · $25 c/u", "$1,600"],
                     ["Comisión MATCHPOINT (8%)", "–$128"],
-                    ["Comisión Stripe (2.9%)", "–$46"],
+                    ["PSP / tarjeta", "No implementado"],
                   ] as const).map(([k, v]) => (
                     <div
                       key={k}

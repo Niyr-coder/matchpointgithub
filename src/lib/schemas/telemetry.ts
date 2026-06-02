@@ -8,6 +8,7 @@ export const PRICING_EVENT_NAMES = [
   "pricing_toggle_changed",
   "pricing_tier_cta_clicked",
   "pricing_faq_expanded",
+  "lead_submitted",
 ] as const;
 
 export const PricingEventNameSchema = z.enum(PRICING_EVENT_NAMES);

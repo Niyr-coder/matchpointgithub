@@ -9,6 +9,11 @@ import { RSPill } from "../widgets/RS";
 import { useToast } from "../ToastProvider";
 import { requestPlanUpgrade } from "@/server/actions/player-subscriptions";
 import { MatchPointPlusModal } from "./MatchPointPlusModal";
+import {
+  MP_PLUS_BENEFIT_CATEGORIES,
+  MP_PLUS_PLAN,
+  type MpPlusBenefitCategory,
+} from "@/lib/marketing/mp-plus";
 
 export type PlanInfo = {
   tier: string;
@@ -73,8 +78,8 @@ export function MiPlanScreenView({
   const autoFiredRef = useRef(false);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const isPremium = plan.tier === "premium";
-  const tierLabel = TIER_LABEL[plan.tier] ?? plan.tier;
+  const isPremium = plan.active;
+  const tierLabel = isPremium ? (TIER_LABEL[plan.tier] ?? plan.tier) : TIER_LABEL.free;
   const badgeColor = isPremium ? "#10b981" : "#94a3b8";
 
   const doUpgrade = () => {
@@ -82,23 +87,24 @@ export function MiPlanScreenView({
     startTransition(async () => {
       const r = await requestPlanUpgrade({ tier: "premium", durationMonths: 1 });
       if (!r.ok) {
-        const msg =
-          r.error.code === "PLAN.PENDING_EXISTS"
-            ? "Ya tienes una solicitud de upgrade pendiente. Sube el comprobante o espera la aprobación."
-            : r.error.code === "AUTH.UNAUTHENTICATED"
-              ? "Inicia sesión para activar Premium."
-              : r.error.message || "No se pudo crear la solicitud.";
+        const pendingTx = r.error.fields?.transactionId?.[0];
         toast({
           icon: "alert-triangle",
-          title: "No se pudo activar Premium",
-          sub: msg,
+          title: "No se pudo solicitar MATCHPOINT+",
+          sub:
+            r.error.code === "AUTH.UNAUTHENTICATED"
+              ? "Inicia sesión para solicitar MATCHPOINT+."
+              : r.error.message || "No se pudo crear la solicitud.",
         });
+        if (pendingTx) {
+          router.push(`/pagos/${pendingTx}`);
+        }
         return;
       }
       toast({
         icon: "check-circle-2",
         title: "Solicitud creada",
-        sub: "Sube tu comprobante para activar Premium.",
+        sub: "Sube tu comprobante para que el equipo active MATCHPOINT+.",
       });
       setModalOpen(false);
       router.push(`/pagos/${r.data.transactionId}`);
@@ -124,7 +130,7 @@ export function MiPlanScreenView({
         accent={badgeColor}
         label="Suscripción · Mi plan"
         title="Tu plan MATCHPOINT"
-        sub="Administra tu plan, pide un upgrade y revisa el historial de pagos."
+        sub="Administra tu plan, solicita MATCHPOINT+ y revisa el historial de pagos."
       />
 
       {/* Card destacada del plan actual */}
@@ -162,7 +168,7 @@ export function MiPlanScreenView({
               <span className="dot">.</span>
             </div>
             <RSPill bg={badgeColor}>
-              {isPremium ? "● PREMIUM" : "● FREE"}
+              {isPremium ? "● MATCHPOINT+" : "● FREE"}
             </RSPill>
           </div>
           <div
@@ -174,8 +180,8 @@ export function MiPlanScreenView({
             }}
           >
             {isPremium
-              ? `Plan activo hasta ${fmtDate(plan.expiresAt)}. Disfrutas todas las funciones Premium de MATCHPOINT.`
-              : "Estás en el plan gratuito. Activa Premium para ver estadísticas avanzadas, reservas prioritarias y más."}
+              ? `Plan activo hasta ${fmtDate(plan.expiresAt)}. Disfrutas los beneficios disponibles de MATCHPOINT+.`
+              : `Estás en el plan gratuito. Solicita MATCHPOINT+ para teams con más margen, historial completo y Coach AI en vista previa por ${MP_PLUS_PLAN.priceLabel}.`}
           </div>
         </div>
 
@@ -192,7 +198,7 @@ export function MiPlanScreenView({
               }}
             >
               <Icon name="calendar-plus" size={13} color="#fff" />
-              {pending ? "Procesando…" : "Extender 1 mes · USD 5"}
+              {pending ? "Procesando…" : `${MP_PLUS_PLAN.renewCta} · ${MP_PLUS_PLAN.priceLabel}`}
             </button>
           ) : (
             <button
@@ -207,7 +213,7 @@ export function MiPlanScreenView({
               }}
             >
               <Icon name="zap" size={14} color="#fff" />
-              {pending ? "Procesando…" : "Activar MATCHPOINT+ · USD 5/mes"}
+              {pending ? "Procesando…" : `${MP_PLUS_PLAN.requestCta} · ${MP_PLUS_PLAN.priceLabel}`}
             </button>
           )}
           <div
@@ -217,7 +223,7 @@ export function MiPlanScreenView({
               textAlign: "center",
             }}
           >
-            Pago por transferencia o DeUna
+            {MP_PLUS_PLAN.paymentShort}
           </div>
         </div>
       </div>
@@ -264,7 +270,7 @@ export function MiPlanScreenView({
               margin: "8px auto 0",
             }}
           >
-            Cuando solicites tu primer upgrade aparecerá aquí con su estado y comprobante.
+            Cuando solicites MATCHPOINT+ aparecerá aquí con su estado y comprobante.
           </p>
         </div>
       ) : (
@@ -349,58 +355,14 @@ export function MiPlanScreenView({
 }
 
 // ── Beneficios ─────────────────────────────────────────────────────────
-// Lista de features gateadas detrás de MATCHPOINT+. Teams es la primera
-// con caps reales (migration 102). El resto son placeholders honestos
-// ("Próximamente") hasta que se implementen.
+// Lista canónica de beneficios detrás de MATCHPOINT+. Mantener este render
+// ligado a `src/lib/marketing/mp-plus.ts` para no volver a duplicar promesas.
 type BenefitRow = {
   label: string;
   free: string;
-  premium: string;
+  plus: string;
   highlight?: boolean;
 };
-
-type BenefitCategory = {
-  title: string;
-  hint?: string;
-  rows: BenefitRow[];
-  available: boolean; // false => "Próximamente"
-};
-
-const BENEFITS: BenefitCategory[] = [
-  {
-    title: "Teams",
-    hint: "Crea y lidera un equipo. Crear y unirse es gratis; los caps cambian según tu plan.",
-    available: true,
-    rows: [
-      { label: "Miembros del roster", free: "12", premium: "24", highlight: true },
-      { label: "Invitaciones pendientes", free: "3", premium: "Ilimitadas", highlight: true },
-      { label: "Cambios de nombre", free: "2 veces", premium: "5 veces" },
-      { label: "Estadísticas avanzadas", free: "—", premium: "Incluidas" },
-    ],
-  },
-  {
-    title: "Coach AI",
-    hint: "Sube el video de tu match y recibe análisis táctico: fortalezas, qué corregir y drills personalizados.",
-    available: true,
-    rows: [
-      { label: "Análisis de video", free: "—", premium: "Ilimitados", highlight: true },
-      { label: "Score AI por match", free: "—", premium: "Incluido" },
-      { label: "Drills personalizados", free: "—", premium: "Incluidos" },
-    ],
-  },
-  {
-    title: "Torneos privados",
-    hint: "Próximamente — torneos solo-invitación entre amigos o tu club.",
-    available: false,
-    rows: [{ label: "Crear torneos privados", free: "—", premium: "Ilimitados" }],
-  },
-  {
-    title: "Descuentos en clases",
-    hint: "Próximamente — % de descuento en clases de coaches afiliados.",
-    available: false,
-    rows: [{ label: "Descuento aplicado", free: "—", premium: "Hasta 15%" }],
-  },
-];
 
 function BenefitsSection({ isPremium }: { isPremium: boolean }) {
   return (
@@ -417,8 +379,8 @@ function BenefitsSection({ isPremium }: { isPremium: boolean }) {
       >
         Qué incluye MATCHPOINT+<span className="dot">.</span>
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {BENEFITS.map((cat) => (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+        {MP_PLUS_BENEFIT_CATEGORIES.map((cat) => (
           <BenefitCard key={cat.title} category={cat} isPremium={isPremium} />
         ))}
       </div>
@@ -430,22 +392,22 @@ function BenefitCard({
   category,
   isPremium,
 }: {
-  category: BenefitCategory;
+  category: MpPlusBenefitCategory;
   isPremium: boolean;
 }) {
   const dimmed = !category.available;
   return (
     <div
-      className="card"
+      className="card flex h-full min-h-0 flex-col gap-3"
       style={{
         padding: 18,
         opacity: dimmed ? 0.68 : 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+      <div
+        className="shrink-0"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, minHeight: 22 }}
+      >
         <div
           className="font-heading"
           style={{
@@ -475,27 +437,60 @@ function BenefitCard({
           </span>
         )}
       </div>
-      {category.hint && (
-        <div style={{ fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.4 }}>
-          {category.hint}
+      <div
+        className="line-clamp-4 shrink-0"
+        style={{
+          height: 64,
+          fontSize: 11.5,
+          color: "var(--muted-fg)",
+          lineHeight: 1.4,
+        }}
+      >
+        {category.hint ?? null}
+      </div>
+      <div
+        className="shrink-0"
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          overflow: "hidden",
+          background: "#fff",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 52px minmax(76px, 0.75fr)",
+            columnGap: 8,
+            alignItems: "center",
+            padding: "7px 10px",
+            background: "rgba(10,10,10,0.035)",
+            borderBottom: "1px solid var(--border)",
+            fontSize: 9.5,
+            fontWeight: 900,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--muted-fg)",
+          }}
+        >
+          <span>Beneficio</span>
+          <span style={{ textAlign: "right" }}>Free</span>
+          <span style={{ textAlign: "right" }}>MP+</span>
         </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
-        {category.rows.map((row) => (
+        {category.rows.map((row: BenefitRow, index) => (
           <div
             key={row.label}
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr auto auto",
-              gap: 10,
+              gridTemplateColumns: "minmax(0, 1fr) 52px minmax(76px, 0.75fr)",
+              columnGap: 8,
               alignItems: "center",
-              padding: "8px 10px",
-              borderRadius: 8,
-              background: "#fafafa",
-              border: "1px solid var(--border)",
+              minHeight: 42,
+              padding: "9px 10px",
+              borderTop: index === 0 ? "none" : "1px solid rgba(10,10,10,0.08)",
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#0a0a0a" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#0a0a0a", lineHeight: 1.35 }}>
               {row.label}
             </div>
             <div
@@ -504,7 +499,8 @@ function BenefitCard({
                 fontWeight: 800,
                 color: isPremium ? "var(--muted-fg)" : "#0a0a0a",
                 textAlign: "right",
-                minWidth: 36,
+                lineHeight: 1.35,
+                fontVariantNumeric: "tabular-nums",
               }}
               title="Free"
             >
@@ -516,11 +512,12 @@ function BenefitCard({
                 fontWeight: 900,
                 color: isPremium ? "var(--primary)" : "#facc15",
                 textAlign: "right",
-                minWidth: 56,
+                lineHeight: 1.35,
+                fontVariantNumeric: "tabular-nums",
               }}
               title="MATCHPOINT+"
             >
-              {row.premium}
+              {row.plus}
             </div>
           </div>
         ))}

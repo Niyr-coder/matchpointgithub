@@ -41,6 +41,10 @@ export function RatingSparkline({
 
   const data = useMemo(() => {
     if (points.length < 2) return null;
+    const markerRadius = 4;
+    const padding = Math.max(7, strokeWidth + markerRadius + 1);
+    const innerWidth = Math.max(1, width - padding * 2);
+    const innerHeight = Math.max(1, height - padding * 2);
     const sorted = [...points].sort(
       (a, b) => +new Date(a.snapshotAt) - +new Date(b.snapshotAt),
     );
@@ -49,17 +53,20 @@ export function RatingSparkline({
     const min = Math.min(...values);
     const range = max - min || 1;
     const coords = sorted.map((p, i) => ({
-      x: (i / (sorted.length - 1)) * width,
-      y: height - ((p.rating - min) / range) * height,
+      x: padding + (i / (sorted.length - 1)) * innerWidth,
+      y: padding + (1 - (p.rating - min) / range) * innerHeight,
       rating: p.rating,
       snapshotAt: p.snapshotAt,
     }));
     const line = coords
       .map((c, i) => `${i === 0 ? "M" : "L"}${c.x},${c.y}`)
       .join(" ");
-    const area = `${line} L${width},${height} L0,${height} Z`;
-    return { coords, line, area, lastY: coords[coords.length - 1].y };
-  }, [points, width, height]);
+    const baseline = height - padding;
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    const area = `${line} L${last.x},${baseline} L${first.x},${baseline} Z`;
+    return { coords, line, area, last, markerRadius };
+  }, [points, width, height, strokeWidth]);
 
   if (!data) return null;
 
@@ -113,8 +120,15 @@ export function RatingSparkline({
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Punto final destacado */}
-        <circle cx={width} cy={data.lastY} r={hover ? 3 : 5} fill={color} stroke="#fff" strokeWidth={2} />
+        {/* Punto final destacado, dentro del viewBox para que no se corte. */}
+        <circle
+          cx={data.last.x}
+          cy={data.last.y}
+          r={hover ? 2.5 : data.markerRadius}
+          fill={color}
+          stroke="#fff"
+          strokeWidth={1.75}
+        />
 
         {/* Hover guide + dot snap */}
         {hover && (

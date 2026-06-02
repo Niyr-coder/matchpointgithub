@@ -17,7 +17,7 @@ const TAKEN_SLOTS = new Set(["11:00", "15:30"]);
 
 const EXPECT = [
   { i: "monitor", t: "Tour del dashboard", sub: "Calendario, finanzas, eventos en vivo" },
-  { i: "wallet", t: "Cómo se mueven los pagos", sub: "Stripe, payouts, comisión" },
+  { i: "wallet", t: "Cómo se mueven los pagos", sub: "Transferencia, DeUna y comprobantes" },
   { i: "smartphone", t: "Cómo es para tus jugadores", sub: "App móvil, reservas, ranking" },
   { i: "calculator", t: "Caso de tu club", sub: "Números con tus canchas y tarifas" },
 ] as const;

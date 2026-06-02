@@ -9,14 +9,14 @@
 //
 // El job se resuelve así:
 //   1. select email from auth.users where id = job.user_id (admin client).
-//   2. renderEmail(kind, payload) → { subject, html, text }.
+//   2. Si hay plantilla, renderEmail(kind, payload) → { subject, html, text }.
 //   3. POST https://api.resend.com/emails.
-//   4. status='sent' + sent_at=now() | status='failed' + last_error.
+//   4. status='sent' + sent_at=now() | status='failed/skipped' + last_error.
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/db/client.admin";
-import { renderEmail } from "@/lib/notifications/email-templates";
+import { hasEmailTemplate, renderEmail } from "@/lib/notifications/email-templates";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -76,6 +76,38 @@ async function markJob(
     update.last_error = patch.last_error;
   }
   await admin.from("notification_jobs").update(update).eq("id", jobId);
+}
+
+async function notificationPreferenceEnabled(
+  job: Pick<JobRow, "user_id" | "role" | "kind" | "channel">,
+): Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }> {
+  const admin = getAdminClient();
+  const { data: kind, error: kindError } = await admin
+    .from("notification_kinds")
+    .select("default_channels")
+    .eq("kind", job.kind)
+    .maybeSingle();
+
+  if (kindError) {
+    return { ok: false, error: kindError.message };
+  }
+  if (!((kind?.default_channels ?? []) as string[]).includes(job.channel)) {
+    return { ok: true, enabled: false };
+  }
+
+  const { data, error } = await admin
+    .from("notification_preferences")
+    .select("enabled")
+    .eq("user_id", job.user_id)
+    .eq("role", job.role as never)
+    .eq("kind", job.kind)
+    .eq("channel", job.channel as never)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, enabled: data?.enabled !== false };
 }
 
 async function sendViaResend(opts: {
@@ -161,6 +193,25 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     );
     for (const job of pending) {
       summary.processed += 1;
+      const preference = await notificationPreferenceEnabled(job);
+      if (!preference.ok) {
+        summary.failed += 1;
+        await markJob(job.id, {
+          status: "failed",
+          last_error: `consulta de preferencias falló: ${preference.error}`,
+          attempts: job.attempts + 1,
+        });
+        continue;
+      }
+      if (!preference.enabled) {
+        summary.skipped += 1;
+        await markJob(job.id, {
+          status: "skipped",
+          last_error: "preferencia de notificación desactivada",
+          attempts: job.attempts + 1,
+        });
+        continue;
+      }
       summary.skipped += 1;
       await markJob(job.id, {
         status: "skipped",
@@ -175,6 +226,26 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   for (const job of pending) {
     summary.processed += 1;
 
+    const preference = await notificationPreferenceEnabled(job);
+    if (!preference.ok) {
+      summary.failed += 1;
+      await markJob(job.id, {
+        status: "failed",
+        last_error: `consulta de preferencias falló: ${preference.error}`,
+        attempts: job.attempts + 1,
+      });
+      continue;
+    }
+    if (!preference.enabled) {
+      summary.skipped += 1;
+      await markJob(job.id, {
+        status: "skipped",
+        last_error: "preferencia de notificación desactivada",
+        attempts: job.attempts + 1,
+      });
+      continue;
+    }
+
     // 3a. Resolver email desde auth.users.
     const { data: userRes, error: userErr } = await admin.auth.admin.getUserById(job.user_id);
     if (userErr || !userRes?.user?.email) {
@@ -188,7 +259,18 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     }
     const toEmail = userRes.user.email;
 
-    // 3b. Renderizar plantilla.
+    // 3b. Renderizar plantilla. Si no existe, se salta: enviar payload crudo por
+    // email sería ruidoso y puede exponer datos internos.
+    if (!hasEmailTemplate(job.kind)) {
+      summary.skipped += 1;
+      await markJob(job.id, {
+        status: "skipped",
+        last_error: `sin plantilla de email para ${job.kind}`,
+        attempts: job.attempts + 1,
+      });
+      continue;
+    }
+
     let rendered;
     try {
       rendered = renderEmail(job.kind, job.payload ?? {});

@@ -10,6 +10,7 @@
 "use client";
 import { CarritoModal } from "./CarritoModal";
 import { RetarModal } from "./RetarModal";
+import type { RetarHeroWho } from "@/lib/match/retar-hero-present";
 import { CrearMatchModal } from "./CrearMatchModal";
 import { ReservarCanchaDrawer } from "./ReservarCanchaDrawer";
 import { VerMapaOverlay } from "./VerMapaOverlay";
@@ -19,13 +20,19 @@ import { InscribirClaseModal } from "./InscribirClaseModal";
 // como página dedicada y `dashboard/layout.tsx` redirige cuando
 // profiles.onboarded_at es null.
 
-export function DashboardModals({ currentUserId }: { currentUserId: string | null }) {
+export function DashboardModals({
+  currentUserId,
+  initialRetarYou = null,
+}: {
+  currentUserId: string | null;
+  initialRetarYou?: RetarHeroWho | null;
+}) {
   // Todos mounted siempre. Cada modal mantiene su propio state `open` interno
   // y solo renderiza UI al recibir el evento. Hacer esto es barato porque los
   // modals están "cerrados" (return null) cuando no hay open.
   return (
     <>
-      <RetarModal currentUserId={currentUserId} />
+      <RetarModal currentUserId={currentUserId} initialYou={initialRetarYou} />
       <CrearMatchModal currentUserId={currentUserId} />
       <ReservarCanchaDrawer />
       <VerMapaOverlay />

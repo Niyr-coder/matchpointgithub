@@ -3,7 +3,7 @@
 // creador invitar / cargar resultados / cancelar. v1 = social, no toca ranking.
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type ReactNode, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -15,6 +15,7 @@ import { accountToBankDraft } from "./quedada-fields/BankAccountFields";
 import { prizesToDrafts } from "./quedada-fields/PrizesEditor";
 import { rulesToDrafts } from "./quedada-fields/RulesEditor";
 import { parseSuma } from "@/lib/quedadas/level";
+import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import type { PaymentAccount, Prize, QuedadaRule } from "@/lib/schemas/quedadas";
 import {
   joinQuedada,
@@ -25,7 +26,6 @@ import {
   reportQuedada,
   getQuedadaManageData,
   getQuedadaDetails,
-  getMyQuedadasFinanceStats,
 } from "@/server/actions/quedadas";
 
 export type QuedadaLite = {
@@ -52,6 +52,7 @@ export type QuedadaLite = {
 };
 
 type Tab = "descubrir" | "organizo" | "juego";
+type FilterState = { format: string; when: "all" | "today" | "tomorrow" | "week"; price: "all" | "free" | "paid" };
 
 const FORMAT_LABEL: Record<string, string> = {
   americano: "Americano",
@@ -106,6 +107,51 @@ function nearestQuedada(list: QuedadaLite[]): QuedadaLite | null {
   );
 }
 
+function applyFilters(list: QuedadaLite[], filters: FilterState, nowMs: number): QuedadaLite[] {
+  const dayMs = 86_400_000;
+  return list.filter((q) => {
+    if (filters.format !== "all" && q.format !== filters.format) return false;
+    if (filters.price === "free" && q.feeCents > 0) return false;
+    if (filters.price === "paid" && q.feeCents <= 0) return false;
+    if (filters.when !== "all") {
+      const startsAt = Date.parse(q.startsAt);
+      if (Number.isNaN(startsAt)) return false;
+      const diff = startsAt - nowMs;
+      if (filters.when === "today" && (diff < 0 || diff > dayMs)) return false;
+      if (filters.when === "tomorrow" && (diff < dayMs || diff > 2 * dayMs)) return false;
+      if (filters.when === "week" && (diff < 0 || diff > 7 * dayMs)) return false;
+    }
+    return true;
+  });
+}
+
+function pickFeatured(list: QuedadaLite[]): QuedadaLite | null {
+  if (list.length < 3) return null;
+  const eligible = list.filter((q) => q.maxPlayers != null && q.maxPlayers > 0 && q.participantCount / q.maxPlayers >= 0.5);
+  const pool = eligible.length > 0 ? eligible : list;
+  return pool.slice().sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt))[0] ?? null;
+}
+
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "sin-fecha";
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayHeadline(iso: string, nowMs: number): { headline: string; sub: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { headline: "Sin fecha", sub: "Fecha por confirmar" };
+  const today = new Date(nowMs);
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const delta = Math.round((target - start) / 86_400_000);
+  const headline = delta === 0 ? "Hoy" : delta === 1 ? "Mañana" : d.toLocaleDateString("es-EC", { weekday: "long" });
+  return {
+    headline,
+    sub: d.toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" }),
+  };
+}
+
 export function QuedadasScreenView({
   meUserId,
   discover,
@@ -118,14 +164,17 @@ export function QuedadasScreenView({
   const router = useRouter();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("descubrir");
+  const [filters, setFilters] = useState<FilterState>({ format: "all", when: "all", price: "all" });
+  const [featuredPending, startFeaturedTransition] = useTransition();
   // null = wizard cerrado; {} = nueva; {initial} = duplicada/plantilla.
   const [wizard, setWizard] = useState<{ initial?: QuedadaInitial } | null>(null);
   // Invitar es modal liviano; resultados/cierre viven en la página de gestión.
   const [inviteFor, setInviteFor] = useState<QuedadaLite | null>(null);
+  const [featuredDetailsFor, setFeaturedDetailsFor] = useState<QuedadaLite | null>(null);
+  const [featuredJoinFor, setFeaturedJoinFor] = useState<QuedadaLite | null>(null);
   // "Ahora" para el tiempo relativo de "Tu próxima" (refresca cada minuto).
-  const [nowMs, setNowMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   useEffect(() => {
-    setNowMs(Date.now());
     const id = setInterval(() => setNowMs(Date.now()), 60000);
     return () => clearInterval(id);
   }, []);
@@ -142,13 +191,38 @@ export function QuedadasScreenView({
     });
   };
 
+  const doFeaturedJoin = (q: QuedadaLite, categoryId?: string) => {
+    if (!meUserId) {
+      toast({ icon: "alert-triangle", title: "Inicia sesión para inscribirte" });
+      return;
+    }
+    startFeaturedTransition(async () => {
+      const res = await joinQuedada({ quedadaId: q.id, categoryId: categoryId ?? null });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo inscribir", sub: res.error.message });
+        return;
+      }
+      setFeaturedJoinFor(null);
+      setFeaturedDetailsFor(null);
+      toast({ icon: "check-circle-2", title: "Te inscribiste en la quedada" });
+      router.refresh();
+    });
+  };
+
   // Organizo: recién creada primero (lo que acabas de crear aparece al inicio).
   const organizadas = mine
     .filter((q) => q.iAmCreator)
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
   // Juego: la próxima por jugar primero (orden cronológico ascendente de mine).
   const juego = mine.filter((q) => !q.iAmCreator);
-  const list = tab === "descubrir" ? discover : tab === "organizo" ? organizadas : juego;
+  const currentNowMs = nowMs;
+  const filteredDiscover = useMemo(
+    () => applyFilters(discover, filters, currentNowMs),
+    [discover, filters, currentNowMs],
+  );
+  const list = tab === "descubrir" ? filteredDiscover : tab === "organizo" ? organizadas : juego;
+  const featured = tab === "descubrir" ? pickFeatured(filteredDiscover) : null;
+  const rest = featured ? list.filter((q) => q.id !== featured.id) : list;
 
   // Métricas del hero (derivadas de la data que ya llega).
   const all = [...mine, ...discover];
@@ -157,7 +231,7 @@ export function QuedadasScreenView({
   const nearbyCount = discover.length;
   const nextQuedada = nearestQuedada(mine);
   let proximaNode: ReactNode = "—";
-  if (nextQuedada && nowMs != null) {
+  if (nextQuedada) {
     const p = relativeParts(nextQuedada.startsAt, nowMs);
     proximaNode =
       "text" in p ? (
@@ -184,10 +258,10 @@ export function QuedadasScreenView({
         className="mp-rise"
         style={{
           position: "relative",
-          padding: "26px 28px",
+          padding: "20px 24px",
           borderRadius: 14.4,
           overflow: "hidden",
-          background: "linear-gradient(135deg, #0a0a0a 0%, var(--primary) 140%)",
+          background: "radial-gradient(115% 130% at 98% 112%, rgba(124,58,237,0.3) 0%, rgba(124,58,237,0) 52%), linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)",
           color: "#fff",
         }}
       >
@@ -198,25 +272,25 @@ export function QuedadasScreenView({
             right: 0,
             fontFamily: "Plus Jakarta Sans",
             fontWeight: 900,
-            fontSize: 180,
-            color: "rgba(255,255,255,0.06)",
+            fontSize: 150,
+            color: "rgba(255,255,255,0.05)",
             letterSpacing: "-0.06em",
             lineHeight: 0.8,
-            transform: "rotate(-6deg) translate(15%, -20%)",
+            transform: "rotate(-6deg) translate(15%, -25%)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}
         >
           QUED
         </div>
-        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 20, flexWrap: "wrap" }}>
-          <div>
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 8,
-                padding: "3px 11px",
+                gap: 7,
+                padding: "3px 10px",
                 borderRadius: 9999,
                 background: "rgba(255,255,255,0.12)",
                 fontSize: 9,
@@ -225,46 +299,60 @@ export function QuedadasScreenView({
                 textTransform: "uppercase",
               }}
             >
-              ● Comunidad · Juego social
+              ● Juego social
             </div>
             <h1
               className="font-heading"
-              style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 4px", lineHeight: 1 }}
+              style={{ fontSize: 30, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "6px 0 2px", lineHeight: 1 }}
             >
-              Quedadas<span style={{ color: "#fbbf24" }}>.</span>
+              Quedadas<span style={{ color: "#34d399" }}>.</span>
             </h1>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", maxWidth: 540, lineHeight: 1.5 }}>
-              Organiza partidos sociales, únete a quedadas abiertas y lleva el control del juego desde un solo lugar.
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", maxWidth: 420, lineHeight: 1.45 }}>
+              Partidos sociales con tu comunidad. Organiza o únete.
             </div>
-            <button
-              onClick={() => setWizard({})}
-              disabled={!meUserId}
-              title={meUserId ? undefined : "Inicia sesión para crear una quedada"}
-              className="btn"
-              style={{ marginTop: 16, background: "#fff", color: "var(--fg)", opacity: meUserId ? 1 : 0.6, cursor: meUserId ? "pointer" : "default" }}
-            >
-              <Icon name="plus" size={14} color="var(--fg)" />
-              Crear quedada
-            </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minWidth: 230 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "stretch", gap: 8, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
             {heroStats.map((s, i) => (
               <div
                 key={i}
                 className="mp-rise"
-                style={{ animationDelay: `${i * 50}ms`, background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 12, padding: "10px 12px", minHeight: 58, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6, minWidth: 0 }}
+                style={{ animationDelay: `${i * 40}ms`, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "8px 14px", minWidth: 88, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 4 }}
               >
                 <span
                   className="font-heading"
-                  style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1.1, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
                   {s.v}
                 </span>
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.l}
                 </span>
               </div>
             ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setWizard({})}
+              disabled={!meUserId}
+              title={meUserId ? undefined : "Inicia sesión para crear una quedada"}
+              className="btn"
+              style={{
+                flexShrink: 0,
+                background: "#fff",
+                color: "var(--fg)",
+                padding: "7px 12px",
+                fontSize: 10.5,
+                gap: 5,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                opacity: meUserId ? 1 : 0.6,
+                cursor: meUserId ? "pointer" : "default",
+              }}
+            >
+              <Icon name="plus" size={11} color="var(--fg)" />
+              Crear quedada
+            </button>
           </div>
         </div>
       </div>
@@ -322,120 +410,112 @@ export function QuedadasScreenView({
         ))}
       </div>
 
-      {tab === "organizo" && organizadas.length > 0 && <OrganizerFinanceCard />}
+      {tab === "descubrir" && discover.length > 0 && (
+        <FilterBar filters={filters} onChange={setFilters} totalAll={discover.length} totalShown={filteredDiscover.length} />
+      )}
 
       {list.length === 0 ? (
         <EmptyState
-          icon={tab === "descubrir" ? "party-popper" : tab === "organizo" ? "settings" : "calendar-days"}
+          icon={tab === "descubrir" ? "search-x" : tab === "organizo" ? "settings" : "calendar-days"}
           title={
             tab === "descubrir"
-              ? "No hay quedadas abiertas por ahora"
+              ? discover.length === 0
+                ? "No hay quedadas abiertas por ahora"
+                : "Ninguna coincide con los filtros"
               : tab === "organizo"
                 ? "Aún no organizas ninguna quedada"
                 : "Aún no estás inscrito en ninguna quedada"
           }
           sub={
             tab === "descubrir"
-              ? "Sé el primero en organizar una. Toca “Crear quedada”."
+              ? discover.length === 0
+                ? "Sé el primero en organizar una. Toca “Crear quedada”."
+                : "Prueba quitando filtros para ver más opciones."
               : tab === "organizo"
                 ? "Crea tu primera quedada con “Crear quedada”."
                 : "Únete a una abierta desde Descubrir."
           }
         />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {list.map((q, i) => (
-            <div key={q.id} className="mp-rise" style={{ height: "100%", animationDelay: `${Math.min(i, 10) * 40}ms` }}>
-              <QuedadaCard
-                q={q}
-                meUserId={meUserId}
-                onInvite={() => setInviteFor(q)}
-                onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
-                onCalendar={() => router.push(`/dashboard/user/quedada/${q.id}`)}
-                onDuplicate={() => doDuplicate(q.id)}
-              />
+        <>
+          {featured && (
+            <FeaturedQuedadaCard
+              q={featured}
+              meUserId={meUserId}
+              nowMs={currentNowMs}
+              onOpenDetails={() => setFeaturedDetailsFor(featured)}
+              onRequestJoin={() => setFeaturedJoinFor(featured)}
+            />
+          )}
+          {tab === "juego" ? (
+            <AgendaList
+              list={rest}
+              nowMs={currentNowMs}
+              renderCard={(q, i) => (
+                <QuedadaCard
+                  q={q}
+                  meUserId={meUserId}
+                  onInvite={() => setInviteFor(q)}
+                  onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
+                  onCalendar={() => router.push(`/dashboard/user/quedada/${q.id}?tab=calendario`)}
+                  onDuplicate={() => doDuplicate(q.id)}
+                  riseDelay={Math.min(i, 10) * 40}
+                />
+              )}
+            />
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                gap: 14,
+              }}
+            >
+              {rest.map((q, i) => (
+                <QuedadaCard
+                  key={q.id}
+                  q={q}
+                  meUserId={meUserId}
+                  onInvite={() => setInviteFor(q)}
+                  onManage={() => router.push(`/dashboard/user/quedada/${q.id}`)}
+                  onCalendar={() => router.push(`/dashboard/user/quedada/${q.id}?tab=calendario`)}
+                  onDuplicate={() => doDuplicate(q.id)}
+                  riseDelay={Math.min(i, 10) * 40}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {wizard && <CrearQuedadaModal initial={wizard.initial} onClose={() => setWizard(null)} />}
       {inviteFor && (
         <InviteModal quedada={inviteFor} meUserId={meUserId} onClose={() => setInviteFor(null)} />
       )}
-    </div>
-  );
-}
-
-// ── Resumen financiero del organizador (todas sus quedadas) ──────────────────
-type FinanceStats = {
-  quedadasCount: number;
-  totalCollectedCents: number;
-  totalExpectedCents: number;
-  pendingCents: number;
-  totalJoined: number;
-  totalPaid: number;
-  payRatePct: number;
-  avgAttendance: number;
-};
-
-function money(cents: number): string {
-  const n = (cents ?? 0) / 100;
-  return `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
-}
-
-function OrganizerFinanceCard() {
-  const [stats, setStats] = useState<FinanceStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    void getMyQuedadasFinanceStats({}).then((res) => {
-      if (!alive) return;
-      if (res.ok) setStats(res.data);
-      setLoading(false);
-    });
-    return () => { alive = false; };
-  }, []);
-
-  if (loading) {
-    return <div className="card" style={{ padding: 16, marginBottom: 14, height: 92, background: "var(--muted)" }} />;
-  }
-  if (!stats || stats.quedadasCount === 0) return null;
-
-  const tile = (label: string, value: string, tone: "fg" | "ok" | "warn" | "muted" = "fg") => {
-    const color = tone === "ok" ? "var(--success-fg)" : tone === "warn" ? "#b45309" : tone === "muted" ? "var(--muted-fg)" : "var(--fg)";
-    return (
-      <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</span>
-        <span className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-      </div>
-    );
-  };
-
-  return (
-    <div className="card mp-rise" style={{ padding: 16, marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Icon name="wallet" size={15} color="var(--muted-fg)" />
-        <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.02em" }}>Tu actividad como organizador</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px,1fr))", gap: 10 }}>
-        {tile("Recaudado", money(stats.totalCollectedCents), "ok")}
-        {tile("Pendiente", money(stats.pendingCents), stats.pendingCents > 0 ? "warn" : "muted")}
-        {tile("Quedadas", String(stats.quedadasCount), "muted")}
-        {tile("Inscritos", String(stats.totalJoined), "muted")}
-        {tile("% cobro", `${stats.payRatePct}%`)}
-        {tile("Asistencia prom.", `${stats.avgAttendance}`, "muted")}
-      </div>
-      <span style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
-        Recaudado estimado por cuota × pagados (pago offline). Promedio de inscritos por quedada.
-      </span>
+      {featuredDetailsFor && (
+        <QuedadaDetailsModal
+          q={featuredDetailsFor}
+          onClose={() => setFeaturedDetailsFor(null)}
+          onRequestJoin={() => {
+            setFeaturedJoinFor(featuredDetailsFor);
+            setFeaturedDetailsFor(null);
+          }}
+          onCalendar={() => router.push(`/dashboard/user/quedada/${featuredDetailsFor.id}?tab=calendario`)}
+          onManage={() => router.push(`/dashboard/user/quedada/${featuredDetailsFor.id}`)}
+          pending={featuredPending}
+          getOriginRect={() => null}
+          initialData={null}
+        />
+      )}
+      {featuredJoinFor && (
+        <JoinPickerModal
+          q={featuredJoinFor}
+          initialData={null}
+          pending={featuredPending}
+          onClose={() => setFeaturedJoinFor(null)}
+          onPick={(categoryId) => doFeaturedJoin(featuredJoinFor, categoryId)}
+        />
+      )}
     </div>
   );
 }
@@ -499,13 +579,268 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
   );
 }
 
+function FilterBar({
+  filters,
+  onChange,
+  totalAll,
+  totalShown,
+}: {
+  filters: FilterState;
+  onChange: (next: FilterState) => void;
+  totalAll: number;
+  totalShown: number;
+}) {
+  const isActive = filters.format !== "all" || filters.when !== "all" || filters.price !== "all";
+  const formats = [
+    { k: "all", l: "Todos" },
+    { k: "americano", l: "Americano" },
+    { k: "mexicano", l: "Mexicano" },
+    { k: "round_robin", l: "Round Robin" },
+    { k: "kotc", l: "Rey de Cancha" },
+    { k: "canguil", l: "Canguil" },
+    { k: "libre", l: "Libre" },
+  ];
+  const when = [
+    { k: "all" as const, l: "Todas" },
+    { k: "today" as const, l: "Hoy" },
+    { k: "tomorrow" as const, l: "Mañana" },
+    { k: "week" as const, l: "Esta semana" },
+  ];
+  const price = [
+    { k: "all" as const, l: "Todas" },
+    { k: "free" as const, l: "Gratis" },
+    { k: "paid" as const, l: "Pago" },
+  ];
+  const labelStyle: CSSProperties = {
+    fontSize: 9,
+    fontWeight: 900,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "var(--muted-fg)",
+    flexShrink: 0,
+    marginRight: 4,
+  };
+  const pill = (active: boolean): CSSProperties => ({
+    padding: "6px 12px",
+    borderRadius: 9999,
+    border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
+    background: active ? "var(--fg)" : "#fff",
+    color: active ? "#fff" : "var(--muted-fg)",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={labelStyle}>Formato</span>
+        {formats.map((o) => (
+          <button key={o.k} type="button" onClick={() => onChange({ ...filters, format: o.k })} style={pill(filters.format === o.k)}>
+            {o.l}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={labelStyle}>Cuándo</span>
+        {when.map((o) => (
+          <button key={o.k} type="button" onClick={() => onChange({ ...filters, when: o.k })} style={pill(filters.when === o.k)}>
+            {o.l}
+          </button>
+        ))}
+        <span style={{ width: 1, height: 16, background: "var(--border)", margin: "0 2px" }} />
+        <span style={labelStyle}>Precio</span>
+        {price.map((o) => (
+          <button key={o.k} type="button" onClick={() => onChange({ ...filters, price: o.k })} style={pill(filters.price === o.k)}>
+            {o.l}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 10.5, color: "var(--muted-fg)", fontWeight: 700 }}>
+          {isActive ? (
+            <>
+              <span style={{ color: "var(--fg)", fontWeight: 900 }}>{totalShown}</span> de {totalAll}
+            </>
+          ) : (
+            <>{totalAll} {totalAll === 1 ? "quedada" : "quedadas"}</>
+          )}
+        </span>
+        {isActive && (
+          <button
+            type="button"
+            onClick={() => onChange({ format: "all", when: "all", price: "all" })}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, color: "var(--muted-fg)", background: "transparent", border: 0, cursor: "pointer", fontFamily: "inherit", padding: "4px 6px" }}
+          >
+            <Icon name="x" size={11} color="var(--muted-fg)" />
+            Limpiar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FeaturedQuedadaCard({
+  q,
+  meUserId,
+  nowMs,
+  onOpenDetails,
+  onRequestJoin,
+}: {
+  q: QuedadaLite;
+  meUserId: string | null;
+  nowMs: number;
+  onOpenDetails: () => void;
+  onRequestJoin: () => void;
+}) {
+  const cupoPct = q.maxPlayers ? Math.min(100, Math.round((q.participantCount / q.maxPlayers) * 100)) : 100;
+  const rel = relativeParts(q.startsAt, nowMs);
+  const relText = nowMs > 0 ? ("text" in rel ? rel.text : `${rel.pre} ${rel.n} ${rel.unit}`) : "—";
+  const full = q.maxPlayers != null && q.participantCount >= q.maxPlayers;
+
+  return (
+    <div
+      className="card mp-rise"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        position: "relative",
+        background: "linear-gradient(135deg, #0a0a0a 0%, #1a1626 55%, #2d1b4e 100%)",
+        color: "#fff",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <div aria-hidden style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(52,211,153,0.06)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-8deg) translate(10%, -10%)", textTransform: "uppercase", pointerEvents: "none" }}>
+        {(FORMAT_LABEL[q.format] ?? q.format).split(" ")[0]}
+      </div>
+      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24, padding: "22px 24px", alignItems: "center" }}>
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>★ Destacada</span>
+            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(16,185,129,0.18)", color: "#86efac" }}>● Abierta</span>
+            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.14)" }}>{FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}</span>
+            {q.creatorIsPremium && <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "linear-gradient(135deg, #fbbf24, #f59e0b)", color: "#0a0a0a" }}>MP+</span>}
+          </div>
+          <h2 className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.025em", textTransform: "uppercase", margin: 0, lineHeight: 1.05 }}>
+            {q.title}<span style={{ color: "#34d399" }}>.</span>
+          </h2>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12, color: "rgba(255,255,255,0.78)", fontWeight: 600 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Icon name="calendar-days" size={13} color="#fbbf24" />
+              {formatWhen(q.startsAt)} · <span style={{ color: "#fbbf24", fontWeight: 900 }}>{relText}</span>
+            </span>
+            {q.locationText && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name="map-pin" size={13} color="rgba(255,255,255,0.5)" />
+                {q.locationText}
+              </span>
+            )}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Icon name="ticket" size={13} color="rgba(255,255,255,0.5)" />
+              {feeLabel(q.feeCents)}
+            </span>
+          </div>
+          {q.description && <p style={{ fontSize: 12.5, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1.5, maxWidth: 560 }}>{q.description}</p>}
+        </div>
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 14, alignItems: "stretch" }}>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)" }}>Cupo</span>
+              <span className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, color: "#fff" }}>
+                {q.participantCount}
+                {q.maxPlayers != null && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>/{q.maxPlayers}</span>}
+              </span>
+            </div>
+            {q.maxPlayers != null && (
+              <>
+                <div style={{ height: 6, background: "rgba(255,255,255,0.10)", borderRadius: 9999, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${cupoPct}%`, background: cupoPct >= 90 ? "#f87171" : "#34d399", borderRadius: 9999 }} />
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 700, marginTop: 4 }}>
+                  {full ? "Sin cupos disponibles" : `${Math.max(0, q.maxPlayers - q.participantCount)} cupos libres`}
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            {full ? (
+              <button disabled style={{ flex: 1, justifyContent: "center", padding: "12px 20px", borderRadius: 9999, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 900, fontFamily: "inherit" }}>
+                Llena
+              </button>
+            ) : (
+              <button onClick={onRequestJoin} disabled={!meUserId} className="btn btn-primary" style={{ flex: 1, justifyContent: "center", padding: "12px 20px", fontSize: 12, opacity: meUserId ? 1 : 0.6 }}>
+                <Icon name="check" size={13} color="#fff" />
+                Inscribirme · {feeLabel(q.feeCents)}
+              </button>
+            )}
+            <button onClick={onOpenDetails} style={{ padding: "12px 16px", borderRadius: 9999, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Icon name="info" size={12} color="#fff" />
+              Detalles
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgendaList({
+  list,
+  nowMs,
+  renderCard,
+}: {
+  list: QuedadaLite[];
+  nowMs: number;
+  renderCard: (q: QuedadaLite, index: number) => ReactNode;
+}) {
+  const groups = useMemo(() => {
+    const sorted = list.slice().sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+    const map = new Map<string, QuedadaLite[]>();
+    for (const q of sorted) {
+      const key = dayKey(q.startsAt);
+      const current = map.get(key) ?? [];
+      current.push(q);
+      map.set(key, current);
+    }
+    return Array.from(map.entries()).map(([key, items]) => ({ key, items, ...dayHeadline(items[0]?.startsAt ?? "", nowMs) }));
+  }, [list, nowMs]);
+
+  let index = 0;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {groups.map((g) => (
+        <section key={g.key} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
+            <span className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.02em", color: "var(--fg)" }}>
+              {g.headline}<span className="dot">.</span>
+            </span>
+            <span style={{ fontSize: 10.5, color: "var(--muted-fg)", fontWeight: 700 }}>{g.sub}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+            {g.items.map((q) => {
+              const rendered = renderCard(q, index);
+              index += 1;
+              return <div key={q.id}>{rendered}</div>;
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function Chip({
   children,
   bg,
   color,
   border,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   bg: string;
   color: string;
   border?: string;
@@ -537,6 +872,7 @@ function QuedadaCard({
   onManage,
   onCalendar,
   onDuplicate,
+  riseDelay = 0,
 }: {
   q: QuedadaLite;
   meUserId: string | null;
@@ -544,6 +880,7 @@ function QuedadaCard({
   onManage: () => void;
   onCalendar: () => void;
   onDuplicate: () => void;
+  riseDelay?: number;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -554,10 +891,12 @@ function QuedadaCard({
   const [joinPickerOpen, setJoinPickerOpen] = useState(false);
   const [detailsData, setDetailsData] = useState<QuedadaDetailData | null>(null);
   const prefetchedRef = useRef(false);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Prefetch del detalle al hover/focus → el modal abre ya precargado (sin "Cargando…").
+  // Prefetch con intención: evita pegarle al server si el mouse solo cruza la
+  // grilla, pero mantiene apertura rápida cuando sí se queda sobre una card.
   const prefetchDetails = () => {
     if (prefetchedRef.current) return;
     prefetchedRef.current = true;
@@ -566,6 +905,20 @@ function QuedadaCard({
       else prefetchedRef.current = false;
     });
   };
+  const schedulePrefetchDetails = () => {
+    if (prefetchTimerRef.current || prefetchedRef.current) return;
+    prefetchTimerRef.current = setTimeout(() => {
+      prefetchTimerRef.current = null;
+      prefetchDetails();
+    }, 180);
+  };
+  const cancelScheduledPrefetch = () => {
+    if (!prefetchTimerRef.current) return;
+    clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = null;
+  };
+
+  useEffect(() => cancelScheduledPrefetch, []);
 
   // Cierra el menú "⋯" al hacer click fuera.
   useEffect(() => {
@@ -693,9 +1046,11 @@ function QuedadaCard({
   return (
     <div
       ref={cardRef}
-      className="card"
-      onMouseEnter={prefetchDetails}
-      onFocus={prefetchDetails}
+      className="card mp-rise"
+      onMouseEnter={schedulePrefetchDetails}
+      onMouseLeave={cancelScheduledPrefetch}
+      onFocus={schedulePrefetchDetails}
+      onBlur={cancelScheduledPrefetch}
       style={{
         padding: 0,
         height: "100%",
@@ -704,6 +1059,7 @@ function QuedadaCard({
         flexDirection: "column",
         overflow: "hidden",
         opacity: cancelled ? 0.78 : 1,
+        animationDelay: `${riseDelay}ms`,
       }}
     >
       {cancelled && q.iAmCreator && (
@@ -752,6 +1108,8 @@ function QuedadaCard({
             <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
           ) : finished ? (
             <Chip bg="var(--muted)" color="var(--muted-fg)">Finalizada</Chip>
+          ) : q.status === "live" ? (
+            <Chip bg="#fef3c7" color="#92400e">● En curso</Chip>
           ) : q.visibility === "private" ? (
             <Chip bg="#1f2937" color="#fff">Privada</Chip>
           ) : (
@@ -937,6 +1295,8 @@ function QuedadaCard({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
             transition: "background 150ms var(--ease-out)",
           }}
         >
@@ -951,14 +1311,15 @@ function QuedadaCard({
               bottom: "100%",
               right: 12,
               marginBottom: 6,
-              minWidth: 200,
+              width: 240,
               background: "#fff",
               border: "1px solid var(--border)",
               borderRadius: 12,
-              padding: 6,
-              boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+              overflow: "hidden",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
               zIndex: 50,
               transformOrigin: "bottom right",
+              fontSize: 12,
             }}
           >
             {q.iAmCreator && !cancelled && !finished && (
@@ -1027,16 +1388,20 @@ function QKebabItem({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 10px",
+        padding: "9px 14px",
         background: "transparent",
         border: 0,
-        borderRadius: 8,
         cursor: "pointer",
-        fontSize: 12.5,
-        fontWeight: 700,
+        fontSize: 12,
         color,
         textAlign: "left",
         fontFamily: "inherit",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--muted)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
       }}
     >
       <Icon name={icon} size={14} color={color} />
@@ -1045,7 +1410,7 @@ function QKebabItem({
   );
 }
 
-function Row({ icon, children }: { icon: string; children: React.ReactNode }) {
+function Row({ icon, children }: { icon: string; children: ReactNode }) {
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
       <span style={{ flexShrink: 0 }}>
@@ -1124,7 +1489,14 @@ function calHour(iso: string | null): string {
 // ── Modal de detalles (preview desde la tarjeta) ─────────────────────────────
 type DetailParticipant = { userId: string; name: string; mpr: number | null; teamTag: string | null; categoryIds: string[] };
 type QuedadaDetailData = {
-  quedada: { creator_id: string; perks_text: string | null; prizes: Prize[] | null; rules: QuedadaRule[] | null };
+  quedada: {
+    creator_id: string;
+    format: string;
+    match_mode: "singles" | "doubles";
+    perks_text: string | null;
+    prizes: Prize[] | null;
+    rules: QuedadaRule[] | null;
+  };
   meUserId: string;
   joinedCount: number;
   categories: { id: string; name: string; maxSlots: number | null; taken: number }[];
@@ -1334,7 +1706,7 @@ function QuedadaDetailsModal({
             </div>
             <h2 className="font-heading" style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.title}</h2>
           </div>
-          <button onClick={close} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }} aria-label="Cerrar">
+          <button onClick={close} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }} aria-label="Cerrar">
             <Icon name="x" size={18} color="var(--muted-fg)" />
           </button>
         </div>
@@ -1345,6 +1717,8 @@ function QuedadaDetailsModal({
             <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
           ) : finished ? (
             <Chip bg="var(--muted)" color="var(--muted-fg)">Finalizada</Chip>
+          ) : q.status === "live" ? (
+            <Chip bg="#fef3c7" color="#92400e">● En curso</Chip>
           ) : q.visibility === "private" ? (
             <Chip bg="#1f2937" color="#fff">Privada</Chip>
           ) : (
@@ -1550,6 +1924,7 @@ function JoinPickerModal({
   }, [q.id, initialData]);
 
   const categories = data?.categories ?? [];
+  const individualRoster = rosterModeFor(q.format, q.matchMode) === "individual";
 
   return (
     <ModalShell title="Inscribirme" icon="user-plus" onClose={onClose} maxWidth={440}>
@@ -1565,8 +1940,14 @@ function JoinPickerModal({
         </p>
 
         {loading ? (
-          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando categorías…</div>
-        ) : categories.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Cargando detalles…</div>
+        ) : categories.length === 0 || !individualRoster ? (
+          <>
+            {!individualRoster && categories.length > 0 && (
+              <div style={{ fontSize: 12, color: "var(--muted-fg)", background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", lineHeight: 1.45 }}>
+                El organizador armará tu pareja y categoría desde el roster. Tu inscripción queda reservada en la quedada.
+              </div>
+            )}
           <button
             className="btn btn-primary"
             onClick={() => onPick()}
@@ -1575,6 +1956,7 @@ function JoinPickerModal({
           >
             <Icon name="plus" size={13} color="#fff" /> Confirmar inscripción
           </button>
+          </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div className="label-mp">Elige tu categoría</div>
@@ -1633,9 +2015,24 @@ function ModalShell({
   title: string;
   icon: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
   maxWidth?: number;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   if (typeof document === "undefined") return null;
   return createPortal(
     <div
@@ -1657,9 +2054,12 @@ function ModalShell({
       <style>{`@keyframes mp-q2-fade{from{opacity:0}to{opacity:1}}
         @keyframes mp-q2-pop{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}`}</style>
       <div
+        ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         className="card"
         style={{
           width: "100%",
@@ -1696,7 +2096,7 @@ function ModalShell({
           <button
             onClick={onClose}
             className="btn"
-            style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }}
+            style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
             aria-label="Cerrar"
           >
             <Icon name="x" size={18} />

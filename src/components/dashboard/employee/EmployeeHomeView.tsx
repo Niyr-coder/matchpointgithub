@@ -1,21 +1,15 @@
 // Client view del EmployeeHome — layout 1:1 del mock.
 "use client";
-import { useState } from "react";
+import { useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RHPanel, RHWelcome } from "../widgets/RH";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-
-export type CheckinStatus = "on-time" | "arriving" | "class";
-export type CheckinRow = {
-  id: string;
-  t: string;
-  n: string;
-  c: string;
-  d: string;
-  sport: string;
-  code: string;
-  st: CheckinStatus;
-};
+import { useToast } from "../ToastProvider";
+import { recordCheckIn } from "@/server/actions/walkins";
+import type { ReceptionQueueItem } from "@/server/queries/reception-queue";
+import type { CourtOccupancySnapshot } from "@/server/queries/court-occupancy";
 export type CashTileData = {
   l: string;
   v: string;
@@ -27,25 +21,37 @@ export type EmployeeHomeData = {
   clubId: string | null;
   clubName: string;
   userName: string | null;
-  nextCheckins: CheckinRow[];
+  nextCheckins: ReceptionQueueItem[];
   cash: CashTileData[];
   checkinsAttended: number;
   walkinsHandled: number;
   cashTotalLabel: string;
+  openTickets: number;
+  shiftStartedLabel: string | null;
+  pendingCheckins: number;
+  courts: CourtOccupancySnapshot | null;
 };
 
-const ST_LABEL: Record<CheckinStatus, string> = {
+const COURT_DOT: Record<string, string> = {
+  free: "var(--primary)",
+  busy: "#f59e0b",
+  class: "#7c3aed",
+};
+
+const ST_LABEL: Record<ReceptionQueueItem["st"], string> = {
   "on-time": "A TIEMPO",
   arriving: "LLEGANDO",
-  class: "CLASE",
+  walkin: "WALK-IN",
 };
 
 const QUICK = [
-  { i: "user-plus", l: "Walk-in nuevo", sub: "Cliente sin reserva" },
-  { i: "phone", l: "Llamar coach", sub: "—" },
-  { i: "alert-triangle", l: "Reportar incidente", sub: "Cancha o cliente" },
-  { i: "shopping-bag", l: "Vender pro shop", sub: "Paletas · pelotas" },
-];
+  { i: "user-plus", l: "Walk-in nuevo", sub: "Cola de recepción", href: "/dashboard/employee/e-walkins" },
+  { i: "calendar", l: "Calendario hoy", sub: "Hora a hora · 8 canchas", href: "/dashboard/employee/e-calendario" },
+  { i: "square", l: "Canchas en vivo", sub: "Disponibilidad ahora", href: "/dashboard/employee/e-walkins" },
+  { i: "user-check", l: "Check-in completo", sub: "Cola y QR", href: "/dashboard/employee/e-checkin" },
+  { i: "alert-triangle", l: "Soporte", sub: "Tickets del club", href: "/dashboard/employee/e-soporte" },
+  { i: "shopping-bag", l: "Vender pro shop", sub: "POS del club", href: "/dashboard/employee/e-shop" },
+] as const;
 
 const PLACEHOLDER_CHECKINS = 4;
 
@@ -107,6 +113,10 @@ function CheckinPlaceholderRow({ first }: { first: boolean }) {
 }
 
 export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
+  const toast = useToast();
+  const router = useRouter();
+  const [checkinPending, startCheckin] = useTransition();
+
   useRealtimeRefresh(
     data.clubId
       ? [
@@ -114,19 +124,39 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
           { table: "check_ins", filter: `club_id=eq.${data.clubId}` },
           { table: "walkins", filter: `club_id=eq.${data.clubId}` },
           { table: "transactions", filter: `club_id=eq.${data.clubId}` },
+          { table: "tickets", filter: `club_id=eq.${data.clubId}` },
         ]
       : [],
-    { enabled: !!data.clubId },
+    { enabled: !!data.clubId, debounceMs: 400 },
   );
 
-  const [clockedIn, setClockedIn] = useState(true);
+  const handleCheckIn = (reservationId: string) => {
+    if (!data.clubId) return;
+    startCheckin(async () => {
+      const res = await recordCheckIn({
+        clubId: data.clubId!,
+        reservationId,
+        method: "manual",
+      });
+      if (res.ok) {
+        toast({
+          icon: "check",
+          title: "Check-in registrado",
+          sub: "La reserva pasó a «En cancha» y salió de la cola",
+        });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo registrar", sub: res.error.message });
+      }
+    });
+  };
+
   const hasCheckins = data.nextCheckins.length > 0;
 
   return (
     <>
       <RHWelcome role="employee" userName={data.userName} />
 
-      {/* Shift card — sin tracking real de jornada laboral; horas en — */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div
           style={{
@@ -138,11 +168,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
           }}
         >
           <div>
-            <div
-              className="label-mp"
-              style={{ color: clockedIn ? "var(--primary)" : "var(--muted-fg)" }}
-            >
-              ● {clockedIn ? "En turno" : "Fuera"}
+            <div className="label-mp" style={{ color: "var(--primary)" }}>
+              ● En turno
             </div>
             <div
               className="font-heading"
@@ -154,10 +181,10 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                 marginTop: 4,
               }}
             >
-              Turno<span className="dot">.</span>
+              {data.clubName}<span className="dot">.</span>
             </div>
             <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>
-              — — sin tracking aún
+              {data.shiftStartedLabel ?? "Aún sin check-ins tuyos hoy"}
             </div>
           </div>
           <div style={{ textAlign: "center" }}>
@@ -167,10 +194,10 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                 fontSize: 38,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
-                color: "var(--muted-fg)",
+                color: "var(--primary)",
               }}
             >
-              —
+              {data.pendingCheckins}
             </div>
             <div
               style={{
@@ -181,7 +208,7 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                 textTransform: "uppercase",
               }}
             >
-              Tiempo trabajado
+              Check-ins pendientes
             </div>
           </div>
           <div
@@ -192,20 +219,17 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
               alignItems: "flex-end",
             }}
           >
-            <button
-              onClick={() => setClockedIn((c) => !c)}
-              className={"btn " + (clockedIn ? "" : "btn-primary")}
-              style={clockedIn ? { background: "#0a0a0a", color: "#fff" } : undefined}
-            >
-              <Icon name={clockedIn ? "log-out" : "log-in"} size={12} color="#fff" />
-              {clockedIn ? "Marcar salida" : "Marcar entrada"}
-            </button>
-            <button
+            <Link href="/dashboard/employee/e-checkin" className="btn btn-primary">
+              <Icon name="qr-code" size={12} color="#fff" />
+              Ir a check-in
+            </Link>
+            <Link
+              href="/dashboard/employee/e-calendario"
               className="btn"
               style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5 }}
             >
-              Tomar break · 15min
-            </button>
+              Calendario hoy
+            </Link>
           </div>
         </div>
         <div
@@ -227,7 +251,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
             · <b style={{ color: "#0a0a0a" }}>{data.cashTotalLabel}</b> caja
           </span>
           <span>
-            · <b style={{ color: "#0a0a0a" }}>0</b> incidentes
+            · <b style={{ color: data.openTickets > 0 ? "#dc2626" : "#0a0a0a" }}>{data.openTickets}</b>{" "}
+            tickets abiertos
           </span>
         </div>
       </div>
@@ -236,14 +261,14 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
         <RHPanel
           title="Próximos check-ins"
           action={
-            <button
+            <Link
+              href="/dashboard/employee/e-checkin"
               className="btn btn-primary"
-              style={{ fontSize: 10.5, opacity: hasCheckins ? 1 : 0.5 }}
-              disabled={!hasCheckins}
+              style={{ fontSize: 10.5, opacity: hasCheckins ? 1 : 0.5, pointerEvents: hasCheckins ? "auto" : "none" }}
             >
               <Icon name="qr-code" size={12} color="#fff" />
-              Escanear QR
-            </button>
+              Ver cola
+            </Link>
           }
         >
           {hasCheckins
@@ -293,16 +318,22 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                       background:
                         r.st === "arriving"
                           ? "#fbbf24"
-                          : r.st === "class"
-                          ? "#7c3aed"
-                          : "var(--muted)",
+                          : r.st === "walkin"
+                            ? "#dc2626"
+                            : "var(--muted)",
                       color:
-                        r.st === "arriving" || r.st === "class" ? "#fff" : "var(--muted-fg)",
+                        r.st === "arriving" || r.st === "walkin" ? "#fff" : "var(--muted-fg)",
                     }}
                   >
                     {ST_LABEL[r.st]}
                   </span>
-                  <button className="btn btn-primary" style={{ fontSize: 10, padding: "5px 11px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: 10, padding: "5px 11px" }}
+                    disabled={checkinPending}
+                    onClick={() => handleCheckIn(r.id)}
+                  >
                     Check-in
                   </button>
                 </div>
@@ -313,6 +344,65 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
         </RHPanel>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {data.courts && data.courts.total > 0 ? (
+            <RHPanel
+              title={`Canchas · ${data.courts.free} de ${data.courts.total} libres`}
+              action={
+                <Link
+                  href="/dashboard/employee/e-walkins"
+                  className="btn"
+                  style={{ fontSize: 10, padding: "5px 10px", background: "#fff", border: "1px solid var(--border)" }}
+                >
+                  Detalle
+                </Link>
+              }
+            >
+              <p style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.4, margin: "0 0 10px" }}>
+                {data.courts.answerLine}
+              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                  maxHeight: 200,
+                  overflowY: "auto",
+                }}
+              >
+                {data.courts.courts.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: c.status === "free" ? "#ecfdf5" : "var(--muted)",
+                      border: "1px solid var(--border)",
+                      fontSize: 10.5,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: COURT_DOT[c.status],
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.n}
+                      </span>
+                    </div>
+                    <div style={{ color: "var(--muted-fg)", marginTop: 3, fontSize: 9.5 }}>
+                      {c.sport}
+                      {c.status !== "free" ? ` · hasta ${c.until}` : " · libre"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </RHPanel>
+          ) : null}
           <RHPanel title="Caja · ahora">
             <div
               style={{
@@ -353,19 +443,21 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                 </div>
               ))}
             </div>
-            <button
+            <Link
+              href="/dashboard/employee/e-caja"
               className="btn btn-primary"
               style={{ width: "100%", justifyContent: "center" }}
             >
               <Icon name="banknote" size={12} color="#fff" />
               Nuevo cobro
-            </button>
+            </Link>
           </RHPanel>
           <RHPanel title="Quick actions">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {QUICK.map((a) => (
-                <button
+                <Link
                   key={a.l}
+                  href={a.href}
                   style={{
                     display: "flex",
                     gap: 9,
@@ -377,6 +469,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                     cursor: "pointer",
                     textAlign: "left",
                     fontFamily: "inherit",
+                    textDecoration: "none",
+                    color: "inherit",
                   }}
                 >
                   <Icon name={a.i} size={13} color="var(--primary)" />
@@ -385,7 +479,7 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                     <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>{a.sub}</div>
                   </div>
                   <Icon name="chevron-right" size={12} color="var(--muted-fg)" />
-                </button>
+                </Link>
               ))}
             </div>
           </RHPanel>

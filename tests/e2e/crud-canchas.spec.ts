@@ -29,7 +29,7 @@ test.describe.serial("MAT-8 CRUD canchas (owner)", () => {
 
   test("flujo 1 · crea cancha con tarifas diurna+nocturna", async ({ page }) => {
     await signInAsOwner(page);
-    await page.getByRole("button", { name: /Gestión/ }).click();
+    await page.getByRole("button", { name: "Gestión", exact: true }).click();
 
     // Abrir AddCourt modal.
     await page.getByRole("button", { name: /Agregar cancha/ }).click();
@@ -75,11 +75,23 @@ test.describe.serial("MAT-8 CRUD canchas (owner)", () => {
     expect(court.data, "court row debe existir").not.toBeNull();
     expect(court.data?.active).toBe(true);
 
+    await expect
+      .poll(
+        async () => {
+          const pricing = await sb
+            .from("court_pricing")
+            .select("*")
+            .eq("court_id", court.data!.id);
+          return pricing.data?.length ?? 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThanOrEqual(2);
+
     const pricing = await sb
       .from("court_pricing")
       .select("*")
       .eq("court_id", court.data!.id);
-    expect(pricing.data?.length ?? 0).toBeGreaterThanOrEqual(2);
 
     // Evidencia.
     await page.screenshot({
@@ -146,7 +158,7 @@ test.describe.serial("MAT-8 CRUD canchas (owner)", () => {
 
   test("flujo 3 · bloquea una cancha activa desde Gestión", async ({ page }) => {
     await signInAsOwner(page);
-    await page.getByRole("button", { name: /Gestión/ }).click();
+    await page.getByRole("button", { name: "Gestión", exact: true }).click();
 
     // Localizar la card de la cancha inicial y disparar "Bloquear".
     const card = page

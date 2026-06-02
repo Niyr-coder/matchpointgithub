@@ -9,8 +9,8 @@
 //     payload: { signupAt: new Date().toISOString() },
 //   });
 //
-// Falla silenciosa: si el RPC retorna null (killswitch off) o tira error,
-// loggear y seguir — los welcomes NO deben romper el flow principal.
+// Falla silenciosa: si el RPC retorna null (killswitch off) o lanza error,
+// registrar y seguir: los mensajes de bienvenida no deben romper el flujo principal.
 import "server-only";
 
 import { getServerClient } from "@/lib/db/client.server";
@@ -59,7 +59,7 @@ export async function sendSystemMessage({
   }
 }
 
-// Templates de bienvenida. Hoy hardcoded; en una iteración futura
+// Templates de bienvenida. Hoy fijos; en una iteración futura
 // (placeholder en 04-placeholders.md) se moverán a platform_config para
 // editar sin redeploy.
 type TemplateVars = Record<string, string | number>;
@@ -70,21 +70,21 @@ function applyVars(template: string, vars: TemplateVars): string {
 
 export const WELCOME_TEMPLATES = {
   welcome_signup:
-    "¡Hola {firstName}! Bienvenido a MATCHPOINT, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Si tienes dudas, escríbenos por aquí.",
+    "¡Hola {firstName}! Te damos la bienvenida a MATCHPOINT, la comunidad #1 de pickleball en Ecuador. Reserva canchas, juega torneos y sube tu MPR. Este canal es informativo; para soporte usa la sección Soporte.",
   welcome_team_created:
     'Felicidades {firstName}, creaste el team "{teamName}". Como capitán puedes invitar hasta {rosterMax} miembros y gestionar el roster. Activa MATCHPOINT+ para subir el cap a 24.',
   welcome_premium_activated:
-    "¡{firstName}, tu MATCHPOINT+ está activo hasta {expiresAt}! Disfrutá reservas ilimitadas, roster ampliado en teams y estadísticas avanzadas.",
+    "¡{firstName}, tu MATCHPOINT+ está activo hasta {expiresAt}! Disfruta reservas ilimitadas, roster ampliado en teams y estadísticas avanzadas.",
   welcome_onboarding_completed:
     "Ya completaste tu perfil, {firstName}. Te recomendamos empezar explorando los clubes cerca de {city}. ¡Buen juego!",
   cosmetic_bundle_granted:
-    "¡{firstName}! Acabamos de desbloquear el {bundleLabel} en tu cuenta. Ya puedes elegir sus presets desde Mi cuenta → Personalizar.",
+    "¡{firstName}! Acabamos de registrar el {bundleLabel} en tu cuenta. Nuestro equipo te avisará cuando esa experiencia vuelva a estar disponible.",
   quedada_payment_reminder:
     'Hola {firstName}, te recordamos completar el pago de la quedada "{quedadaTitle}"{amountClause}. {paymentClause}¡Nos vemos en cancha!',
   plan_subscription_rejected:
-    "Hola {firstName}, tu solicitud de MATCHPOINT+ ({tier}) no fue aprobada. Motivo: {reason}. Podés subir un nuevo comprobante desde Mi plan cuando quieras.",
+    "Hola {firstName}, tu solicitud de MATCHPOINT+ ({tier}) no fue aprobada. Motivo: {reason}. Puedes subir un nuevo comprobante desde Mi plan cuando quieras.",
   club_featuring_rejected:
-    "Hola, la solicitud de featuring para {clubName} no fue aprobada. Motivo: {reason}. Podés volver a solicitarlo desde el panel del club.",
+    "Hola, la solicitud de featuring para {clubName} no fue aprobada. Motivo: {reason}. Puedes volver a solicitarlo desde el panel del club.",
 } as const satisfies Record<SystemMessageKind, string>;
 
 export function renderTemplate(kind: SystemMessageKind, vars: TemplateVars): string {

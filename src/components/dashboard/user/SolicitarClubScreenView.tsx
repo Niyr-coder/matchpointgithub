@@ -566,10 +566,15 @@ function Stepper({ step }: { step: StepKey }) {
                   background: done ? "var(--primary)" : active ? "#0a0a0a" : "#fff",
                   color: done || active ? "#fff" : "var(--muted-fg)",
                   border: active
-                    ? "3px solid #fbbf24"
+                    ? "1px solid rgba(16,185,129,0.42)"
                     : done
                       ? 0
                       : "1.5px solid var(--border)",
+                  boxShadow: active
+                    ? "0 0 0 5px rgba(16,185,129,0.12), 0 8px 18px rgba(10,10,10,0.18)"
+                    : done
+                      ? "0 6px 14px rgba(16,185,129,0.18)"
+                      : "none",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -695,7 +700,7 @@ function Frame({
       </div>
 
       {/* Rail derecho sticky: estado + preview consolidados */}
-      <aside style={{ position: "sticky", top: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+      <aside style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="card" style={{ padding: 14 }}>
           <div className="label-mp" style={{ marginBottom: 4 }}>
             Estado
@@ -1031,7 +1036,19 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             }}
           >
             Esto es lo que aparece en el hero de tu tarjeta en{" "}
-            <code style={{ background: "var(--muted)", padding: "1px 5px", borderRadius: 4, fontSize: 11 }}>/clubes</code>:
+            <Link
+              href="/clubes"
+              target="_blank"
+              style={{
+                color: "var(--primary)",
+                fontWeight: 800,
+                textDecoration: "none",
+                borderBottom: "1px solid rgba(16,185,129,0.35)",
+              }}
+            >
+              Clubes
+            </Link>
+            :
             nombre, deportes y una descripción corta.
           </p>
           <Field label="Nombre del club" required hint="Es el título grande del card">
@@ -1112,9 +1129,9 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 aspectRatio: "16/9",
                 background: draft.coverPhoto?.previewUrl
                   ? `center/cover no-repeat url("${draft.coverPhoto.previewUrl}")`
-                  : `linear-gradient(135deg, #064e3b 0%, #047857 60%, ${draft.accentColor} 100%)`,
+                  : "linear-gradient(135deg, #052e26 0%, #064e3b 52%, #0f766e 100%)",
                 borderRadius: 12,
-                border: "2px dashed rgba(255,255,255,0.4)",
+                border: draft.coverPhoto?.previewUrl ? "1px solid var(--border)" : "1px solid #99f6e4",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1122,10 +1139,24 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 position: "relative",
                 cursor: coverBusy ? "wait" : "pointer",
                 overflow: "hidden",
+                boxShadow: draft.coverPhoto?.previewUrl
+                  ? "none"
+                  : "inset 0 0 0 1px rgba(255,255,255,0.14), inset 0 -44px 80px rgba(16,185,129,0.18)",
               }}
             >
               {!draft.coverPhoto?.previewUrl && (
-                <div style={{ textAlign: "center" }}>
+                <>
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      inset: 10,
+                      borderRadius: 9,
+                      border: "1px dashed rgba(255,255,255,0.28)",
+                      background: "radial-gradient(circle at 72% 22%, rgba(52,211,153,0.22), transparent 46%)",
+                    }}
+                  />
+                  <div style={{ textAlign: "center", position: "relative" }}>
                   <Icon name="image-plus" size={32} color="#fff" />
                   <div
                     style={{
@@ -1142,6 +1173,7 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                     JPG, PNG o WEBP · máx 8 MB
                   </div>
                 </div>
+                </>
               )}
               {draft.coverPhoto?.previewUrl && !coverBusy && (
                 <div

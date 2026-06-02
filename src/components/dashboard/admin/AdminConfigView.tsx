@@ -67,7 +67,7 @@ const INITIAL: Record<string, Setting[]> = {
     { k: "multisport_enabled", l: "Multideporte", v: "—", type: "toggle", audit: "—", critical: true, hint: "Off = solo Pickleball en toda la plataforma. On = Pickleball + Pádel + Tenis.", cfg: { key: "multisport_enabled", kind: "boolean" } },
   ],
   mpplus: [
-    { k: "monthly_price", l: "Plan mensual", v: "$5.00 / mes", type: "text", audit: "PREMIUM_PRICE_CENTS_PER_MONTH (código)", mono: true },
+    { k: "monthly_price", l: "Plan mensual", v: "USD 6.99 / mes", type: "text", audit: "PREMIUM_PRICE_CENTS_PER_MONTH (código)", mono: true },
     { k: "duration", l: "Duración por compra", v: "1–12 meses", type: "text", audit: "sin recurrencia automática", mono: true },
   ],
   comunidad: [

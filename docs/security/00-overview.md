@@ -56,7 +56,7 @@ No hace:
 | Helper | Archivo | Propósito |
 |---|---|---|
 | `getSession()` | `src/lib/auth/session.ts` | Resolver session + roles del cookie/Supabase |
-| `requireUserId()` | `tournaments.ts`, `payment-proofs.ts` | Tira si no auth, devuelve uid |
+| `requireUserId()` | `src/lib/auth/session.ts` | Tira si no auth, devuelve uid vía `getClaims()` + fallback `getUser()` |
 | `requireAdminUserId()` | varios | Tira si no admin activo |
 | `requirePartnerAdmin(partnerId)` | `tournaments.ts` | Tira si no es owner/admin del partner_org |
 | `requireTournamentEditor(tournamentId)` | `tournaments.ts` | Admin global o partner_admin del torneo |
@@ -139,6 +139,10 @@ Dos puertas para mutar:
    const uid = await requireUserId();    // o requireAdminUserId(), etc.
    // ahora puedes mutar.
    ```
+   Para actions simples que solo necesitan `user.id`, importa
+   `requireUserId()` desde `src/lib/auth/session.ts`. No uses este fast-path
+   en proxy, recovery, password reset ni flujos sensibles que necesitan
+   verificación fresca contra Auth.
 
 2. **Service role solo después de auth**:
    ```ts
@@ -154,10 +158,19 @@ Dos puertas para mutar:
 4. **`NEXT_PUBLIC_*` solo para valores públicos** — URL de Supabase, anon
    key, public site URL. NUNCA service role, SMTP password, etc.
 
-5. **Cuando agregués una tabla**, definir RLS desde el día 1. Sin RLS, la
+5. **Cuando agregues una tabla**, definir RLS desde el día 1. Sin RLS, la
    tabla es leíble por cualquier autenticado.
 
-6. **Patrones de error**:
+6. **Contexto DB activo (`app.active_role` / `app.active_club_id`)**:
+   Supabase JS/PostgREST no ofrece hoy un `SET LOCAL` seguro que aplique a
+   todas las queries posteriores del cliente. No llames `set_config(...,
+   false)` desde app code para esto porque puede filtrarse entre requests con
+   pooling. Si una policy necesita ese contexto, envuelve la operación en una
+   RPC específica que reciba `active_role` / `active_club_id` y ejecute
+   `set_config(..., true)` dentro de la misma transacción, o cambia la policy
+   para derivar el scope desde tablas.
+
+7. **Patrones de error**:
    - `MpError` para errores de negocio (404, 409, 422) — visible al user.
    - `AuthError` para auth/autz fallida.
    - `Error` genérico para bugs internos — log + mensaje genérico al user.

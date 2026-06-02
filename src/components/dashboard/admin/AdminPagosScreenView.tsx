@@ -6,7 +6,8 @@ import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
-import { processPendingPayouts } from "@/server/actions/payouts";
+import { markPayoutPaid, processPendingPayouts } from "@/server/actions/payouts";
+import { markTransactionRefundedAdmin } from "@/server/actions/admin-refunds";
 import {
   approvePaymentProofAdmin,
   rejectPaymentProofAdmin,
@@ -16,11 +17,15 @@ export type TxKind = "payout" | "reserve" | "refund" | "event" | "shop";
 export type TxStatus = "completed" | "pending" | "failed";
 export type TxRow = {
   id: string;
+  transactionId: string;
   who: string;
   kind: TxKind;
   amt: string;
+  amountCents: number;
+  currency: string | null;
   when: string;
   st: TxStatus;
+  rawStatus: string;
 };
 export type PendingProofView = {
   transactionId: string;
@@ -33,14 +38,23 @@ export type PendingProofView = {
   proofUrl: string | null;
   proofSubmittedAt: string | null;
 };
+export type PendingPayoutView = {
+  id: string;
+  label: string;
+  amountCents: number;
+  currency: string | null;
+  status: string;
+};
 
 export type PagosData = {
   rows: TxRow[];
+  payouts: PendingPayoutView[];
   kpis: {
     gmvTodayCents: number;
     payoutsToProcessCents: number;
     payoutsClubCount: number;
     commissionTodayCents: number;
+    takeRatePct: number;
     refundsTodayCents: number;
     refundsCountToday: number;
   };
@@ -62,6 +76,10 @@ const ST_STYLES: Record<TxStatus, { c: string; l: string }> = {
 
 function fmtUSD(cents: number): string {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
+}
+
+function fmtPct(value: number): string {
+  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 }
 
 const PLACEHOLDER_COUNT = 4;
@@ -140,6 +158,8 @@ export function AdminPagosScreenView({
   const { confirm, ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();
   const [busyProofId, setBusyProofId] = useState<string | null>(null);
+  const [busyPayoutId, setBusyPayoutId] = useState<string | null>(null);
+  const [busyRefundId, setBusyRefundId] = useState<string | null>(null);
 
   const handleApproveProof = async (p: PendingProofView) => {
     const ok = await confirm({
@@ -185,24 +205,91 @@ export function AdminPagosScreenView({
 
   const handleProcessPayouts = async () => {
     const ok = await confirm({
-      title: "Procesar payouts",
-      body: "¿Procesar payouts pendientes para todos los clubes con transacciones del mes en curso?",
-      confirmLabel: "Procesar",
+      title: "Preparar payouts",
+      body: "¿Generar filas de payout para los clubes con transacciones del mes en curso? Esto NO transfiere dinero automáticamente; solo deja el seguimiento listo para marcar la transferencia manual.",
+      confirmLabel: "Preparar",
     });
     if (!ok) return;
     startTransition(async () => {
       const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const end = now.toISOString();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const end = now.toISOString().slice(0, 10);
       const res = await processPendingPayouts({ periodStart: start, periodEnd: end });
       if (res.ok)
         toast({
           icon: "check",
-          title: `Payouts procesados: ${res.data.created}`,
+          title: `Payouts preparados: ${res.data.created}`,
           sub: `Neto: $${Math.round(res.data.totalNetCents / 100).toLocaleString("en-US")}`,
         });
       else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
     });
+  };
+
+  const handleMarkPayoutPaid = async (p: PendingPayoutView) => {
+    const providerPayoutId = await ask({
+      title: "Marcar payout pagado",
+      label: "Referencia de transferencia",
+      placeholder: "Ej: transferencia Banco Pichincha #12345",
+      required: false,
+      confirmLabel: "Marcar pagado",
+    });
+    if (providerPayoutId == null) return;
+    setBusyPayoutId(p.id);
+    const res = await markPayoutPaid({
+      id: p.id,
+      providerPayoutId: providerPayoutId.trim() || undefined,
+    });
+    setBusyPayoutId(null);
+    if (res.ok) {
+      toast({ icon: "check", title: "Payout marcado como pagado", sub: p.label });
+    } else {
+      toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+    }
+  };
+
+  const handleMarkRefunded = async (t: TxRow) => {
+    const ok = await confirm({
+      title: "Marcar reembolsada",
+      body: `Registrar un reembolso manual para ${t.who} por ${fmtMoney(t.amountCents, t.currency)}. Esto NO transfiere dinero automáticamente ni cancela inscripciones ligadas; para eso usa el detalle del evento o torneo.`,
+      confirmLabel: "Continuar",
+      destructive: true,
+    });
+    if (!ok) return;
+    const reason = await ask({
+      title: "Motivo del reembolso",
+      label: "Motivo",
+      placeholder: "Ej: devolución aprobada por soporte.",
+      multiline: true,
+      required: true,
+      confirmLabel: "Continuar",
+      validate: (v) => (v.trim().length < 2 ? "Escribe un motivo." : null),
+    });
+    if (reason == null) return;
+    const reference = await ask({
+      title: "Referencia de devolución",
+      label: "Referencia bancaria o DeUna",
+      placeholder: "Opcional",
+      required: false,
+      confirmLabel: "Registrar reembolso",
+    });
+    if (reference == null) return;
+    setBusyRefundId(t.transactionId);
+    const res = await markTransactionRefundedAdmin({
+      transactionId: t.transactionId,
+      reason: reason.trim(),
+      refundReference: reference.trim() || undefined,
+      cancelRegistration: false,
+    });
+    setBusyRefundId(null);
+    if (res.ok) {
+      toast({
+        icon: "rotate-ccw",
+        title: "Reembolso registrado",
+        sub: "Recuerda completar la devolución fuera de la app.",
+      });
+    } else {
+      toast({ icon: "alert-triangle", title: "No se pudo reembolsar", sub: res.error.message });
+    }
   };
 
   const hasRows = data.rows.length > 0;
@@ -215,7 +302,7 @@ export function AdminPagosScreenView({
       "#fbbf24",
       data.kpis.payoutsClubCount > 0 ? `${data.kpis.payoutsClubCount} clubes` : "sin payouts modelados",
     ],
-    ["Comisión MP", fmtUSD(data.kpis.commissionTodayCents), "#0a0a0a", "10%"],
+    ["Comisión MP", fmtUSD(data.kpis.commissionTodayCents), "#0a0a0a", fmtPct(data.kpis.takeRatePct)],
     [
       "Reembolsos",
       fmtUSD(data.kpis.refundsTodayCents),
@@ -316,20 +403,41 @@ export function AdminPagosScreenView({
       k: "a",
       l: "",
       align: "right",
-      render: () => (
-        <button
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            background: "var(--muted)",
-            border: 0,
-            cursor: "pointer",
-          }}
-        >
-          <Icon name="external-link" size={12} />
-        </button>
-      ),
+      render: (t) =>
+        t.rawStatus === "captured" ? (
+          <button
+            className="btn"
+            onClick={() => handleMarkRefunded(t)}
+            disabled={busyRefundId === t.transactionId}
+            style={{
+              background: "#fff",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              padding: "6px 10px",
+              fontSize: 10.5,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Icon name="rotate-ccw" size={11} color="#b91c1c" />
+            {busyRefundId === t.transactionId ? "Marcando…" : "Reembolsar"}
+          </button>
+        ) : (
+          <button
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: "var(--muted)",
+              border: 0,
+              cursor: "not-allowed",
+              opacity: 0.55,
+            }}
+            title="Solo las transacciones capturadas se pueden marcar como reembolsadas"
+            disabled
+          >
+            <Icon name="external-link" size={12} />
+          </button>
+        ),
     },
   ];
 
@@ -350,7 +458,7 @@ export function AdminPagosScreenView({
             </button>
             <button className="btn btn-primary" onClick={handleProcessPayouts} disabled={isPending}>
               <Icon name="play" size={13} />
-              {isPending ? "Procesando…" : "Procesar payouts"}
+              {isPending ? "Preparando…" : "Preparar payouts"}
             </button>
           </div>
         }
@@ -360,6 +468,11 @@ export function AdminPagosScreenView({
         busyId={busyProofId}
         onApprove={handleApproveProof}
         onReject={handleRejectProof}
+      />
+      <PendingPayoutsSection
+        payouts={data.payouts}
+        busyId={busyPayoutId}
+        onMarkPaid={handleMarkPayoutPaid}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         {KPIS.map(([l, v, c, sub]) => (
@@ -580,6 +693,97 @@ function PendingProofsSection({
                     {isBusy ? "…" : "Aprobar"}
                   </button>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PendingPayoutsSection({
+  payouts,
+  busyId,
+  onMarkPaid,
+}: {
+  payouts: PendingPayoutView[];
+  busyId: string | null;
+  onMarkPaid: (p: PendingPayoutView) => void;
+}) {
+  return (
+    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div className="label-mp">Payouts pendientes</div>
+          <div
+            className="font-heading"
+            style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}
+          >
+            Transferencias manuales a clubes / partners
+          </div>
+        </div>
+        <RSPill bg={payouts.length > 0 ? "#fbbf24" : "var(--muted-fg)"}>
+          {payouts.length} pendiente{payouts.length === 1 ? "" : "s"}
+        </RSPill>
+      </div>
+
+      {payouts.length === 0 ? (
+        <div
+          style={{
+            padding: "18px 16px",
+            border: "1px dashed var(--border)",
+            borderRadius: 12,
+            textAlign: "center",
+            color: "var(--muted-fg)",
+            fontSize: 12,
+          }}
+        >
+          Sin payouts pendientes de marcar como pagados.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {payouts.map((p) => {
+            const busy = busyId === p.id;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto auto",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "10px 12px",
+                  border: RS_BORDER,
+                  borderRadius: 12,
+                  background: "#fff",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 850 }}>{p.label}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
+                    {p.status} · {p.id.slice(0, 8)}
+                  </div>
+                </div>
+                <div
+                  className="font-heading tabular"
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 900,
+                    color: "var(--primary)",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {fmtMoney(p.amountCents, p.currency)}
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => onMarkPaid(p)}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  {busy ? "Guardando…" : "Marcar pagado"}
+                </button>
               </div>
             );
           })}

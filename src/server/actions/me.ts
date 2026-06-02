@@ -7,14 +7,7 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
-
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
-}
+import { requireUserId } from "@/lib/auth/session";
 
 // ── completeOnboarding ─────────────────────────────────────────────────
 // Marca al user como onboarded. Si pasa city / preferredSport / skillLevel,

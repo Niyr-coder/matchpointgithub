@@ -8,6 +8,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -67,6 +68,12 @@ function mapApplication(row: Record<string, unknown>): ClubApplication {
   });
 }
 
+const STATUS_LABEL_ES: Partial<Record<ClubApplication["status"], string>> = {
+  docs_review: "revisión documental",
+  field_verification: "verificación en sitio",
+  final_review: "revisión final",
+};
+
 async function requireAdmin(): Promise<string> {
   const supabase = await getServerClient();
   const {
@@ -91,12 +98,14 @@ async function transitionStatus({
   from,
   to,
   extraPayload,
+  eventPayload,
   eventKind,
 }: {
   applicationId: string;
   from: ClubApplication["status"][];
   to: ClubApplication["status"];
   extraPayload?: Record<string, unknown>;
+  eventPayload?: Record<string, unknown>;
   eventKind:
     | "docs_review_started"
     | "field_scheduled"
@@ -130,7 +139,9 @@ async function transitionStatus({
   }
   if (to === "rejected") updates.rejected_at = new Date().toISOString();
 
-  const { data, error } = await supabase
+  const admin = getAdminClient();
+  await setAuditActor(admin, userId, "admin");
+  const { data, error } = await admin
     .from("club_applications")
     .update(updates as never)
     .eq("id", applicationId)
@@ -138,15 +149,28 @@ async function transitionStatus({
     .single();
   if (error) throw new MpError("CLUB_APP.UPDATE_FAILED", error.message, 500);
 
-  await supabase.from("club_application_events").insert({
+  await admin.from("club_application_events").insert({
     application_id: applicationId,
     kind: eventKind,
     actor_id: userId,
     actor_role: "admin",
-    payload: (extraPayload ?? {}) as never,
+    payload: (eventPayload ?? extraPayload ?? {}) as never,
   });
 
-  return mapApplication(data);
+  const application = mapApplication(data);
+  const statusLabel = STATUS_LABEL_ES[to];
+  if (statusLabel && eventKind !== "note_added") {
+    await notify({
+      userId: application.applicantId,
+      role: "user",
+      kind: "club_application_status",
+      title: "Tu solicitud cambió de estado",
+      body: `Tu solicitud de club pasó a ${statusLabel}.`,
+      payload: { applicationId, status: to },
+    });
+  }
+
+  return application;
 }
 
 // ── docs_review ─────────────────────────────────────────────────────────
@@ -178,7 +202,7 @@ export async function scheduleFieldVerification(
       applicationId,
       from: ["docs_review"],
       to: "field_verification",
-      extraPayload: { scheduled_at: scheduledAt, notes: notes ?? null },
+      eventPayload: { scheduled_at: scheduledAt, notes: notes ?? null },
       eventKind: "field_scheduled",
     }),
   );
@@ -208,7 +232,9 @@ export async function markFieldVerified(input: unknown): Promise<ActionResult<Cl
       );
     }
 
-    const { data, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
+    const { data, error } = await admin
       .from("club_applications")
       .update({
         location_verified_at: new Date().toISOString(),
@@ -219,7 +245,7 @@ export async function markFieldVerified(input: unknown): Promise<ActionResult<Cl
       .single();
     if (error) throw new MpError("CLUB_APP.UPDATE_FAILED", error.message, 500);
 
-    await supabase.from("club_application_events").insert({
+    await admin.from("club_application_events").insert({
       application_id: applicationId,
       kind: "field_completed",
       actor_id: userId,
@@ -253,6 +279,8 @@ export async function quickApproveApplication(
   return runAction(IdInput, input, async ({ applicationId }) => {
     const userId = await requireAdmin();
     const supabase = await getServerClient();
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
 
     const { data: current } = await supabase
       .from("club_applications")
@@ -267,12 +295,12 @@ export async function quickApproveApplication(
       eventKind: string,
       extra?: Record<string, unknown>,
     ) => {
-      const { error } = await supabase
+      const { error } = await admin
         .from("club_applications")
         .update({ status: toStatus, ...(extra ?? {}) } as never)
         .eq("id", applicationId);
       if (error) throw new MpError("CLUB_APP.UPDATE_FAILED", error.message, 500);
-      await supabase.from("club_application_events").insert({
+      await admin.from("club_application_events").insert({
         application_id: applicationId,
         kind: eventKind,
         actor_id: userId,
@@ -284,7 +312,7 @@ export async function quickApproveApplication(
     if (status === "submitted") await advance("docs_review", "docs_review_started");
     if (status === "docs_review") await advance("field_verification", "field_scheduled");
     if (status === "field_verification") {
-      await supabase
+      await admin
         .from("club_applications")
         .update({
           location_verified_at: new Date().toISOString(),
@@ -301,14 +329,14 @@ export async function quickApproveApplication(
       );
     }
 
-    const { data: clubIdRaw, error: matErr } = await supabase.rpc(
+    const { data: clubIdRaw, error: matErr } = await admin.rpc(
       "fn_materialize_club_from_application",
       { p_app_id: applicationId },
     );
     if (matErr) throw new MpError("CLUB_APP.APPROVE_FAILED", matErr.message, 500);
     const clubId = String(clubIdRaw);
 
-    const { data: app, error: getErr } = await supabase
+    const { data: app, error: getErr } = await admin
       .from("club_applications")
       .select("*")
       .eq("id", applicationId)
@@ -344,10 +372,11 @@ export async function approveApplication(
   input: unknown,
 ): Promise<ActionResult<{ application: ClubApplication; clubId: string }>> {
   return runAction(IdInput, input, async ({ applicationId }) => {
-    await requireAdmin();
-    const supabase = await getServerClient();
+    const userId = await requireAdmin();
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
 
-    const { data: clubIdRaw, error } = await supabase.rpc(
+    const { data: clubIdRaw, error } = await admin.rpc(
       "fn_materialize_club_from_application",
       { p_app_id: applicationId },
     );
@@ -364,7 +393,7 @@ export async function approveApplication(
     }
 
     const clubId = String(clubIdRaw);
-    const { data: app, error: getErr } = await supabase
+    const { data: app, error: getErr } = await admin
       .from("club_applications")
       .select("*")
       .eq("id", applicationId)
@@ -420,8 +449,9 @@ const NoteSchema = z.object({
 export async function addReviewerNote(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(NoteSchema, input, async ({ applicationId, note }) => {
     const userId = await requireAdmin();
-    const supabase = await getServerClient();
-    const { error } = await supabase.from("club_application_events").insert({
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
+    const { error } = await admin.from("club_application_events").insert({
       application_id: applicationId,
       kind: "note_added",
       actor_id: userId,
@@ -445,8 +475,9 @@ export async function approveApplicationDocument(
 ): Promise<ActionResult<{ id: string; status: "approved" }>> {
   return runAction(DocApproveSchema, input, async ({ documentId }) => {
     const userId = await requireAdmin();
-    const supabase = await getServerClient();
-    const { data, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
+    const { data, error } = await admin
       .from("club_application_documents")
       .update({
         status: "approved",
@@ -468,8 +499,9 @@ export async function rejectApplicationDocument(
 ): Promise<ActionResult<{ id: string; status: "rejected" }>> {
   return runAction(DocRejectSchema, input, async ({ documentId, reason }) => {
     const userId = await requireAdmin();
-    const supabase = await getServerClient();
-    const { data, error } = await supabase
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "admin");
+    const { data, error } = await admin
       .from("club_application_documents")
       .update({
         status: "rejected",

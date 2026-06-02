@@ -9,6 +9,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -90,7 +91,7 @@ export async function updateTournamentAdmin(
     UpdateTournamentAdminSchema,
     input,
     async ({ tournamentId, patch }) => {
-      await requireAdminUserId();
+      const adminUserId = await requireAdminUserId();
       const supabase = await getServerClient();
 
       const { data: existing, error: readErr } = await supabase
@@ -167,7 +168,9 @@ export async function updateTournamentAdmin(
         );
       }
 
-      const { data: updated, error: updErr } = await supabase
+      const admin = getAdminClient();
+      await setAuditActor(admin, adminUserId, "admin");
+      const { data: updated, error: updErr } = await admin
         .from("tournaments")
         .update(update as never)
         .eq("id", tournamentId)
@@ -183,7 +186,7 @@ export async function updateTournamentAdmin(
           after: (updated as Record<string, unknown>)[key] ?? null,
         };
       }
-      const { error: logErr } = await supabase.rpc("fn_admin_audit_log", {
+      const { error: logErr } = await admin.rpc("fn_admin_audit_log", {
         p_entity: "tournaments",
         p_entity_id: tournamentId,
         p_action: "tournament.admin_edit",
@@ -225,7 +228,7 @@ export async function updateTournamentAdmin(
             payload: payloadBase,
             status: "pending",
           }));
-          const { error: jobErr } = await supabase
+          const { error: jobErr } = await admin
             .from("notification_jobs")
             .insert(jobs as never);
           if (jobErr) {

@@ -6,7 +6,9 @@ import { ResetPasswordToast } from "@/components/dashboard/ResetPasswordToast";
 import { PromptModalProvider } from "@/components/dashboard/widgets/PromptModal";
 import { DashboardModals } from "@/components/dashboard/modals/DashboardModals";
 import { getSession } from "@/lib/auth/session";
+import { getProfileSummary } from "@/lib/auth/profile";
 import { getAdminClient } from "@/lib/db/client.admin";
+import { retarHeroWhoFromUser } from "@/lib/match/retar-hero-present";
 
 export const metadata = {
   title: "MATCHPOINT · Dashboard",
@@ -70,6 +72,12 @@ export default async function DashboardLayout({
     redirect("/login?next=/dashboard/user");
   }
   const currentUserId = session.session.userId;
+  const profile = await getProfileSummary(currentUserId);
+  const initialRetarYou = retarHeroWhoFromUser(
+    currentUserId,
+    profile.displayName,
+    profile.username,
+  );
   const state = await readOnboardedAtCached(currentUserId);
   if (state.profileExists && state.onboardedAt == null) {
     redirect("/onboarding");
@@ -84,7 +92,7 @@ export default async function DashboardLayout({
         {/* Bajamos el userId desde server al wrapper de modales para que
             CrearMatchModal / RetarModal puedan armar teamA con el creador
             sin necesidad de un fetch extra al abrir. */}
-        <DashboardModals currentUserId={currentUserId} />
+        <DashboardModals currentUserId={currentUserId} initialRetarYou={initialRetarYou} />
       </PromptModalProvider>
     </ToastProvider>
   );

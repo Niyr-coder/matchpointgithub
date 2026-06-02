@@ -27,6 +27,7 @@ import {
 import { PrizesEditor, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
 import { RulesEditor, ruleDraftsToRules, type RuleDraft } from "./quedada-fields/RulesEditor";
 import { SUMA_MIN, SUMA_MAX, sumaLabel } from "@/lib/quedadas/level";
+import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 
 type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
 type MatchMode = "singles" | "doubles";
@@ -56,12 +57,12 @@ export type QuedadaInitial = {
 };
 
 const FORMATS: { k: Format; label: string; sub: string }[] = [
-  { k: "americano", label: "Americano", sub: "Rotas compañero cada ronda" },
-  { k: "mexicano", label: "Mexicano", sub: "Emparejas por nivel" },
-  { k: "round_robin", label: "Round Robin", sub: "Todos contra todos" },
-  { k: "kotc", label: "Rey de Cancha", sub: "El que gana se queda" },
-  { k: "canguil", label: "Canguil", sub: "Pozo / rotación libre" },
-  { k: "libre", label: "Libre", sub: "Sin formato fijo" },
+  { k: "americano", label: "Americano", sub: "Motor de rotación individual" },
+  { k: "mexicano", label: "Mexicano", sub: "Motor por ranking actual" },
+  { k: "round_robin", label: "Round Robin", sub: "Motor todos contra todos" },
+  { k: "kotc", label: "Rey de Cancha", sub: "Motor por niveles de cancha" },
+  { k: "canguil", label: "Canguil", sub: "Motor social aleatorio" },
+  { k: "libre", label: "Libre", sub: "Partidos manuales" },
 ];
 
 const STEPS = ["Básicos y categorías", "Cuota y canchas", "Pago y premios"];
@@ -120,9 +121,9 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     return Math.round(c * h * p * 100);
   }, [courts, hours, courtPriceUsd]);
 
-  // El cupo es POR CATEGORÍA. En americano cada cupo = 1 jugador (el compañero
-  // rota); en parejas fijas cada cupo = 2 (dobles) o 1 (singles).
-  const individualRoster = format === "americano" || matchMode === "singles";
+  // El cupo es POR CATEGORÍA. El engine decide si cada cupo representa jugador
+  // individual o pareja fija.
+  const individualRoster = rosterModeFor(format, matchMode) === "individual";
   const splitHint = useMemo(() => {
     const perSlot = individualRoster ? 1 : 2;
     const players = categories.reduce((sum, c) => sum + (parseInt(c.slots || "0", 10) || 0) * perSlot, 0);
@@ -366,7 +367,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)" }} aria-label="Cerrar">
+          <button onClick={onClose} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }} aria-label="Cerrar">
             <Icon name="x" size={18} />
           </button>
         </div>
@@ -415,6 +416,9 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                 <textarea value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} placeholder="Cuéntale a la gente de qué va…" style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
               </Field>
               <Field label="Formato">
+                <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginBottom: 8 }}>
+                  Todos los formatos tienen vista de partidos, roster, pagos y tabla; cambia solo la mecánica del motor.
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px,1fr))", gap: 8 }}>
                   {FORMATS.map((f) => {
                     const on = format === f.k;
