@@ -400,7 +400,7 @@ export function MensajesScreenView({
     if (cached && cached.messages.length > 0) return;
     void fetchConversationMessagesClient(convId).then((res) => {
       if (!res.ok) return;
-      writeThreadCache(convId, { messages: res.messages.map(threadToLite) });
+      writeThreadCache(convId, { messages: res.messages.map((m) => threadToLite(m)) });
     });
   };
 
@@ -519,7 +519,7 @@ export function MensajesScreenView({
         });
         return;
       }
-      const msgs = res.messages.map(threadToLite);
+      const msgs = res.messages.map((m) => threadToLite(m));
       setMessages((prev) => {
         const merged = mergeThreadWithPending(msgs, prev);
         writeThreadCache(convId, { messages: merged });

@@ -66,6 +66,7 @@ export async function loadProfileFor(
       ratingSnapshotsByMode: { singles: [], doubles: [] },
       coachShotInsights: [],
       matchHistory: [],
+      analyticsUpdatedAt: null,
       badges: [],
       country: null,
       friendsPreview: null,

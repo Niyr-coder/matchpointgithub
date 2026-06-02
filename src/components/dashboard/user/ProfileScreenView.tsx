@@ -19,7 +19,7 @@ import { defaultShowcasePins, type ShowcasePins } from "@/lib/profile/showcase-p
 /** Rehabilitar cuando el showcase tenga persistencia en BD y copy final. */
 const PROFILE_SHOWCASE_ENABLED = false;
 
-export type {
+import type {
   ProfileClub,
   ProfileMatch,
   ModeRating,
@@ -31,6 +31,19 @@ export type {
   ProfileData,
   EditableProfile,
 } from "./profile-types";
+
+export type {
+  ProfileClub,
+  ProfileMatch,
+  ModeRating,
+  RatingSnapshotPoint,
+  CoachShotInsight,
+  ProfileUpcomingItem,
+  ProfileFriendPreviewMember,
+  ProfileFriendPreview,
+  ProfileData,
+  EditableProfile,
+};
 
 type Mode = "mine" | "public";
 type FriendState = "none" | "pending" | "friends";
