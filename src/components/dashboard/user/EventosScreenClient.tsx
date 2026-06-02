@@ -192,7 +192,16 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
         </h1>
       </div>
 
-      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 0,
+          borderBottom: "1px solid var(--border)",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          maxWidth: "100%",
+        }}
+      >
         {TABS.map((t) => (
           <button
             key={t}
@@ -213,6 +222,8 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
             }}
           >
             {t}

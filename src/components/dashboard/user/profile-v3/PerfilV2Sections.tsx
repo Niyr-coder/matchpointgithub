@@ -76,7 +76,7 @@ function V2Stats({ sub, view }) {
           </div>
           <span style={{ fontSize: 11, fontWeight: 700, color: v2tk.muted, fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>{usePerfilV3Data().matches} partidos · Mar–May</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           <SplitCard title="Singles vs Dobles" left={{ l: 'Singles', v: adv.bySplit.singles.matches }} right={{ l: 'Dobles', v: adv.bySplit.doubles.matches }} pct={adv.bySplit.doubles.matches / (adv.bySplit.singles.matches + adv.bySplit.doubles.matches)} />
           <SplitCard title="Outdoor vs Indoor" left={{ l: 'Outdoor', v: adv.bySurface.outdoor.matches }} right={{ l: 'Indoor', v: adv.bySurface.indoor.matches }} pct={adv.bySurface.outdoor.matches / (adv.bySurface.outdoor.matches + adv.bySurface.indoor.matches)} />
           <ValueCard label="DURACIÓN PROMEDIO" value={adv.durations.avg} sub={`máx ${adv.durations.longest}`} />
@@ -100,7 +100,7 @@ function V2Stats({ sub, view }) {
           {isPlus && <span style={{ fontSize: 11, color: v2tk.muted, fontWeight: 700 }}>Actualizado hace 4 min</span>}
         </div>
 
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12 }}>
+        <div className="pv3-stack-sm" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12 }}>
           {/* Rating evolution chart */}
           <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -261,7 +261,7 @@ function V2Heatmap() {
 function V2Community({ sub }) {
   const { isPlus } = v2Sub(sub);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
+    <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
       {/* Compañeros */}
       <div style={{ position: 'relative' }}>
         <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '20px 22px' }}>
@@ -381,7 +381,7 @@ function V2Collection() {
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="pv3-stack-sm" style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {all.map(b => {
           const isGold = b.rarity === 'Legendaria' || b.rarity === 'Épica';
           return (

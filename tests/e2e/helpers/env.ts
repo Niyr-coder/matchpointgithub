@@ -37,3 +37,7 @@ export const E2E_OWNER_PASSWORD =
   process.env.E2E_OWNER_PASSWORD ?? "MatchPoint-e2e-2026";
 export const E2E_CLUB_NAME = process.env.E2E_CLUB_NAME ?? "Club E2E Pickleball";
 export const E2E_CLUB_SLUG = process.env.E2E_CLUB_SLUG ?? "e2e-pickleball";
+
+export const E2E_USER_EMAIL =
+  process.env.E2E_USER_EMAIL ?? "qa-player@matchpoint.test";
+export const E2E_USER_PASSWORD = process.env.E2E_USER_PASSWORD ?? "QaTest1234!";

@@ -45,7 +45,7 @@ export function V2Hero({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' | 'pu
 
         {/* Acciones de portada (personalización) — sólo en vista propia */}
         {isMine && (
-          <div style={{ position: 'absolute', top: 18, right: 24, display: 'flex', gap: 8 }}>
+          <div className="pv3-cover-actions" style={{ position: 'absolute', top: 18, right: 24, display: 'flex', gap: 8 }}>
             <button style={hCoverBtn}><HandoffIcon name="image" size={12} />Cambiar portada</button>
             {!isPlus && (
               <button style={{ ...hCoverBtn, background: 'rgba(212,161,58,0.16)', color: '#fcd34d', border: '1px solid rgba(212,161,58,0.4)' }}>
@@ -57,7 +57,7 @@ export function V2Hero({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' | 'pu
       </div>
 
       {/* Identidad — sobresale del cover */}
-      <div style={{ display: 'grid', gridTemplateColumns: '156px 1fr auto', alignItems: 'flex-end', gap: 24, padding: '0 28px 22px' }}>
+      <div className="pv3-stack-sm pv3-hero-identity" style={{ display: 'grid', gridTemplateColumns: '156px 1fr auto', alignItems: 'flex-end', gap: 24, padding: '0 28px 22px' }}>
         {/* Avatar */}
         <div style={{ position: 'relative', marginTop: -70, paddingBottom: 4 }}>
           <div style={{
@@ -210,7 +210,7 @@ function V2HeroKpisStrip() {
         padding: '14px 28px 20px',
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="pv3-stack-sm pv3-kpi-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {items.map((it) => (
           <div
             key={it.l}

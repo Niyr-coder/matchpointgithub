@@ -273,3 +273,66 @@
   padding: 8px 14px;
   text-decoration: none;
 }
+
+/* Responsive móvil — evita overflow horizontal en grids del handoff V3 */
+@media (max-width: 767px) {
+  .mp-profile-v3 {
+    overflow-x: clip;
+    min-width: 0;
+  }
+
+  .mp-profile-v3 .pv3-board {
+    padding: 16px !important;
+    gap: 16px !important;
+  }
+
+  .mp-profile-v3 .pv3-stack-sm {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: unset !important;
+    gap: 14px !important;
+  }
+
+  .mp-profile-v3 .pv3-stack-sm > * {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mp-profile-v3 .pv3-hero-identity {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    align-items: flex-start !important;
+  }
+
+  .mp-profile-v3 .pv3-hero-identity > div:first-child {
+    margin-top: -48px !important;
+  }
+
+  .mp-profile-v3 .pv3-kpi-strip {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .mp-profile-v3 .pv3-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  .mp-profile-v3 .profile-v3-shot-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .mp-profile-v3 .pv3-cover-actions {
+    right: 12px !important;
+    top: 12px !important;
+    flex-wrap: wrap;
+    max-width: calc(100% - 24px);
+  }
+}
+
+@media (max-width: 420px) {
+  .mp-profile-v3 .profile-v3-shot-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

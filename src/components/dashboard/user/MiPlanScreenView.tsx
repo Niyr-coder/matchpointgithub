@@ -135,14 +135,8 @@ export function MiPlanScreenView({
 
       {/* Card destacada del plan actual */}
       <div
-        className="card"
-        style={{
-          padding: 22,
-          display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: 18,
-          alignItems: "center",
-        }}
+        className="card grid grid-cols-1 min-[520px]:grid-cols-[1fr_auto] gap-4 items-center"
+        style={{ padding: 22 }}
       >
         <div>
           <div className="label-mp">Plan actual</div>
@@ -458,12 +452,8 @@ function BenefitCard({
         }}
       >
         <div
+          className="grid grid-cols-1 gap-1 px-2.5 py-1.5 sm:grid-cols-[minmax(0,1fr)_52px_minmax(76px,0.75fr)] sm:gap-2 sm:items-center"
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 52px minmax(76px, 0.75fr)",
-            columnGap: 8,
-            alignItems: "center",
-            padding: "7px 10px",
             background: "rgba(10,10,10,0.035)",
             borderBottom: "1px solid var(--border)",
             fontSize: 9.5,
@@ -480,13 +470,8 @@ function BenefitCard({
         {category.rows.map((row: BenefitRow, index) => (
           <div
             key={row.label}
+            className="grid grid-cols-1 gap-1 px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_52px_minmax(76px,0.75fr)] sm:gap-2 sm:items-center sm:min-h-[42px]"
             style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) 52px minmax(76px, 0.75fr)",
-              columnGap: 8,
-              alignItems: "center",
-              minHeight: 42,
-              padding: "9px 10px",
               borderTop: index === 0 ? "none" : "1px solid rgba(10,10,10,0.08)",
             }}
           >

@@ -33,7 +33,7 @@ export function V3AnalyticsBand({ sub, view }: { sub: "free" | "plus"; view: "mi
         {isPlus && <AnalyticsUpdatedLabel updatedAt={me.analyticsUpdatedAt} />}
       </div>
 
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.7fr 1fr 0.85fr', gap: 12 }}>
+      <div className="pv3-stack-sm" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.7fr 1fr 0.85fr', gap: 12 }}>
         <V3RatingChart />
         <V3Heatmap />
         <V3WinLossDonut />
@@ -69,7 +69,7 @@ function V3Heatmap() {
           action={{ label: 'Registrar partido', onClick: openCrearMatchModal }}
         />
       ) : (
-      <div style={{ display: 'grid', gridTemplateColumns: '20px repeat(6, 1fr)', gap: 3, alignItems: 'center' }}>
+      <div className="pv3-scroll-x" style={{ display: 'grid', gridTemplateColumns: '20px repeat(6, 1fr)', gap: 3, alignItems: 'center', minWidth: 280 }}>
         <div />
         {['6-9', '9-12', '12-15', '15-18', '18-21', '21-24'].map(f => (
           <div key={f} className="profile-v3-mono" style={{ fontSize: 8.5, color: v2tk.muted, textAlign: 'center', letterSpacing: '0.04em' }}>{f}</div>
@@ -130,7 +130,7 @@ export function V3SocialBand({ sub, view }: { sub: "free" | "plus"; view: "mine"
   const { isPlus } = v2Sub(sub);
   const isMine = view === 'mine';
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.1fr 1.2fr', gap: 12 }}>
+    <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.1fr 1.2fr', gap: 12 }}>
       <V3Partners isPlus={isPlus} isMine={isMine} />
       <V3Rivals isPlus={isPlus} isMine={isMine} />
       <V3ShotBreakdown isPlus={isPlus} isMine={isMine} />
@@ -362,9 +362,10 @@ export function V3CommunityBand() {
   const extraFriends = Math.max(0, me.friendsCount - me.friendsMembers.length);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+    <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
       {/* Clubes + amigos */}
       <div
+        className="pv3-stack-sm"
         style={{
           display: 'grid',
           gridTemplateColumns: '1.2fr 1fr',
@@ -536,7 +537,7 @@ export function PerfilV3Board({ sub = 'plus', view = 'mine' }: { sub?: 'free' | 
   const isMine = view === 'mine';
 
   return (
-    <div style={{
+    <div className="pv3-board" style={{
       width: '100%', minHeight: '100%', background: v2tk.bg,
       padding: 24,
       display: 'flex', flexDirection: 'column', gap: 20,

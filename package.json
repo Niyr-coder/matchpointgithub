@@ -14,6 +14,7 @@
     "seed:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
     "seed:qa-roles": "tsx --env-file=.env.local scripts/seed-qa-role-accounts.ts",
     "test:e2e": "playwright test",
+    "test:e2e:mobile": "playwright test --project=mobile-chrome",
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {

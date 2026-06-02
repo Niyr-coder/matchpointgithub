@@ -115,6 +115,20 @@ function BuscarMatchScreen({
   const [scope, setScope] = useState<Scope>("para-ti");
   const [tab, setTab] = useState<Tab>(focusSeekId ? "mine" : "feed");
   const [view, setView] = useState<View>(tweaks.view || "cards");
+  const feedViewOptions = useMemo(
+    () =>
+      typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+        ? ([
+            { k: "cards", i: "layout-grid" },
+            { k: "map", i: "map" },
+          ] as const)
+        : ([
+            { k: "cards", i: "layout-grid" },
+            { k: "list", i: "list" },
+            { k: "map", i: "map" },
+          ] as const),
+    [],
+  );
   const [sortBy, setSortBy] = useState<SortBy>(tweaks.sortBy || "relevancia");
   const [levelMode, setLevelMode] = useState<LevelMode>(tweaks.levelMode || "flex");
   const [sport, setSport] = useState<"all" | MatchSeek["sport"]>("all");
@@ -144,6 +158,16 @@ function BuscarMatchScreen({
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setView(tweaks.view || "cards"); }, [tweaks.view]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => {
+      if (mq.matches && view === "list") setView("cards");
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [view]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSortBy(tweaks.sortBy || "relevancia"); }, [tweaks.sortBy]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -329,7 +353,7 @@ function BuscarMatchScreen({
         ) : view === "list" ? (
           <ListView matches={rest} me={me} onApply={apply} disabled={actionPending} />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
             {rest.map((m) => (
               <MatchCard key={m.id} m={m} me={me} onApply={apply} disabled={actionPending} />
             ))}
@@ -357,7 +381,7 @@ function BuscarMatchScreen({
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-screen-label="Busco Partido" data-sport={sport}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 className="font-heading" style={{ fontWeight: 900, fontSize: 44, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: "8px 0 0" }}>
+          <h1 className="font-heading" style={{ fontWeight: 900, fontSize: "clamp(28px, 8vw, 44px)", textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: "8px 0 0" }}>
             Busco partido<span className="dot">.</span>
           </h1>
           <p style={{ color: "var(--muted-fg)", fontSize: 13.5, margin: "8px 0 0" }}>
@@ -365,14 +389,14 @@ function BuscarMatchScreen({
             {myPlanTier === "premium" ? " · MATCHPOINT+" : ""}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
           {tab === "feed" && (
             <>
-              <SegBM options={[{ k: "cards", i: "layout-grid" }, { k: "list", i: "list" }, { k: "map", i: "map" }]} value={view} onChange={(v) => setView(v as View)} />
+              <SegBM options={[...feedViewOptions]} value={view} onChange={(v) => setView(v as View)} />
               <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} />
             </>
           )}
-          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable}>
+          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable} style={{ maxWidth: "100%" }}>
             <Lucide name="plus" style={{ width: 13, height: 13 }} />Publicar aviso
           </button>
         </div>
@@ -401,7 +425,17 @@ function BuscarMatchScreen({
       </div>
 
       {tab === "feed" && (
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+          maxWidth: "100%",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
         {[
           { k: "para-ti", l: "Para ti", i: "sparkles" },
           { k: "hoy", l: "Hoy", i: "sun" },
@@ -426,7 +460,6 @@ function BuscarMatchScreen({
             </button>
           );
         })}
-        <span style={{ flex: 1 }} />
         <FineFilter label="Deporte" value={sport} onChange={(v) => setSport(v as "all" | MatchSeek["sport"])} options={[{ k: "all", l: "Todos" }, { k: "pickleball", l: "Pickleball" }, { k: "padel", l: "Pádel" }, { k: "tennis", l: "Tenis" }]} />
         <FineFilter label="Modalidad" value={mode} onChange={setMode} options={[{ k: "all", l: "Todas" }, { k: "singles", l: "Singles" }, { k: "doubles", l: "Dobles" }]} />
         <FineFilter label="Día" value={day} onChange={setDay} options={[{ k: "cualquier", l: "Cualquier día" }, { k: "hoy", l: "Hoy" }, { k: "mañana", l: "Mañana" }]} />
@@ -528,7 +561,7 @@ function FeaturedMatch({
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 30%, rgba(16,185,129,0.28), transparent 55%), radial-gradient(ellipse at 5% 90%, rgba(251,191,36,0.10), transparent 55%)" }} />
       <div style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(8%, -18%)", textTransform: "uppercase", pointerEvents: "none" }}>AVISO</div>
 
-      <div style={{ position: "relative", padding: "24px 28px", display: "grid", gridTemplateColumns: "1.5fr auto 1fr", gap: 28, alignItems: "center" }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_auto_1fr] gap-4 md:gap-7 items-center relative p-4 md:px-7 md:py-6">
         <div>
           <div className="chip-green" style={{ marginBottom: 10 }}>
             <span className="chip-dot" />Aviso destacado para ti
@@ -790,8 +823,8 @@ function ListView({
   city?: string | null;
 }) {
   return (
-    <div className="card" style={{ padding: 0 }}>
-      <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+    <div className="card max-w-full overflow-x-auto" style={{ padding: 0 }}>
+      <div style={{ minWidth: 640, padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
         <div>Cuándo</div>
         <div>Match</div>
         <div>Jugadores</div>
@@ -817,7 +850,7 @@ function ListView({
         const empty = m.slotsTotal - m.players.length;
         const alreadyApplied = !!m.seek.myApplicationStatus;
         return (
-          <div key={m.id} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center" }}>
+          <div key={m.id} style={{ minWidth: 640, padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center" }}>
             <div>
               <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{m.date}</div>
               <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{m.time}</div>
@@ -1614,7 +1647,7 @@ function EmptyLobby({ onCreate, city }: { onCreate: () => void; city?: string | 
   return (
     <>
       <EmptyFeaturedPreview onCreate={onCreate} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
         {Array.from({ length: 3 }).map((_, i) => <EmptyMatchCard key={i} index={i} />)}
       </div>
       <div className="card" style={{ padding: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -1671,7 +1704,7 @@ function EmptyFeaturedPreview({ onCreate, locked }: { onCreate?: () => void; loc
       >
         {locked ? "LOBBY" : "AVISO"}
       </div>
-      <div style={{ position: "relative", padding: "24px 28px", display: "grid", gridTemplateColumns: "1.5fr auto 1fr", gap: 28, alignItems: "center" }}>
+      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_auto_1fr] gap-4 md:gap-7 items-center relative p-4 md:px-7 md:py-6">
         <div>
           <div className="chip-green" style={{ marginBottom: 10, opacity: locked ? 0.72 : 1 }}>
             <span className="chip-dot" />{locked ? "Feature protegido" : "Primer aviso disponible"}
