@@ -1,8 +1,7 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/site-url";
 
-// URL canónica de producción (docs/architecture/90-canonical-url.md).
-const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpointgithub.vercel.app";
+const SITE_URL = getSiteUrl();
 
 // Rutas públicas estáticas del landing. Las dinámicas (clubes/[slug],
 // eventos/[slug], blog/[slug]) se podrían sumar generándolas desde la BD;

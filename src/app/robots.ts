@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/site-url";
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpointgithub.vercel.app";
+const SITE_URL = getSiteUrl();
 
 // Bloqueamos superficies privadas / de sesión del crawler: dashboard,
 // onboarding, callbacks de auth, pagos y rutas de join por código.

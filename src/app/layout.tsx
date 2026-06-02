@@ -2,12 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SportsProvider } from "@/components/SportsProvider";
 import { getMultisportEnabled } from "@/lib/sports.server";
+import { getSiteUrl } from "@/lib/site-url";
 
-// URL canónica de producción (docs/architecture/90-canonical-url.md). Override
-// con NEXT_PUBLIC_APP_URL en previews. metadataBase resuelve rutas relativas de
-// OG/twitter y canonicals.
-const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpointgithub.vercel.app";
+// URL canónica (docs/architecture/90-canonical-url.md). metadataBase resuelve OG/twitter.
+const SITE_URL = getSiteUrl();
 
 const TITLE = "MATCHPOINT — La comunidad #1 de Pickleball en Ecuador";
 const DESCRIPTION =
