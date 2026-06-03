@@ -1587,7 +1587,7 @@ function RTDone({
               ¡Reto enviado!<span style={{ color: "var(--primary)" }}>.</span>
             </div>
             <div style={{ fontSize: 11.5, color: "#065f46", marginTop: 3 }}>
-              {rival.name} recibió tu reto. Tienes hasta 24 h para que conteste — si no, expira.
+              {rival.name} recibirá una notificación para aceptar el reto. El chat del duelo se abre cuando todos confirmen.
             </div>
           </div>
         </div>

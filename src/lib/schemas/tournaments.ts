@@ -35,6 +35,14 @@ export const ScoringConfigSchema = z
   })
   .openapi("ScoringConfig");
 
+export const GroupPlayoffConfigSchema = z
+  .object({
+    groupsCount: z.number().int().min(1).max(16),
+    advancePerGroup: z.number().int().min(1).max(16),
+    finalScoringOverride: ScoringConfigSchema.nullable().optional(),
+  })
+  .openapi("GroupPlayoffConfig");
+
 export const EventStatusSchema = z
   .enum(["draft", "published", "registration_open", "registration_closed", "live", "finished", "cancelled"])
   .openapi("EventStatus");
@@ -78,6 +86,8 @@ export const TournamentSchema = z
     paymentPolicy: TournamentPaymentPolicySchema,
     prizePoolCents: z.number().int().nullable(),
     rulesUrl: z.string().nullable(),
+    modality: TournamentModalitySchema.nullable().optional(),
+    scoringConfig: ScoringConfigSchema.nullable().optional(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -92,6 +102,13 @@ export const TournamentCategorySchema = z
     ageMin: z.number().int().nullable(),
     ageMax: z.number().int().nullable(),
     maxTeams: z.number().int().nullable(),
+    mprMin: z.number().nullable().optional(),
+    mprMax: z.number().nullable().optional(),
+    stage: z
+      .enum(["pending_groups", "group_stage", "group_complete", "knockout", "complete"])
+      .nullable()
+      .optional(),
+    groupPlayoffConfig: GroupPlayoffConfigSchema.nullable().optional(),
   })
   .openapi("TournamentCategory");
 
@@ -180,9 +197,19 @@ export const TournamentCreateSchema = z
       winBy: 2,
       bestOf: 3,
     }),
+    groupPlayoffConfig: GroupPlayoffConfigSchema.optional(),
     termsAccepted: z.literal(true, {
       message: "Debes aceptar los términos del torneo",
     }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.format === "groups_to_knockout" && !data.groupPlayoffConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Configura grupos y clasificados para Grupos + eliminación",
+        path: ["groupPlayoffConfig"],
+      });
+    }
   })
   .openapi("TournamentCreate");
 
@@ -230,6 +257,7 @@ export const TournamentFeaturedSchema = z
 
 export type League = z.infer<typeof LeagueSchema>;
 export type Tournament = z.infer<typeof TournamentSchema>;
+export type ScoringConfig = z.infer<typeof ScoringConfigSchema>;
 export type TournamentDetail = z.infer<typeof TournamentDetailSchema>;
 export type Bracket = z.infer<typeof BracketSchema>;
 export type Registration = z.infer<typeof RegistrationSchema>;

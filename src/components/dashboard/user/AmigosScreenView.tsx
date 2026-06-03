@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type CSSProperties } from "react";
 import { Icon } from "@/components/Icon";
 import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
@@ -47,6 +47,8 @@ const tk = {
 /** Evita re-animar mp-rise tras refresh o al cambiar filtros. */
 const AMIGOS_CARD_ENTERED = new Set<string>();
 const SMART_MATCHES_EXIT_MS = 180;
+/** Mínimo de amigos para mostrar sugerencias MP+ (afinidad con datos reales). */
+const SMART_MATCHES_MIN_FRIENDS = 10;
 
 export function AmigosScreenView({
   friends,
@@ -74,7 +76,13 @@ export function AmigosScreenView({
   const [smartMatchesHidden, setSmartMatchesHidden] = useState(false);
   const [smartMatchesClosing, setSmartMatchesClosing] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (q) setQuery(q);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!smartMatchesClosing) return;
@@ -192,7 +200,7 @@ export function AmigosScreenView({
         <Kpi label="Nivel cercano" value={closeLevel} sub={myLevel != null ? `±0.5 de ${myLevel.toFixed(1)}` : "sin rating aún"} icon="target" />
       </section>
 
-      {!smartMatchesHidden && (
+      {!smartMatchesHidden && friends.length >= SMART_MATCHES_MIN_FRIENDS && (
         <SmartMatches
           friends={enriched.slice(0, 3)}
           viewerIsPremium={viewerIsPremium}

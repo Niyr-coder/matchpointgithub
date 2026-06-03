@@ -97,91 +97,56 @@ function TorneoCard({ t }: { t: TorneoRow }) {
   };
 
   return (
-    <div
-      className="card"
-      style={{
-        padding: 0,
-        display: "grid",
-        gridTemplateColumns: "4px 1fr 100px 100px 110px 170px",
-        alignItems: "stretch",
-        position: "relative",
-      }}
-    >
-      <div style={{ background: t.color, borderRadius: "var(--radius, 12px) 0 0 var(--radius, 12px)" }} />
-      <div style={{ padding: 16, minWidth: 0 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-          <RSPill bg={ST_STYLES[t.st].bg}>{ST_STYLES[t.st].l}</RSPill>
-          <span
+    <div className="card mp-partner-torneo-card" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+      <div className="mp-partner-torneo-card-inner">
+        <div className="mp-partner-torneo-card-accent" style={{ background: t.color }} />
+        <div className="mp-partner-torneo-card-main">
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+            <RSPill bg={ST_STYLES[t.st].bg}>{ST_STYLES[t.st].l}</RSPill>
+            <span
+              style={{
+                fontSize: 9.5,
+                color: "var(--muted-fg)",
+                fontWeight: 800,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+              }}
+            >
+              {t.sport}
+            </span>
+          </div>
+          <div
+            className="font-heading mp-partner-torneo-card-title"
             style={{
-              fontSize: 9.5,
-              color: "var(--muted-fg)",
-              fontWeight: 800,
-              letterSpacing: "0.1em",
+              fontSize: 17,
+              fontWeight: 900,
+              letterSpacing: "-0.02em",
               textTransform: "uppercase",
             }}
           >
-            {t.sport}
-          </span>
-        </div>
-        <div
-          className="font-heading"
-          style={{
-            fontSize: 17,
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            textTransform: "uppercase",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {t.n}
-          <span style={{ color: "var(--primary)" }}>.</span>
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>{t.date}</div>
-      </div>
-      {[
-        { l: "Cupos", v: t.cupos, c: "#0a0a0a" },
-        { l: "Premio", v: t.prize, c: "#fbbf24" },
-        { l: "Revenue", v: t.revenue, c: "var(--primary)" },
-      ].map((s) => (
-        <div
-          key={s.l}
-          style={{
-            padding: 16,
-            borderLeft: "1px dashed var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "flex-end",
-          }}
-        >
-          <div className="label-mp">{s.l}</div>
-          <div
-            className="font-heading"
-            style={{
-              fontSize: 16,
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              marginTop: 4,
-              color: s.c,
-            }}
-          >
-            {s.v}
+            {t.n}
+            <span style={{ color: "var(--primary)" }}>.</span>
           </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>{t.date}</div>
         </div>
-      ))}
-      <div
-        ref={menuRef}
-        style={{
-          padding: 16,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          justifyContent: "flex-end",
-          position: "relative",
-        }}
-      >
+        <div className="mp-partner-torneo-card-metrics">
+          {[
+            { l: "Cupos", v: t.cupos, c: "#0a0a0a" },
+            { l: "Premio", v: t.prize, c: "#fbbf24" },
+            { l: "Revenue", v: t.revenue, c: "var(--primary)" },
+          ].map((s) => (
+            <div key={s.l} className="mp-partner-torneo-card-metric">
+              <div className="mp-partner-torneo-stat-label">{s.l}</div>
+              <div
+                className="font-heading mp-partner-torneo-stat-value"
+                style={{ color: s.c, marginTop: 4 }}
+              >
+                {s.v}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div ref={menuRef} className="mp-partner-torneo-card-actions">
         <button
           className="btn btn-primary"
           onClick={onGestionar}
@@ -243,6 +208,7 @@ function TorneoCard({ t }: { t: TorneoRow }) {
             />
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -297,86 +263,38 @@ function KebabItem({
 function TorneoPlaceholder() {
   return (
     <div
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "4px 1fr 100px 100px 110px 120px",
-        background: "#fafafa",
-        border: "1px dashed var(--border)",
-        borderRadius: 12,
-        opacity: 0.6,
-      }}
+      className="card mp-partner-torneo-card mp-partner-torneo-card--ph"
+      style={{ padding: 0, overflow: "hidden", background: "#fafafa", border: "1px dashed var(--border)", opacity: 0.6 }}
     >
-      <div style={{ background: "var(--muted-fg)" }} />
-      <div style={{ padding: 16 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-          <RSPill bg="var(--muted-fg)">—</RSPill>
-          <span
-            style={{
-              fontSize: 9.5,
-              color: "var(--muted-fg)",
-              fontWeight: 800,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-            }}
-          >
-            —
-          </span>
-        </div>
-        <div
-          className="font-heading"
-          style={{
-            fontSize: 17,
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            textTransform: "uppercase",
-            color: "var(--muted-fg)",
-          }}
-        >
-          Sin torneos
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>—</div>
-      </div>
-      {[
-        { l: "Cupos", v: "0 / —" },
-        { l: "Premio", v: "$—" },
-        { l: "Revenue", v: "$—" },
-      ].map((s) => (
-        <div
-          key={s.l}
-          style={{
-            padding: 16,
-            borderLeft: "1px dashed var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "flex-end",
-          }}
-        >
-          <div className="label-mp">{s.l}</div>
-          <div
-            className="font-heading"
-            style={{
-              fontSize: 16,
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              marginTop: 4,
-              color: "var(--muted-fg)",
-            }}
-          >
-            {s.v}
+      <div className="mp-partner-torneo-card-inner">
+        <div className="mp-partner-torneo-card-accent" style={{ background: "var(--muted-fg)" }} />
+        <div className="mp-partner-torneo-card-main">
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+            <RSPill bg="var(--muted-fg)">—</RSPill>
+            <span style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>—</span>
           </div>
+          <div className="font-heading mp-partner-torneo-card-title" style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+            Sin torneos
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>—</div>
         </div>
-      ))}
-      <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 6 }}>
-        <button
-          className="btn btn-primary"
-          style={{ fontSize: 10.5, padding: "6px 12px" }}
-          disabled
-        >
-          Gestionar
-        </button>
+        <div className="mp-partner-torneo-card-metrics">
+          {[
+            { l: "Cupos", v: "0 / —" },
+            { l: "Premio", v: "$—" },
+            { l: "Revenue", v: "$—" },
+          ].map((s) => (
+            <div key={s.l} className="mp-partner-torneo-card-metric">
+              <div className="mp-partner-torneo-stat-label">{s.l}</div>
+              <div className="font-heading mp-partner-torneo-stat-value" style={{ color: "var(--muted-fg)", marginTop: 4 }}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mp-partner-torneo-card-actions">
+          <button className="btn btn-primary" style={{ fontSize: 10.5, padding: "6px 12px" }} disabled>
+            Gestionar
+          </button>
+        </div>
       </div>
     </div>
   );

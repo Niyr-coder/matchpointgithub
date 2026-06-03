@@ -21,6 +21,7 @@ import {
   type Notification,
 } from "@/lib/schemas/notifications";
 import { MpRoleSchema, UuidSchema } from "@/lib/schemas/common";
+import { enrichNotifications } from "@/server/notifications/enrich";
 
 function mapNotif(row: Record<string, unknown>): Notification {
   return NotificationSchema.parse({
@@ -64,7 +65,8 @@ export async function listMyNotifications(input: unknown): Promise<ActionResult<
     if (params.unread) q = q.is("read_at", null);
     const { data, error } = await q;
     if (error) throw new MpError("NOTIFICATIONS.DB_ERROR", error.message, 500);
-    return (data ?? []).map(mapNotif);
+    const mapped = (data ?? []).map(mapNotif);
+    return enrichNotifications(supabase, mapped);
   });
 }
 

@@ -16,6 +16,10 @@ export function TournamentGestionRealtime({ tournamentId }: { tournamentId: stri
       { table: "tournament_schedule_blocks", filter: `tournament_id=eq.${tournamentId}` },
       { table: "tournament_prizes", filter: `tournament_id=eq.${tournamentId}` },
       { table: "registrations", filter: `tournament_id=eq.${tournamentId}` },
+      { table: "tournament_groups" },
+      { table: "tournament_group_matches" },
+      { table: "brackets", filter: `tournament_id=eq.${tournamentId}` },
+      { table: "bracket_matches" },
     ],
     { enabled: true },
   );

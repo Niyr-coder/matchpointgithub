@@ -1,4 +1,3 @@
-// @ts-nocheck — port 1:1 del handoff V3.
 "use client";
 
 import React from "react";
@@ -14,6 +13,7 @@ import { usePerfilV3Data } from "./PerfilV3Context";
 import { useProfileV3Actions } from "./ProfileV3ActionsContext";
 import { AnalyticsUpdatedLabel } from "./AnalyticsUpdatedLabel";
 import { ProfileEmptyState, openCrearMatchModal } from "./ProfileEmptyState";
+import { QuedadaPlayerStatsPanel } from "../QuedadaPlayerStatsPanel";
 // PerfilV3 — fusión profile-first (V2) + dashboard analítico (V1).
 // Un solo scroll, sin tabs: identidad arriba, análisis embebido como bandas.
 // Reutiliza componentes V2 (hero, showcase, kpis, h2h) y agrega bandas analíticas.
@@ -301,6 +301,21 @@ function V3ShotBreakdown({ isPlus, isMine }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// QUEDADAS — actividad social (secundaria, colapsable)
+// ─────────────────────────────────────────────────────────────────────
+function V3QuedadasBand({ view }: { view: "mine" | "public" }) {
+  const me = usePerfilV3Data();
+  return (
+    <QuedadaPlayerStatsPanel
+      stats={me.quedadaStats}
+      scope={view}
+      surface="profile"
+      playerFirstName={me.first}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // ACTIVIDAD — últimos partidos confirmados (sin columna lateral del handoff)
 // ─────────────────────────────────────────────────────────────────────
 export function V3ActivityBand() {
@@ -555,6 +570,8 @@ export function PerfilV3Board({ sub = 'plus', view = 'mine' }: { sub?: 'free' | 
 
       {/* BANDA SOCIAL/H2H — Compañeros + Rivales + Shot · MP+ */}
       <V3SocialBand sub={sub} view={view} />
+
+      <V3QuedadasBand view={view} />
 
       <V3ActivityBand />
 

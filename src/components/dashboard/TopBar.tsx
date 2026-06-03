@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { NotificationsPanel, type RealNotif } from "./NotificationsPanel";
@@ -27,6 +28,150 @@ const SEARCH_PLACEHOLDER: Partial<Record<RoleKey, string>> = {
   admin: "Buscar usuarios, clubes, transacciones…",
   employee: "Buscar reserva, código QR…",
 };
+
+type SearchTarget = {
+  id: string;
+  label: string;
+  hint: string;
+  icon: string;
+  section: string;
+};
+
+const SEARCH_TARGETS_BY_ROLE: Partial<Record<RoleKey, SearchTarget[]>> = {
+  user: [
+    { id: "jugadores", label: "Jugadores", hint: "Nombre o @username", icon: "users", section: "amigos" },
+    { id: "clubes", label: "Canchas y clubes", hint: "Nombre o ciudad", icon: "building-2", section: "clubes" },
+    { id: "eventos", label: "Torneos y ligas", hint: "Nombre del evento", icon: "trophy", section: "eventos" },
+  ],
+  admin: [
+    { id: "usuarios", label: "Usuarios", hint: "Nombre, email o username", icon: "users", section: "admin-users" },
+    { id: "clubes", label: "Clubes", hint: "Nombre o ciudad", icon: "building-2", section: "admin-clubs" },
+  ],
+  employee: [
+    { id: "checkin", label: "Check-in", hint: "Código de reserva o QR", icon: "user-check", section: "e-checkin" },
+  ],
+};
+
+function TopBarSearch({ role }: { role: RoleKey }) {
+  const router = useRouter();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const targets = SEARCH_TARGETS_BY_ROLE[role] ?? [];
+
+  const navigate = useCallback(
+    (target: SearchTarget) => {
+      const q = query.trim();
+      const path = `/dashboard/${role}/${target.section}${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+      router.push(path);
+      setOpen(false);
+    },
+    [query, role, router],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  if (targets.length === 0) return null;
+
+  return (
+    <div ref={wrapRef} style={{ flex: 1, position: "relative", maxWidth: 320 }}>
+      <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)", pointerEvents: "none" }}>
+        <Icon name="search" size={14} />
+      </span>
+      <input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            navigate(targets[0]!);
+          }
+          if (e.key === "Escape") setOpen(false);
+        }}
+        placeholder={SEARCH_PLACEHOLDER[role] || "Buscar jugadores, canchas, torneos…"}
+        aria-label="Buscar en MATCHPOINT"
+        aria-expanded={open}
+        aria-controls="topbar-search-menu"
+        style={{
+          width: "100%",
+          padding: "9px 12px 9px 34px",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          fontFamily: "inherit",
+          fontSize: 13,
+          outline: "none",
+        }}
+      />
+      {open && (
+        <div
+          id="topbar-search-menu"
+          role="listbox"
+          className="card"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            padding: 6,
+            zIndex: 30,
+            boxShadow: "0 12px 28px rgba(0,0,0,0.1)",
+          }}
+        >
+          {targets.map((target) => (
+            <button
+              key={target.id}
+              type="button"
+              role="option"
+              onClick={() => navigate(target)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "10px 12px",
+                border: 0,
+                borderRadius: 8,
+                background: "transparent",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--muted)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <Icon name={target.icon} size={14} color="var(--primary)" style={{ marginTop: 2, flexShrink: 0 }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#0a0a0a" }}>
+                  {target.label}
+                </span>
+                <span style={{ display: "block", fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                  {query.trim()
+                    ? `Buscar “${query.trim()}” en ${target.label.toLowerCase()}`
+                    : target.hint}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const NOTIFICATION_RING_MS = 560;
 
@@ -136,11 +281,20 @@ export function TopBar({
     return () => document.removeEventListener("mousedown", onDown);
   }, [notifOpen]);
 
-  const handleBellClick = () => {
-    const willOpen = !notifOpen;
-    setNotifOpen(willOpen);
-    if (willOpen) triggerRing();
-  };
+  const onMarkAll = useCallback((opts?: { silent?: boolean }) => {
+    setItems((prev) => {
+      const hasUnread = prev.some((n) => !n.readAt);
+      if (!hasUnread) return prev;
+      return prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() }));
+    });
+    const myRole = role;
+    startTransition(async () => {
+      const res = await markAllNotificationsRead({ role: myRole });
+      if (res.ok && !opts?.silent) {
+        toast({ icon: "check", title: "Notificaciones marcadas como leídas" });
+      }
+    });
+  }, [role, toast]);
 
   const onMarkOne = useCallback((id: string) => {
     setItems((prev) =>
@@ -151,16 +305,14 @@ export function TopBar({
     });
   }, []);
 
-  const onMarkAll = useCallback(() => {
-    setItems((prev) =>
-      prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })),
-    );
-    const myRole = role;
-    startTransition(async () => {
-      const res = await markAllNotificationsRead({ role: myRole });
-      if (res.ok) toast({ icon: "check", title: "Notificaciones marcadas como leídas" });
-    });
-  }, [role, toast]);
+  const handleBellClick = () => {
+    const willOpen = !notifOpen;
+    setNotifOpen(willOpen);
+    if (willOpen) {
+      triggerRing();
+      onMarkAll({ silent: true });
+    }
+  };
 
   const handleCta = () => {
     if (cta.ev) window.dispatchEvent(new Event(cta.ev));
@@ -197,25 +349,7 @@ export function TopBar({
       </div>
       {/* Search + admin context: solo desktop. */}
       <div className="hidden md:flex items-center" style={{ gap: 12, flex: 1, maxWidth: 640 }}>
-        <div style={{ flex: 1, position: "relative", maxWidth: 320 }}>
-          <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
-            <Icon name="search" size={14} />
-          </span>
-          <input
-            placeholder={
-              SEARCH_PLACEHOLDER[role] || "Buscar jugadores, canchas, torneos…"
-            }
-            style={{
-              width: "100%",
-              padding: "9px 12px 9px 34px",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              fontFamily: "inherit",
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-        </div>
+        <TopBarSearch role={role} />
         {contextLabel ? (
           <span
             title={contextLabel}
@@ -324,7 +458,6 @@ export function TopBar({
               items={items}
               onClose={() => setNotifOpen(false)}
               onMarkOne={onMarkOne}
-              onMarkAll={onMarkAll}
             />
           )}
         </div>

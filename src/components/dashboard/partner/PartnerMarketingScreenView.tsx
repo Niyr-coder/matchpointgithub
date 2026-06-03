@@ -54,7 +54,7 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
   ];
 
   return (
-    <>
+    <div className="mp-partner-marketing">
       <RSHeader
         label="Partner · Marketing"
         title="Promoción & alcance"
@@ -65,10 +65,10 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
           </button>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div className="mp-partner-home-kpis mp-partner-marketing-kpis">
         {kpis.map((k) => (
-          <div key={k.l} className="card" style={{ padding: 14 }}>
-            <div className="label-mp">{k.l}</div>
+          <div key={k.l} className="card mp-rh-kpi" style={{ padding: 14, minWidth: 0 }}>
+            <div className="label-mp mp-rh-kpi-label">{k.l}</div>
             <div
               className="font-heading"
               style={{
@@ -93,7 +93,7 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="mp-role-home-panels">
         <div className="card" style={{ padding: 18 }}>
           <h2
             className="font-heading"
@@ -190,6 +190,6 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
           ))}
         </div>
       </div>
-    </>
+    </div>
   );
 }

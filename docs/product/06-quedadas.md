@@ -36,14 +36,14 @@ tabla.
 
 | Formato | Estado | Mecánica |
 |---|---|---|
-| Americano | ✅ Activo | Rotación individual: cambias compañero/rival cada ronda; ranking individual. |
-| Round Robin | ✅ Activo | Parejas fijas, todos contra todos por rondas; tabla por pareja. |
-| Mexicano | ✅ Activo | Rondas por ranking actual: niveles cercanos se cruzan entre sí. |
-| Rey de Cancha (KOTC) | ✅ Activo | Orden por canchas/nivel; los equipos se emparejan según rendimiento reciente. |
-| Canguil | ✅ Activo | Rotación social aleatoria cada ronda. |
-| Libre | ✅ Activo | El organizador crea partidos manuales y carga resultados. |
+| Rotación de parejas (`americano`) | ✅ Activo | Rotación individual: cambias compañero/rival cada ronda; ranking individual. |
+| Todos contra todos | ✅ Activo | Parejas fijas, todos contra todos por rondas; tabla por pareja. |
+| Escalera por nivel (`mexicano`) | ✅ Activo | Rondas por ranking actual: niveles cercanos se cruzan entre sí. |
+| Rey de la cancha (KOTC) | ✅ Activo | Orden por canchas/nivel; los equipos se emparejan según rendimiento reciente. |
+| Mezcla social (`canguil`) | ✅ Activo | Rotación social aleatoria cada ronda. |
+| Personalizado (`libre`) | ✅ Activo | El organizador crea partidos manuales y carga resultados. |
 
-### Americano
+### Rotación de parejas (`americano`)
 
 - **Unidad:** individual.
 - **Puntuación:** puntos a favor acumulados; desempate por diferencia (PF−PC),

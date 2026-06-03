@@ -1,7 +1,11 @@
 "use client";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
+import { formatNotificationDisplay } from "@/lib/notifications/display";
+import { acceptMatchChallenge, declineMatchChallenge } from "@/server/actions/matches";
+import { useToast } from "./ToastProvider";
 
 export type RealNotif = {
   id: string;
@@ -18,7 +22,6 @@ type Props = {
   items: RealNotif[];
   onClose: () => void;
   onMarkOne: (id: string) => void;
-  onMarkAll: () => void;
 };
 
 function timeAgo(iso: string): string {
@@ -57,6 +60,7 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("ticket")) return "life-buoy";
   if (kind.startsWith("friend_request")) return "user-plus";
   if (kind === "match_cancelled") return "x-circle";
+  if (kind === "match_challenge_received" || kind === "match_challenge_accepted") return "swords";
   if (kind === "match_rescheduled") return "calendar-clock";
   if (kind.startsWith("match_seek")) return "swords";
   if (kind === "team_member_kicked") return "user-x";
@@ -142,8 +146,8 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
       : "/dashboard/user/busco-partido";
   }
   if (kind.startsWith("quedada")) {
-    const qId = typeof payload.quedadaId === "string" ? payload.quedadaId : null;
-    return qId ? `/dashboard/user/quedadas?focus=${qId}` : "/dashboard/user/quedadas";
+    const qId = typeof payload.quedadaId === "string" ? payload.quedadaId : typeof payload.quedada_id === "string" ? payload.quedada_id : null;
+    return qId ? `/dashboard/${role}/quedada/${qId}` : `/dashboard/${role}/quedadas`;
   }
   if (kind === "club_membership_requested") {
     // Lo recibe owner/manager → su gestión de membresías (link según rol activo).
@@ -187,9 +191,10 @@ export function NotificationsPanel({
   items,
   onClose,
   onMarkOne,
-  onMarkAll,
 }: Props) {
   const router = useRouter();
+  const toast = useToast();
+  const [challengePendingId, setChallengePendingId] = useState<string | null>(null);
   const isUnread = (n: RealNotif) => !n.readAt;
   const unreadCount = items.filter(isUnread).length;
   const groups = items.reduce<Record<string, RealNotif[]>>((acc, n) => {
@@ -260,23 +265,21 @@ export function NotificationsPanel({
               Notificaciones<span style={{ color: "var(--primary)" }}>.</span>
             </div>
           </div>
-          <button
-            onClick={onMarkAll}
-            disabled={unreadCount === 0}
-            style={{
-              background: "transparent",
-              border: 0,
-              fontSize: 10,
-              fontWeight: 900,
-              color: unreadCount === 0 ? "var(--muted-fg)" : "var(--primary)",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              cursor: unreadCount === 0 ? "default" : "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            Marcar leídas
-          </button>
+          {unreadCount > 0 ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: "var(--muted-fg)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              {unreadCount} sin leer
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted-fg)" }}>Al día</span>
+          )}
         </div>
       </div>
 
@@ -316,6 +319,8 @@ export function NotificationsPanel({
               </div>
               {group.map((n) => {
                 const unread = isUnread(n);
+                const display = formatNotificationDisplay(n);
+                const href = hrefForKind(role, n.kind, n.payload);
                 return (
                   <div
                     key={n.id}
@@ -326,11 +331,10 @@ export function NotificationsPanel({
                       borderBottom: "1px solid var(--border)",
                       position: "relative",
                       background: unread ? "rgba(16,185,129,0.04)" : "#fff",
-                      cursor: "pointer",
+                      cursor: href ? "pointer" : "default",
                     }}
                     onClick={() => {
                       if (unread) onMarkOne(n.id);
-                      const href = hrefForKind(role, n.kind, n.payload);
                       if (href) {
                         onClose();
                         router.push(href);
@@ -366,13 +370,91 @@ export function NotificationsPanel({
                       <Icon name={iconForKind(n.kind)} size={16} color="#fff" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11.5, lineHeight: 1.35, color: "#0a0a0a", fontWeight: 700 }}>
-                        {n.title}
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {display.kindLabel ? (
+                            <div
+                              style={{
+                                fontSize: 8.5,
+                                fontWeight: 900,
+                                letterSpacing: "0.12em",
+                                textTransform: "uppercase",
+                                color: colorForKind(n.kind),
+                                marginBottom: 3,
+                              }}
+                            >
+                              {display.kindLabel}
+                            </div>
+                          ) : null}
+                          <div style={{ fontSize: 12, lineHeight: 1.35, color: "#0a0a0a", fontWeight: 800 }}>
+                            {display.title}
+                          </div>
+                        </div>
+                        {href ? (
+                          <Icon name="chevron-right" size={14} color="var(--muted-fg)" style={{ flexShrink: 0, marginTop: 2 }} />
+                        ) : null}
                       </div>
-                      {n.body && (
-                        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>{n.body}</div>
-                      )}
-                      <div style={{ fontSize: 9.5, color: "var(--muted-fg)", marginTop: 4 }}>
+                      {display.subtitle ? (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--fg)",
+                            marginTop: 4,
+                            fontWeight: 600,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {display.subtitle}
+                        </div>
+                      ) : null}
+                      {display.detail ? (
+                        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 3, lineHeight: 1.4 }}>
+                          {display.detail}
+                        </div>
+                      ) : null}
+                      {display.chips.length > 0 ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                          {display.chips.map((chip) => (
+                            <span
+                              key={chip}
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 700,
+                                padding: "2px 7px",
+                                borderRadius: 9999,
+                                background: "var(--muted)",
+                                color: "var(--muted-fg)",
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {n.kind === "match_challenge_received" &&
+                      typeof n.payload.match_id === "string" ? (
+                        <MatchChallengeNotifActions
+                          matchId={n.payload.match_id}
+                          busy={challengePendingId === n.id}
+                          onBusy={(v) => setChallengePendingId(v ? n.id : null)}
+                          onAccepted={(convId) => {
+                            onMarkOne(n.id);
+                            onClose();
+                            if (convId) router.push(`/dashboard/user/chat?conv=${convId}`);
+                            else router.refresh();
+                          }}
+                          onDeclined={() => {
+                            onMarkOne(n.id);
+                            toast({ icon: "info", title: "Reto rechazado" });
+                            router.refresh();
+                          }}
+                        />
+                      ) : null}
+                      <div style={{ fontSize: 9.5, color: "var(--muted-fg)", marginTop: 5 }}>
                         {timeAgo(n.createdAt)}
                       </div>
                     </div>
@@ -442,5 +524,71 @@ export function NotificationsPanel({
       </div>
       </div>
     </>
+  );
+}
+
+function MatchChallengeNotifActions({
+  matchId,
+  busy,
+  onBusy,
+  onAccepted,
+  onDeclined,
+}: {
+  matchId: string;
+  busy: boolean;
+  onBusy: (v: boolean) => void;
+  onAccepted: (convId: string | null) => void;
+  onDeclined: () => void;
+}) {
+  const toast = useToast();
+
+  const accept = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onBusy(true);
+    void acceptMatchChallenge({ matchId }).then((res) => {
+      onBusy(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo aceptar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Reto aceptado", sub: "Ya puedes escribir en el chat del duelo." });
+      onAccepted(res.data.conversationId);
+    });
+  };
+
+  const decline = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onBusy(true);
+    void declineMatchChallenge({ matchId }).then((res) => {
+      onBusy(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo rechazar", sub: res.error.message });
+        return;
+      }
+      onDeclined();
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={busy}
+        onClick={accept}
+        style={{ flex: 1, padding: "6px 10px", fontSize: 10, justifyContent: "center" }}
+      >
+        Aceptar reto
+      </button>
+      <button
+        type="button"
+        className="btn btn-outline"
+        disabled={busy}
+        onClick={decline}
+        style={{ flex: 1, padding: "6px 10px", fontSize: 10, justifyContent: "center" }}
+      >
+        Rechazar
+      </button>
+    </div>
   );
 }

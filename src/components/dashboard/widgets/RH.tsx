@@ -24,6 +24,7 @@ export function RHWelcome({
   const showContext = !!contextLabel;
   return (
     <div
+      className="mp-rh-welcome"
       style={{
         position: "relative",
         padding: "26px 28px",
@@ -34,6 +35,7 @@ export function RHWelcome({
       }}
     >
       <div
+        className="mp-rh-welcome-deco"
         style={{
           position: "absolute",
           top: 0,
@@ -52,6 +54,7 @@ export function RHWelcome({
         {r.badge.slice(0, 4)}
       </div>
       <div
+        className="mp-rh-welcome-inner"
         style={{
           position: "relative",
           display: "flex",
@@ -61,7 +64,7 @@ export function RHWelcome({
           flexWrap: "wrap",
         }}
       >
-        <div>
+        <div className="mp-rh-welcome-copy" style={{ minWidth: 0, flex: "1 1 200px" }}>
           <div
             style={{
               display: "inline-flex",
@@ -79,7 +82,7 @@ export function RHWelcome({
             ● {r.badge}
           </div>
           <h1
-            className="font-heading"
+            className="font-heading mp-rh-welcome-title"
             style={{
               fontSize: 38,
               fontWeight: 900,
@@ -92,11 +95,11 @@ export function RHWelcome({
             Hola, {firstName}
             <span style={{ color: "#fbbf24" }}>.</span>
           </h1>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", maxWidth: 540, lineHeight: 1.5 }}>
+          <div className="mp-rh-welcome-desc" style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", maxWidth: 540, lineHeight: 1.5 }}>
             {r.desc}
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div className="mp-rh-welcome-context" style={{ textAlign: "right", minWidth: 0, flexShrink: 0 }}>
           {showContext && (
             <>
               <div
@@ -152,11 +155,11 @@ export function RHKpi({
   accent?: string;
 }) {
   return (
-    <div style={RH_TILE}>
-      <div className="label-mp">{label}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
+    <div className="mp-rh-kpi" style={{ ...RH_TILE, minWidth: 0 }}>
+      <div className="label-mp mp-rh-kpi-label">{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
         <div
-          className="font-heading tabular"
+          className="font-heading tabular mp-rh-kpi-value"
           style={{
             fontSize: 30,
             fontWeight: 900,
@@ -180,7 +183,7 @@ export function RHKpi({
         )}
       </div>
       {sub && (
-        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>{sub}</div>
+        <div className="mp-rh-kpi-sub" style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.4 }}>{sub}</div>
       )}
     </div>
   );
@@ -203,6 +206,8 @@ export function RHPanel({
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 12,
+          gap: 10,
+          flexWrap: "wrap",
         }}
       >
         <h2

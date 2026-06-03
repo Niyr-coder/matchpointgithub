@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -51,9 +52,9 @@ type Match = {
   featured?: boolean;
 };
 
-type Scope = "para-ti" | "hoy" | "nivel" | "club" | "cerca" | "vacante1" | "ranked";
+type Scope = "para-ti" | "nivel" | "club" | "cerca" | "vacante1" | "ranked";
 type Tab = "feed" | "mine" | "apps";
-type View = "cards" | "list" | "map";
+type View = "cards" | "map";
 type SortBy = "relevancia" | "hora" | "ciudad";
 type LevelMode = "all" | "strict" | "flex";
 type Tweaks = Partial<{ view: View; sortBy: SortBy; levelMode: LevelMode }>;
@@ -82,6 +83,30 @@ type Props = {
   myApplications?: MyApplicationItem[];
   focusSeekId?: string | null;
 };
+
+const MAIN_TABS = [
+  { k: "feed" as const, l: "Cerca de ti", lShort: "Cerca", i: "radar" },
+  { k: "mine" as const, l: "Mis avisos", lShort: "Avisos", i: "clipboard-list" },
+  { k: "apps" as const, l: "Mis postulaciones", lShort: "Postulé", i: "send" },
+];
+
+const SCOPE_CHIPS: { k: Scope; l: string; i: string }[] = [
+  { k: "para-ti", l: "Para ti", i: "sparkles" },
+  { k: "nivel", l: "Con nivel", i: "zap" },
+  { k: "club", l: "Con club", i: "building-2" },
+  { k: "cerca", l: "Tu ciudad", i: "map-pin" },
+  { k: "vacante1", l: "Falta 1", i: "user-plus" },
+  { k: "ranked", l: "MPR", i: "trophy" },
+];
+
+const FEED_VIEW_OPTIONS = [
+  { k: "cards", i: "layout-grid" },
+  { k: "map", i: "map" },
+] as const;
+
+function normalizeFeedView(v?: string): View {
+  return v === "map" ? "map" : "cards";
+}
 
 function Lucide({ name, style }: { name: string; style?: React.CSSProperties }) {
   const width = typeof style?.width === "number" ? style.width : undefined;
@@ -114,21 +139,7 @@ function BuscarMatchScreen({
   const { confirm, ask } = usePromptModal();
   const [scope, setScope] = useState<Scope>("para-ti");
   const [tab, setTab] = useState<Tab>(focusSeekId ? "mine" : "feed");
-  const [view, setView] = useState<View>(tweaks.view || "cards");
-  const feedViewOptions = useMemo(
-    () =>
-      typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
-        ? ([
-            { k: "cards", i: "layout-grid" },
-            { k: "map", i: "map" },
-          ] as const)
-        : ([
-            { k: "cards", i: "layout-grid" },
-            { k: "list", i: "list" },
-            { k: "map", i: "map" },
-          ] as const),
-    [],
-  );
+  const [view, setView] = useState<View>(normalizeFeedView(tweaks.view));
   const [sortBy, setSortBy] = useState<SortBy>(tweaks.sortBy || "relevancia");
   const [levelMode, setLevelMode] = useState<LevelMode>(tweaks.levelMode || "flex");
   const [sport, setSport] = useState<"all" | MatchSeek["sport"]>("all");
@@ -137,6 +148,7 @@ function BuscarMatchScreen({
   const [publishOpen, setPublishOpen] = useState(false);
   const [applyTarget, setApplyTarget] = useState<MatchSeek | null>(null);
   const [editTarget, setEditTarget] = useState<{ seek: MatchSeek; pendingApplications: number } | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const openEditSeek = (seek: MatchSeek) => {
     const item = mine.find((m) => m.seek.id === seek.id);
@@ -157,17 +169,7 @@ function BuscarMatchScreen({
   );
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setView(tweaks.view || "cards"); }, [tweaks.view]);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const apply = () => {
-      if (mq.matches && view === "list") setView("cards");
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, [view]);
+  useEffect(() => { setView(normalizeFeedView(tweaks.view)); }, [tweaks.view]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSortBy(tweaks.sortBy || "relevancia"); }, [tweaks.sortBy]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -183,7 +185,6 @@ function BuscarMatchScreen({
   };
   const matchesScope = (m: Match) => {
     if (scope === "para-ti") return true;
-    if (scope === "hoy") return m.date === "Hoy";
     if (scope === "nivel") return m.seek.skillMin != null || m.seek.skillMax != null;
     if (scope === "club") return !!m.seek.clubId;
     if (scope === "cerca") return myCity ? m.seek.city === myCity : true;
@@ -213,13 +214,33 @@ function BuscarMatchScreen({
 
   const counts: Record<Scope, number> = {
     "para-ti": allMatches.length,
-    hoy: allMatches.filter((m) => m.date === "Hoy").length,
     nivel: allMatches.filter((m) => m.seek.skillMin != null || m.seek.skillMax != null).length,
     club: allMatches.filter((m) => !!m.seek.clubId).length,
     cerca: allMatches.filter((m) => !myCity || m.seek.city === myCity).length,
     vacante1: allMatches.filter((m) => m.slotsTotal - m.players.length === 1).length,
     ranked: allMatches.filter((m) => m.ranked).length,
   };
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (scope !== "para-ti") n += 1;
+    if (sport !== "all") n += 1;
+    if (mode !== "all") n += 1;
+    if (day !== "cualquier") n += 1;
+    if (sortBy !== "relevancia") n += 1;
+    return n;
+  }, [scope, sport, mode, day, sortBy]);
+
+  const resetFilters = () => {
+    setScope("para-ti");
+    setSport("all");
+    setMode("all");
+    setDay("cualquier");
+    setSortBy("relevancia");
+  };
+
+  const scopeLabel = (chip: (typeof SCOPE_CHIPS)[number]) =>
+    chip.k === "cerca" ? (myCity ? "Tu ciudad" : "Todas las ciudades") : chip.l;
 
   const apply = (seek: MatchSeek) => {
     if (seek.createdBy === meUserId) {
@@ -350,8 +371,6 @@ function BuscarMatchScreen({
         )}
         {view === "map" ? (
           <MapView matches={sorted} onApply={apply} />
-        ) : view === "list" ? (
-          <ListView matches={rest} me={me} onApply={apply} disabled={actionPending} />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
             {rest.map((m) => (
@@ -368,98 +387,114 @@ function BuscarMatchScreen({
   ) : allMatches.length === 0 ? (
     view === "map" ? (
       <MapView matches={[]} onApply={apply} />
-    ) : view === "list" ? (
-      <ListView matches={[]} me={me} onApply={apply} disabled={actionPending} emptyHint onCreate={() => setPublishOpen(true)} city={myCity} />
     ) : (
-      <EmptyLobby onCreate={() => setPublishOpen(true)} city={myCity} />
+      <EmptyLobby city={myCity} />
     )
   ) : (
     renderFeedMatches()
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-screen-label="Busco Partido" data-sport={sport}>
+    <div className="flex min-w-0 flex-col gap-3.5 md:gap-5" data-screen-label="Busco Partido" data-sport={sport}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-        <div>
+        <div className="w-full md:w-auto" style={{ minWidth: 0 }}>
           <h1 className="font-heading" style={{ fontWeight: 900, fontSize: "clamp(28px, 8vw, 44px)", textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: "8px 0 0" }}>
             Busco partido<span className="dot">.</span>
           </h1>
-          <p style={{ color: "var(--muted-fg)", fontSize: 13.5, margin: "8px 0 0" }}>
-            <b style={{ color: "#0a0a0a" }}>{allMatches.length} avisos abiertos</b> · <span style={{ color: "var(--primary)" }}>{counts.nivel} con nivel definido</span> · {counts.hoy} hoy
-            {myPlanTier === "premium" ? " · MATCHPOINT+" : ""}
+          <p style={{ color: "var(--muted-fg)", fontSize: 13.5, margin: "8px 0 0", lineHeight: 1.45 }}>
+            <b style={{ color: "#0a0a0a" }}>{allMatches.length} avisos abiertos</b>
+            <span className="hidden md:inline">
+              {" "}· <span style={{ color: "var(--primary)" }}>{counts.nivel} con nivel definido</span> · {counts.hoy} hoy
+              {myPlanTier === "premium" ? " · MATCHPOINT+" : ""}
+            </span>
           </p>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
+        <div className="w-full md:w-auto" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
           {tab === "feed" && (
             <>
-              <SegBM options={[...feedViewOptions]} value={view} onChange={(v) => setView(v as View)} />
-              <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} />
+              <SegBM options={[...FEED_VIEW_OPTIONS]} value={view} onChange={(v) => setView(v as View)} />
+              <button
+                type="button"
+                className="btn btn-outline shrink-0 md:hidden"
+                onClick={() => setFiltersOpen(true)}
+                style={{ padding: "8px 12px", fontSize: 11, gap: 6 }}
+              >
+                <Lucide name="filter" style={{ width: 13, height: 13 }} />
+                Filtros
+                {activeFilterCount > 0 && (
+                  <span style={{ padding: "1px 6px", borderRadius: 9999, background: "#0a0a0a", color: "#fff", fontSize: 10, fontWeight: 900 }}>
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+              <div className="hidden md:block">
+                <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} />
+              </div>
             </>
           )}
-          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable} style={{ maxWidth: "100%" }}>
+          <button
+            className="btn btn-primary flex-1 md:flex-none"
+            onClick={() => setPublishOpen(true)}
+            disabled={isUnavailable}
+            style={{ maxWidth: "100%", justifyContent: "center" }}
+          >
             <Lucide name="plus" style={{ width: 13, height: 13 }} />Publicar aviso
           </button>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {[
-          { k: "feed", l: "Cerca de ti", i: "radar", count: allMatches.length },
-          { k: "mine", l: "Mis avisos", i: "clipboard-list", count: mineActive.length },
-          { k: "apps", l: "Mis postulaciones", i: "send", count: myApplications.length },
-        ].map((item) => {
-          const on = tab === item.k;
+      <div className="grid grid-cols-3 gap-1.5 md:hidden">
+        {MAIN_TABS.map((item) => {
+          const count =
+            item.k === "feed" ? allMatches.length : item.k === "mine" ? mineActive.length : myApplications.length;
           return (
-            <button key={item.k} onClick={() => setTab(item.k as Tab)} style={{
-              display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 15px", borderRadius: 9999,
-              background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "#0a0a0a",
-              border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
-              fontFamily: "inherit", fontSize: 12, fontWeight: 900, cursor: "pointer",
-            }}>
-              <Lucide name={item.i} style={{ width: 13, height: 13, color: on ? "var(--primary)" : "#0a0a0a" }} />
-              {item.l}
-              <span className="tabular" style={{ padding: "1px 7px", borderRadius: 9999, background: on ? "rgba(255,255,255,0.18)" : "var(--muted)", color: on ? "#fff" : "var(--muted-fg)", fontSize: 10, fontWeight: 900 }}>{item.count}</span>
-            </button>
+            <MainTabButton
+              key={item.k}
+              item={item}
+              count={count}
+              active={tab === item.k}
+              compact
+              onClick={() => setTab(item.k)}
+            />
+          );
+        })}
+      </div>
+      <div className="hidden flex-wrap gap-2 md:flex">
+        {MAIN_TABS.map((item) => {
+          const count =
+            item.k === "feed" ? allMatches.length : item.k === "mine" ? mineActive.length : myApplications.length;
+          return (
+            <MainTabButton
+              key={item.k}
+              item={item}
+              count={count}
+              active={tab === item.k}
+              onClick={() => setTab(item.k)}
+            />
           );
         })}
       </div>
 
       {tab === "feed" && (
       <div
+        className="hidden md:flex"
         style={{
-          display: "flex",
           gap: 8,
           alignItems: "center",
           flexWrap: "wrap",
           maxWidth: "100%",
-          overflowX: "auto",
-          WebkitOverflowScrolling: "touch",
         }}
       >
-        {[
-          { k: "para-ti", l: "Para ti", i: "sparkles" },
-          { k: "hoy", l: "Hoy", i: "sun" },
-          { k: "nivel", l: "Con nivel", i: "zap" },
-          { k: "club", l: "Con club", i: "building-2" },
-          { k: "cerca", l: myCity ? `Tu ciudad` : "Todas las ciudades", i: "map-pin" },
-          { k: "vacante1", l: "Falta 1", i: "user-plus" },
-          { k: "ranked", l: "MPR", i: "trophy" },
-        ].map((c) => {
-          const key = c.k as Scope;
-          const on = scope === key;
-          return (
-            <button key={c.k} onClick={() => setScope(key)} style={{
-              display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 9999,
-              background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "#0a0a0a",
-              border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
-              fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
-            }}>
-              <Lucide name={c.i} style={{ width: 12, height: 12, color: on ? "var(--primary)" : "#0a0a0a" }} />
-              {c.l}
-              <span style={{ padding: "1px 6px", borderRadius: 9999, background: on ? "rgba(255,255,255,0.18)" : "var(--muted)", color: on ? "#fff" : "var(--muted-fg)", fontSize: 10, fontWeight: 900, marginLeft: 2 }}>{counts[key] || 0}</span>
-            </button>
-          );
-        })}
+        {SCOPE_CHIPS.map((c) => (
+          <ScopeChip
+            key={c.k}
+            label={scopeLabel(c)}
+            icon={c.i}
+            count={counts[c.k]}
+            active={scope === c.k}
+            onClick={() => setScope(c.k)}
+          />
+        ))}
         <FineFilter label="Deporte" value={sport} onChange={(v) => setSport(v as "all" | MatchSeek["sport"])} options={[{ k: "all", l: "Todos" }, { k: "pickleball", l: "Pickleball" }, { k: "padel", l: "Pádel" }, { k: "tennis", l: "Tenis" }]} />
         <FineFilter label="Modalidad" value={mode} onChange={setMode} options={[{ k: "all", l: "Todas" }, { k: "singles", l: "Singles" }, { k: "doubles", l: "Dobles" }]} />
         <FineFilter label="Día" value={day} onChange={setDay} options={[{ k: "cualquier", l: "Cualquier día" }, { k: "hoy", l: "Hoy" }, { k: "mañana", l: "Mañana" }]} />
@@ -483,26 +518,6 @@ function BuscarMatchScreen({
         />
       )}
       {tab === "apps" && <ApplicationsPanel items={myApplications} busy={actionPending} onWithdraw={withdraw} />}
-
-      <div className="card" style={{ padding: 28, marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, background: "linear-gradient(135deg,#fafafa 0%, #fff 50%, #ecfdf5 100%)", flexWrap: "wrap" }}>
-        <div>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>● No encuentras tu match</div>
-          <h2 className="font-heading" style={{ fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em", margin: "6px 0 0", lineHeight: 1 }}>
-            Publica tu aviso<span className="dot">.</span>
-          </h2>
-          <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0", maxWidth: 440 }}>
-            En 60 segundos publicas una franja, modalidad y nivel. Cuando alguien se postule, lo aceptas y MATCHPOINT crea el match con chat.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-outline" onClick={() => setTab("mine")}>
-            <Lucide name="clipboard-list" style={{ width: 13, height: 13 }} />Ver mis avisos
-          </button>
-          <button className="btn btn-primary" onClick={() => setPublishOpen(true)} disabled={isUnavailable}>
-            <Lucide name="plus-circle" style={{ width: 13, height: 13 }} />Publicar aviso
-          </button>
-        </div>
-      </div>
 
       {publishOpen && (
         <PublishSeekModal
@@ -535,6 +550,24 @@ function BuscarMatchScreen({
             setEditTarget(null);
             router.refresh();
           }}
+        />
+      )}
+      {filtersOpen && (
+        <FeedFilterSheet
+          scope={scope}
+          setScope={setScope}
+          counts={counts}
+          scopeLabel={scopeLabel}
+          sport={sport}
+          setSport={setSport}
+          mode={mode}
+          setMode={setMode}
+          day={day}
+          setDay={setDay}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          onClose={() => setFiltersOpen(false)}
+          onReset={resetFilters}
         />
       )}
     </div>
@@ -751,6 +784,278 @@ function FitChip({ pct }: { pct: number | null }) {
   );
 }
 
+function MainTabButton({
+  item,
+  count,
+  active,
+  compact,
+  onClick,
+}: {
+  item: (typeof MAIN_TABS)[number];
+  count: number;
+  active: boolean;
+  compact?: boolean;
+  onClick: () => void;
+}) {
+  const label = compact ? item.lShort : item.l;
+  const iconSize = compact ? 11 : 13;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: compact ? "center" : undefined,
+        gap: compact ? 4 : 8,
+        width: compact ? "100%" : undefined,
+        minWidth: 0,
+        padding: compact ? "8px 6px" : "9px 15px",
+        borderRadius: 9999,
+        background: active ? "#0a0a0a" : "#fff",
+        color: active ? "#fff" : "#0a0a0a",
+        border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
+        fontFamily: "inherit",
+        fontSize: compact ? 10 : 12,
+        fontWeight: 900,
+        cursor: "pointer",
+        flexShrink: compact ? undefined : 0,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <Lucide name={item.i} style={{ width: iconSize, height: iconSize, color: active ? "var(--primary)" : "#0a0a0a", flexShrink: 0 }} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{label}</span>
+      <span
+        className="tabular"
+        style={{
+          padding: compact ? "1px 5px" : "1px 7px",
+          borderRadius: 9999,
+          background: active ? "rgba(255,255,255,0.18)" : "var(--muted)",
+          color: active ? "#fff" : "var(--muted-fg)",
+          fontSize: 10,
+          fontWeight: 900,
+          flexShrink: 0,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function ScopeChip({
+  label,
+  icon,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        padding: "8px 14px",
+        borderRadius: 9999,
+        background: active ? "#0a0a0a" : "#fff",
+        color: active ? "#fff" : "#0a0a0a",
+        border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
+        fontFamily: "inherit",
+        fontSize: 11.5,
+        fontWeight: 800,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      <Lucide name={icon} style={{ width: 12, height: 12, color: active ? "var(--primary)" : "#0a0a0a" }} />
+      {label}
+      <span
+        style={{
+          padding: "1px 6px",
+          borderRadius: 9999,
+          background: active ? "rgba(255,255,255,0.18)" : "var(--muted)",
+          color: active ? "#fff" : "var(--muted-fg)",
+          fontSize: 10,
+          fontWeight: 900,
+          marginLeft: 2,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function FeedFilterSheet({
+  scope,
+  setScope,
+  counts,
+  scopeLabel,
+  sport,
+  setSport,
+  mode,
+  setMode,
+  day,
+  setDay,
+  sortBy,
+  setSortBy,
+  onClose,
+  onReset,
+}: {
+  scope: Scope;
+  setScope: (v: Scope) => void;
+  counts: Record<Scope, number>;
+  scopeLabel: (chip: (typeof SCOPE_CHIPS)[number]) => string;
+  sport: "all" | MatchSeek["sport"];
+  setSport: (v: "all" | MatchSeek["sport"]) => void;
+  mode: string;
+  setMode: (v: string) => void;
+  day: string;
+  setDay: (v: string) => void;
+  sortBy: SortBy;
+  setSortBy: (v: SortBy) => void;
+  onClose: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filtros del feed"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "rgba(10,10,10,0.55)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "flex-end",
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          width: "100%",
+          maxHeight: "82vh",
+          overflow: "auto",
+          borderRadius: "18px 18px 0 0",
+          padding: 0,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: "16px 18px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <h3 className="font-heading" style={{ margin: 0, fontSize: 17, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em" }}>
+            Filtros<span className="dot">.</span>
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar filtros"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              border: 0,
+              background: "var(--muted)",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 18 }}>
+          <div>
+            <div className="label-mp" style={{ marginBottom: 10 }}>
+              Vista rápida
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {SCOPE_CHIPS.map((c) => (
+                <ScopeChip
+                  key={c.k}
+                  label={scopeLabel(c)}
+                  icon={c.i}
+                  count={counts[c.k]}
+                  active={scope === c.k}
+                  onClick={() => setScope(c.k)}
+                />
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="label-mp">Detalle</div>
+            <FineFilter
+              label="Deporte"
+              value={sport}
+              onChange={(v) => setSport(v as "all" | MatchSeek["sport"])}
+              options={[
+                { k: "all", l: "Todos" },
+                { k: "pickleball", l: "Pickleball" },
+                { k: "padel", l: "Pádel" },
+                { k: "tennis", l: "Tenis" },
+              ]}
+              fullWidth
+            />
+            <FineFilter
+              label="Modalidad"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { k: "all", l: "Todas" },
+                { k: "singles", l: "Singles" },
+                { k: "doubles", l: "Dobles" },
+              ]}
+              fullWidth
+            />
+            <FineFilter
+              label="Día"
+              value={day}
+              onChange={setDay}
+              options={[
+                { k: "cualquier", l: "Cualquier día" },
+                { k: "hoy", l: "Hoy" },
+                { k: "mañana", l: "Mañana" },
+              ]}
+              fullWidth
+            />
+            <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} fullWidth />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={onReset}>
+              Limpiar
+            </button>
+            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={onClose}>
+              Ver resultados
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SegBM({ options, value, onChange }: { options: { k: string; i: string }[]; value: string; onChange: (v: string) => void }) {
   return (
     <div role="group" aria-label="Vista del feed" style={{ display: "inline-flex", background: "#f5f5f5", borderRadius: 9999, padding: 3 }}>
@@ -759,7 +1064,7 @@ function SegBM({ options, value, onChange }: { options: { k: string; i: string }
           key={o.k}
           type="button"
           aria-pressed={value === o.k}
-          aria-label={o.k === "cards" ? "Tarjetas" : o.k === "list" ? "Lista" : "Mapa"}
+          aria-label={o.k === "cards" ? "Tarjetas" : "Mapa"}
           onClick={() => onChange(o.k)}
           style={{
             border: 0,
@@ -780,12 +1085,22 @@ function SegBM({ options, value, onChange }: { options: { k: string; i: string }
   );
 }
 
-function SortMenu({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SortMenu({
+  value,
+  onChange,
+  fullWidth,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  fullWidth?: boolean;
+}) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
-      <Lucide name="arrow-up-down" style={{ width: 12, height: 12, color: "var(--muted-fg)" }} />
-      <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>Ordenar</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none" }}>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", width: fullWidth ? "100%" : undefined, justifyContent: fullWidth ? "space-between" : undefined }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <Lucide name="arrow-up-down" style={{ width: 12, height: 12, color: "var(--muted-fg)" }} />
+        <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>Ordenar</span>
+      </div>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none", marginLeft: fullWidth ? "auto" : undefined }}>
         <option value="relevancia">Relevancia</option>
         <option value="hora">Más pronto</option>
         <option value="ciudad">Ciudad</option>
@@ -794,83 +1109,25 @@ function SortMenu({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
-function FineFilter({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { k: string; l: string }[] }) {
-  return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff" }}>
-      <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none" }}>
-        {options.map((o) => <option key={o.k} value={o.k}>{o.l}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function ListView({
-  matches,
-  me,
-  onApply,
-  disabled,
-  emptyHint,
-  onCreate,
-  city,
+function FineFilter({
+  label,
+  value,
+  onChange,
+  options,
+  fullWidth,
 }: {
-  matches: Match[];
-  me: { level: number | null };
-  onApply: (seek: MatchSeek) => void;
-  disabled?: boolean;
-  emptyHint?: boolean;
-  onCreate?: () => void;
-  city?: string | null;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { k: string; l: string }[];
+  fullWidth?: boolean;
 }) {
   return (
-    <div className="card max-w-full overflow-x-auto" style={{ padding: 0 }}>
-      <div style={{ minWidth: 640, padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-        <div>Cuándo</div>
-        <div>Match</div>
-        <div>Jugadores</div>
-        <div>Nivel</div>
-        <div style={{ textAlign: "right" }}>Estado</div>
-        <div />
-      </div>
-      {matches.length === 0 && emptyHint ? (
-        <div style={{ padding: "28px 22px", textAlign: "center" }}>
-          <div className="label-mp" style={{ marginBottom: 8 }}>Lista vacía</div>
-          <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--muted-fg)" }}>
-            No hay avisos abiertos{city ? ` en ${city}` : ""}. Publica el primero y aparecerá aquí en formato tabla.
-          </p>
-          {onCreate && (
-            <button type="button" className="btn btn-primary" onClick={onCreate}>
-              <Icon name="plus" size={13} />
-              Publicar aviso
-            </button>
-          )}
-        </div>
-      ) : null}
-      {matches.map((m) => {
-        const empty = m.slotsTotal - m.players.length;
-        const alreadyApplied = !!m.seek.myApplicationStatus;
-        return (
-          <div key={m.id} style={{ minWidth: 640, padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center" }}>
-            <div>
-              <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{m.date}</div>
-              <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{m.time}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>{m.sport} · {m.mode}</div>
-              <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{m.club} · {m.dist}</div>
-            </div>
-            <SlotsRow players={m.players} total={m.slotsTotal} />
-            <div><LevelBadge me={me} range={m.levelRange} /></div>
-            <div style={{ textAlign: "right" }}>
-              <FitChip pct={m.fit} />
-              <div className="tabular" style={{ fontSize: 12, fontWeight: 800, marginTop: 4 }}>{m.seek.applicantsCount} postulantes</div>
-            </div>
-            <button className="btn btn-primary" style={{ padding: "8px 13px", fontSize: 10.5 }} onClick={() => onApply(m.seek)} disabled={disabled || alreadyApplied}>
-              {alreadyApplied ? applicationStatusLabel(m.seek.myApplicationStatus) : empty === 1 ? "Último cupo" : "Postularme"}<Lucide name="arrow-right" style={{ width: 11, height: 11 }} />
-            </button>
-          </div>
-        );
-      })}
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", width: fullWidth ? "100%" : undefined, justifyContent: fullWidth ? "space-between" : undefined }}>
+      <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none", marginLeft: fullWidth ? "auto" : undefined }}>
+        {options.map((o) => <option key={o.k} value={o.k}>{o.l}</option>)}
+      </select>
     </div>
   );
 }
@@ -1643,22 +1900,58 @@ function PanelEmpty({ icon, title, body }: { icon: string; title: string; body: 
   );
 }
 
-function EmptyLobby({ onCreate, city }: { onCreate: () => void; city?: string | null }) {
+function MatchCardSkeleton() {
   return (
-    <>
-      <EmptyFeaturedPreview onCreate={onCreate} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
-        {Array.from({ length: 3 }).map((_, i) => <EmptyMatchCard key={i} index={i} />)}
+    <div className="card" style={{ padding: 0, overflow: "hidden", opacity: 0.72 }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <Skeleton w={72} h={14} r={6} />
+        <Skeleton w={48} h={20} r={9999} />
       </div>
-      <div className="card" style={{ padding: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div className="label-mp">Sin avisos reales</div>
-          <h3 className="font-heading" style={{ margin: "5px 0 0", fontSize: 22, fontWeight: 900, textTransform: "uppercase" }}>No hay partidos abiertos{city ? ` en ${city}` : ""}<span className="dot">.</span></h3>
-          <p style={{ margin: "7px 0 0", color: "var(--muted-fg)", fontSize: 13 }}>Mantenemos la composición del lobby con estados vacíos estáticos y una acción clara para abrir el primer aviso.</p>
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <Skeleton w="70%" h={18} r={6} />
+        <Skeleton w="48%" h={12} r={6} />
+        <div style={{ display: "flex", gap: 8 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} w={38} h={38} r={9999} />
+          ))}
         </div>
-        <button className="btn btn-primary" onClick={onCreate}><Icon name="plus" size={13} />Publicar aviso</button>
+        <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px dashed var(--border)" }}>
+          <Skeleton w={88} h={24} r={9999} />
+          <Skeleton w={56} h={24} r={9999} />
+          <span style={{ flex: 1 }} />
+          <Skeleton w={72} h={14} r={6} />
+        </div>
       </div>
-    </>
+      <div style={{ padding: "10px 14px", background: "#fafafa", borderTop: "1px solid var(--border)" }}>
+        <Skeleton w="100%" h={34} r={9999} />
+      </div>
+    </div>
+  );
+}
+
+function EmptyLobby({ city }: { city?: string | null }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ textAlign: "center", padding: "4px 8px 0" }}>
+        <div className="label-mp" style={{ marginBottom: 6 }}>Sin avisos abiertos</div>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+          No hay partidos abiertos{city ? ` en ${city}` : ""} por ahora.
+        </p>
+      </div>
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))",
+          gap: 16,
+          pointerEvents: "none",
+        }}
+      >
+        {Array.from({ length: 2 }).map((_, i) => (
+          <MatchCardSkeleton key={i} />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1667,114 +1960,7 @@ function UnavailableState({ reason }: { reason?: "flag" | "auth" }) {
   const body = reason === "auth"
     ? "Cuando inicies sesión, verás avisos reales de tu ciudad, tus postulaciones y tus avisos publicados."
     : "La función está protegida por flag. Mientras se activa, dejamos el diseño listo con estados vacíos honestos.";
-  return (
-    <>
-      <EmptyFeaturedPreview locked />
-      <PanelEmpty icon="lock" title={title} body={body} />
-    </>
-  );
-}
-
-function EmptyFeaturedPreview({ onCreate, locked }: { onCreate?: () => void; locked?: boolean }) {
-  return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", background: "#0a0a0a", color: "#fff", position: "relative", border: 0, minHeight: 190 }}>
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(ellipse at 85% 30%, rgba(16,185,129,0.32), transparent 55%), radial-gradient(ellipse at 5% 90%, rgba(251,191,36,0.12), transparent 55%), linear-gradient(135deg, #0f172a 0%, #0a0a0a 42%, #064e3b 100%)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          fontFamily: "Plus Jakarta Sans",
-          fontWeight: 900,
-          fontSize: 220,
-          color: "rgba(255,255,255,0.04)",
-          letterSpacing: "-0.06em",
-          lineHeight: 0.8,
-          transform: "rotate(-6deg) translate(8%, -18%)",
-          textTransform: "uppercase",
-          pointerEvents: "none",
-        }}
-      >
-        {locked ? "LOBBY" : "AVISO"}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_auto_1fr] gap-4 md:gap-7 items-center relative p-4 md:px-7 md:py-6">
-        <div>
-          <div className="chip-green" style={{ marginBottom: 10, opacity: locked ? 0.72 : 1 }}>
-            <span className="chip-dot" />{locked ? "Feature protegido" : "Primer aviso disponible"}
-          </div>
-          <h3 className="font-heading" style={{ fontWeight: 900, fontSize: 30, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1, margin: 0 }}>
-            {locked ? "Lobby en espera" : "Sé el primero"}<span style={{ color: "var(--primary)" }}>.</span>
-          </h3>
-          <p style={{ margin: "12px 0 0", color: "rgba(255,255,255,0.68)", fontSize: 13, maxWidth: 380 }}>
-            {locked ? "Cuando esté activo verás avisos reales, postulaciones y chats de partido." : "Publica una franja y MATCHPOINT mostrará aquí los partidos abiertos de tu zona."}
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#10b981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", border: "2.5px solid rgba(255,255,255,0.15)", boxShadow: "0 4px 14px rgba(16,185,129,0.35)" }}>
-            <span className="font-heading" style={{ fontSize: 14, fontWeight: 900 }}>TÚ</span>
-          </div>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} style={{ width: 52, height: 52, borderRadius: "50%", border: "2px dashed rgba(16,185,129,0.5)", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)" }}>
-              <Icon name={locked ? "lock" : "plus"} size={20} color="var(--primary)" />
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
-          <div style={{ textAlign: "right" }}>
-            <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)" }}>Estado</div>
-            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: "rgba(255,255,255,0.45)", lineHeight: 1, marginTop: 4 }}>-</div>
-          </div>
-          {!locked && onCreate && (
-            <button className="btn btn-primary" style={{ padding: "12px 18px", fontSize: 12.5 }} onClick={onCreate}>
-              <Icon name="plus" size={14} />Publicar
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyMatchCard({ index }: { index: number }) {
-  const labels = ["Franja libre", "Rival por encontrar", "Dupla pendiente"];
-  return (
-    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14, minHeight: 225 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span className="font-heading tabular" style={{ fontWeight: 900, fontSize: 13 }}>Sin aviso</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 10, fontWeight: 900 }}>
-          Vacío
-        </span>
-      </div>
-      <div>
-        <div className="font-heading" style={{ fontWeight: 900, fontSize: 17, textTransform: "uppercase", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-          {labels[index] ?? "Aviso disponible"}<span className="dot">.</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <Icon name="map-pin" size={11} />
-          Publica un aviso para llenar este espacio
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} style={{ width: 38, height: 38, borderRadius: "50%", border: "2px dashed var(--border)", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted-fg)" }}>
-            <Icon name={i === 0 ? "user" : "plus"} size={14} color="var(--muted-fg)" />
-          </div>
-        ))}
-      </div>
-      <div style={{ height: 1, borderTop: "1px dashed var(--border)" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto" }}>
-        <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>0 postulantes</span>
-        <span style={{ padding: "8px 13px", borderRadius: 9999, border: "1px solid var(--border)", color: "var(--muted-fg)", fontSize: 10.5, fontWeight: 900 }}>Estado vacío</span>
-      </div>
-    </div>
-  );
+  return <PanelEmpty icon="lock" title={title} body={body} />;
 }
 
 function ApplicationPill({ status }: { status: MyApplicationItem["status"] }) {

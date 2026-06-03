@@ -7,10 +7,16 @@ export type ConvoMatchSummary = {
   courtName: string | null;
 };
 
+export type ConvoQuedadaSummary = {
+  status: string;
+  startsAt: string | null;
+  locationText: string | null;
+};
+
 export type ConvoLite = {
   id: string;
   name: string;
-  kind: "dm" | "group" | "support" | "club_channel" | "team_channel" | "match";
+  kind: "dm" | "group" | "support" | "club_channel" | "team_channel" | "match" | "quedada";
   isGroup: boolean;
   isSystem: boolean;
   isOfficial: boolean;
@@ -22,4 +28,5 @@ export type ConvoLite = {
   otherUserId: string | null;
   otherUsername: string | null;
   matchSummary: ConvoMatchSummary | null;
+  quedadaSummary: ConvoQuedadaSummary | null;
 };

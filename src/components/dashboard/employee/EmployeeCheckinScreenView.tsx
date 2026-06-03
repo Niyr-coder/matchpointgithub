@@ -1,7 +1,7 @@
 // Client view del EmployeeCheckinScreen — layout 1:1 del mock.
 "use client";
-import { useCallback, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -93,11 +93,20 @@ function QueuePlaceholderCard() {
 export function EmployeeCheckinScreenView({ data }: { data: CheckinData }) {
   const toast = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();
   const [scannerOpen, setScannerOpen] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const codeRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (q) {
+      setCodeInput(q.toUpperCase());
+      codeRef.current?.focus();
+    }
+  }, [searchParams]);
 
   const finishCheckIn = useCallback(
     (res: { ok: true; data: { id: string; alreadyDone?: boolean } } | { ok: false; error: { message: string } }) => {

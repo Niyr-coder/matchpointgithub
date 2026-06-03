@@ -27,6 +27,7 @@ import {
 } from "@/lib/match/retar-hero-present";
 import { listClubs } from "@/server/actions/clubs";
 import { sendMessage } from "@/server/actions/messaging";
+import { notify } from "@/server/notifications/dispatch";
 import { cancelReservation, createReservation } from "@/server/actions/reservations";
 import {
   readMatchPlannedMeta,
@@ -87,6 +88,8 @@ const CreateMatchSchema = z
     isRanked: z.boolean().optional().default(false),
     plannedBestOf: PlannedBestOfSchema.optional(),
     challengeMessage: z.string().trim().max(180).optional(),
+    /** Si true, todos entran al chat de inmediato (p. ej. Busco partido). */
+    skipChallengeAcceptance: z.boolean().optional().default(false),
   })
   .refine((d) => d.teamAPlayerIds.length === d.teamBPlayerIds.length, {
     message: "Los dos equipos deben tener el mismo número de jugadores",
@@ -122,6 +125,13 @@ const DisputeScoreSchema = z.object({
   reason: z.string().min(3).max(500),
 });
 
+const MatchChallengeIdSchema = z.object({ matchId: UuidSchema });
+
+const DeclineMatchChallengeSchema = z.object({
+  matchId: UuidSchema,
+  reason: z.string().max(280).optional(),
+});
+
 const ListRecentSchema = z.object({
   userId: UuidSchema,
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -144,6 +154,7 @@ export type MatchRow = {
   confirmedBy: string[];
   confirmedAt: string | null;
   disputedReason: string | null;
+  acceptedBy: string[];
   status: "scheduled" | "reported" | "confirmed" | "disputed" | "cancelled";
   isRanked: boolean;
   createdBy: string;
@@ -172,6 +183,7 @@ type DbMatch = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  accepted_by?: string[] | null;
 };
 
 function rowToMatch(row: DbMatch): MatchRow {
@@ -192,11 +204,55 @@ function rowToMatch(row: DbMatch): MatchRow {
     confirmedAt: row.confirmed_at,
     disputedReason: row.disputed_reason,
     status: row.status,
+    acceptedBy: row.accepted_by ?? [],
     isRanked: row.is_ranked === true,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function allPlayerIds(row: Pick<DbMatch, "team_a_player_ids" | "team_b_player_ids">): string[] {
+  return [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])];
+}
+
+function isFullyAccepted(row: DbMatch): boolean {
+  const pending = allPlayerIds(row).filter((id) => !(row.accepted_by ?? []).includes(id));
+  return pending.length === 0;
+}
+
+function isReportedScore(score: MatchScorePayload | null): score is MatchScore {
+  return !!score && typeof score === "object" && "sets" in score && Array.isArray((score as MatchScore).sets);
+}
+
+function validateScoreForBestOf(score: MatchScore, bestOf: 1 | 3 | 5 | undefined): void {
+  const needed = bestOf ? Math.ceil(bestOf / 2) : 1;
+  if (score.sets.length === 0 || score.sets.length > (bestOf ?? 7)) {
+    throw new MpError("MATCH.INVALID_SCORE", "Cantidad de sets inválida para este formato", 422);
+  }
+  let winsA = 0;
+  let winsB = 0;
+  for (const set of score.sets) {
+    if (set.a === set.b) {
+      throw new MpError("MATCH.INVALID_SCORE", "Cada set debe tener un ganador", 422);
+    }
+    if (set.a > set.b) winsA += 1;
+    else winsB += 1;
+  }
+  const winnerWins = score.winner === "a" ? winsA : winsB;
+  const loserWins = score.winner === "a" ? winsB : winsA;
+  if (winnerWins !== needed) {
+    throw new MpError(
+      "MATCH.INVALID_SCORE",
+      bestOf && bestOf > 1
+        ? `Para ganar al mejor de ${bestOf} necesitas ${needed} sets`
+        : "El ganador debe tener el set a favor",
+      422,
+    );
+  }
+  if (winnerWins + loserWins > (bestOf ?? score.sets.length)) {
+    throw new MpError("MATCH.INVALID_SCORE", "Hay sets de más para este formato", 422);
+  }
 }
 
 function assertParticipant(
@@ -268,6 +324,8 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
     const plannedScore: MatchPlannedScore | null =
       plannedMeta.bestOf || plannedMeta.reservationId ? { planned: plannedMeta } : null;
 
+    const acceptedBy = data.skipChallengeAcceptance ? all : [userId];
+
     const { data: row, error } = await supabase
       .from("matches")
       .insert({
@@ -283,6 +341,7 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
         is_ranked: isRanked,
         created_by: userId,
         score: plannedScore,
+        accepted_by: acceptedBy,
       } as never)
       .select("*")
       .single();
@@ -336,6 +395,26 @@ export async function createMatch(input: unknown): Promise<ActionResult<MatchRow
       }
     }
 
+    if (!data.skipChallengeAcceptance) {
+      const creator = await getProfileSummary(userId);
+      const pendingIds = all.filter((id) => id !== userId);
+      await Promise.all(
+        pendingIds.map((uid) =>
+          notify({
+            userId: uid,
+            role: "user",
+            kind: "match_challenge_received",
+            title: `${creator.displayName ?? "Un jugador"} te retó a un duelo`,
+            body: "Acepta el reto para unirte al chat del partido y coordinar el encuentro.",
+            payload: {
+              match_id: match.id,
+              challenger_name: creator.displayName ?? "Un jugador",
+            },
+          }),
+        ),
+      );
+    }
+
     return match;
   });
 }
@@ -360,7 +439,15 @@ export async function reportScore(input: unknown): Promise<ActionResult<MatchRow
     const row = existing as DbMatch;
     assertParticipant(userId, row);
 
-    if (row.status !== "scheduled" && row.status !== "reported") {
+    if (!isFullyAccepted(row)) {
+      throw new MpError(
+        "MATCH.NOT_ACCEPTED",
+        "Todos los jugadores deben aceptar el reto antes de reportar el marcador",
+        409,
+      );
+    }
+
+    if (row.status !== "scheduled" && row.status !== "reported" && row.status !== "disputed") {
       throw new MpError(
         "MATCH.NOT_REPORTABLE",
         `No se puede reportar score en estado '${row.status}'`,
@@ -382,11 +469,16 @@ export async function reportScore(input: unknown): Promise<ActionResult<MatchRow
       );
     }
 
+    const planned = readMatchPlannedMeta(row.score);
+    validateScoreForBestOf(score, planned.bestOf);
+
     const nowIso = new Date().toISOString();
+    const scorePayload =
+      planned.bestOf || planned.reservationId ? { ...score, planned } : score;
     const { data: updated, error: updErr } = await supabase
       .from("matches")
       .update({
-        score,
+        score: scorePayload,
         reported_by: userId,
         reported_at: nowIso,
         status: "reported",
@@ -401,6 +493,158 @@ export async function reportScore(input: unknown): Promise<ActionResult<MatchRow
     if (updErr || !updated) {
       throw new MpError("MATCH.REPORT_FAILED", updErr?.message ?? "No se pudo reportar", 500);
     }
+    return rowToMatch(updated as DbMatch);
+  });
+}
+
+// ── acceptMatchChallenge / declineMatchChallenge ───────────────────────────
+export async function acceptMatchChallenge(
+  input: unknown,
+): Promise<ActionResult<{ conversationId: string | null; fullyAccepted: boolean }>> {
+  return runAction(MatchChallengeIdSchema, input, async ({ matchId }) => {
+    const userId = await requireUserId();
+    const supabase = await getMatchesClient();
+    const { data: existing, error: selErr } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("id", matchId)
+      .single();
+    if (selErr || !existing) throw new MpError("MATCH.NOT_FOUND", "Partido no encontrado", 404);
+    const row = existing as DbMatch;
+    if (row.status === "cancelled") {
+      throw new MpError("MATCH.CHALLENGE_CLOSED", "Este reto ya no está disponible", 409);
+    }
+    assertParticipant(userId, row);
+
+    const accepted = row.accepted_by ?? [];
+    if (accepted.includes(userId)) {
+      const conversationId = await findMatchConversationId(matchId);
+      return { conversationId, fullyAccepted: isFullyAccepted(row) };
+    }
+
+    const nextAccepted = [...accepted, userId];
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+    const conversationId = await findMatchConversationId(matchId);
+    if (conversationId) {
+      const { error: memberErr } = await admin.from("conversation_members").insert({
+        conversation_id: conversationId,
+        user_id: userId,
+        role: userId === row.created_by ? "admin" : "member",
+      } as never);
+      if (memberErr && memberErr.code !== "23505") {
+        throw new MpError("MATCH.ACCEPT_FAILED", memberErr.message, 500);
+      }
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from("matches")
+      .update({ accepted_by: nextAccepted } as never)
+      .eq("id", matchId)
+      .select("*")
+      .single();
+    if (updErr || !updated) {
+      throw new MpError("MATCH.ACCEPT_FAILED", updErr?.message ?? "No se pudo aceptar", 500);
+    }
+    const nextRow = updated as DbMatch;
+    const fullyAccepted = isFullyAccepted(nextRow);
+    const acceptor = await getProfileSummary(userId);
+
+    const others = allPlayerIds(row).filter((id) => id !== userId);
+    const pendingCount = allPlayerIds(nextRow).filter((id) => !(nextRow.accepted_by ?? []).includes(id)).length;
+    await Promise.all(
+      others.map((uid) =>
+        notify({
+          userId: uid,
+          role: "user",
+          kind: "match_challenge_accepted",
+          title: `${acceptor.displayName ?? "Un jugador"} aceptó el reto`,
+          body: fullyAccepted
+            ? "Todos aceptaron. Ya pueden coordinar y registrar el marcador en el chat."
+            : pendingCount > 0
+              ? `Falta que ${pendingCount} jugador${pendingCount === 1 ? "" : "es"} acepte.`
+              : "El duelo sigue en marcha.",
+          payload: {
+            match_id: matchId,
+            conversation_id: conversationId,
+            acceptor_name: acceptor.displayName ?? "Un jugador",
+            pending_label: fullyAccepted ? null : `${pendingCount} pendiente(s)`,
+          },
+        }),
+      ),
+    );
+
+    if (fullyAccepted && conversationId) {
+      await sendMessage({
+        id: conversationId,
+        body: {
+          body: "Todos aceptaron el reto. Cuando jueguen, registra el marcador aquí abajo.",
+          kind: "system",
+          payload: { type: "match-ready", matchId },
+        },
+      });
+    }
+
+    return { conversationId, fullyAccepted };
+  });
+}
+
+export async function declineMatchChallenge(
+  input: unknown,
+): Promise<ActionResult<MatchRow>> {
+  return runAction(DeclineMatchChallengeSchema, input, async ({ matchId, reason }) => {
+    const userId = await requireUserId();
+    const supabase = await getMatchesClient();
+    const { data: existing, error: selErr } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("id", matchId)
+      .single();
+    if (selErr || !existing) throw new MpError("MATCH.NOT_FOUND", "Partido no encontrado", 404);
+    const row = existing as DbMatch;
+    assertParticipant(userId, row);
+    if (row.status === "cancelled") return rowToMatch(row);
+    if (isFullyAccepted(row)) {
+      throw new MpError("MATCH.CHALLENGE_LOCKED", "El reto ya fue aceptado por todos", 409);
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: updErr } = await supabase
+      .from("matches")
+      .update({
+        status: "cancelled",
+        cancelled_by: userId,
+        cancelled_reason: reason ?? "Reto rechazado",
+        cancelled_at: nowIso,
+      } as never)
+      .eq("id", matchId)
+      .select("*")
+      .single();
+    if (updErr || !updated) {
+      throw new MpError("MATCH.DECLINE_FAILED", updErr?.message ?? "No se pudo rechazar", 500);
+    }
+
+    const decliner = await getProfileSummary(userId);
+    const conversationId = await findMatchConversationId(matchId);
+    const others = allPlayerIds(row).filter((id) => id !== userId);
+    await Promise.all(
+      others.map((uid) =>
+        notify({
+          userId: uid,
+          role: "user",
+          kind: "match_cancelled",
+          title: "Reto rechazado",
+          body: `${decliner.displayName ?? "Un jugador"} rechazó el duelo${reason ? ` · ${reason}` : ""}.`,
+          payload: {
+            match_id: matchId,
+            conversation_id: conversationId,
+            canceller_name: decliner.displayName ?? "Un jugador",
+            reason: reason ?? "Reto rechazado",
+          },
+        }),
+      ),
+    );
+
     return rowToMatch(updated as DbMatch);
   });
 }

@@ -107,7 +107,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+      <div className="mp-partner-fin-split mp-role-home-panels">
         {/* Big net + waterfall */}
         <div
           className="card"
@@ -139,7 +139,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 12 }}>
             <span
-              className="font-heading tabular"
+              className="font-heading tabular mp-partner-fin-hero-value"
               style={{
                 fontSize: 68,
                 fontWeight: 900,
@@ -198,7 +198,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
 
         {/* Right: secondary KPIs + payouts */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-partner-fin-kpis-secondary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {secondary.map((k) => (
               <div key={k.l} className="card" style={{ padding: 16 }}>
                 <div className="label-mp">{k.l}</div>

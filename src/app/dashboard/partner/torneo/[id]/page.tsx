@@ -11,6 +11,8 @@ import { TopBar } from "@/components/dashboard/TopBar";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { Icon } from "@/components/Icon";
 import { PartnerTorneoActions } from "@/components/dashboard/partner/PartnerTorneoActions";
+import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel";
+import { getGroupStageSummary } from "@/server/actions/tournament-group-stage";
 import { MarkPaidInline } from "@/components/dashboard/partner/MarkPaidInline";
 import { CategoriesPanel, type CategoryRow } from "@/components/dashboard/partner/CategoriesPanel";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
@@ -293,7 +295,19 @@ export default async function PartnerTorneoPage({
   const userName = profile.displayName ?? profile.username ?? "Usuario";
   const cfg = MP_ROLES[role];
 
+  const tournamentFormat = (t.format as string) ?? "single_elim";
   const club = t.clubs as { name?: string; city?: string } | null;
+  const registrationLabels = Object.fromEntries(regs.map((r) => [r.id, r.label]));
+
+  let groupStageInitial = null;
+  if (tournamentFormat === "groups_to_knockout" && categories.length > 0) {
+    const gs = await getGroupStageSummary({
+      tournamentId: id,
+      categoryId: categories[0].id,
+    });
+    if (gs.ok) groupStageInitial = gs.data;
+  }
+
   const cap = (t.max_participants as number | null) ?? 0;
   const prize = ((t.prize_pool_cents as number | null) ?? 0) / 100;
   const dbStatus = String(t.status);
@@ -560,28 +574,40 @@ export default async function PartnerTorneoPage({
             />
           </div>
 
-          {!isClosed && <PartnerTorneoActions
-            tournamentId={t.id as string}
-            status={dbStatus}
-            isFeatured={isFeatured}
-            isAdmin={isAdmin}
-            acceptedCount={acceptedCount}
-            editable={{
-              id: t.id as string,
-              name: t.name as string,
-              startsAt: t.starts_at as string,
-              endsAt: (t.ends_at as string | null) ?? null,
-              maxParticipants: (t.max_participants as number | null) ?? null,
-              entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
-              prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
-              paymentPolicy:
-                ((t.payment_policy as string | null) ?? "prepay") as
-                  | "free"
-                  | "prepay"
-                  | "onsite"
-                  | "flexible",
-            }}
-          />}
+          {!isClosed && (
+            <PartnerTorneoActions
+              tournamentId={t.id as string}
+              status={dbStatus}
+              format={tournamentFormat}
+              isFeatured={isFeatured}
+              isAdmin={isAdmin}
+              acceptedCount={acceptedCount}
+              editable={{
+                id: t.id as string,
+                name: t.name as string,
+                startsAt: t.starts_at as string,
+                endsAt: (t.ends_at as string | null) ?? null,
+                maxParticipants: (t.max_participants as number | null) ?? null,
+                entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
+                prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
+                paymentPolicy:
+                  ((t.payment_policy as string | null) ?? "prepay") as
+                    | "free"
+                    | "prepay"
+                    | "onsite"
+                    | "flexible",
+              }}
+            />
+          )}
+
+          {tournamentFormat === "groups_to_knockout" && !isClosed && (
+            <GroupStagePanel
+              tournamentId={t.id as string}
+              acceptedCount={acceptedCount}
+              registrationLabels={registrationLabels}
+              initial={groupStageInitial}
+            />
+          )}
 
           {isAdmin && (
             <AdminOverridesPanel

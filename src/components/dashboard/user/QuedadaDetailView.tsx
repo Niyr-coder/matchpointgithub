@@ -7,63 +7,40 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { Skeleton as SkBar } from "@/components/ui/Skeleton";
 import { getQuedadaPlayerView } from "@/server/actions/quedadas";
 import type {
-  GameViewPair,
-  GameViewParticipant,
-  GameViewRound,
   GameViewGame,
-} from "./QuedadaGameView";
-import type { Prize, QuedadaRule } from "@/lib/schemas/quedadas";
+  GameViewParticipant,
+  QuedadaPlayerQuedada,
+  QuedadaPlayerViewData,
+} from "@/lib/quedadas/game-view-types";
+import {
+  gameOrder,
+  includesUser,
+  myGames,
+  mySide,
+  nextGameForPlayer,
+  restRoundsForPlayer,
+  roundNumbersForPlayer,
+  scoreForUser,
+  sideIds,
+} from "@/lib/quedadas/player-schedule";
+import { QuedadaPrizeRow } from "./quedada-fields/QuedadaPrizeRow";
 import { getQuedadaEngine } from "@/lib/quedadas/engines/registry";
 import { individualStandings } from "@/lib/quedadas/standings";
 import { pairStandings } from "@/lib/quedadas/pair-standings";
+import { gameOutcomeForUser, podiumRankLabel } from "@/lib/quedadas/profile-stats";
+import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPanel";
+import { quedadaFormatLabel } from "@/lib/quedadas/format-labels";
+import type { Prize, QuedadaRule } from "@/lib/schemas/quedadas";
+import { PlayerBackBtn } from "./_shared/PlayerBackBtn";
+import { PlayerHero } from "./_shared/PlayerHero";
+import { PlayerTabStrip } from "./_shared/PlayerTabStrip";
+import { NextMatchCard } from "./_shared/NextMatchCard";
+import { MiniStat } from "./_shared/MiniStat";
+import { PLAYER_TONES } from "./_shared/playerTones";
+import { CourtMatchup } from "@/components/quedadas/CourtMatchup";
 
-type PlayerQuedada = {
-  id: string;
-  creator_id: string;
-  title: string;
-  description: string | null;
-  format: string;
-  match_mode: "singles" | "doubles";
-  visibility: "open" | "private";
-  status: string;
-  starts_at: string;
-  location_text: string | null;
-  fee_cents: number;
-  perks_text: string | null;
-  prizes: Prize[] | null;
-  rules: QuedadaRule[] | null;
-  target_points: number | null;
-};
-type PlayerCategory = {
-  id: string;
-  name: string;
-  level_label: string | null;
-  starts_at: string | null;
-  court_label: string | null;
-  max_slots?: number | null;
-  target_points: number | null;
-  sort_order: number;
-};
-type PlayerView = {
-  quedada: PlayerQuedada;
-  meUserId: string;
-  isMember: boolean;
-  categories: PlayerCategory[];
-  pairs: GameViewPair[];
-  participants: GameViewParticipant[];
-  rounds: GameViewRound[];
-  games: GameViewGame[];
-};
-type TabKey = "calendario" | "general" | "detalles" | "tabla";
-
-const FORMAT_LABEL: Record<string, string> = {
-  americano: "Americano",
-  mexicano: "Mexicano",
-  round_robin: "Round Robin",
-  kotc: "Rey de Cancha",
-  canguil: "Canguil",
-  libre: "Libre",
-};
+type PlayerView = QuedadaPlayerViewData;
+type TabKey = "calendario" | "general" | "configuracion" | "detalles" | "tabla";
 
 function statusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -106,70 +83,137 @@ function nameFor(data: PlayerView, userId: string | null | undefined): string {
   return participantName(data.participants.find((p) => p.user_id === userId));
 }
 
-function sideIds(game: GameViewGame, side: "a" | "b"): string[] {
-  return side === "a"
-    ? [game.side_a_p1, game.side_a_p2].filter((id): id is string => !!id)
-    : [game.side_b_p1, game.side_b_p2].filter((id): id is string => !!id);
-}
+type MyQuedadaPerf = {
+  finalRank: number | null;
+  tableRank: number | null;
+  played: number;
+  wins: number;
+  pf: number;
+  diff: number;
+};
 
-function includesMe(game: GameViewGame, meUserId: string): boolean {
-  return [...sideIds(game, "a"), ...sideIds(game, "b")].includes(meUserId);
-}
+function myPerformanceInQuedada(data: PlayerView): MyQuedadaPerf | null {
+  const mode = getQuedadaEngine(data.quedada.format).standingsMode(data.quedada.match_mode);
+  if (mode === "manual") return null;
 
-function mySide(game: GameViewGame, meUserId: string): "a" | "b" {
-  return sideIds(game, "a").includes(meUserId) ? "a" : "b";
-}
-
-function gameOrder(a: GameViewGame, b: GameViewGame): number {
-  return (a.round_no ?? 9999) - (b.round_no ?? 9999) || (a.court_no ?? 9999) - (b.court_no ?? 9999);
-}
-
-function myGames(data: PlayerView): GameViewGame[] {
-  return data.games.filter((g) => includesMe(g, data.meUserId)).sort(gameOrder);
-}
-
-function nextGameForPlayer(data: PlayerView): GameViewGame | null {
-  return myGames(data).find((g) => g.status !== "played") ?? null;
-}
-
-function myCategoryIds(data: PlayerView): Set<string> {
-  const ids = new Set<string>();
-  for (const p of data.pairs) {
-    if (p.player_a_id === data.meUserId || p.player_b_id === data.meUserId) ids.add(p.category_id);
+  const mePart = data.participants.find((p) => p.user_id === data.meUserId);
+  const finalRank = mePart?.final_rank ?? null;
+  const playedGames = myGames(data).filter((g) => g.status === "played");
+  let wins = 0;
+  for (const g of playedGames) {
+    if (gameOutcomeForUser(g, data.meUserId) === "win") wins += 1;
   }
-  return ids;
+
+  let tableRank: number | null = null;
+  let pf = 0;
+  let diff = 0;
+  if (mode === "pair") {
+    const rows = pairStandings(data.games, data.pairs);
+    const idx = rows.findIndex((r) => r.playerIds.includes(data.meUserId));
+    if (idx >= 0) {
+      tableRank = idx + 1;
+      pf = rows[idx].pf;
+      diff = rows[idx].diff;
+    }
+  } else {
+    const rows = individualStandings(
+      data.games,
+      data.participants.map((p) => p.user_id),
+      (id) => nameFor(data, id),
+    );
+    const idx = rows.findIndex((r) => r.userId === data.meUserId);
+    if (idx >= 0) {
+      tableRank = idx + 1;
+      pf = rows[idx].pf;
+      diff = rows[idx].diff;
+    }
+  }
+
+  return {
+    finalRank,
+    tableRank,
+    played: playedGames.length,
+    wins,
+    pf,
+    diff,
+  };
 }
 
-function roundNumbersForPlayer(data: PlayerView): number[] {
-  const catIds = myCategoryIds(data);
-  const fromRounds = data.rounds
-    .filter((r) => catIds.size === 0 || catIds.has(r.category_id))
-    .map((r) => r.round_no)
-    .filter((n): n is number => Number.isFinite(n));
-  const fromGames = data.games
-    .filter((g) => g.round_no != null && (catIds.size === 0 || catIds.has(g.category_id)))
-    .map((g) => g.round_no as number);
-  return [...new Set([...fromRounds, ...fromGames])].sort((a, b) => a - b);
-}
+function PlayerFinishedSummary({ data }: { data: PlayerView }) {
+  const perf = myPerformanceInQuedada(data);
+  if (data.quedada.status !== "finished" || !perf) return null;
 
-function scoreFor(game: GameViewGame, meUserId: string): { mine: number | null; theirs: number | null; won: boolean | null } {
-  const side = mySide(game, meUserId);
-  const mine = side === "a" ? game.points_a : game.points_b;
-  const theirs = side === "a" ? game.points_b : game.points_a;
-  if (mine == null || theirs == null) return { mine, theirs, won: null };
-  return { mine, theirs, won: mine > theirs };
+  const podium = podiumRankLabel(perf.finalRank);
+  const isPodium = perf.finalRank != null && perf.finalRank <= 3;
+
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 16,
+        border: isPodium ? "1px solid rgba(16,185,129,0.28)" : "1px solid var(--border)",
+        background: isPodium ? "var(--color-mp-primary-light)" : "var(--card)",
+      }}
+    >
+      <div className="label-mp" style={{ color: "var(--primary)" }}>
+        Tu resumen
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+        {podium ? (
+          <span className="font-heading" style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em" }}>
+            {podium}
+          </span>
+        ) : perf.tableRank ? (
+          <span className="font-heading" style={{ fontSize: 22, fontWeight: 900 }}>
+            #{perf.tableRank}
+          </span>
+        ) : null}
+        <span style={{ fontSize: 13, color: "var(--muted-fg)", fontWeight: 700 }}>
+          {podium ? "puesto final" : perf.tableRank ? "en la tabla" : "Sin puesto registrado"}
+        </span>
+      </div>
+      {perf.played > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))",
+            gap: 10,
+            marginTop: 14,
+          }}
+        >
+          <MiniStat label="PJ" value={String(perf.played)} />
+          <MiniStat label="G" value={String(perf.wins)} />
+          <MiniStat label="PF" value={String(perf.pf)} />
+          <MiniStat
+            label="DIF"
+            value={perf.diff > 0 ? `+${perf.diff}` : String(perf.diff)}
+          />
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 10 }}>
+          No jugaste partidos registrados en esta quedada.
+        </div>
+      )}
+    </div>
+  );
 }
 
 function tabFromLocation(): TabKey {
   if (typeof window === "undefined") return "calendario";
   const requested = new URLSearchParams(window.location.search).get("tab");
-  return requested === "general" || requested === "detalles" || requested === "tabla" ? requested : "calendario";
+  return requested === "general" || requested === "configuracion" || requested === "detalles" || requested === "tabla" ? requested : "calendario";
 }
 
-export function QuedadaDetailView({ quedadaId }: { quedadaId: string }) {
+export function QuedadaDetailView({
+  quedadaId,
+  initialData = null,
+}: {
+  quedadaId: string;
+  initialData?: QuedadaPlayerViewData | null;
+}) {
   const router = useRouter();
-  const [data, setData] = useState<PlayerView | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<QuedadaPlayerViewData | null>(initialData);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>(tabFromLocation);
 
@@ -180,15 +224,16 @@ export function QuedadaDetailView({ quedadaId }: { quedadaId: string }) {
       setLoading(false);
       return;
     }
-    setData(res.data as PlayerView);
+    setData(res.data as QuedadaPlayerViewData);
     setError(null);
     setLoading(false);
   }, [quedadaId]);
 
   useEffect(() => {
+    if (initialData) return;
     const id = setTimeout(() => void reload(), 0);
     return () => clearTimeout(id);
-  }, [reload]);
+  }, [reload, initialData]);
 
   const rtTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useRealtimeRefresh(
@@ -222,29 +267,33 @@ export function QuedadaDetailView({ quedadaId }: { quedadaId: string }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <button
-        onClick={() => router.push("/dashboard/user/quedadas")}
-        style={{
-          alignSelf: "flex-start",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          border: 0,
-          background: "transparent",
-          color: "var(--muted-fg)",
-          fontFamily: "inherit",
-          fontSize: 12,
-          fontWeight: 800,
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        <Icon name="arrow-left" size={13} color="var(--muted-fg)" />
-        Volver
-      </button>
+    <div className="min-w-0 w-full max-w-full" style={{ display: "flex", flexDirection: "column", gap: 14, padding: 18 }}>
+      <PlayerBackBtn onClick={() => router.push("/dashboard/user/quedadas")} />
 
-      <PlayerHeader q={q} loading={loading} isMember={data?.isMember ?? false} />
+      <PlayerHero
+        tone={PLAYER_TONES.quedada}
+        loading={loading}
+        statusLabel={
+          q
+            ? data?.quedada
+              ? `${data.isMember ? "Inscrito" : "Vista jugador"} · ${statusMeta(q.status).label}`
+              : "Quedada"
+            : "Quedada"
+        }
+        title={q?.title ?? ""}
+        meta={
+          q
+            ? [
+                { icon: "calendar-days", label: whenLabel(q.starts_at) },
+                ...(q.location_text ? [{ icon: "map-pin", label: q.location_text }] : []),
+                {
+                  icon: "gamepad-2",
+                  label: `${quedadaFormatLabel(q.format)} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`,
+                },
+              ]
+            : []
+        }
+      />
 
       {loading && (
         <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -271,9 +320,16 @@ export function QuedadaDetailView({ quedadaId }: { quedadaId: string }) {
 
       {!loading && !error && q && data && (
         <>
-          <PageTabs tabs={tabs} active={activeTab} onTab={setActiveTab} />
+          <PlayerTabStrip
+            tabs={tabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon, disabled: t.disabled, title: t.title }))}
+            active={activeTab}
+            onChange={setActiveTab}
+            tone="quedada"
+            ariaLabel="Vista de quedada"
+          />
           {activeTab === "calendario" && <MyCalendarTab data={data} />}
           {activeTab === "general" && <GeneralCalendarTab data={data} />}
+          {activeTab === "configuracion" && <ConfigTab data={data} />}
           {activeTab === "detalles" && <DetailsTab data={data} />}
           {activeTab === "tabla" && <StandingsTab data={data} />}
         </>
@@ -284,194 +340,53 @@ export function QuedadaDetailView({ quedadaId }: { quedadaId: string }) {
 
 function buildTabs(data: PlayerView | null): Array<{ key: TabKey; label: string; icon: string; disabled?: boolean; title?: string }> {
   const hasGames = (data?.games.length ?? 0) > 0;
-  const isAmericano = data?.quedada.format === "americano";
+  const hasCourts = data?.games.some((g) => g.court_no != null) ?? false;
+  const standingsMode = data
+    ? getQuedadaEngine(data.quedada.format).standingsMode(data.quedada.match_mode)
+    : "individual";
+  const hasStandings = hasGames && standingsMode !== "manual";
+
   return [
     { key: "calendario", label: "Tu calendario", icon: "calendar-days" },
     {
       key: "general",
-      label: "Calendario general",
+      label: "Por cancha",
       icon: "layout-grid",
-      disabled: !isAmericano || !hasGames,
-      title: !isAmericano ? "Disponible para Americano" : hasGames ? undefined : "Aparece cuando el organizador publique partidos",
+      disabled: !hasGames || !hasCourts,
+      title: !hasGames
+        ? "Aparece cuando el organizador publique partidos"
+        : !hasCourts
+          ? "Los partidos aún no tienen cancha asignada"
+          : undefined,
     },
+    { key: "configuracion", label: "Configuración", icon: "settings-2" },
     { key: "detalles", label: "Detalles", icon: "info" },
     {
       key: "tabla",
       label: "Tabla",
       icon: "bar-chart-3",
-      disabled: !isAmericano || !hasGames,
-      title: !isAmericano ? "Disponible para Americano" : hasGames ? undefined : "Aparece cuando haya partidos",
+      disabled: !hasStandings,
+      title: standingsMode === "manual"
+        ? "Este formato no calcula ranking automático"
+        : !hasGames
+          ? "Aparece cuando haya partidos"
+          : undefined,
     },
   ];
 }
 
-function PlayerHeader({ q, loading, isMember }: { q: PlayerQuedada | null; loading: boolean; isMember: boolean }) {
-  const sm = q ? statusMeta(q.status) : null;
-  return (
-    <div
-      style={{
-        padding: "20px 24px",
-        borderRadius: 14.4,
-        color: "#fff",
-        overflow: "hidden",
-        position: "relative",
-        background:
-          "radial-gradient(115% 130% at 98% 112%, rgba(16,185,129,0.28) 0%, rgba(16,185,129,0) 52%), linear-gradient(135deg, #0a0a0a 0%, #052e22 60%, #064e3b 100%)",
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          fontFamily: "var(--font-heading)",
-          fontWeight: 900,
-          fontSize: 160,
-          color: "rgba(255,255,255,0.06)",
-          letterSpacing: "-0.06em",
-          lineHeight: 0.8,
-          transform: "rotate(-6deg) translate(15%, -22%)",
-          textTransform: "uppercase",
-          whiteSpace: "nowrap",
-          pointerEvents: "none",
-        }}
-      >
-        QUEDA
-      </div>
-      <div style={{ position: "relative" }}>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "5px 12px",
-            borderRadius: 9999,
-            background: "rgba(255,255,255,0.12)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            fontSize: 10.5,
-            fontWeight: 900,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34d399" }} />
-          {q ? `${isMember ? "Inscrito" : "Vista jugador"} · ${sm?.label ?? q.status}` : "Quedada"}
-        </div>
-        {loading || !q ? (
-          <div style={{ marginTop: 14 }}>
-            <SkBar w={260} h={30} r={8} dark />
-          </div>
-        ) : (
-          <>
-            <h1
-              className="font-heading"
-              style={{
-                fontSize: 28,
-                fontWeight: 900,
-                letterSpacing: "-0.02em",
-                textTransform: "uppercase",
-                margin: "12px 0 0",
-                lineHeight: 1.05,
-              }}
-            >
-              {q.title}
-              <span style={{ color: "#34d399" }}>.</span>
-            </h1>
-            <div
-              style={{
-                marginTop: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                flexWrap: "wrap",
-                fontSize: 12,
-                color: "rgba(255,255,255,0.78)",
-              }}
-            >
-              <MetaItem icon="calendar-days">{whenLabel(q.starts_at)}</MetaItem>
-              {q.location_text && <MetaItem icon="map-pin">{q.location_text}</MetaItem>}
-              <MetaItem icon="gamepad-2">
-                {FORMAT_LABEL[q.format] ?? q.format} · {q.match_mode === "singles" ? "Singles" : "Dobles"}
-              </MetaItem>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PageTabs({
-  tabs,
-  active,
-  onTab,
-}: {
-  tabs: Array<{ key: TabKey; label: string; icon: string; disabled?: boolean; title?: string }>;
-  active: TabKey;
-  onTab: (key: TabKey) => void;
-}) {
-  return (
-    <div role="tablist" aria-label="Vista de quedada" style={{ display: "flex", gap: 22, padding: "0 2px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
-      {tabs.map((t) => {
-        const on = active === t.key;
-        return (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={on}
-            type="button"
-            disabled={t.disabled}
-            title={t.title}
-            onClick={() => onTab(t.key)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "0 1px 12px",
-              border: 0,
-              borderBottom: on ? "2px solid var(--primary)" : "2px solid transparent",
-              background: "transparent",
-              fontFamily: "inherit",
-              fontSize: 12,
-              fontWeight: 900,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: on ? "var(--fg)" : t.disabled ? "var(--border)" : "var(--muted-fg)",
-              opacity: t.disabled ? 0.6 : 1,
-              cursor: t.disabled ? "not-allowed" : "pointer",
-            }}
-          >
-            <Icon name={t.icon} size={12} />
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function MyCalendarTab({ data }: { data: PlayerView }) {
-  const isAmericano = data.quedada.format === "americano";
   const games = myGames(data);
   const next = nextGameForPlayer(data);
   const playedMine = games.filter((g) => g.status === "played");
   const pendingMine = games.filter((g) => g.status !== "played");
   const rounds = roundNumbersForPlayer(data);
-  const restCount = Math.max(0, rounds.length - games.length);
-
-  if (!isAmericano) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <ReservedBlock q={data.quedada} />
-        <SoonCard />
-      </div>
-    );
-  }
+  const restCount = restRoundsForPlayer(data);
 
   if (data.games.length === 0) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <PlayerFinishedSummary data={data} />
         <ReservedBlock q={data.quedada} />
         <EmptyPanel
           icon="clock"
@@ -484,7 +399,10 @@ function MyCalendarTab({ data }: { data: PlayerView }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {next ? <NextMatchCard data={data} game={next} /> : (
+      <PlayerFinishedSummary data={data} />
+      {next ? (
+        <QuedadaNextMatchCard data={data} game={next} />
+      ) : (
         <div className="card" style={{ padding: 16, background: "var(--color-mp-primary-light)", border: "1px solid rgba(16,185,129,0.2)", display: "flex", gap: 10, alignItems: "center" }}>
           <Icon name="check-circle-2" size={18} color="var(--color-mp-primary-active)" />
           <div>
@@ -540,7 +458,7 @@ function GeneralCalendarTab({ data }: { data: PlayerView }) {
       {courtNos.length === 0 ? (
         <EmptyPanel icon="layout-grid" title="Sin canchas asignadas" body="Los partidos publicados todavía no tienen número de cancha." />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
           {courtNos.map((courtNo) => (
             <CourtCard key={courtNo} courtNo={courtNo} games={(byCourt.get(courtNo) ?? []).sort(gameOrder)} data={data} />
           ))}
@@ -550,10 +468,28 @@ function GeneralCalendarTab({ data }: { data: PlayerView }) {
   );
 }
 
+function ConfigTab({ data }: { data: PlayerView }) {
+  const q = data.quedada;
+  return (
+    <div className="card" style={{ padding: 18 }}>
+      <EventPlayerConfigPanel
+        kind="quedada"
+        format={q.format}
+        matchMode={q.match_mode}
+        visibility={q.visibility}
+        feeCents={q.fee_cents}
+        targetPoints={q.target_points}
+        status={q.status}
+        categories={data.categories}
+      />
+    </div>
+  );
+}
+
 function DetailsTab({ data }: { data: PlayerView }) {
   const q = data.quedada;
-  const prizes = q.prizes ?? [];
-  const rules = q.rules ?? [];
+  const prizes = (q.prizes as Prize[] | null) ?? [];
+  const rules = (q.rules as QuedadaRule[] | null) ?? [];
   const hasContent = q.description || q.perks_text || prizes.length > 0 || rules.length > 0 || data.categories.length > 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -578,9 +514,8 @@ function DetailsTab({ data }: { data: PlayerView }) {
           <div className="label-mp">Premios</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
             {prizes.map((p, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 9, background: "var(--muted)" }}>
-                <span className="font-heading" style={{ minWidth: 36, fontSize: 12, fontWeight: 900, color: "var(--primary)" }}>{p.place}</span>
-                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700 }}>{p.prize}</span>
+              <div key={`${p.place}-${i}`} style={{ padding: "8px 12px", borderRadius: 9, background: "var(--muted)" }}>
+                <QuedadaPrizeRow prize={p} />
               </div>
             ))}
           </div>
@@ -623,6 +558,8 @@ function DetailsTab({ data }: { data: PlayerView }) {
   );
 }
 
+const STANDINGS_GRID = "26px minmax(0, 1fr) 28px 28px 34px 42px";
+
 function StandingsTab({ data }: { data: PlayerView }) {
   const mode = getQuedadaEngine(data.quedada.format).standingsMode(data.quedada.match_mode);
   if (mode === "manual") {
@@ -657,12 +594,12 @@ function StandingsTab({ data }: { data: PlayerView }) {
         }));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="min-w-0 w-full max-w-full" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="label-mp">Tabla general</div>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 320 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "26px minmax(96px,1fr) 30px 30px 40px 48px", gap: 6, padding: "6px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+      <div className="min-w-0 w-full max-w-full" style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+        <div className="mp-table-scroll">
+          <div style={{ width: "100%", minWidth: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: STANDINGS_GRID, gap: 6, padding: "6px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
               <span>#</span>
               <span>{mode === "pair" ? "Pareja" : "Jugador"}</span>
               <span style={{ textAlign: "center" }} title="Partidos jugados">PJ</span>
@@ -675,7 +612,7 @@ function StandingsTab({ data }: { data: PlayerView }) {
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "26px minmax(96px,1fr) 30px 30px 40px 48px",
+                  gridTemplateColumns: STANDINGS_GRID,
                   gap: 6,
                   alignItems: "center",
                   padding: "7px 11px",
@@ -698,7 +635,7 @@ function StandingsTab({ data }: { data: PlayerView }) {
   );
 }
 
-function ReservedBlock({ q }: { q: PlayerQuedada }) {
+function ReservedBlock({ q }: { q: QuedadaPlayerQuedada }) {
   return (
     <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
       <div className="label-mp" style={{ color: "var(--primary)" }}>Bloque reservado</div>
@@ -713,69 +650,29 @@ function ReservedBlock({ q }: { q: PlayerQuedada }) {
   );
 }
 
-function SoonCard() {
-  return (
-    <div className="card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 12, background: "var(--muted)", color: "var(--muted-fg)" }}>
-      <Icon name="clock" size={18} color="var(--muted-fg)" />
-      <div>
-        <div className="font-heading" style={{ fontSize: 13.5, fontWeight: 900, color: "var(--fg)" }}>
-          Pronto<span className="dot">.</span>
-        </div>
-        <div style={{ fontSize: 12, marginTop: 2 }}>
-          El motor de juego de este formato todavía no está disponible. Por ahora puedes revisar los detalles de la quedada.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NextMatchCard({ data, game }: { data: PlayerView; game: GameViewGame }) {
+function QuedadaNextMatchCard({ data, game }: { data: PlayerView; game: GameViewGame }) {
+  const tone = PLAYER_TONES.quedada;
   const side = mySide(game, data.meUserId);
   const partnerIds = sideIds(game, side).filter((id) => id !== data.meUserId);
   const rivalIds = sideIds(game, side === "a" ? "b" : "a");
+  const partnerLabel =
+    data.quedada.match_mode === "singles"
+      ? ""
+      : partnerIds.map((id) => nameFor(data, id)).join(" + ") || "Por confirmar";
+
   return (
-    <section
-      aria-labelledby="next-match-heading"
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        padding: "18px 22px",
-        borderRadius: 14.4,
-        color: "#fff",
-        border: "1px solid rgba(52,211,153,0.22)",
-        background: "linear-gradient(135deg, #0a0a0a 0%, #0c2519 60%, #065f46 100%)",
-      }}
-    >
-      <div aria-hidden style={{ position: "absolute", top: 0, right: 0, fontFamily: "var(--font-heading)", fontSize: 140, fontWeight: 900, color: "rgba(52,211,153,0.08)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(15%, -25%)", textTransform: "uppercase", pointerEvents: "none" }}>
-        R{game.round_no ?? "?"}
-      </div>
-      <div style={{ position: "relative" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "3px 10px", borderRadius: 9999, background: "rgba(52,211,153,0.18)", color: "#86efac", fontSize: 9, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-          ★ Tu próximo partido
-        </span>
-        <div style={{ display: "flex", gap: 18, alignItems: "baseline", flexWrap: "wrap", marginTop: 14 }}>
-          <div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>RONDA</div>
-            <div className="font-heading tabular" style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>{game.round_no ?? "—"}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>CANCHA</div>
-            <div className="font-heading tabular" style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>{game.court_no ?? "—"}</div>
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Tu compañero</div>
-            <div className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {partnerIds.map((id) => nameFor(data, id)).join(" + ") || "Singles"}<span style={{ color: "#34d399" }}>.</span>
-            </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 8, textTransform: "uppercase" }}>vs.</div>
-            <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {rivalIds.map((id) => nameFor(data, id)).join(" + ")}<span style={{ color: "#fbbf24" }}>.</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ marginTop: 14, fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>Cuando termines, el organizador carga el marcador y se genera la siguiente ronda.</div>
-      </div>
-    </section>
+    <NextMatchCard
+      tone={tone}
+      toneKey="quedada"
+      kicker="Tu próximo partido"
+      primary="RONDA"
+      primaryValue={game.round_no ?? "—"}
+      secondary="CANCHA"
+      secondaryValue={game.court_no ?? "—"}
+      partner={partnerLabel}
+      opponents={rivalIds.map((id) => nameFor(data, id)).join(" + ")}
+      subtitle="Cuando termines, el organizador carga el marcador y se genera la siguiente ronda."
+    />
   );
 }
 
@@ -791,7 +688,7 @@ function RoundRow({ roundNo, game, data }: { roundNo: number; game: GameViewGame
       </div>
     );
   }
-  const score = scoreFor(game, data.meUserId);
+  const score = scoreForUser(game, data.meUserId);
   const side = mySide(game, data.meUserId);
   const mine = sideIds(game, side).map((id) => (id === data.meUserId ? "Tú" : nameFor(data, id))).join(" + ");
   const rivals = sideIds(game, side === "a" ? "b" : "a").map((id) => nameFor(data, id)).join(" + ");
@@ -825,82 +722,98 @@ function RoundRow({ roundNo, game, data }: { roundNo: number; game: GameViewGame
   );
 }
 
+function teamNames(data: PlayerView, game: GameViewGame, side: "a" | "b"): string[] {
+  return sideIds(game, side).map((id) => nameFor(data, id));
+}
+
+function myNamesInGame(data: PlayerView, game: GameViewGame): string[] {
+  return [...sideIds(game, "a"), ...sideIds(game, "b")]
+    .filter((id) => id === data.meUserId)
+    .map((id) => nameFor(data, id));
+}
+
 function CourtCard({ courtNo, games, data }: { courtNo: number; games: GameViewGame[]; data: PlayerView }) {
   const current = games.find((g) => g.status !== "played") ?? null;
-  const played = games.filter((g) => g.status === "played");
-  const meInCurrent = current ? includesMe(current, data.meUserId) : false;
+  const meInCurrent = current ? includesUser(current, data.meUserId) : false;
+  const playedCount = games.filter((g) => g.status === "played").length;
+
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", border: meInCurrent ? "1.5px solid var(--primary)" : "1px solid var(--border)" }}>
-      <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", background: "var(--muted)" }}>
-        <Icon name="square" size={13} color="var(--muted-fg)" />
-        <span className="font-heading" style={{ fontSize: 13, fontWeight: 900, textTransform: "uppercase" }}>Cancha {courtNo}</span>
+    <div
+      className="card"
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        border: meInCurrent ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+        boxShadow: meInCurrent ? "0 0 0 1px rgba(16,185,129,0.12)" : undefined,
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderBottom: "1px solid var(--border)",
+          background: meInCurrent ? "var(--color-mp-primary-light)" : "var(--muted)",
+        }}
+      >
+        <span className="font-heading" style={{ fontSize: 15, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.01em" }}>
+          Cancha {courtNo}
+        </span>
         <span style={{ flex: 1 }} />
         {current ? (
-          <span style={{ padding: "2px 7px", borderRadius: 9999, background: "var(--color-mp-primary-light)", color: "var(--color-mp-primary-active)", fontSize: 9, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>● En juego · R{current.round_no ?? "—"}</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: 9999,
+              background: "var(--primary)",
+              color: "#fff",
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            ● En juego · R{current.round_no ?? "—"}
+          </span>
         ) : (
-          <span style={{ padding: "2px 7px", borderRadius: 9999, border: "1px solid var(--border)", color: "var(--muted-fg)", fontSize: 9, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>Libre</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: 9999,
+              border: "1px solid var(--border)",
+              background: "#fff",
+              color: "var(--muted-fg)",
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Libre
+          </span>
+        )}
+        <span style={{ fontSize: 10, fontWeight: 800, color: "var(--muted-fg)", marginLeft: 4 }}>
+          {playedCount}/{games.length}
+        </span>
+      </div>
+
+      <div style={{ padding: "12px 14px 14px" }}>
+        <div className="label-mp" style={{ marginBottom: 6 }}>
+          {current ? `Ahora · Ronda ${current.round_no ?? "—"}` : "Sin partido programado"}
+        </div>
+        {current ? (
+          <CourtMatchup
+            teamA={teamNames(data, current, "a")}
+            teamB={teamNames(data, current, "b")}
+            nameSize={11}
+            highlightNames={myNamesInGame(data, current)}
+            active={meInCurrent}
+          />
+        ) : (
+          <CourtMatchup teamA={[]} teamB={[]} emptyLabel="Libre" />
         )}
       </div>
-      {current ? (
-        <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div className="label-mp">Ahora</div>
-          <TeamLine ids={sideIds(current, "a")} data={data} />
-          <VsDivider />
-          <TeamLine ids={sideIds(current, "b")} data={data} />
-        </div>
-      ) : (
-        <div style={{ padding: 14, fontSize: 11.5, color: "var(--muted-fg)", textAlign: "center" }}>No hay partido programado.</div>
-      )}
-      {played.length > 0 && (
-        <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6, background: "#fafafa" }}>
-          <div className="label-mp">Jugadas en esta cancha</div>
-          {[...played].reverse().map((g) => <PlayedRow key={g.id} game={g} data={data} />)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TeamLine({ ids, data }: { ids: string[]; data: PlayerView }) {
-  const mine = ids.includes(data.meUserId);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 800 }}>
-      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ids.map((id) => nameFor(data, id)).join(" + ")}</span>
-      {mine && <span aria-label="Tú juegas aquí" style={{ padding: "1px 6px", borderRadius: 9999, background: "var(--primary)", color: "#0a0a0a", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.08em" }}>TÚ</span>}
-    </div>
-  );
-}
-
-function PlayedRow({ game, data }: { game: GameViewGame; data: PlayerView }) {
-  const aWon = (game.points_a ?? 0) > (game.points_b ?? 0);
-  const mine = includesMe(game, data.meUserId);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "4px 0" }}>
-      <span className="tabular" style={{ width: 24, fontWeight: 900, color: "var(--muted-fg)", flexShrink: 0 }}>R{game.round_no ?? "—"}</span>
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: aWon ? 800 : 600, color: aWon ? "var(--fg)" : "var(--muted-fg)" }}>{sideIds(game, "a").map((id) => nameFor(data, id)).join(" + ")}</span>
-      <span className="tabular" style={{ fontSize: 12, fontWeight: 900 }}>{game.points_a ?? 0}<span style={{ color: "var(--muted-fg)", padding: "0 4px" }}>–</span>{game.points_b ?? 0}</span>
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right", fontWeight: !aWon ? 800 : 600, color: !aWon ? "var(--fg)" : "var(--muted-fg)" }}>{sideIds(game, "b").map((id) => nameFor(data, id)).join(" + ")}</span>
-      {mine && <span style={{ padding: "1px 6px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.06em" }}>TÚ</span>}
-    </div>
-  );
-}
-
-function VsDivider() {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-      <span style={{ fontSize: 9, fontWeight: 900, color: "var(--muted-fg)" }}>VS</span>
-      <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-    </div>
-  );
-}
-
-function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card" style={{ padding: 14 }}>
-      <div className="label-mp">{label}</div>
-      <div className="font-heading tabular" style={{ marginTop: 5, fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em" }}>{value}</div>
-      {sub && <div style={{ marginTop: 3, fontSize: 11, color: "var(--muted-fg)" }}>{sub}</div>}
     </div>
   );
 }
@@ -914,14 +827,5 @@ function EmptyPanel({ icon, title, body }: { icon: string; title: string; body: 
       </div>
       <p style={{ margin: "8px auto 0", maxWidth: 520, fontSize: 13, lineHeight: 1.5 }}>{body}</p>
     </div>
-  );
-}
-
-function MetaItem({ icon, children }: { icon: string; children: React.ReactNode }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-      <Icon name={icon} size={12} color="rgba(255,255,255,0.62)" />
-      {children}
-    </span>
   );
 }

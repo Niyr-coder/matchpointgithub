@@ -100,12 +100,40 @@ const SCORING_PRESETS: Array<{
   },
 ];
 
-const TOURNAMENT_FORMATS: Array<{ value: string; label: string; sub: string }> = [
+const TOURNAMENT_FORMATS: Array<{
+  value: string;
+  label: string;
+  sub: string;
+  disabled?: boolean;
+  badge?: string;
+}> = [
   { value: "single_elim", label: "Eliminación directa", sub: "Pierde uno, sale del cuadro" },
-  { value: "double_elim", label: "Doble eliminación", sub: "Cada jugador tiene 2 vidas" },
-  { value: "round_robin", label: "Round-robin", sub: "Todos contra todos en grupos" },
-  { value: "groups_to_knockout", label: "Grupos + eliminación", sub: "Fase grupos + cuadro final" },
-  { value: "swiss", label: "Sistema suizo", sub: "Por puntaje, sin eliminaciones" },
+  {
+    value: "groups_to_knockout",
+    label: "Grupos + eliminación",
+    sub: "Fase grupos + cuadro final",
+  },
+  {
+    value: "double_elim",
+    label: "Doble eliminación",
+    sub: "Cada jugador tiene 2 vidas",
+    disabled: true,
+    badge: "Próximamente",
+  },
+  {
+    value: "round_robin",
+    label: "Round-robin",
+    sub: "Todos contra todos en grupos",
+    disabled: true,
+    badge: "Próximamente",
+  },
+  {
+    value: "swiss",
+    label: "Sistema suizo",
+    sub: "Por puntaje, sin eliminaciones",
+    disabled: true,
+    badge: "Próximamente",
+  },
 ];
 
 const PAYMENT_POLICIES: Array<{
@@ -154,6 +182,9 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
   const [modality, setModality] = useState<"singles" | "doubles" | "mixed_doubles">("doubles");
   const [scoringId, setScoringId] = useState<string>("trad_11_bo3");
   const [format, setFormat] = useState<string>("single_elim");
+  const [groupsCount, setGroupsCount] = useState<string>("2");
+  const [advancePerGroup, setAdvancePerGroup] = useState<string>("4");
+  const [finalBo5, setFinalBo5] = useState(false);
   const [startsAt, setStartsAt] = useState<string>("");
   const [endsAt, setEndsAt] = useState<string>("");
   const [singleDay, setSingleDay] = useState<boolean>(false);
@@ -185,6 +216,9 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     setModality("doubles");
     setScoringId("trad_11_bo3");
     setFormat("single_elim");
+    setGroupsCount("2");
+    setAdvancePerGroup("4");
+    setFinalBo5(false);
     setStartsAt("");
     setEndsAt("");
     setSingleDay(false);
@@ -233,6 +267,16 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
       return "Si la cuota es $0 el método debe ser Gratis.";
     if (prize !== "" && (Number.isNaN(Number(prize)) || Number(prize) < 0))
       return "Premio inválido.";
+    if (format === "groups_to_knockout") {
+      const g = Number(groupsCount);
+      const a = Number(advancePerGroup);
+      if (!Number.isInteger(g) || g < 1) return "Número de grupos inválido.";
+      if (!Number.isInteger(a) || a < 1) return "Clasificados por grupo inválido.";
+      const capN = maxParticipants === "" ? null : Number(maxParticipants);
+      if (capN != null && capN > 0 && g * a > capN) {
+        return "Grupos × clasificados supera el cupo del torneo.";
+      }
+    }
     return null;
   };
 
@@ -264,6 +308,16 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
         prizePoolCents: prizeNum ?? undefined,
         modality,
         scoringConfig: scoring.config,
+        groupPlayoffConfig:
+          format === "groups_to_knockout"
+            ? {
+                groupsCount: Number(groupsCount),
+                advancePerGroup: Number(advancePerGroup),
+                finalScoringOverride: finalBo5
+                  ? { type: "side_out" as const, points: 11, winBy: 2, bestOf: 5 }
+                  : null,
+              }
+            : undefined,
         termsAccepted: true,
       });
       setSaving(false);
@@ -342,6 +396,12 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
               setPrize={setPrize}
               paymentPolicy={paymentPolicy}
               setPaymentPolicy={setPaymentPolicy}
+              groupsCount={groupsCount}
+              setGroupsCount={setGroupsCount}
+              advancePerGroup={advancePerGroup}
+              setAdvancePerGroup={setAdvancePerGroup}
+              finalBo5={finalBo5}
+              setFinalBo5={setFinalBo5}
             />
           )}
           {step === "preview" && (
@@ -661,6 +721,12 @@ function StepForm(props: {
   setPrize: (v: string) => void;
   paymentPolicy: "free" | "prepay" | "onsite" | "flexible";
   setPaymentPolicy: (v: "free" | "prepay" | "onsite" | "flexible") => void;
+  groupsCount: string;
+  setGroupsCount: (v: string) => void;
+  advancePerGroup: string;
+  setAdvancePerGroup: (v: string) => void;
+  finalBo5: boolean;
+  setFinalBo5: (v: boolean) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -724,12 +790,72 @@ function StepForm(props: {
           style={inputStyle}
         >
           {TOURNAMENT_FORMATS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label} — {f.sub}
+            <option key={f.value} value={f.value} disabled={f.disabled}>
+              {f.label}
+              {f.badge ? ` (${f.badge})` : ""} — {f.sub}
             </option>
           ))}
         </select>
       </Field>
+
+      {props.format === "groups_to_knockout" && (
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--muted)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <div className="label-mp">Fase de grupos</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Número de grupos">
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={props.groupsCount}
+                onChange={(e) => props.setGroupsCount(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Clasifican por grupo">
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={props.advancePerGroup}
+                onChange={(e) => props.setAdvancePerGroup(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+            Ej.: 2 grupos × 4 clasificados = 8 equipos en cuadro final. Los mejores
+            de cada grupo pasan según la tabla del grupo.
+          </p>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={props.finalBo5}
+              onChange={(e) => props.setFinalBo5(e.target.checked)}
+              style={{ accentColor: "var(--primary)" }}
+            />
+            Final al best of 5 (resto del torneo usa el scoring elegido arriba)
+          </label>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Inicio">

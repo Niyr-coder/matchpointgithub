@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { loadConversationThread, startConversation, type ThreadMessage } from "@/server/actions/messaging";
-import { cancelMatch, rescheduleMatch, reportNoShow } from "@/server/actions/matches";
+import { cancelMatch, rescheduleMatch, reportNoShow, reportScore, confirmScore, disputeScore } from "@/server/actions/matches";
 import { searchPlayers, type PlayerSearchResult } from "@/server/actions/friends";
 import { useToast } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -38,6 +38,14 @@ export type ActiveMatch = {
   reliabilityEnabled: boolean;
   matchTimePassed: boolean;
   others: { id: string; name: string }[];
+  teamAPlayerIds: string[];
+  teamBPlayerIds: string[];
+  acceptedBy: string[];
+  pendingAcceptance: boolean;
+  reportedBy: string | null;
+  confirmedBy: string[];
+  scoreSets: { a: number; b: number }[] | null;
+  scoreWinner: "a" | "b" | null;
 };
 
 export type MessageSendStatus = "sending" | "sent" | "failed";
@@ -104,13 +112,21 @@ const FILTERS: { key: ConversationFilter; label: string; icon: string }[] = [
 function conversationTypeLabel(c: ConvoLite): string {
   if (c.isOfficial) return "Canal oficial informativo";
   if (c.kind === "match") return "Chat del partido";
+  if (c.kind === "quedada") return `Quedada · ${c.memberCount} jugadores`;
   if (c.kind === "team_channel") return `${c.memberCount} jugadores · Equipo`;
   if (c.isGroup) return `${c.memberCount} jugadores`;
   if (c.isSystem) return "Canal del sistema";
   return "Mensaje directo";
 }
 
-function statusForMatchContext(ctx: { status: string; playedAt: string }): ConvoStatus {
+function statusForMatchContext(ctx: {
+  status: string;
+  playedAt: string;
+  pendingAcceptance?: boolean;
+}): ConvoStatus {
+  if (ctx.pendingAcceptance && ctx.status === "scheduled") {
+    return { kind: "proposing", label: "Esperando aceptación del reto", when: formatShortDate(ctx.playedAt) };
+  }
   if (ctx.status === "cancelled") {
     return { kind: "cancelled", label: "Partido cancelado", when: formatShortDate(ctx.playedAt) };
   }
@@ -134,10 +150,27 @@ function isMatchConversationClosed(c: ConvoLite | null, match: ActiveMatch | nul
   return false;
 }
 
+function isQuedadaConversationClosed(c: ConvoLite | null): boolean {
+  if (!c || c.kind !== "quedada") return false;
+  const st = c.quedadaSummary?.status;
+  return st === "finished" || st === "cancelled";
+}
+
+function isThreadReadOnly(c: ConvoLite | null, match: ActiveMatch | null): boolean {
+  return isMatchConversationClosed(c, match) || isQuedadaConversationClosed(c);
+}
+
 function statusForConversation(c: ConvoLite): ConvoStatus | null {
   if (c.kind === "match") {
     if (c.matchSummary) return statusForMatchContext(c.matchSummary);
     return { kind: "scheduled", label: "Partido agendado" };
+  }
+  if (c.kind === "quedada") {
+    const st = c.quedadaSummary?.status;
+    if (st === "finished") return { kind: "played", label: "Quedada finalizada" };
+    if (st === "cancelled") return { kind: "cancelled", label: "Quedada cancelada" };
+    if (st === "live") return { kind: "open", label: "Quedada en curso" };
+    return { kind: "open", label: "Coordinación del grupo" };
   }
   if (c.isOfficial) return { kind: "open", label: "Canal oficial" };
   if (c.kind === "team_channel" || c.isGroup) return { kind: "open", label: "Coordinación abierta" };
@@ -389,6 +422,21 @@ export function MensajesScreenView({
   const lastMarkedRef = useRef<string | null>(null);
   const threadCacheRef = useRef<Map<string, ThreadCacheEntry>>(new Map());
   const threadScrollRef = useRef<HTMLDivElement>(null);
+  const filterScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = filterScrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!delta) return;
+      el.scrollLeft += delta;
+      e.preventDefault();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const writeThreadCache = (convId: string, patch: Partial<ThreadCacheEntry>) => {
     const prev = threadCacheRef.current.get(convId) ?? { messages: [], activeMatch: null };
@@ -409,10 +457,18 @@ export function MensajesScreenView({
     [convos, activeConvId],
   );
   const activeOfficial = activeConv?.isOfficial === true;
-  const matchChatReadOnly = isMatchConversationClosed(activeConv, activeMatch);
+  const matchChatReadOnly = isThreadReadOnly(activeConv, activeMatch);
   const latestMessage = messages[messages.length - 1] ?? null;
   const menuOpen = activeConv ? openMenuConvId === activeConv.id : false;
-  const activeStatus = activeConv ? statusForConversation(activeConv) : null;
+  const activeStatus = activeConv
+    ? activeConv.kind === "match" && activeMatch
+      ? statusForMatchContext({
+          status: activeMatch.status,
+          playedAt: activeMatch.playedAt,
+          pendingAcceptance: activeMatch.pendingAcceptance,
+        })
+      : statusForConversation(activeConv)
+    : null;
 
   const selectConversation = (convId: string) => {
     if (convId === activeConvId) return;
@@ -569,7 +625,7 @@ export function MensajesScreenView({
       if (!matchesQuery) return false;
       if (filter === "unread") return c.unreadCount > 0;
       if (filter === "matches") return c.kind === "match";
-      if (filter === "groups") return c.isGroup || c.kind === "team_channel";
+      if (filter === "groups") return c.isGroup || c.kind === "team_channel" || c.kind === "quedada";
       if (filter === "official") return c.isOfficial;
       return true;
     });
@@ -603,10 +659,18 @@ export function MensajesScreenView({
       return;
     }
     if (matchChatReadOnly) {
+      const quedadaClosed =
+        activeConv.kind === "quedada" &&
+        (activeConv.quedadaSummary?.status === "finished" ||
+          activeConv.quedadaSummary?.status === "cancelled");
       toast({
         icon: "info",
         title: "Chat cerrado",
-        sub: "Este partido fue cancelado. Ya no puedes enviar mensajes aquí.",
+        sub: quedadaClosed
+          ? activeConv.quedadaSummary?.status === "cancelled"
+            ? "Esta quedada fue cancelada. Ya no puedes enviar mensajes aquí."
+            : "Esta quedada ya finalizó. Ya no puedes enviar mensajes aquí."
+          : "Este partido fue cancelado. Ya no puedes enviar mensajes aquí.",
       });
       return;
     }
@@ -706,6 +770,7 @@ export function MensajesScreenView({
           otherUserId: meta.userId,
           otherUsername: meta.username,
           matchSummary: null,
+          quedadaSummary: null,
         };
         return [created, ...prev];
       });
@@ -878,9 +943,10 @@ export function MensajesScreenView({
       <div className="mp-messages-page flex min-h-0 flex-1 flex-col">
       <div className="card mp-messages-shell grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[340px_1fr]">
         <aside
-          className={`mp-messages-list flex flex-col min-h-0 overflow-hidden bg-white${activeConvId ? " max-lg:hidden" : ""}`}
+          className={`mp-messages-list flex min-h-0 min-w-0 flex-col overflow-hidden bg-white${activeConvId ? " max-lg:hidden" : ""}`}
         >
           <div
+            className="min-w-0 w-full"
             style={{
               flexShrink: 0,
               padding: 16,
@@ -941,10 +1007,7 @@ export function MensajesScreenView({
                 }}
               />
             </div>
-            <div
-              className="mp-msg-filter-scroll"
-              style={{ display: "flex", gap: 6, overflowX: "auto" }}
-            >
+            <div ref={filterScrollRef} className="mp-msg-filter-scroll">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
@@ -955,6 +1018,7 @@ export function MensajesScreenView({
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 5,
+                    flexShrink: 0,
                     border: "1px solid var(--border)",
                     borderRadius: 9999,
                     padding: "6px 9px",
@@ -1082,6 +1146,7 @@ export function MensajesScreenView({
                 <MatchChatDetailsPanel
                   key={activeConv.id}
                   match={activeMatch}
+                  meUserId={meUserId ?? ""}
                   status={activeStatus}
                   onMatchUpdated={reloadMatchContext}
                 />
@@ -1130,9 +1195,17 @@ export function MensajesScreenView({
 
               {activeOfficial || matchChatReadOnly ? (
                 <div style={{ ...readOnlyComposerStyle, flexShrink: 0 }}>
-                  <Icon name={matchChatReadOnly ? "x-circle" : "info"} size={12} color="var(--muted-fg)" />
+                  <Icon
+                    name={matchChatReadOnly ? (activeConv?.kind === "quedada" ? "lock" : "x-circle") : "info"}
+                    size={12}
+                    color="var(--muted-fg)"
+                  />
                   {matchChatReadOnly
-                    ? "Este partido fue cancelado. El chat quedó cerrado y ya no puedes escribir."
+                    ? activeConv?.kind === "quedada"
+                      ? activeConv.quedadaSummary?.status === "cancelled"
+                        ? "Esta quedada fue cancelada. El chat quedó cerrado y ya no puedes escribir."
+                        : "Esta quedada ya finalizó. El chat quedó cerrado y ya no puedes escribir."
+                      : "Este partido fue cancelado. El chat quedó cerrado y ya no puedes escribir."
                     : "Este canal oficial es de solo lectura. Para soporte, usa la sección Soporte."}
                 </div>
               ) : (
@@ -1469,11 +1542,13 @@ function ConversationRow({
 
 function ConversationAvatar({ convo, index, size = 40 }: { convo: ConvoLite; index: number; size?: number }) {
   if (convo.isOfficial) return <MatchpointOfficialAvatar size={size} />;
-  const isGroupShape = convo.isGroup || convo.kind === "team_channel";
+  const isGroupShape = convo.isGroup || convo.kind === "team_channel" || convo.kind === "quedada";
   const background =
     convo.kind === "match"
       ? "linear-gradient(135deg,#0a0a0a,#7c2d12)"
-      : isGroupShape
+      : convo.kind === "quedada"
+        ? "linear-gradient(135deg,#ea580c,#f97316)"
+        : isGroupShape
         ? "linear-gradient(135deg,#3730a3,#6366f1)"
         : convo.isSystem
           ? "#0a0a0a"
@@ -1495,6 +1570,8 @@ function ConversationAvatar({ convo, index, size = 40 }: { convo: ConvoLite; ind
     >
       {convo.kind === "match" ? (
         <Icon name="swords" size={Math.round(size * 0.38)} color="#fff" />
+      ) : convo.kind === "quedada" ? (
+        <Icon name="party-popper" size={Math.round(size * 0.38)} color="#fff" />
       ) : isGroupShape ? (
         <Icon name="users" size={Math.round(size * 0.4)} color="#fff" />
       ) : convo.isSystem ? (
@@ -1706,6 +1783,33 @@ function MessageItem({ message, mine }: { message: MessageLite; mine: boolean })
     cardType === "match-invite"
   ) {
     return <MessageInlineCard message={message} mine={mine} />;
+  }
+  if (message.kind === "system" || message.payload?.quedada_event) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", width: "100%", padding: "2px 8px" }}>
+        <div
+          style={{
+            maxWidth: "min(92%, 520px)",
+            padding: "8px 12px",
+            borderRadius: 12,
+            background: "rgba(10,10,10,0.05)",
+            border: "1px solid var(--border-soft)",
+            fontSize: 12,
+            lineHeight: 1.45,
+            color: "var(--muted-fg)",
+            textAlign: "center",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, color: "var(--color-mp-primary-active)" }}>
+            MATCHPOINT
+          </div>
+          {message.body}
+          <div style={{ fontSize: 9, marginTop: 5, opacity: 0.7 }}>{timeOnly(message.createdAt)}</div>
+        </div>
+      </div>
+    );
   }
   return (
     <MessageBubble
@@ -2391,6 +2495,7 @@ function matchFormatLabel(match: ActiveMatch): string | null {
 }
 
 function matchStatusHeadline(match: ActiveMatch, status: ConvoStatus | null): string {
+  if (match.pendingAcceptance) return "Esperando aceptación del reto";
   if (status?.label) return status.label;
   if (match.status === "cancelled") return "Partido cancelado";
   if (match.status === "confirmed") return "Resultado confirmado";
@@ -2402,10 +2507,12 @@ function matchStatusHeadline(match: ActiveMatch, status: ConvoStatus | null): st
 /** Panel plegable: resumen del partido + reserva + acciones en un solo bloque. */
 function MatchChatDetailsPanel({
   match,
+  meUserId,
   status,
   onMatchUpdated,
 }: {
   match: ActiveMatch;
+  meUserId: string;
   status: ConvoStatus | null;
   onMatchUpdated: () => void;
 }) {
@@ -2595,9 +2702,14 @@ function MatchChatDetailsPanel({
             </Link>
           )}
 
-          <p style={{ margin: 0, fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.4 }}>
-            El resultado del partido se reporta fuera de este chat, en la pantalla del duelo o desde tu perfil.
-          </p>
+          {match.pendingAcceptance ? (
+            <p style={{ margin: 0, fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+              Falta que todos acepten el reto. Los jugadores retados reciben una notificación con
+              botones para aceptar o rechazar.
+            </p>
+          ) : (
+            <MatchScorePanel match={match} meUserId={meUserId} onMatchUpdated={onMatchUpdated} />
+          )}
 
           <MatchChatDetailsActions match={match} onMatchUpdated={onMatchUpdated} />
         </div>
@@ -2751,6 +2863,277 @@ function MatchChatDetailsActions({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function parseSetValue(raw: string): number | null {
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function winnerFromSets(sets: { a: number; b: number }[], bestOf: number): "a" | "b" | null {
+  const needed = Math.ceil(bestOf / 2);
+  let winsA = 0;
+  let winsB = 0;
+  for (const set of sets) {
+    if (set.a === set.b) return null;
+    if (set.a > set.b) winsA += 1;
+    else winsB += 1;
+  }
+  if (winsA >= needed) return "a";
+  if (winsB >= needed) return "b";
+  return null;
+}
+
+function MatchScorePanel({
+  match,
+  meUserId,
+  onMatchUpdated,
+}: {
+  match: ActiveMatch;
+  meUserId: string;
+  onMatchUpdated: () => void;
+}) {
+  const toast = useToast();
+  const bestOf = match.plannedBestOf ?? 1;
+  const [pending, setPending] = useState(false);
+  const [sets, setSets] = useState<Array<{ a: string; b: string }>>(() => {
+    if (match.scoreSets?.length) {
+      return match.scoreSets.map((s) => ({ a: String(s.a), b: String(s.b) }));
+    }
+    return Array.from({ length: 1 }, () => ({ a: "", b: "" }));
+  });
+  const [disputeReason, setDisputeReason] = useState("");
+
+  const totalPlayers = match.teamAPlayerIds.length + match.teamBPlayerIds.length;
+  const iConfirmed = match.confirmedBy.includes(meUserId);
+  const parsedSets = sets
+    .map((s) => {
+      const a = parseSetValue(s.a);
+      const b = parseSetValue(s.b);
+      if (a == null || b == null) return null;
+      return { a, b };
+    })
+    .filter((s): s is { a: number; b: number } => s != null);
+  const previewWinner = winnerFromSets(parsedSets, bestOf);
+
+  const submitScore = () => {
+    if (!previewWinner) {
+      toast({
+        icon: "alert-triangle",
+        title: "Marcador incompleto",
+        sub:
+          bestOf === 1
+            ? "Ingresa el resultado del set."
+            : `Ingresa los sets hasta que alguien gane ${Math.ceil(bestOf / 2)}.`,
+      });
+      return;
+    }
+    setPending(true);
+    void reportScore({
+      matchId: match.matchId,
+      score: { sets: parsedSets, winner: previewWinner },
+    }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo registrar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Marcador registrado", sub: "Los demás deben confirmarlo." });
+      onMatchUpdated();
+    });
+  };
+
+  const confirm = () => {
+    setPending(true);
+    void confirmScore({ matchId: match.matchId }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo confirmar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Marcador confirmado" });
+      onMatchUpdated();
+    });
+  };
+
+  const dispute = () => {
+    if (disputeReason.trim().length < 3) {
+      toast({ icon: "alert-triangle", title: "Cuéntanos qué está mal", sub: "Mínimo 3 caracteres." });
+      return;
+    }
+    setPending(true);
+    void disputeScore({ matchId: match.matchId, reason: disputeReason.trim() }).then((res) => {
+      setPending(false);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo disputar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "info", title: "Marcador en disputa" });
+      onMatchUpdated();
+    });
+  };
+
+  if (match.status === "confirmed" && match.scoreSets?.length) {
+    return (
+      <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fff", border: "1px solid var(--border-soft)" }}>
+        <div className="label-mp" style={{ marginBottom: 8 }}>
+          Resultado confirmado
+        </div>
+        {match.scoreSets.map((s, i) => (
+          <div key={i} style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
+            Set {i + 1}: Equipo A {s.a} – {s.b} Equipo B
+          </div>
+        ))}
+        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 6 }}>
+          Ganador: Equipo {match.scoreWinner === "b" ? "B" : "A"} · validado por {match.confirmedBy.length} jugadores
+        </div>
+      </div>
+    );
+  }
+
+  if (match.status === "reported" || match.status === "disputed") {
+    const canReReport = match.status === "disputed";
+    if (canReReport) {
+      return (
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fff", border: "1px solid #fecaca" }}>
+          <div className="label-mp" style={{ marginBottom: 8, color: "#dc2626" }}>
+            Marcador en disputa — registra el correcto
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {sets.map((set, index) => (
+              <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+                <input
+                  value={set.a}
+                  onChange={(e) =>
+                    setSets((prev) => prev.map((row, i) => (i === index ? { ...row, a: e.target.value } : row)))
+                  }
+                  inputMode="numeric"
+                  placeholder="Eq. A"
+                  style={matchInputStyle}
+                />
+                <span style={{ fontSize: 10, fontWeight: 900, color: "var(--muted-fg)" }}>VS</span>
+                <input
+                  value={set.b}
+                  onChange={(e) =>
+                    setSets((prev) => prev.map((row, i) => (i === index ? { ...row, b: e.target.value } : row)))
+                  }
+                  inputMode="numeric"
+                  placeholder="Eq. B"
+                  style={matchInputStyle}
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={pending || !previewWinner}
+            onClick={submitScore}
+            style={{ marginTop: 10, width: "100%", justifyContent: "center", fontSize: 11 }}
+          >
+            {pending ? "Guardando…" : "Registrar marcador corregido"}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fff", border: "1px solid var(--border-soft)" }}>
+        <div className="label-mp" style={{ marginBottom: 8 }}>
+          Marcador reportado
+        </div>
+        {(match.scoreSets ?? []).map((s, i) => (
+          <div key={i} style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
+            Set {i + 1}: Equipo A {s.a} – {s.b} Equipo B
+          </div>
+        ))}
+        <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>
+          Confirmaciones: {match.confirmedBy.length}/{totalPlayers}
+        </div>
+        {!iConfirmed && (
+          <div style={{ marginTop: 10 }}>
+            <input
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              placeholder="Motivo si disputas (opcional al confirmar)"
+              style={{ ...matchInputStyle, width: "100%", marginBottom: 8 }}
+            />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="btn btn-primary" disabled={pending} onClick={confirm} style={{ fontSize: 11 }}>
+                Confirmar marcador
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={pending}
+                onClick={dispute}
+                style={{ fontSize: 11, color: "#dc2626", borderColor: "#fecaca" }}
+              >
+                Disputar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (match.status !== "scheduled") return null;
+
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fff", border: "1px solid var(--border-soft)" }}>
+      <div className="label-mp" style={{ marginBottom: 8 }}>
+        Registrar marcador{bestOf > 1 ? ` · BO${bestOf}` : " · set único"}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sets.map((set, index) => (
+          <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+            <input
+              value={set.a}
+              onChange={(e) =>
+                setSets((prev) => prev.map((row, i) => (i === index ? { ...row, a: e.target.value } : row)))
+              }
+              inputMode="numeric"
+              placeholder="Eq. A"
+              style={matchInputStyle}
+            />
+            <span style={{ fontSize: 10, fontWeight: 900, color: "var(--muted-fg)" }}>VS</span>
+            <input
+              value={set.b}
+              onChange={(e) =>
+                setSets((prev) => prev.map((row, i) => (i === index ? { ...row, b: e.target.value } : row)))
+              }
+              inputMode="numeric"
+              placeholder="Eq. B"
+              style={matchInputStyle}
+            />
+          </div>
+        ))}
+      </div>
+      {bestOf > 1 && sets.length < bestOf && (
+        <button
+          type="button"
+          className="btn btn-outline"
+          style={{ marginTop: 8, fontSize: 10.5 }}
+          onClick={() => setSets((prev) => [...prev, { a: "", b: "" }])}
+        >
+          Agregar set
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={pending || !previewWinner}
+        onClick={submitScore}
+        style={{ marginTop: 10, width: "100%", justifyContent: "center", fontSize: 11 }}
+      >
+        {pending ? "Guardando…" : "Registrar marcador"}
+      </button>
+      <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--muted-fg)", lineHeight: 1.4 }}>
+        Los demás jugadores deben confirmar el resultado. Si no coincide, pueden disputarlo.
+      </p>
     </div>
   );
 }

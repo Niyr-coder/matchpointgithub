@@ -39,7 +39,10 @@ function crSave(items: CartItem[]) {
   try {
     localStorage.setItem(CR_KEY, JSON.stringify(items));
   } catch {}
-  window.dispatchEvent(new Event("mp-cart-changed"));
+}
+
+function crNotifyChanged() {
+  queueMicrotask(() => window.dispatchEvent(new Event("mp-cart-changed")));
 }
 
 const crFmt = (n: number) => "$" + n.toFixed(2);
@@ -60,12 +63,21 @@ export function CarritoModal() {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("mini");
   const [items, setItems] = useState<CartItem[]>([]);
+  const [cartReady, setCartReady] = useState(false);
   const toast = useToast();
 
   // Inicial: hidratar items en effect (SSR-safe)
   useEffect(() => {
     setItems(crLoad());
+    setCartReady(true);
   }, []);
+
+  // Persistir y notificar fuera del render / updaters de setState
+  useEffect(() => {
+    if (!cartReady) return;
+    crSave(items);
+    crNotifyChanged();
+  }, [items, cartReady]);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -92,19 +104,15 @@ export function CarritoModal() {
             was: it.was,
           });
         }
-        crSave(next);
         return next;
       });
       toast({ icon: "shopping-cart", title: "Añadido al carro", sub: it.name });
     };
-    const onChanged = () => setItems(crLoad());
     window.addEventListener("mp-open-carrito", onOpen);
     window.addEventListener("mp-add-to-cart", onAdd);
-    window.addEventListener("mp-cart-changed", onChanged);
     return () => {
       window.removeEventListener("mp-open-carrito", onOpen);
       window.removeEventListener("mp-add-to-cart", onAdd);
-      window.removeEventListener("mp-cart-changed", onChanged);
     };
   }, [toast]);
 
@@ -115,24 +123,21 @@ export function CarritoModal() {
       count: () => crLoad().reduce((s, x) => s + x.qty, 0),
       add: (it) => window.dispatchEvent(new CustomEvent("mp-add-to-cart", { detail: it })),
       inc: (sku) => {
-        const n = crLoad().map((x) => (x.sku === sku ? { ...x, qty: x.qty + 1 } : x));
-        crSave(n);
-        setItems(n);
+        setItems((prev) =>
+          prev.map((x) => (x.sku === sku ? { ...x, qty: x.qty + 1 } : x)),
+        );
       },
       dec: (sku) => {
-        const n = crLoad().flatMap((x) =>
-          x.sku === sku ? (x.qty <= 1 ? [] : [{ ...x, qty: x.qty - 1 }]) : [x]
+        setItems((prev) =>
+          prev.flatMap((x) =>
+            x.sku === sku ? (x.qty <= 1 ? [] : [{ ...x, qty: x.qty - 1 }]) : [x],
+          ),
         );
-        crSave(n);
-        setItems(n);
       },
       remove: (sku) => {
-        const n = crLoad().filter((x) => x.sku !== sku);
-        crSave(n);
-        setItems(n);
+        setItems((prev) => prev.filter((x) => x.sku !== sku));
       },
       clear: () => {
-        crSave([]);
         setItems([]);
       },
       open: (v) =>

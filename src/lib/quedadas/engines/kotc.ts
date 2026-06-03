@@ -1,9 +1,10 @@
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine, RoundPlan } from "../types";
 import { draftFromTeams, fixedTeamsFromPairs, nextRoundNo, playersFromPairs } from "./shared";
 
 export const kotcEngine: QuedadaEngine = {
   format: "kotc",
-  label: "Rey de Cancha",
+  label: quedadaFormatLabel("kotc"),
   rosterMode: (mode) => (mode === "singles" ? "individual" : "fixed_pairs"),
   standingsMode: (mode) => (mode === "singles" ? "individual" : "pair"),
   canGenerateRound: true,

@@ -5,6 +5,7 @@
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
+import { loadQuedadaProfileStats } from "./loadQuedadaProfileStats.server";
 import { QuedadasScreenView, type QuedadaLite } from "./QuedadasScreenView";
 
 type Row = {
@@ -189,5 +190,14 @@ export async function QuedadasScreen() {
     (a, b) => +new Date(a.startsAt) - +new Date(b.startsAt),
   );
 
-  return <QuedadasScreenView meUserId={meUserId} discover={discover} mine={mine} />;
+  const myActivityStats = meUserId ? await loadQuedadaProfileStats(meUserId) : null;
+
+  return (
+    <QuedadasScreenView
+      meUserId={meUserId}
+      discover={discover}
+      mine={mine}
+      myActivityStats={myActivityStats}
+    />
+  );
 }

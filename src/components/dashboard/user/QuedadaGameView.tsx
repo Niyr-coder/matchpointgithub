@@ -14,48 +14,23 @@ import { individualStandings, type GameForStandings } from "@/lib/quedadas/stand
 import { pairStandings } from "@/lib/quedadas/pair-standings";
 import type { QuedadaStandingsMode } from "@/lib/quedadas/types";
 
-// ── Tipos del payload ─────────────────────────────────────────────────────────
-export type GameViewCategory = {
-  id: string;
-  name: string;
-  level_label: string | null;
-  starts_at: string | null;
-  target_points: number | null;
-  sort_order: number;
-};
-export type GameViewPair = {
-  id: string;
-  category_id: string;
-  slot_no: number;
-  player_a_id: string;
-  player_b_id: string | null;
-};
-export type GameViewParticipant = {
-  user_id: string;
-  status?: string;
-  final_rank?: number | null;
-  profiles: { display_name: string | null; username: string | null } | null;
-};
-export type GameViewRound = {
-  id: string;
-  category_id: string;
-  round_no: number;
-  status: string; // 'scheduled' | 'active' | 'done'
-};
-export type GameViewGame = {
-  id: string;
-  category_id: string;
-  round_id: string | null;
-  round_no: number | null;
-  court_no: number | null;
-  side_a_p1: string;
-  side_a_p2: string | null;
-  side_b_p1: string;
-  side_b_p2: string | null;
-  points_a: number | null;
-  points_b: number | null;
-  status: string; // 'scheduled' | 'played'
-};
+export type {
+  GameViewCategory,
+  GameViewPair,
+  GameViewParticipant,
+  GameViewRound,
+  GameViewGame,
+} from "@/lib/quedadas/game-view-types";
+
+import type {
+  GameViewCategory,
+  GameViewPair,
+  GameViewParticipant,
+  GameViewRound,
+  GameViewGame,
+} from "@/lib/quedadas/game-view-types";
+
+// ── Tipos del payload (re-exportados arriba; import local para Props) ─────────
 
 type Props = {
   categories: GameViewCategory[];
@@ -581,7 +556,7 @@ function CategoryGame({
                   className="btn btn-primary"
                   style={{ alignSelf: "flex-start" }}
                 >
-                  <Icon name="shuffle" size={13} color="#fff" /> Generar {roundLabel.toLowerCase()} {nextRoundNo}
+                  <Icon name="arrow-right" size={13} color="#fff" /> Siguiente {roundLabel.toLowerCase()} {nextRoundNo}
                 </button>
               )}
               {canManage && canManualGame && onCreateManualGame && (
@@ -950,7 +925,7 @@ function GameRow({
   );
 }
 
-const STANDINGS_COLS = "26px minmax(96px,1fr) 30px 30px 40px 48px";
+const STANDINGS_COLS = "26px minmax(0, 1fr) 28px 28px 34px 42px";
 function StandingsTable({
   rows,
   nameFor,
@@ -972,9 +947,9 @@ function StandingsTable({
     { k: "dif", t: "DIF", title: "Diferencia (PF−PC)", align: "right" },
   ];
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-      <div style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: 320 }}>
+    <div className="min-w-0 w-full max-w-full" style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+      <div className="mp-table-scroll">
+        <div style={{ width: "100%", minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: STANDINGS_COLS, gap: 6, padding: "6px 11px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
             <span>#</span>
             <span>{entityLabel}</span>

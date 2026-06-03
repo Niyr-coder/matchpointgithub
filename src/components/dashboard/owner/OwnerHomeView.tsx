@@ -105,7 +105,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16 }}>
+      <div className="mp-role-home-kpis">
         <RHKpi
           label="Revenue hoy"
           value={money(data.revenueHoyCents)}
@@ -142,7 +142,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+      <div className="mp-role-home-panels">
         <RHPanel
           title="Calendario · hoy"
           action={
@@ -156,24 +156,31 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
         >
           {hasCalendarCourts ? (
             <>
+              <div className="mp-role-home-calendar-scroll">
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "60px repeat(4, 1fr)",
+                  gridTemplateColumns: "52px repeat(4, minmax(64px, 1fr))",
                   gap: 4,
+                  minWidth: 300,
                 }}
               >
                 <div />
                 {[0, 1, 2, 3].map((i) => (
                   <div
                     key={i}
+                    title={calendarCourts[i]}
                     style={{
                       fontSize: 9.5,
                       fontWeight: 900,
                       textAlign: "center",
                       color: "var(--muted-fg)",
-                      letterSpacing: "0.14em",
-                      padding: "4px 0",
+                      letterSpacing: "0.08em",
+                      padding: "4px 2px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
                     }}
                   >
                     {calendarCourts[i] ?? "—"}
@@ -229,6 +236,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
                     })}
                   </Fragment>
                 ))}
+              </div>
               </div>
               <div
                 style={{
@@ -327,7 +335,7 @@ export function OwnerHomeView({ data }: { data: OwnerHomeData }) {
         </RHPanel>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="mp-role-home-split">
         <RHPanel
           title="Revenue · últimos 7 días"
           action={

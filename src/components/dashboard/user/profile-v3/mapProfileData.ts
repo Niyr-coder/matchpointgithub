@@ -1,4 +1,5 @@
 import type { ProfileData, ProfileMatch, RatingSnapshotPoint } from "../profile-types";
+import type { QuedadaProfileStats } from "@/lib/quedadas/profile-stats";
 import type { ProfileScoutPayload, RetarHeroContext, RetarHeroH2h } from "@/server/actions/matches";
 
 const AVATAR_GRADIENTS = [
@@ -210,6 +211,7 @@ export type PerfilMe = {
   friendsMembers: { initials: string; tone: string; avatarUrl: string | null }[];
   badgesUnlocked: number;
   badgesTotal: number;
+  quedadaStats: QuedadaProfileStats | null;
   scout: ({ viewerFirst: string; viewerLevel: number } & ProfileScoutPayload) | null;
 };
 
@@ -317,6 +319,7 @@ export function mapProfileDataToPerfilMe(
     })),
     badgesUnlocked,
     badgesTotal: badges.length,
+    quedadaStats: data.quedadaStats ?? null,
     upcoming: (data.upcoming ?? []).map((u) => ({
       date: u.dateLabel,
       opp: "Reserva",

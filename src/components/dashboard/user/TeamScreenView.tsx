@@ -2831,30 +2831,21 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
           {TEAM.tag}
         </div>
         <div
-          className="grid grid-cols-[80px_1fr] md:grid-cols-[120px_1fr_auto] gap-4 md:gap-7 items-center"
-          style={{
-            padding: 32,
-            position: "relative",
-          }}
+          className="flex flex-col gap-5 p-5 md:grid md:grid-cols-[120px_1fr_auto] md:gap-7 md:items-center md:p-8"
+          style={{ position: "relative" }}
         >
-          <div
-            style={{
-              width: 120,
-              height: 120,
-              borderRadius: 16,
-              background: teamAccent,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: accentText,
-              boxShadow: "0 12px 24px rgba(0,0,0,0.3)",
-            }}
-          >
-            <span className="font-heading" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em" }}>
+          <div className="flex min-w-0 items-start gap-4 md:contents">
+            <div
+              className="font-heading flex shrink-0 items-center justify-center rounded-2xl font-black tracking-tight w-[72px] h-[72px] text-[28px] md:w-[120px] md:h-[120px] md:text-[44px]"
+              style={{
+                background: teamAccent,
+                color: accentText,
+                boxShadow: "0 12px 24px rgba(0,0,0,0.3)",
+              }}
+            >
               {TEAM.tag}
-            </span>
-          </div>
-          <div>
+            </div>
+            <div className="min-w-0 flex-1">
             <div
               style={{
                 display: "inline-block",
@@ -2872,14 +2863,14 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               ★ {TEAM.rank != null ? `#${TEAM.rank} en ${TEAM.league}` : TEAM.league}
             </div>
             <h1
-              className="font-heading"
+              className="font-heading text-[26px] sm:text-[34px] md:text-[44px]"
               style={{
-                fontSize: 44,
                 fontWeight: 900,
                 lineHeight: 0.95,
                 letterSpacing: "-0.03em",
                 textTransform: "uppercase",
                 margin: 0,
+                overflowWrap: "anywhere",
               }}
             >
               {TEAM.name}
@@ -2945,22 +2936,20 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                 Desde {TEAM.founded}
               </span>
             </div>
+            </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-            <div style={{ display: "flex", gap: 12 }}>
+          <div className="flex w-full flex-col gap-3 md:items-end">
+            <div className="grid w-full grid-cols-2 gap-x-4 gap-y-3 md:flex md:w-auto md:gap-3">
               <Stat n={TEAM.wins} l="Victorias" color="#10b981" />
-              <div style={{ width: 1, background: "rgba(255,255,255,0.2)" }} />
               <Stat n={TEAM.losses} l="Derrotas" />
-              <div style={{ width: 1, background: "rgba(255,255,255,0.2)" }} />
               <Stat n={winRate + "%"} l="Win rate" color="#fbbf24" />
-              <div style={{ width: 1, background: "rgba(255,255,255,0.2)" }} />
               <Stat
                 n={TEAM.teamMpr != null ? (TEAM.teamMpr / 1000).toFixed(2) : "—"}
                 l="Team MPR"
                 color="#10b981"
               />
             </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <div className="flex w-full flex-wrap gap-2 md:mt-2 md:w-auto md:justify-end">
               <button
                 onClick={() => setView("settings")}
                 className="btn"
@@ -3051,53 +3040,222 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
               <span style={{ color: "#92400e" }}>→</span>
             </Link>
           )}
-          {/* Roster como cards (no tabla): cada fila es UNA card con fondo +
-              borde + redondeo continuos. Grid compartido header/cards. */}
+          {/* Roster: cards en mobile, tabla en md+ */}
           {(() => {
             const ROSTER_GRID = "minmax(0,1.5fr) auto 48px 40px 104px 34px";
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 0, fontSize: 12.5 }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: ROSTER_GRID,
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "0 10px 8px",
-                  }}
-                >
-                  {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        textAlign: i >= 2 && i < 5 ? "right" : "left",
-                        fontSize: 9.5,
-                        color: "var(--muted-fg)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.14em",
-                        fontWeight: 800,
-                      }}
-                    >
-                      {h}
-                    </div>
-                  ))}
+              <>
+                <div className="flex flex-col md:hidden">
+                  {ROSTER.map((p, i) => {
+                    const avatarBg = ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                    const isMe = !!meUserId && p.userId === meUserId;
+                    const isLast = i === ROSTER.length - 1;
+                    return (
+                      <div
+                        key={p.name}
+                        className={isLast ? "" : "border-b border-[var(--border)]"}
+                        style={{ padding: "12px 0" }}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div style={{ position: "relative", flexShrink: 0 }}>
+                            <div
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                background: avatarBg,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: "#fff",
+                              }}
+                            >
+                              <span className="font-heading" style={{ fontSize: 11, fontWeight: 900 }}>
+                                {p.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .slice(0, 2)}
+                              </span>
+                            </div>
+                            {p.online && (
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  bottom: -1,
+                                  right: -1,
+                                  width: 9,
+                                  height: 9,
+                                  borderRadius: "50%",
+                                  background: "#10b981",
+                                  border: "2px solid #fff",
+                                }}
+                              />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div
+                              className="font-bold"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                minWidth: 0,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  minWidth: 0,
+                                }}
+                              >
+                                {p.name}
+                                <NameplateMark size="sm" />
+                              </span>
+                              {isMe && <SelfChip />}
+                            </div>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                marginTop: 4,
+                                fontSize: 10,
+                                fontWeight: 800,
+                                padding: "2px 8px",
+                                borderRadius: 9999,
+                                background: p.role.includes("apit") ? "#fef3c7" : "var(--muted)",
+                                color: p.role.includes("apit") ? "#92400e" : "var(--muted-fg)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.1em",
+                              }}
+                            >
+                              {p.role}
+                            </span>
+                          </div>
+                          <RosterMemberMenu
+                            teamId={TEAM.id}
+                            member={p}
+                            canManage={!!meUserId && meUserId === TEAM.captainId}
+                            isSelf={isMe}
+                            isRowCaptain={p.userId === TEAM.captainId}
+                          />
+                        </div>
+                        <div
+                          className="mt-2.5 flex items-center gap-4 text-xs"
+                          style={{ paddingLeft: 48 }}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 9,
+                                fontWeight: 800,
+                                color: "var(--muted-fg)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.12em",
+                              }}
+                            >
+                              Nivel
+                            </span>
+                            <span style={{ fontWeight: 800 }}>{p.level}</span>
+                          </div>
+                          <div>
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 9,
+                                fontWeight: 800,
+                                color: "var(--muted-fg)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.12em",
+                              }}
+                            >
+                              PJ
+                            </span>
+                            <span style={{ fontWeight: 800 }}>{p.played}</span>
+                          </div>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 800,
+                                color: "var(--muted-fg)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.12em",
+                              }}
+                            >
+                              WR
+                            </span>
+                            <div
+                              style={{
+                                width: 36,
+                                height: 4,
+                                background: "var(--muted)",
+                                borderRadius: 9999,
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: p.wr + "%",
+                                  height: "100%",
+                                  background: wrColor(p.wr),
+                                }}
+                              />
+                            </div>
+                            <span style={{ fontWeight: 800, minWidth: 28, textAlign: "right" }}>
+                              {p.wr}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                {ROSTER.map((p, i) => {
-                  const avatarBg = ROSTER_AVATARS[i % ROSTER_AVATARS.length];
-                  const isMe = !!meUserId && p.userId === meUserId;
-                  const isLast = i === ROSTER.length - 1;
-                  return (
-                    <div
-                      key={p.name}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: ROSTER_GRID,
-                        gap: 12,
-                        alignItems: "center",
-                        padding: "13px 10px",
-                        borderBottom: isLast ? undefined : "1px solid var(--border)",
-                      }}
-                    >
+
+                <div className="hidden md:flex flex-col gap-0" style={{ fontSize: 12.5 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: ROSTER_GRID,
+                      gap: 12,
+                      alignItems: "center",
+                      padding: "0 10px 8px",
+                    }}
+                  >
+                    {["Jugador", "Rol", "Nivel", "PJ", "WR", ""].map((h, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          textAlign: i >= 2 && i < 5 ? "right" : "left",
+                          fontSize: 9.5,
+                          color: "var(--muted-fg)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.14em",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {h}
+                      </div>
+                    ))}
+                  </div>
+                  {ROSTER.map((p, i) => {
+                    const avatarBg = ROSTER_AVATARS[i % ROSTER_AVATARS.length];
+                    const isMe = !!meUserId && p.userId === meUserId;
+                    const isLast = i === ROSTER.length - 1;
+                    return (
+                      <div
+                        key={p.name}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: ROSTER_GRID,
+                          gap: 12,
+                          alignItems: "center",
+                          padding: "13px 10px",
+                          borderBottom: isLast ? undefined : "1px solid var(--border)",
+                        }}
+                      >
                       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                         <div style={{ position: "relative", flexShrink: 0 }}>
                           <div
@@ -3207,7 +3365,8 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              </>
             );
           })()}
         </div>
@@ -3420,11 +3579,10 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
 
 function Stat({ n, l, color }: { n: number | string; l: string; color?: string }) {
   return (
-    <div style={{ textAlign: "right" }}>
+    <div className="text-left md:text-right">
       <div
-        className="font-heading"
+        className="font-heading text-[28px] md:text-[36px]"
         style={{
-          fontSize: 36,
           fontWeight: 900,
           letterSpacing: "-0.03em",
           lineHeight: 1,

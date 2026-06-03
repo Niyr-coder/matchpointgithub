@@ -18,24 +18,16 @@ import {
   type AdminQuedadaRow,
   type QuedadaReportRow,
 } from "@/server/actions/admin/quedadas";
+import { quedadaFormatLabel } from "@/lib/quedadas/format-labels";
 
 // ── Labels legibles ──────────────────────────────────────────────────────────
-const FORMAT_LABELS: Record<string, string> = {
-  americano: "Americano",
-  mexicano: "Mexicano",
-  round_robin: "Round Robin",
-  kotc: "Rey de Cancha",
-  canguil: "Canguil",
-  libre: "Libre",
-};
-
 const VISIBILITY_LABELS: Record<string, string> = {
   open: "Abierta",
   private: "Privada",
 };
 
 function formatLabel(format: string): string {
-  return FORMAT_LABELS[format] ?? format;
+  return quedadaFormatLabel(format);
 }
 
 function visibilityLabel(visibility: string): string {

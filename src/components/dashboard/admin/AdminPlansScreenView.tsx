@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -229,30 +230,34 @@ export function AdminPlansScreenView({
     }
   };
 
-  const KPIS: [string, string | number, string, string][] = [
+  const KPIS: [string, string | number, string, string, string][] = [
     [
       "Pendientes",
       kpis.pendingCount,
       kpis.pendingCount > 0 ? "#fbbf24" : "var(--muted-fg)",
       kpis.pendingCount === 1 ? "1 solicitud" : `${kpis.pendingCount} solicitudes`,
+      "Suscripciones MATCHPOINT+ o featuring con comprobante en revisión. Aprueba solo tras validar el pago.",
     ],
     [
       "Activados hoy",
       kpis.activeToday,
       "var(--primary)",
       "planes premium",
+      "player_subscriptions que pasaron a active hoy (aprobación manual o webhook).",
     ],
     [
       "Vencidos · este mes",
       kpis.expiredThisMonth,
       "#0a0a0a",
       "del mes en curso",
+      "Suscripciones premium cuya expires_at cayó en el mes calendario actual.",
     ],
     [
       "Clubes destacados",
       activeFeaturedCount,
       activeFeaturedCount > 0 ? "var(--primary)" : "var(--muted-fg)",
       activeFeaturedCount === 1 ? "1 activo ahora" : `${activeFeaturedCount} activos ahora`,
+      "Clubes con featuring activo (club_featuring_subscriptions). Distinto del plan Pro operativo.",
     ],
   ];
 
@@ -433,14 +438,18 @@ export function AdminPlansScreenView({
         title={
           <>
             Suscripciones <span className="dot">●</span> premium y featuring
+            <InfoTip maxWidth={260} text="Un solo punto para MATCHPOINT+ de jugadores y featuring de clubes. Ambos flujos comparten cola de comprobantes pendientes." />
           </>
         }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        {KPIS.map(([l, v, c, sub]) => (
+        {KPIS.map(([l, v, c, sub, tip]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
-            <div className="label-mp">{l}</div>
+            <div className="label-mp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              {l}
+              <InfoTip text={tip} maxWidth={220} />
+            </div>
             <div
               className="font-heading tabular"
               style={{

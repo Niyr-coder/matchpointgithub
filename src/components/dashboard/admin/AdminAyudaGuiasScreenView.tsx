@@ -167,13 +167,15 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <Kpi label="Artículos" value={String(data.totals.articles)} hint={`${data.totals.published} publicados`} icon="file-text" />
-        <Kpi label="Borradores" value={String(data.totals.drafts)} hint="pendientes de publicar" icon="pencil" />
-        <Kpi label="Archivados" value={String(data.totals.archived)} hint="fuera del centro" icon="archive" />
-        <Kpi label="Vistas" value={data.totals.views.toLocaleString("en-US")} hint="conteo real" icon="eye" />
-        <Kpi label="Feedback útil" value={String(data.totals.helpful)} hint={`${data.totals.notHelpful} no útil`} icon="thumbs-up" />
-        <Kpi label="Búsquedas sin resultado" value={String(data.totals.searchMisses)} hint="desde logs reales" icon="search-x" />
+      <div style={{ overflowX: "auto", paddingBottom: 2 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, minWidth: 960 }}>
+          <Kpi label="Artículos" value={String(data.totals.articles)} hint={`${data.totals.published} publicados`} icon="file-text" />
+          <Kpi label="Borradores" value={String(data.totals.drafts)} hint="pendientes de publicar" icon="pencil" />
+          <Kpi label="Archivados" value={String(data.totals.archived)} hint="fuera del centro" icon="archive" />
+          <Kpi label="Vistas" value={data.totals.views.toLocaleString("en-US")} hint="conteo real" icon="eye" />
+          <Kpi label="Feedback útil" value={String(data.totals.helpful)} hint={`${data.totals.notHelpful} no útil`} icon="thumbs-up" />
+          <Kpi label="Búsquedas sin resultado" value={String(data.totals.searchMisses)} hint="desde logs reales" icon="search-x" />
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)", gap: 16, alignItems: "start" }}>
@@ -327,7 +329,7 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
 
 function Kpi({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: string }) {
   return (
-    <div className="card" style={{ padding: 14 }}>
+    <div className="card" style={{ padding: 14, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <span style={{ width: 32, height: 32, borderRadius: 9, background: "var(--muted)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           <Icon name={icon} size={15} />

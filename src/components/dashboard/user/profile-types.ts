@@ -1,5 +1,7 @@
 /** Tipos de perfil compartidos — sin "use client" para loaders server-only. */
 
+import type { QuedadaProfileStats } from "@/lib/quedadas/profile-stats";
+
 export type ProfileClub = {
   id: string;
   name: string;
@@ -92,4 +94,5 @@ export type ProfileData = {
   editable?: EditableProfile | null;
   upcoming?: ProfileUpcomingItem[];
   friendsPreview?: ProfileFriendPreview | null;
+  quedadaStats?: QuedadaProfileStats | null;
 };

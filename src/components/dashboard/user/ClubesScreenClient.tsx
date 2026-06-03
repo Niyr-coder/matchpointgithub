@@ -1,6 +1,7 @@
 // Client child de ClubesScreen — recibe data real desde el server.
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
@@ -57,10 +58,16 @@ const MIN_CARDS = 6;
 type ListItem = (ClubFeatured & { placeholder?: false }) | { placeholder: true; key: string };
 
 export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
+  const searchParams = useSearchParams();
   const [selectedCity, setSelectedCity] = useState(CITY_ALL);
   const [q, setQ] = useState("");
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const toast = useToast();
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("q")?.trim();
+    if (fromUrl) setQ(fromUrl);
+  }, [searchParams]);
 
   useEffect(() => {
     try {

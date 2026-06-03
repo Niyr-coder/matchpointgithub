@@ -1,10 +1,11 @@
 import { planAmericanoRound } from "../americano";
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine } from "../types";
 import { playersFromPairs } from "./shared";
 
 export const americanoEngine: QuedadaEngine = {
   format: "americano",
-  label: "Americano",
+  label: quedadaFormatLabel("americano"),
   rosterMode: () => "individual",
   standingsMode: () => "individual",
   canGenerateRound: true,

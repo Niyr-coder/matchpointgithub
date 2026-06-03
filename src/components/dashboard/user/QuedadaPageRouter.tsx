@@ -9,17 +9,38 @@ import { Skeleton as SkBar } from "@/components/ui/Skeleton";
 import { getQuedadaManageData } from "@/server/actions/quedadas";
 import { QuedadaManagePanel } from "./QuedadaManagePanel";
 import { QuedadaDetailView } from "./QuedadaDetailView";
+import type { QuedadaPlayerViewData } from "@/lib/quedadas/game-view-types";
 
-export function QuedadaPageRouter({ quedadaId }: { quedadaId: string }) {
+type ManageRouteData = {
+  isCreator: boolean;
+  meUserId: string;
+  cohosts: Array<{ user_id: string }>;
+};
+
+/** Gestión solo para creador/co-host de ESTA quedada — no por rol admin global. */
+function isQuedadaOrganizer(data: ManageRouteData): boolean {
+  return data.isCreator || data.cohosts.some((c) => c.user_id === data.meUserId);
+}
+
+export function QuedadaPageRouter({
+  quedadaId,
+  initialPlayerData = null,
+}: {
+  quedadaId: string;
+  initialPlayerData?: QuedadaPlayerViewData | null;
+}) {
   const [canManage, setCanManage] = useState<boolean | null>(null);
 
   useEffect(() => {
     let active = true;
     getQuedadaManageData({ quedadaId }).then((res) => {
       if (!active) return;
-      // Si la lectura falla (no miembro, etc.) caemos al detalle read-only,
-      // que maneja su propio estado de error.
-      setCanManage(res.ok ? ((res.data as { canManage?: boolean }).canManage ?? false) : false);
+      if (!res.ok) {
+        setCanManage(false);
+        return;
+      }
+      const data = res.data as ManageRouteData;
+      setCanManage(isQuedadaOrganizer(data));
     });
     return () => {
       active = false;
@@ -39,6 +60,6 @@ export function QuedadaPageRouter({ quedadaId }: { quedadaId: string }) {
   return canManage ? (
     <QuedadaManagePanel quedadaId={quedadaId} />
   ) : (
-    <QuedadaDetailView quedadaId={quedadaId} />
+    <QuedadaDetailView quedadaId={quedadaId} initialData={initialPlayerData} />
   );
 }

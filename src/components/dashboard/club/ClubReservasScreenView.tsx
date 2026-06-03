@@ -1,7 +1,7 @@
 // Client view de ClubReservasScreen — layout del mock 1:1. Solo cambian valores.
 // El mock con celdas "+ $14" YA es el estado vacío natural del grid.
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader } from "../widgets/RS";
@@ -57,15 +57,17 @@ function cell(s: number, opts: { disabled?: boolean; past?: boolean } = {}) {
   // el color de su kind (queda obvio que ya pasó por estar en columna de
   // días anteriores, sin perder la info de qué tipo era).
   if (past && s === 0) {
-    return {
-      height: 36,
-      borderRadius: 5,
-      fontSize: 9.5,
-      fontWeight: 800,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "var(--muted)",
+  return {
+    height: 36,
+    borderRadius: 5,
+    fontSize: 9.5,
+    fontWeight: 800,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 0,
+    width: "100%",
+    background: "var(--muted)",
       color: "var(--muted-fg)",
       cursor: "not-allowed",
       opacity: 0.55,
@@ -88,6 +90,8 @@ function cell(s: number, opts: { disabled?: boolean; past?: boolean } = {}) {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 0,
+    width: "100%",
     background: p.bg,
     color: p.fg,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -263,6 +267,8 @@ export function ClubReservasScreenView({
     3: "CLASE",
   };
   const GRID = activeCourt.grid;
+  const hourColWidth = showReceptionHourHint ? 56 : 50;
+  const gridCols = `${hourColWidth}px repeat(7, minmax(0, 1fr))`;
 
   return (
     <>
@@ -394,93 +400,93 @@ export function ClubReservasScreenView({
             );
           })}
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `${showReceptionHourHint ? 56 : 50}px repeat(7, 1fr)`,
-            gap: 4,
-            marginBottom: 6,
-          }}
-        >
+        <div className="mp-reservas-grid-scroll">
           <div
+            className="mp-reservas-week-grid"
             style={{
-              fontSize: 9,
-              fontWeight: 900,
-              color: "var(--muted-fg)",
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "flex-end",
-              paddingRight: 6,
-              paddingBottom: 4,
+              display: "grid",
+              gridTemplateColumns: gridCols,
+              gap: 4,
             }}
           >
-            HORA ↓
-            <br />
-            DÍA →
-          </div>
-          {data.daysLabels.map((d, i) => (
             <div
-              key={d}
               style={{
                 fontSize: 9,
                 fontWeight: 900,
-                textAlign: "center",
-                letterSpacing: "0.08em",
-                padding: 6,
-                color: i === 1 ? "var(--primary)" : "var(--muted-fg)",
-              }}
-            >
-              {d}
-            </div>
-          ))}
-        </div>
-        {HOURS.map((h, hi) => (
-          <div
-            key={h}
-            style={{
-              display: "grid",
-              gridTemplateColumns: `${showReceptionHourHint ? 56 : 50}px repeat(7, 1fr)`,
-              gap: 4,
-              marginBottom: 4,
-            }}
-          >
-            <div
-              style={{
-                fontSize: showReceptionHourHint ? 11 : 9.5,
-                fontWeight: 900,
-                color: showReceptionHourHint ? "#0a0a0a" : "var(--muted-fg)",
+                color: "var(--muted-fg)",
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-end",
                 justifyContent: "flex-end",
                 paddingRight: 6,
+                paddingBottom: 4,
+                minWidth: 0,
               }}
             >
-              {h}:00
+              HORA ↓
+              <br />
+              DÍA →
             </div>
-            {GRID.map((day, di) => {
-              const state = day[hi];
-              const past = isPastSlot(di, hi);
-              const clickable = hasReal && state === 0 && !past;
-              const meta = activeCourt.cellMeta[`${di}-${hi}`];
-              const reserved = state !== 0;
-              return (
-                <ReservedCell
-                  key={di}
-                  state={state}
-                  past={past}
-                  clickable={clickable}
-                  meta={meta}
-                  hourLabel={HOURS[hi]}
-                  freeLabel={
-                    past && state === 0 ? "—" : reserved ? undefined : LABEL[state]
-                  }
-                  onClick={clickable ? () => handleCellClick(di, hi) : undefined}
-                  cellStyle={cell(state, { disabled: !hasReal, past })}
-                />
-              );
-            })}
+            {data.daysLabels.map((d, i) => (
+              <div
+                key={d}
+                style={{
+                  fontSize: 9,
+                  fontWeight: 900,
+                  textAlign: "center",
+                  letterSpacing: "0.06em",
+                  padding: 6,
+                  color: i === 1 ? "var(--primary)" : "var(--muted-fg)",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {d}
+              </div>
+            ))}
+            {HOURS.map((h, hi) => (
+              <Fragment key={h}>
+                <div
+                  style={{
+                    fontSize: showReceptionHourHint ? 11 : 9.5,
+                    fontWeight: 900,
+                    color: showReceptionHourHint ? "#0a0a0a" : "var(--muted-fg)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    paddingRight: 6,
+                    minWidth: 0,
+                  }}
+                >
+                  {h}:00
+                </div>
+                {GRID.map((day, di) => {
+                  const state = day[hi];
+                  const past = isPastSlot(di, hi);
+                  const clickable = hasReal && state === 0 && !past;
+                  const meta = activeCourt.cellMeta[`${di}-${hi}`];
+                  const reserved = state !== 0;
+                  return (
+                    <ReservedCell
+                      key={`${h}-${di}`}
+                      state={state}
+                      past={past}
+                      clickable={clickable}
+                      meta={meta}
+                      hourLabel={HOURS[hi]}
+                      freeLabel={
+                        past && state === 0 ? "—" : reserved ? undefined : LABEL[state]
+                      }
+                      onClick={clickable ? () => handleCellClick(di, hi) : undefined}
+                      cellStyle={cell(state, { disabled: !hasReal, past })}
+                    />
+                  );
+                })}
+              </Fragment>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
       {manualOpen && data.clubId && (
         <ManualReservationModal
@@ -532,13 +538,13 @@ function ReservedCell({
         ? "Evento"
         : "Reserva";
 
-  // En reservadas, mostrar nombre truncado (primer nombre + inicial apellido).
+  // Nombre compacto fijo: no debe empujar el ancho de columna del grid.
   const shortName = (() => {
-    if (!meta) return reserved ? "BOOK" : null;
+    if (!meta) return reserved ? "•" : null;
     const parts = meta.name.split(" ").filter(Boolean);
-    if (parts.length === 0) return "BOOK";
-    if (parts.length === 1) return parts[0].slice(0, 8);
-    return `${parts[0]} ${parts[parts.length - 1][0]}.`.slice(0, 12);
+    if (parts.length === 0) return "•";
+    if (parts.length === 1) return parts[0].slice(0, 5);
+    return `${parts[0].slice(0, 4)}${parts[parts.length - 1][0]}.`.slice(0, 6);
   })();
 
   // Hover sólo en libres clickeables — el salto en reservadas distraía al
@@ -556,27 +562,33 @@ function ReservedCell({
 
   return (
     <div
+      className="mp-reservas-cell"
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ ...cellStyle, ...transformStyle, padding: "0 4px" }}
+      style={{ ...cellStyle, ...transformStyle, padding: "0 3px", minWidth: 0 }}
       title={
-        clickable
-          ? "Crear reserva manual"
-          : past && state === 0
-            ? "Horario ya pasó"
-            : undefined
+        meta?.name
+          ? `${meta.name}${kindLabel ? ` · ${kindLabel}` : ""} · ${hourLabel}:00`
+          : clickable
+            ? "Crear reserva manual"
+            : past && state === 0
+              ? "Horario ya pasó"
+              : undefined
       }
     >
       <span
         style={{
-          fontSize: reserved ? 9 : 9.5,
+          fontSize: reserved ? 8.5 : 9.5,
           fontWeight: 800,
-          letterSpacing: reserved ? "0.02em" : "0.04em",
+          letterSpacing: reserved ? 0 : "0.04em",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           maxWidth: "100%",
+          minWidth: 0,
+          width: "100%",
+          textAlign: "center",
         }}
       >
         {reserved ? shortName : freeLabel}

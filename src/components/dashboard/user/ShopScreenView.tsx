@@ -72,7 +72,9 @@ export function ShopScreenView({
 
   useEffect(() => {
     const w = window as unknown as { mpCart?: MpCart };
-    const sync = () => setCartCount(w.mpCart ? w.mpCart.count() : 0);
+    const sync = () => {
+      queueMicrotask(() => setCartCount(w.mpCart ? w.mpCart.count() : 0));
+    };
     sync();
     window.addEventListener("mp-cart-changed", sync);
     return () => window.removeEventListener("mp-cart-changed", sync);

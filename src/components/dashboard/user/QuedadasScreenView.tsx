@@ -13,6 +13,7 @@ import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import { CrearQuedadaModal, type QuedadaInitial } from "./CrearQuedadaModal";
 import { accountToBankDraft } from "./quedada-fields/BankAccountFields";
 import { prizesToDrafts } from "./quedada-fields/PrizesEditor";
+import { QuedadaPrizeRow } from "./quedada-fields/QuedadaPrizeRow";
 import { rulesToDrafts } from "./quedada-fields/RulesEditor";
 import { parseSuma } from "@/lib/quedadas/level";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
@@ -27,6 +28,9 @@ import {
   getQuedadaManageData,
   getQuedadaDetails,
 } from "@/server/actions/quedadas";
+import { QuedadaPlayerStatsPanel } from "./QuedadaPlayerStatsPanel";
+import type { QuedadaProfileStats } from "@/lib/quedadas/profile-stats";
+import { quedadaFormatLabel, quedadaFormatOptions, quedadaFormatShortLabel } from "@/lib/quedadas/format-labels";
 
 export type QuedadaLite = {
   id: string;
@@ -51,17 +55,8 @@ export type QuedadaLite = {
   creatorIsPremium: boolean;
 };
 
-type Tab = "descubrir" | "organizo" | "juego";
+type Tab = "descubrir" | "organizo" | "juego" | "actividad";
 type FilterState = { format: string; when: "all" | "today" | "tomorrow" | "week"; price: "all" | "free" | "paid" };
-
-const FORMAT_LABEL: Record<string, string> = {
-  americano: "Americano",
-  mexicano: "Mexicano",
-  round_robin: "Round Robin",
-  kotc: "Rey de Cancha",
-  canguil: "Canguil",
-  libre: "Libre",
-};
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const DAYS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -156,10 +151,12 @@ export function QuedadasScreenView({
   meUserId,
   discover,
   mine,
+  myActivityStats = null,
 }: {
   meUserId: string | null;
   discover: QuedadaLite[];
   mine: QuedadaLite[];
+  myActivityStats?: QuedadaProfileStats | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -215,14 +212,25 @@ export function QuedadasScreenView({
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
   // Juego: la próxima por jugar primero (orden cronológico ascendente de mine).
   const juego = mine.filter((q) => !q.iAmCreator);
+  const actividadCount = myActivityStats?.finishedCount ?? 0;
   const currentNowMs = nowMs;
   const filteredDiscover = useMemo(
     () => applyFilters(discover, filters, currentNowMs),
     [discover, filters, currentNowMs],
   );
-  const list = tab === "descubrir" ? filteredDiscover : tab === "organizo" ? organizadas : juego;
+  const list =
+    tab === "descubrir" ? filteredDiscover : tab === "organizo" ? organizadas : tab === "juego" ? juego : [];
   const featured = tab === "descubrir" ? pickFeatured(filteredDiscover) : null;
   const rest = featured ? list.filter((q) => q.id !== featured.id) : list;
+
+  const mainTabs: { k: Tab; l: string; n: number }[] = [
+    { k: "descubrir", l: "Descubrir", n: discover.length },
+    { k: "organizo", l: "Organizo", n: organizadas.length },
+    { k: "juego", l: "Juego", n: juego.length },
+  ];
+  if (meUserId) {
+    mainTabs.push({ k: "actividad", l: "Actividad", n: actividadCount });
+  }
 
   // Métricas del hero (derivadas de la data que ya llega).
   const all = [...mine, ...discover];
@@ -357,22 +365,20 @@ export function QuedadasScreenView({
         </div>
       </div>
 
-
       <div
+        className="mp-msg-filter-scroll"
         style={{
-          display: "flex",
           gap: 4,
           padding: 4,
           background: "var(--muted)",
           borderRadius: 9999,
           alignSelf: "flex-start",
+          flexWrap: "nowrap",
+          maxWidth: "100%",
+          width: "max-content",
         }}
       >
-        {([
-          { k: "descubrir" as const, l: "Descubrir", n: discover.length },
-          { k: "organizo" as const, l: "Organizo", n: organizadas.length },
-          { k: "juego" as const, l: "Juego", n: juego.length },
-        ]).map((t) => (
+        {mainTabs.map((t) => (
           <button
             key={t.k}
             onClick={() => setTab(t.k)}
@@ -390,6 +396,8 @@ export function QuedadasScreenView({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
             }}
           >
             {t.l}
@@ -410,11 +418,20 @@ export function QuedadasScreenView({
         ))}
       </div>
 
-      {tab === "descubrir" && discover.length > 0 && (
+      {tab === "actividad" && meUserId ? (
+        <QuedadaPlayerStatsPanel
+          stats={myActivityStats}
+          scope="mine"
+          surface="quedadas"
+          variant="plain"
+        />
+      ) : null}
+
+      {tab !== "actividad" && tab === "descubrir" && discover.length > 0 && (
         <FilterBar filters={filters} onChange={setFilters} totalAll={discover.length} totalShown={filteredDiscover.length} />
       )}
 
-      {list.length === 0 ? (
+      {tab !== "actividad" && list.length === 0 ? (
         <EmptyState
           icon={tab === "descubrir" ? "search-x" : tab === "organizo" ? "settings" : "calendar-days"}
           title={
@@ -436,7 +453,7 @@ export function QuedadasScreenView({
                 : "Únete a una abierta desde Descubrir."
           }
         />
-      ) : (
+      ) : tab !== "actividad" ? (
         <>
           {featured && (
             <FeaturedQuedadaCard
@@ -486,7 +503,7 @@ export function QuedadasScreenView({
             </div>
           )}
         </>
-      )}
+      ) : null}
 
       {wizard && <CrearQuedadaModal initial={wizard.initial} onClose={() => setWizard(null)} />}
       {inviteFor && (
@@ -593,12 +610,7 @@ function FilterBar({
   const isActive = filters.format !== "all" || filters.when !== "all" || filters.price !== "all";
   const formats = [
     { k: "all", l: "Todos" },
-    { k: "americano", l: "Americano" },
-    { k: "mexicano", l: "Mexicano" },
-    { k: "round_robin", l: "Round Robin" },
-    { k: "kotc", l: "Rey de Cancha" },
-    { k: "canguil", l: "Canguil" },
-    { k: "libre", l: "Libre" },
+    ...quedadaFormatOptions().map((f) => ({ k: f.k, l: f.label })),
   ];
   const when = [
     { k: "all" as const, l: "Todas" },
@@ -716,14 +728,14 @@ function FeaturedQuedadaCard({
       }}
     >
       <div aria-hidden style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(52,211,153,0.06)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-8deg) translate(10%, -10%)", textTransform: "uppercase", pointerEvents: "none" }}>
-        {(FORMAT_LABEL[q.format] ?? q.format).split(" ")[0]}
+        {quedadaFormatShortLabel(q.format).toUpperCase()}
       </div>
       <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24, padding: "22px 24px", alignItems: "center" }}>
         <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>★ Destacada</span>
             <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(16,185,129,0.18)", color: "#86efac" }}>● Abierta</span>
-            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.14)" }}>{FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}</span>
+            <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.14)" }}>{quedadaFormatLabel(q.format)} · {q.matchMode === "singles" ? "Singles" : "Dobles"}</span>
             {q.creatorIsPremium && <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 9999, background: "linear-gradient(135deg, #fbbf24, #f59e0b)", color: "#0a0a0a" }}>MP+</span>}
           </div>
           <h2 className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.025em", textTransform: "uppercase", margin: 0, lineHeight: 1.05 }}>
@@ -1102,7 +1114,7 @@ function QuedadaCard({
         aria-label={`Ver detalles de ${q.title}`}
         style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1, cursor: "pointer", textAlign: "left" }}
       >
-        {/* Chips: estado (coloreado) + formato·modo + Organizas */}
+        {/* Chips: estado (coloreado) + formato·modo + invitado */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {cancelled ? (
             <Chip bg="var(--destructive-bg)" color="var(--destructive-fg)">Cancelada</Chip>
@@ -1116,9 +1128,8 @@ function QuedadaCard({
             <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">● Abierta</Chip>
           )}
           <Chip bg="var(--muted)" color="var(--muted-fg)">
-            {FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
+            {quedadaFormatLabel(q.format)} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
           </Chip>
-          {q.iAmCreator && <Chip bg="#fbbf24" color="var(--fg)">Organizas</Chip>}
           {!q.iAmCreator && q.iAmInvited && !q.iAmJoined && <Chip bg="#1f2937" color="#fff">Invitado</Chip>}
         </div>
 
@@ -1725,7 +1736,7 @@ function QuedadaDetailsModal({
             <Chip bg="var(--color-mp-primary-light)" color="var(--color-mp-primary-active)">● Abierta</Chip>
           )}
           <Chip bg="var(--muted)" color="var(--muted-fg)">
-            {FORMAT_LABEL[q.format] ?? q.format} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
+            {quedadaFormatLabel(q.format)} · {q.matchMode === "singles" ? "Singles" : "Dobles"}
           </Chip>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, fontSize: 12 }}>
@@ -1764,11 +1775,7 @@ function QuedadaDetailsModal({
             {prizes.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 5, borderTop: "1px solid var(--border)", paddingTop: 9 }}>
                 {prizes.map((p, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                    <Icon name="trophy" size={12} color="#f59e0b" />
-                    <span style={{ fontWeight: 800, minWidth: 32 }}>{p.place}</span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prize}</span>
-                  </div>
+                  <QuedadaPrizeRow key={`${p.place}-${i}`} prize={p} compact />
                 ))}
               </div>
             )}

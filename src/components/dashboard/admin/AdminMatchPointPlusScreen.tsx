@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 import {
   ApprovalQueue,
@@ -1221,14 +1222,14 @@ function ResumenTab({
               {activePlanCount.toLocaleString("es-EC")}
             </div>
             <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>
-              `player_subscriptions` activas y no vencidas.
+              Planes MATCHPOINT+ activos y vigentes.
             </div>
           </div>
         </div>
-        <AdminMpKpi icon="clock" label="Pendientes MP+" value={String(pending)} sub={`${pendingProofCount} con comprobante`} warn={pending > 0} />
-        <AdminMpKpi icon="badge-check" label="Clubes destacados" value={String(activeFeaturedCount)} sub="featured activo" emerald />
-        <AdminMpKpi icon="wallet" label="MP+ reciente" value={moneyK(recentPlanRevenueCents)} sub={`${recent.length} registros recientes`} />
-        <AdminMpKpi icon="star" label="Featuring reciente" value={moneyK(recentFeaturingRevenueCents)} sub={`${recentFeaturing.length} registros recientes`} />
+        <AdminMpKpi icon="clock" label="Pendientes MP+" value={String(pending)} sub={`${pendingProofCount} con comprobante`} warn={pending > 0} tip="Suscripciones en pending o pending_proof esperando aprobación manual." />
+        <AdminMpKpi icon="badge-check" label="Clubes destacados" value={String(activeFeaturedCount)} sub="featured activo" emerald tip="Clubes con featuring comercial activo ahora (distinto de Club Pro operativo)." />
+        <AdminMpKpi icon="wallet" label="MP+ reciente" value={moneyK(recentPlanRevenueCents)} sub={`${recent.length} registros recientes`} tip="Suma de montos de las últimas suscripciones premium registradas." />
+        <AdminMpKpi icon="star" label="Featuring reciente" value={moneyK(recentFeaturingRevenueCents)} sub={`${recentFeaturing.length} registros recientes`} tip="Ingresos recientes por featuring de clubes en el historial visible." />
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
@@ -2074,6 +2075,7 @@ function AdminMpKpi({
   sub,
   emerald,
   warn,
+  tip,
 }: {
   icon: string;
   label: string;
@@ -2081,6 +2083,7 @@ function AdminMpKpi({
   sub?: string;
   emerald?: boolean;
   warn?: boolean;
+  tip?: string;
 }) {
   const c = emerald ? "#047857" : warn ? "#b45309" : "#0a0a0a";
   return (
@@ -2100,9 +2103,13 @@ function AdminMpKpi({
             letterSpacing: "0.12em",
             textTransform: "uppercase",
             color: "var(--muted-fg)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
           {label}
+          {tip ? <InfoTip text={tip} maxWidth={220} /> : null}
         </span>
         <span
           style={{

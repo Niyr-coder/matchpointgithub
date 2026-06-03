@@ -387,44 +387,17 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="mp-canchas-screen" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* ── HEADER ── */}
       <div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 11,
-            color: "var(--muted-fg)",
-            marginBottom: 6,
-          }}
-        >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <Icon name="crown" size={11} />
-            OWNER
-          </span>
-          <Icon name="chevron-right" size={10} />
-          <span>Recursos</span>
-          <Icon name="chevron-right" size={10} />
-          <b style={{ color: "#0a0a0a" }}>Canchas</b>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
+        <div className="mp-canchas-header" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div className="mp-canchas-header-copy">
             <div className="label-mp" style={{ color: "var(--primary)" }}>
               ● {total} {total === 1 ? "cancha" : "canchas"} · {busy} ocupada
               {busy === 1 ? "" : "s"} ahora
             </div>
             <h1
-              className="font-heading"
+              className="font-heading mp-canchas-title"
               style={{
                 fontSize: 40,
                 fontWeight: 900,
@@ -437,7 +410,7 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
               Canchas<span className="dot">.</span>
             </h1>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="mp-canchas-actions" style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setShowBulk(true)}
               disabled={total === 0}
@@ -463,8 +436,10 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
       </div>
 
       {/* ── KPIs ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 14 }}>
-        <OccupancyHero occupied={busy} total={total} maintenance={maint} />
+      <div className="mp-canchas-kpis">
+        <div className="mp-canchas-kpi-hero">
+          <OccupancyHero occupied={busy} total={total} maintenance={maint} />
+        </div>
         <CCKpi
           icon="dollar-sign"
           label="Revenue hoy"
@@ -497,6 +472,7 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
 
       {/* ── VIEW TABS ── */}
       <div
+        className="mp-canchas-tabs"
         style={{
           display: "flex",
           alignItems: "center",
@@ -558,7 +534,6 @@ export function ClubCanchasScreenView({ data }: { data: CanchasData }) {
               courts={courts}
               onOpen={setOpenCourt}
               onToggleActive={handleToggleActive}
-              onGoToManagement={() => setView("gestion")}
             />
           )}
           {view === "tarifas" && (
@@ -697,18 +672,23 @@ function OccupancyHero({
           </span>
         </div>
         <div
-          className="font-heading tabular"
+          className="font-heading tabular mp-canchas-occ-statline"
           style={{
             fontSize: 38,
             fontWeight: 900,
             letterSpacing: "-0.03em",
             lineHeight: 1,
             marginTop: 8,
+            display: "flex",
+            alignItems: "baseline",
+            flexWrap: "wrap",
+            gap: "4px 8px",
           }}
         >
           {occupied}
           <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 22 }}>/{total}</span>
           <span
+            className="mp-canchas-occ-sub"
             style={{
               fontSize: 13,
               color: "rgba(255,255,255,0.55)",
@@ -889,11 +869,12 @@ function GalleryView({
   onToggleActive: (c: CourtCard) => void;
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-      {courts.map((c) => (
+    <div className="mp-canchas-gallery" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+      {courts.map((c, index) => (
         <GalleryCard
           key={c.id}
           c={c}
+          displayNo={index + 1}
           onClick={() => onOpen(c.id)}
           onToggleActive={() => onToggleActive(c)}
         />
@@ -904,10 +885,12 @@ function GalleryView({
 
 function GalleryCard({
   c,
+  displayNo,
   onClick,
   onToggleActive,
 }: {
   c: CourtCard;
+  displayNo: number;
   onClick: () => void;
   onToggleActive: () => void;
 }) {
@@ -927,10 +910,8 @@ function GalleryCard({
           { x: 730, y: 200, color: "#ec4899" },
         ]
       : [];
-  // V2 "NYT-Mag": número grande con punto verde al final.
-  // Si la cancha no tiene número en el nombre, mostramos "—".
-  const numRaw = c.name.match(/\d+/)?.[0] ?? null;
-  const numPadded = numRaw ? numRaw.padStart(2, "0") : null;
+  // Número editorial: posición en la lista (orden `ordinal` del backend), no el code/nombre.
+  const numPadded = String(displayNo).padStart(2, "0");
   // Caption del frame editorial: "PICKLEBALL · OUTDOOR" / "TENIS · INDOOR" etc.
   const SPORT_LABEL_UPPER: Record<typeof c.sport, string> = {
     pickleball: "PICKLEBALL",
@@ -987,6 +968,7 @@ function GalleryCard({
     >
       {/* ── TOP (V2 NYT-Mag): número gigante 110px + info al lado ── */}
       <div
+        className="mp-canchas-gallery-head"
         style={{
           display: "grid",
           gridTemplateColumns: "110px 1fr",
@@ -996,7 +978,7 @@ function GalleryCard({
         }}
       >
         <div
-          className="font-heading"
+          className="font-heading mp-canchas-gallery-num"
           style={{
             fontWeight: 900,
             fontSize: 84,
@@ -1005,14 +987,8 @@ function GalleryCard({
             color: "#0a0a0a",
           }}
         >
-          {numPadded ? (
-            <>
-              {numPadded}
-              <span style={{ color: "var(--primary)" }}>.</span>
-            </>
-          ) : (
-            <span style={{ color: "var(--muted-fg)" }}>—</span>
-          )}
+          {numPadded}
+          <span style={{ color: "var(--primary)" }}>.</span>
         </div>
         <div
           style={{
@@ -1237,56 +1213,62 @@ function GalleryCard({
         </div>
       ) : null}
 
-      {/* ── STATS: flex row con gap ── */}
+      {/* ── STATS: valores alineados abajo aunque el label haga wrap ── */}
       <div style={{ display: "flex", padding: "0 22px 14px", gap: 22 }}>
-        <div>
-          <div className="label-mp">Utilización</div>
+        {[
+          {
+            key: "util",
+            label: "Utilización",
+            value: `${c.util}%`,
+            color:
+              c.util > 80
+                ? "var(--primary)"
+                : c.util > 60
+                  ? "#fbbf24"
+                  : "var(--muted-fg)",
+          },
+          {
+            key: "rev",
+            label: "Revenue hoy",
+            value: fmtMoney(c.revenueTodayCents),
+            color: "#0a0a0a",
+          },
+          {
+            key: "book",
+            label: "Reservas",
+            value: String(c.bookingsToday),
+            color: "#0a0a0a",
+          },
+        ].map(({ key, label, value, color }) => (
           <div
-            className="font-heading tabular"
+            key={key}
             style={{
-              fontSize: 18,
-              fontWeight: 900,
-              marginTop: 2,
-              letterSpacing: "-0.02em",
-              color:
-                c.util > 80
-                  ? "var(--primary)"
-                  : c.util > 60
-                    ? "#fbbf24"
-                    : "var(--muted-fg)",
+              flex: 1,
+              minWidth: 0,
+              display: "grid",
+              gridTemplateRows: "1fr auto",
+              minHeight: 44,
             }}
           >
-            {c.util}%
+            <div
+              className="label-mp"
+              style={{ alignSelf: "end", lineHeight: 1.25, paddingBottom: 2 }}
+            >
+              {label}
+            </div>
+            <div
+              className="font-heading tabular"
+              style={{
+                fontSize: 18,
+                fontWeight: 900,
+                letterSpacing: "-0.02em",
+                color,
+              }}
+            >
+              {value}
+            </div>
           </div>
-        </div>
-        <div>
-          <div className="label-mp">Revenue hoy</div>
-          <div
-            className="font-heading tabular"
-            style={{
-              fontSize: 18,
-              fontWeight: 900,
-              marginTop: 2,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {fmtMoney(c.revenueTodayCents)}
-          </div>
-        </div>
-        <div>
-          <div className="label-mp">Reservas</div>
-          <div
-            className="font-heading tabular"
-            style={{
-              fontSize: 18,
-              fontWeight: 900,
-              marginTop: 2,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {c.bookingsToday}
-          </div>
-        </div>
+        ))}
       </div>
       {/* ── ACTIONS (V2): row con border-top + padding propio ── */}
       <div
@@ -1700,6 +1682,7 @@ function FloorplanView({
       </div>
 
       <div
+        className="mp-canchas-floorplan"
         style={{
           padding: 18,
           background: "linear-gradient(180deg, #f5f5f5, #e7e5e4)",
@@ -1934,6 +1917,7 @@ function CourtDrawer({
 
         {/* ── Quick stats (siempre visibles) ── */}
         <div
+          className="mp-canchas-drawer-stats"
           style={{
             padding: 18,
             borderBottom: "1px solid var(--border)",
@@ -3205,58 +3189,18 @@ function BulkBlockModal({
 // UX Kit Ola A — vistas Vista pública / Gestión / Tarifas
 // ════════════════════════════════════════════════════════════════════════
 
-// Vista pública: reusa GalleryView con banda informativa que redirige a
-// "Gestión" para operar. UX kit §4.2 — single change cosmético sobre el SVG
-// rediseñado.
+// Vista pública: galería editorial con SVG por cancha (UX kit §4.2).
 function PublicView({
   courts,
   onOpen,
   onToggleActive,
-  onGoToManagement,
 }: {
   courts: CourtCard[];
   onOpen: (id: string) => void;
   onToggleActive: (c: CourtCard) => void;
-  onGoToManagement: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div
-        role="note"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "10px 14px",
-          background: "rgba(59,130,246,0.08)",
-          border: "1px solid rgba(59,130,246,0.25)",
-          borderRadius: 10,
-          color: "#1e3a8a",
-          fontSize: 13,
-        }}
-      >
-        <Icon name="info" size={14} />
-        <span style={{ flex: 1 }}>
-          Vista pública de las canchas. Para editar capacidad, tarifas o bloquear
-          horarios, usá la pestaña <b>Gestión</b>.
-        </span>
-        <button
-          onClick={onGoToManagement}
-          className="btn"
-          style={{
-            background: "#fff",
-            border: "1px solid rgba(59,130,246,0.4)",
-            color: "#1e3a8a",
-            padding: "6px 10px",
-            fontSize: 12,
-          }}
-        >
-          Ir a Gestión
-          <Icon name="chevron-right" size={11} />
-        </button>
-      </div>
-      <GalleryView courts={courts} onOpen={onOpen} onToggleActive={onToggleActive} />
-    </div>
+    <GalleryView courts={courts} onOpen={onOpen} onToggleActive={onToggleActive} />
   );
 }
 
@@ -3312,7 +3256,7 @@ function ManagementCard({
   }
   return (
     <div
-      className="card"
+      className="card mp-canchas-mgmt-card"
       style={{
         padding: 14,
         display: "grid",
@@ -3515,7 +3459,9 @@ function PricingCardEditor({
       </div>
       {open && (
         <>
+        <div className="mp-canchas-pricing-scroll">
           <div
+            className="mp-canchas-pricing-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr 0.6fr 0.6fr auto",
@@ -3540,6 +3486,7 @@ function PricingCardEditor({
           {bands.map((b, i) => (
             <div
               key={i}
+              className="mp-canchas-pricing-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr 0.6fr 0.6fr auto",
@@ -3623,7 +3570,9 @@ function PricingCardEditor({
               </button>
             </div>
           ))}
+        </div>
           <div
+            className="mp-canchas-pricing-actions"
             style={{
               display: "flex",
               justifyContent: "space-between",

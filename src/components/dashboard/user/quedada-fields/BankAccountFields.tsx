@@ -26,14 +26,18 @@ export const EMPTY_BANK: BankDraft = {
   note: "",
 };
 
+function digitsOnly(raw: string, maxLen: number): string {
+  return raw.replace(/\D/g, "").slice(0, maxLen);
+}
+
 export function accountToBankDraft(a: PaymentAccount | null | undefined): BankDraft {
   if (!a) return { ...EMPTY_BANK };
   return {
     bank: a.bank ?? "",
     accountType: a.accountType ?? "",
-    accountNumber: a.accountNumber ?? "",
+    accountNumber: digitsOnly(a.accountNumber ?? "", 40),
     holderName: a.holderName ?? "",
-    holderId: a.holderId ?? "",
+    holderId: digitsOnly(a.holderId ?? "", 20),
     note: a.note ?? "",
   };
 }
@@ -158,17 +162,35 @@ export function BankAccountFields({
 
       <div>
         <label style={lbl}>Número de cuenta</label>
-        <input value={value.accountNumber} onChange={(e) => set({ accountNumber: e.target.value })} placeholder="2213691106" maxLength={40} inputMode="numeric" style={inp} />
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          value={value.accountNumber}
+          onChange={(e) => set({ accountNumber: digitsOnly(e.target.value, 40) })}
+          placeholder="1234567890"
+          maxLength={40}
+          style={inp}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <label style={lbl}>Titular</label>
-          <input value={value.holderName} onChange={(e) => set({ holderName: e.target.value })} placeholder="Ivette Ponce M." maxLength={80} style={inp} />
+          <input value={value.holderName} onChange={(e) => set({ holderName: e.target.value })} placeholder="Nombre Apellido" maxLength={80} style={inp} />
         </div>
         <div>
           <label style={lbl}>Cédula / RUC · opcional</label>
-          <input value={value.holderId} onChange={(e) => set({ holderId: e.target.value })} placeholder="1312865700" maxLength={20} inputMode="numeric" style={inp} />
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={value.holderId}
+            onChange={(e) => set({ holderId: digitsOnly(e.target.value, 20) })}
+            placeholder="1710000000"
+            maxLength={20}
+            style={inp}
+          />
         </div>
       </div>
 

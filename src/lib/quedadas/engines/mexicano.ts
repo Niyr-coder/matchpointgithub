@@ -1,10 +1,11 @@
 import { individualStandings } from "../standings";
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine, RoundPlan } from "../types";
 import { draftFromTeams, nextRoundNo, playersFromPairs } from "./shared";
 
 export const mexicanoEngine: QuedadaEngine = {
   format: "mexicano",
-  label: "Mexicano",
+  label: quedadaFormatLabel("mexicano"),
   rosterMode: () => "individual",
   standingsMode: () => "individual",
   canGenerateRound: true,

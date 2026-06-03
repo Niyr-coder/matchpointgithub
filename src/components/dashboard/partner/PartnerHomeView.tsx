@@ -1,6 +1,7 @@
 // Client view de PartnerHome — layout 1:1 (RoleHomes.jsx 314-376).
 "use client";
 import { Icon } from "@/components/Icon";
+import { TorneoHomeRow, TorneoStat } from "./_TorneoHomeRow";
 import { RHKpi, RHPanel, RHWelcome } from "../widgets/RH";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
@@ -48,72 +49,29 @@ const MATCH_PLACEHOLDER_COUNT = 3;
 
 function TorneoPlaceholder() {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 10,
-        border: "1px dashed var(--border)",
-        background: "#fafafa",
-        display: "grid",
-        gridTemplateColumns: "4px 1fr auto auto",
-        gap: 14,
-        alignItems: "center",
-        opacity: 0.6,
-      }}
-    >
-      <div
-        style={{
-          width: 4,
-          alignSelf: "stretch",
-          background: "var(--muted-fg)",
-          borderRadius: 9999,
-          minHeight: 36,
-        }}
-      />
-      <div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3 }}>
-          <span
-            className="font-heading"
-            style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", color: "var(--muted-fg)" }}
-          >
-            Sin torneos
-          </span>
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>—</div>
-      </div>
-      <div style={{ textAlign: "right" }}>
-        <div
-          style={{
-            fontSize: 9.5,
-            color: "var(--muted-fg)",
-            fontWeight: 800,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-          }}
-        >
-          Cupos
-        </div>
-        <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, color: "var(--muted-fg)" }}>
-          0 / —
-        </div>
-      </div>
-      <div style={{ textAlign: "right" }}>
-        <div
-          style={{
-            fontSize: 9.5,
-            color: "var(--muted-fg)",
-            fontWeight: 800,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-          }}
-        >
-          Revenue
-        </div>
-        <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, color: "var(--muted-fg)" }}>
-          $—
-        </div>
-      </div>
-    </div>
+    <TorneoHomeRow
+      placeholder
+      accent="var(--muted-fg)"
+      info={
+        <>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3 }}>
+            <span
+              className="font-heading"
+              style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", color: "var(--muted-fg)" }}
+            >
+              Sin torneos
+            </span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>—</div>
+        </>
+      }
+      stats={
+        <>
+          <TorneoStat label="Cupos" value="0 / —" color="var(--muted-fg)" />
+          <TorneoStat label="Revenue" value="$—" color="var(--muted-fg)" />
+        </>
+      }
+    />
   );
 }
 
@@ -174,9 +132,9 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
   const hasMatches = data.matches.length > 0;
 
   return (
-    <>
+    <div className="mp-partner-home">
       <RHWelcome role="partner" userName={data.userName} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="mp-role-home-kpis mp-partner-home-kpis">
         <RHKpi
           label="Torneos activos"
           value={String(data.kpis.active)}
@@ -202,7 +160,7 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+      <div className="mp-role-home-panels">
         <RHPanel
           title="Torneos en curso"
           action={
@@ -218,91 +176,46 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {hasTorneos
               ? data.torneos.map((t) => (
-                  <div
+                  <TorneoHomeRow
                     key={t.id}
-                    style={{
-                      padding: 14,
-                      borderRadius: 10,
-                      border: "1px solid var(--border)",
-                      display: "grid",
-                      gridTemplateColumns: "4px 1fr auto auto",
-                      gap: 14,
-                      alignItems: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 4,
-                        alignSelf: "stretch",
-                        background: t.color,
-                        borderRadius: 9999,
-                        minHeight: 36,
-                      }}
-                    />
-                    <div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3 }}>
-                        <span
-                          className="font-heading"
-                          style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em" }}
-                        >
-                          {t.n}
-                        </span>
-                        {t.live && (
+                    accent={t.color}
+                    info={
+                      <>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3, flexWrap: "wrap" }}>
                           <span
-                            style={{
-                              padding: "2px 6px",
-                              borderRadius: 3,
-                              background: "#dc2626",
-                              color: "#fff",
-                              fontSize: 8.5,
-                              fontWeight: 900,
-                              letterSpacing: "0.14em",
-                            }}
+                            className="font-heading mp-partner-torneo-name"
+                            style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em" }}
                           >
-                            ● LIVE
+                            {t.n}
                           </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
-                        {t.s} · {t.date}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          fontSize: 9.5,
-                          color: "var(--muted-fg)",
-                          fontWeight: 800,
-                          letterSpacing: "0.1em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Cupos
-                      </div>
-                      <div className="font-heading" style={{ fontSize: 14, fontWeight: 900 }}>
-                        {t.cupos}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          fontSize: 9.5,
-                          color: "var(--muted-fg)",
-                          fontWeight: 800,
-                          letterSpacing: "0.1em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Revenue
-                      </div>
-                      <div
-                        className="font-heading"
-                        style={{ fontSize: 14, fontWeight: 900, color: "var(--primary)" }}
-                      >
-                        {t.revenue}
-                      </div>
-                    </div>
-                  </div>
+                          {t.live && (
+                            <span
+                              style={{
+                                padding: "2px 6px",
+                                borderRadius: 3,
+                                background: "#dc2626",
+                                color: "#fff",
+                                fontSize: 8.5,
+                                fontWeight: 900,
+                                letterSpacing: "0.14em",
+                              }}
+                            >
+                              ● LIVE
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+                          {t.s} · {t.date}
+                        </div>
+                      </>
+                    }
+                    stats={
+                      <>
+                        <TorneoStat label="Cupos" value={t.cupos} />
+                        <TorneoStat label="Revenue" value={t.revenue} color="var(--primary)" />
+                      </>
+                    }
+                  />
                 ))
               : Array.from({ length: TORNEO_PLACEHOLDER_COUNT }).map((_, k) => (
                   <TorneoPlaceholder key={k} />
@@ -357,6 +270,6 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
               ))}
         </RHPanel>
       </div>
-    </>
+    </div>
   );
 }

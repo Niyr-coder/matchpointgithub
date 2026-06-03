@@ -20,6 +20,7 @@ function severityOf(entity: string, op: string): AuditEvent["sev"] {
   const e = entity.toLowerCase();
   const o = op.toLowerCase();
   if (o === "delete") return "critical";
+  if (o === "audit_chain.rebackfill") return "critical";
   if (["feature_flags", "feature_flag_assignments", "platform_config", "role_assignments"].includes(e)) return "critical";
   if (["payment_proofs", "transactions", "player_subscriptions", "club_featuring", "payouts", "refunds"].includes(e)) return "warn";
   if (["reports", "message_reports", "user_bans"].includes(e)) return "warn";

@@ -44,7 +44,7 @@ export async function fetchConversationListClient(
   ] = await Promise.all([
     supabase
       .from("conversations")
-      .select("id,kind,title,last_message_at,match_id")
+      .select("id,kind,title,last_message_at,match_id,quedada_id")
       .in("id", convIds)
       .order("last_message_at", { ascending: false, nullsFirst: false }),
     supabase
@@ -76,7 +76,11 @@ export async function fetchConversationListClient(
     .map((c) => c.match_id as string | null)
     .filter((id): id is string => !!id);
 
-  const [{ data: profileRows }, matchRowsRes] = await Promise.all([
+  const quedadaIds = (conversations ?? [])
+    .map((c) => (c as { quedada_id?: string | null }).quedada_id ?? null)
+    .filter((id): id is string => !!id);
+
+  const [{ data: profileRows }, matchRowsRes, quedadaRowsRes] = await Promise.all([
     allOtherIds.size > 0
       ? supabase
           .from("profiles")
@@ -89,6 +93,12 @@ export async function fetchConversationListClient(
           .from("matches")
           .select("id,status,played_at,mode,team_a_player_ids,team_b_player_ids")
           .in("id", matchIds)
+      : Promise.resolve({ data: [] }),
+    quedadaIds.length > 0
+      ? supabase
+          .from("quedadas")
+          .select("id,status,starts_at,location_text")
+          .in("id", quedadaIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -129,6 +139,23 @@ export async function fetchConversationListClient(
     });
   }
 
+  const quedadaById = new Map<
+    string,
+    { status: string; startsAt: string | null; locationText: string | null }
+  >();
+  for (const q of (quedadaRowsRes.data ?? []) as Array<{
+    id: string;
+    status: string;
+    starts_at: string;
+    location_text: string | null;
+  }>) {
+    quedadaById.set(q.id, {
+      status: q.status,
+      startsAt: q.starts_at ?? null,
+      locationText: q.location_text ?? null,
+    });
+  }
+
   const lastByConv = new Map<string, LastMsgRow>();
   if (!lastRes.error) {
     for (const row of (lastRes.data ?? []) as LastMsgRow[]) {
@@ -166,7 +193,8 @@ export async function fetchConversationListClient(
   const convos: ConvoLite[] = (conversations ?? []).map((c) => {
     const cid = c.id as string;
     const otherIds = (membersByConv.get(cid) ?? []).filter((id) => id !== userId);
-    const isGroup = c.kind === "group" || c.kind === "club_channel";
+    const isGroup =
+      c.kind === "group" || c.kind === "club_channel" || c.kind === "team_channel" || c.kind === "quedada";
     const isSystem = c.kind === "support" || c.kind === "club_channel";
     let name = (c.title as string | null) ?? "";
     if (!name && !isGroup && otherIds[0]) {
@@ -178,6 +206,8 @@ export async function fetchConversationListClient(
     const otherProfile = otherIds[0] ? profileMap.get(otherIds[0]) : undefined;
     const matchId = (c.match_id as string | null) ?? null;
     const matchRow = matchId ? matchById.get(matchId) : undefined;
+    const quedadaId = (c as { quedada_id?: string | null }).quedada_id ?? null;
+    const quedadaRow = quedadaId ? quedadaById.get(quedadaId) : undefined;
 
     return {
       id: cid,
@@ -201,6 +231,13 @@ export async function fetchConversationListClient(
             opponentName: matchRow.opponentName,
             clubName: null,
             courtName: null,
+          }
+        : null,
+      quedadaSummary: quedadaRow
+        ? {
+            status: quedadaRow.status,
+            startsAt: quedadaRow.startsAt,
+            locationText: quedadaRow.locationText,
           }
         : null,
     };

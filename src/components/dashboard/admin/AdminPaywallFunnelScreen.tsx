@@ -75,8 +75,9 @@ export async function AdminPaywallFunnelScreen() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
           gap: 12,
+          minWidth: 0,
         }}
       >
         <KPI label="Eventos totales" value={totalEvents.toLocaleString("en-US")} icon="activity" />

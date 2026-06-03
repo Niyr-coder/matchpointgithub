@@ -20,6 +20,7 @@ import {
 type Props = {
   tournamentId: string;
   status: string;
+  format: string;
   isFeatured: boolean;
   isAdmin: boolean;
   acceptedCount: number;
@@ -29,6 +30,7 @@ type Props = {
 export function PartnerTorneoActions({
   tournamentId,
   status,
+  format,
   isFeatured,
   isAdmin,
   acceptedCount,
@@ -94,6 +96,8 @@ export function PartnerTorneoActions({
       "x",
     );
   };
+
+  const isGroupsFormat = format === "groups_to_knockout";
 
   const onGenerar = () => {
     if (acceptedCount < 2) {
@@ -166,13 +170,15 @@ export function PartnerTorneoActions({
           loading={busy === "cerrar"}
           disabled={closed}
         />
-        <ActionBtn
-          icon="trophy"
-          label="Generar bracket"
-          onClick={onGenerar}
-          loading={busy === "bracket"}
-          primary
-        />
+        {!isGroupsFormat && (
+          <ActionBtn
+            icon="trophy"
+            label="Generar bracket"
+            onClick={onGenerar}
+            loading={busy === "bracket"}
+            primary
+          />
+        )}
         <ActionBtn
           icon="x"
           label="Cancelar torneo"

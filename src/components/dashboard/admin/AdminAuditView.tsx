@@ -11,7 +11,8 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
-import { verifyAuditChain, type ChainStatus } from "@/server/actions/audit";
+import { InfoTip, LabelWithTip } from "@/components/dashboard/widgets/InfoTip";
+import { verifyAuditChain, rebackfillAuditChain, type ChainStatus } from "@/server/actions/audit";
 
 type Sev = "info" | "warn" | "critical";
 type Diff = { k: string; a: string; b: string };
@@ -267,9 +268,9 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
       <div>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <div className="label-mp" style={{ color: "#dc2626" }}>● Plataforma · trazabilidad</div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: 0, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               Audit log<span className="dot">.</span>
+              <InfoTip maxWidth={280} text="Si disputas cobros, suspensiones o grants admin, este log es la prueba. Exporta antes de cualquier investigación de integridad." />
             </h1>
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
               {events.length} eventos cargados · registro append-only con actor + timestamp
@@ -291,10 +292,10 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
       {/* KPI STRIP */}
       <div className="mp-spon-kpis" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 12 }}>
         <AuditHero count={rangeEvents.length} liveTail={liveTail} buckets={hourBuckets} range={range} />
-        <AuditKpi icon="alert-octagon" label={`Críticos · ${rangeLabel}`} value={String(critical)} sub={critical > 0 ? "Revisar ahora" : "Sin alertas"} danger={critical > 0} />
-        <AuditKpi icon="users" label="Actores únicos" value={String(actors)} sub="admins · staff · sistema" />
-        <AuditKpi icon="terminal" label="Acciones únicas" value={String(actions)} sub="tipos distintos" />
-        <AuditKpi icon="shield-check" label="Integridad" value={nf(chainedCount)} sub="encadenados · hash chain" emerald />
+        <AuditKpi icon="alert-octagon" label={`Críticos · ${rangeLabel}`} value={String(critical)} sub={critical > 0 ? "Revisar ahora" : "Sin alertas"} danger={critical > 0} tip="Eventos con severidad crítica en el rango (cancelaciones masivas, overrides sensibles, etc.). Prioriza revisarlos." />
+        <AuditKpi icon="users" label="Actores únicos" value={String(actors)} sub="admins · staff · sistema" tip="Cuentas distintas que generaron eventos. Útil para detectar un actor con actividad anómala." />
+        <AuditKpi icon="terminal" label="Acciones únicas" value={String(actions)} sub="tipos distintos" tip="Valores distintos del campo action (INSERT/UPDATE/DELETE o nombres custom como tournament.cancelled)." />
+        <AuditKpi icon="shield-check" label="Integridad" value={nf(chainedCount)} sub="encadenados · hash chain" emerald tip="Filas con hash encadenado. Usa la tarjeta lateral «Verificar cadena» para comprobar que nadie alteró el log." />
       </div>
 
       {/* SEARCH + RANGE */}
@@ -484,13 +485,16 @@ function AuditHero({ count, liveTail, buckets, range }: { count: number; liveTai
   );
 }
 
-function AuditKpi({ icon, label, value, sub, danger, emerald }: { icon: string; label: string; value: string; sub?: string; danger?: boolean; emerald?: boolean }) {
+function AuditKpi({ icon, label, value, sub, danger, emerald, tip }: { icon: string; label: string; value: string; sub?: string; danger?: boolean; emerald?: boolean; tip?: string }) {
   const c = danger ? "#dc2626" : emerald ? "#047857" : "#0a0a0a";
   const bg = danger ? "#fee2e2" : emerald ? "rgba(16,185,129,0.12)" : "var(--muted)";
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span className="label-mp">{label}</span>
+        <span className="label-mp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {label}
+          {tip ? <InfoTip text={tip} maxWidth={220} /> : null}
+        </span>
         <span style={{ width: 28, height: 28, borderRadius: 8, background: bg, color: c, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           <Icon name={icon} size={13} color={c} />
         </span>
@@ -589,21 +593,47 @@ function IntegrityCard({ onExport, chainedCount }: { onExport: () => void; chain
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState<ChainStatus | null>(null);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
 
-  const verify = () =>
+  const runVerify = (notify: boolean) =>
     startTransition(async () => {
       const res = await verifyAuditChain(undefined);
       if (res.ok) {
         setStatus(res.data);
-        toast(res.data.ok ? { icon: "shield-check", title: `Cadena íntegra · ${res.data.checked} registros` } : { icon: "alert-triangle", title: `⚠ Cadena rota en #${res.data.brokenId}` });
-      } else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+        setCheckedAt(Date.now());
+        if (notify) {
+          toast(
+            res.data.ok
+              ? { icon: "shield-check", title: `Cadena íntegra · ${res.data.checked} registros` }
+              : { icon: "alert-triangle", title: `⚠ Cadena rota en #${res.data.brokenId}` },
+          );
+        }
+      } else if (notify) {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
     });
+
+  const repair = () =>
+    startTransition(async () => {
+      const res = await rebackfillAuditChain(undefined);
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "shield-check", title: `Cadena reparada · ${nf(res.data.rebuilt)} registros` });
+      runVerify(false);
+    });
+
+  useEffect(() => {
+    runVerify(false);
+  }, []);
 
   const broken = status && !status.ok;
   return (
     <div className="card" style={{ padding: 16, background: broken ? "linear-gradient(135deg, #fff 0%, rgba(220,38,38,0.06) 100%)" : "linear-gradient(135deg, #fff 0%, rgba(16,185,129,0.05) 100%)" }}>
       <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "3px 9px", borderRadius: 9999, background: broken ? "#fee2e2" : "rgba(16,185,129,0.12)", color: broken ? "#dc2626" : "#047857", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-        <Icon name={broken ? "shield-alert" : "shield-check"} size={10} color={broken ? "#dc2626" : "#047857"} />Integridad · hash chain
+        <Icon name={broken ? "shield-alert" : "shield-check"} size={10} color={broken ? "#dc2626" : "#047857"} />
+        <LabelWithTip tip="Cada fila guarda sha256(prev_hash + contenido). Alterar o borrar una fila rompe todos los hashes siguientes.">Integridad · hash chain</LabelWithTip>
       </div>
       <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", textTransform: "uppercase", margin: "10px 0 6px" }}>
         Registro encadenado<span style={{ color: "var(--primary)" }}>.</span>
@@ -615,15 +645,40 @@ function IntegrityCard({ onExport, chainedCount }: { onExport: () => void; chain
       {status && (
         <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: broken ? "#fee2e2" : "rgba(16,185,129,0.1)", color: broken ? "#7f1d1d" : "#065f46", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
           <Icon name={broken ? "shield-alert" : "shield-check"} size={13} color={broken ? "#dc2626" : "#047857"} />
-          {broken ? `Cadena rota en el registro #${status.brokenId}` : `Cadena íntegra · ${nf(status.checked)} registros verificados`}
+          <span>
+            {broken ? `Cadena rota en el registro #${status.brokenId}` : `Cadena íntegra · ${nf(status.checked)} registros verificados`}
+            {checkedAt ? (
+              <span style={{ display: "block", marginTop: 2, fontWeight: 600, opacity: 0.85, fontSize: 10 }}>
+                Verificado {new Date(checkedAt).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : null}
+          </span>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-        <button className="btn btn-primary" style={{ flex: 1, fontSize: 10.5, padding: "7px 12px" }} onClick={verify} disabled={pending}>
+      {broken && status?.brokenId != null && (
+        <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", fontSize: 11, color: "#7f1d1d", lineHeight: 1.55 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }}>Qué hacer ahora</div>
+          <ol style={{ margin: 0, paddingLeft: 18 }}>
+            <li><b>Exporta</b> el log (botón abajo) — conserva evidencia antes de tocar nada.</li>
+            <li><b>No edites ni borres</b> filas en <code style={{ fontFamily: "ui-monospace, monospace" }}>audit_log</code>; la tabla es append-only.</li>
+            <li>Busca en el stream eventos alrededor del registro <b>#{status.brokenId}</b> y quién actuó.</li>
+            <li><b>Escala a ingeniería</b> — trátalo como incidente de seguridad hasta descartar manipulación.</li>
+            <li>Si coincidió con un deploy o migración (hash chain 154/155), usa <b>Reparar cadena</b> abajo o aplica la migración de re-backfill.</li>
+          </ol>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+        <button className="btn btn-primary" style={{ flex: 1, minWidth: 120, fontSize: 10.5, padding: "7px 12px" }} onClick={() => runVerify(true)} disabled={pending} title="Recorre toda la cadena y detecta la primera fila inconsistente">
           <Icon name="shield-check" size={11} color="#fff" />{pending ? "Verificando…" : "Verificar cadena"}
         </button>
-        <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5, padding: "7px 12px" }} onClick={onExport}>
+        {broken ? (
+          <button className="btn" style={{ flex: 1, minWidth: 120, fontSize: 10.5, padding: "7px 12px", background: "#0a0a0a", color: "#fff", border: "1px solid #0a0a0a" }} onClick={repair} disabled={pending} title="Recomputa hashes en orden de id (solo admin)">
+            <Icon name="rotate-cw" size={11} color="#fff" />Reparar cadena
+          </button>
+        ) : null}
+        <button className="btn" style={{ fontSize: 10.5, padding: "7px 12px" }} onClick={onExport} title="Descarga CSV con los eventos filtrados actuales">
           <Icon name="file-down" size={11} />Exportar
         </button>
       </div>

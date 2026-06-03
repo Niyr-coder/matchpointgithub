@@ -2,11 +2,12 @@
 // (Free / MATCHPOINT+) y permite al admin activar o revocar el plan en un
 // solo click sin pasar por el flujo de comprobantes.
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { MpBadge } from "../widgets/MpBadge";
 import { planBadgeMeta } from "@/lib/ui/trust-badge";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -71,6 +72,8 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     { debounceMs: 5000 },
   );
 
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<
     | { kind: "grant"; user: UserRow }
     | { kind: "revoke"; user: UserRow }
@@ -78,6 +81,22 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     | { kind: "reactivate"; user: UserRow }
     | null
   >(null);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (q) setSearch(q);
+  }, [searchParams]);
+
+  const visibleRows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return data.rows;
+    return data.rows.filter(
+      (u) =>
+        u.n.toLowerCase().includes(needle) ||
+        u.e.toLowerCase().includes(needle) ||
+        u.city.toLowerCase().includes(needle),
+    );
+  }, [data.rows, search]);
 
   const cols: RSColumn<UserRow>[] = [
     {
@@ -140,6 +159,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
           {
             k: "reliability",
             l: "Fiabilidad",
+            tip: "Score por inasistencias y cancelaciones. Solo visible si el flag de fiabilidad está activo.",
             align: "center" as const,
             render: (u: UserRow) => (
               <span
@@ -169,6 +189,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     {
       k: "spend",
       l: "Gasto · mes",
+      tip: "Suma de transacciones captured del mes calendario para este jugador.",
       align: "right",
       render: (u) => (
         <b style={{ color: u.spend === "$0" ? "var(--muted-fg)" : "var(--primary)" }}>{u.spend}</b>
@@ -177,6 +198,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     {
       k: "plan",
       l: "Plan",
+      tip: "MATCHPOINT+ activo o plan free. El grant/revoke desde el menú ⋯ escribe en player_subscriptions y audit_log.",
       render: (u) =>
         u.planTier === "premium" ? (
           <MpBadge
@@ -191,6 +213,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
     {
       k: "st",
       l: "Estado",
+      tip: "Cuenta activa o suspendida. Suspender bloquea acceso; reactivar restaura el acceso previo.",
       render: (u) => <RSPill bg={ST_STYLES[u.st].c}>{ST_STYLES[u.st].l}</RSPill>,
     },
     {
@@ -216,6 +239,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
         title={
           <>
             Usuarios <span className="dot">●</span> {data.total.toLocaleString("en-US")}
+            <InfoTip maxWidth={260} text="Directorio global de jugadores. Desde el menú ⋯ puedes otorgar/revocar MATCHPOINT+ o suspender cuentas; cada acción queda en audit_log." />
           </>
         }
         action={
@@ -225,7 +249,10 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
                 <Icon name="search" size={13} />
               </span>
               <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por nombre o usuario…"
+                aria-label="Buscar usuarios"
                 style={{
                   padding: "8px 14px 8px 32px",
                   border: RS_BORDER,
@@ -243,7 +270,7 @@ export function AdminUsersScreenView({ data }: { data: UsersData }) {
           </div>
         }
       />
-      <RSTable cols={cols} rows={data.rows} rowKey={(u) => u.id} />
+      <RSTable cols={cols} rows={visibleRows} rowKey={(u) => u.id} />
 
       {dialog?.kind === "grant" && (
         <GrantPlusDialog

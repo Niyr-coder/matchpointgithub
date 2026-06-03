@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -294,20 +295,22 @@ export function AdminPagosScreenView({
 
   const hasRows = data.rows.length > 0;
 
-  const KPIS: [string, string, string, string][] = [
-    ["GMV · hoy", fmtUSD(data.kpis.gmvTodayCents), "var(--primary)", "captured"],
+  const KPIS: [string, string, string, string, string][] = [
+    ["GMV · hoy", fmtUSD(data.kpis.gmvTodayCents), "var(--primary)", "captured", "Volumen bruto capturado hoy (inscripciones, shop, eventos). Solo transacciones en estado captured."],
     [
       "Payouts a procesar",
       fmtUSD(data.kpis.payoutsToProcessCents),
       "#fbbf24",
       data.kpis.payoutsClubCount > 0 ? `${data.kpis.payoutsClubCount} clubes` : "sin payouts modelados",
+      "Dinero pendiente de transferir a clubes según el modelo de payouts. Marca como pagado cuando ejecutes la transferencia real.",
     ],
-    ["Comisión MP", fmtUSD(data.kpis.commissionTodayCents), "#0a0a0a", fmtPct(data.kpis.takeRatePct)],
+    ["Comisión MP", fmtUSD(data.kpis.commissionTodayCents), "#0a0a0a", fmtPct(data.kpis.takeRatePct), "Comisión de MATCHPOINT sobre GMV captured hoy. El take rate efectivo viene de platform_config."],
     [
       "Reembolsos",
       fmtUSD(data.kpis.refundsTodayCents),
       "#dc2626",
       `${data.kpis.refundsCountToday} caso${data.kpis.refundsCountToday === 1 ? "" : "s"}`,
+      "Reembolsos registrados hoy. Cada caso debe tener trazabilidad en audit_log y transacción vinculada.",
     ],
   ];
 
@@ -448,6 +451,7 @@ export function AdminPagosScreenView({
         title={
           <>
             Transacciones <span className="dot">●</span> hoy
+            <InfoTip maxWidth={260} text="Cola operativa de comprobantes, payouts y transacciones captured. Aprobar comprobantes activa suscripciones o inscripciones según el tipo." />
           </>
         }
         action={
@@ -475,9 +479,12 @@ export function AdminPagosScreenView({
         onMarkPaid={handleMarkPayoutPaid}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        {KPIS.map(([l, v, c, sub]) => (
+        {KPIS.map(([l, v, c, sub, tip]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
-            <div className="label-mp">{l}</div>
+            <div className="label-mp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              {l}
+              <InfoTip text={tip} maxWidth={220} />
+            </div>
             <div
               className="font-heading tabular"
               style={{

@@ -1,10 +1,12 @@
 // Client view de AdminClubsScreen — layout 1:1 (RoleScreens.jsx 73-114).
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSFilters, RSPill, RSTable, type RSColumn } from "../widgets/RS";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -76,9 +78,30 @@ function RowMenu({
   onRevokePlan: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
 
   const doSuspend = async () => {
     setOpen(false);
@@ -198,8 +221,9 @@ function RowMenu({
   }
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div style={{ display: "inline-block" }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         disabled={isPending}
         aria-label="Opciones del club"
@@ -219,51 +243,53 @@ function RowMenu({
       >
         <Icon name="more-horizontal" size={12} color="var(--muted-fg)" />
       </button>
-      {open && (
-        <>
-          <div
-            onClick={() => setOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 40 }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              right: 0,
-              top: 32,
-              zIndex: 41,
-              background: "#fff",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
-              width: 240,
-              overflow: "hidden",
-              color: "#0a0a0a",
-              fontSize: 12,
-            }}
-          >
-            {items.map((it) => (
-              <button
-                key={it.key}
-                onClick={it.onClick}
-                disabled={isPending}
-                style={{
-                  ...TEAM_ITEM_STYLE,
-                  color: it.danger ? "#dc2626" : "#0a0a0a",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--muted)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <Icon name={it.icon} size={13} color={it.iconColor ?? "var(--muted-fg)"} />
-                {it.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {open && mounted && pos &&
+        createPortal(
+          <>
+            <div
+              onClick={() => setOpen(false)}
+              style={{ position: "fixed", inset: 0, zIndex: 9998 }}
+            />
+            <div
+              style={{
+                position: "fixed",
+                top: pos.top,
+                right: pos.right,
+                zIndex: 9999,
+                background: "#fff",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+                width: 240,
+                overflow: "hidden",
+                color: "#0a0a0a",
+                fontSize: 12,
+              }}
+            >
+              {items.map((it) => (
+                <button
+                  key={it.key}
+                  onClick={it.onClick}
+                  disabled={isPending}
+                  style={{
+                    ...TEAM_ITEM_STYLE,
+                    color: it.danger ? "#dc2626" : "#0a0a0a",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--muted)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <Icon name={it.icon} size={13} color={it.iconColor ?? "var(--muted-fg)"} />
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -574,8 +600,27 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
 export function AdminClubsScreenView({ data }: { data: ClubsData }) {
   useRealtimeRefresh([{ table: "clubs" }, { table: "club_applications" }], { debounceMs: 4000 });
 
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState("");
   const [f, setF] = useState<"all" | Status>("all");
-  const filtered = f === "all" ? data.rows : data.rows.filter((c) => c.status === f);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (q) setSearch(q);
+  }, [searchParams]);
+
+  const filtered = useMemo(() => {
+    let rows = f === "all" ? data.rows : data.rows.filter((c) => c.status === f);
+    const needle = search.trim().toLowerCase();
+    if (needle) {
+      rows = rows.filter(
+        (c) =>
+          c.name.toLowerCase().includes(needle) ||
+          c.city.toLowerCase().includes(needle),
+      );
+    }
+    return rows;
+  }, [data.rows, f, search]);
 
   const [dialog, setDialog] = useState<
     | { kind: "grant"; club: ClubRow; tier: "pro" | "partner" }
@@ -599,6 +644,7 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
     {
       k: "tier",
       l: "Tier",
+      tip: "Etiqueta comercial/operativa del club (NEW, PRO, STD). Distinto del plan de facturación.",
       render: (c) => (
         <RSPill
           bg={
@@ -631,17 +677,20 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
     {
       k: "rev",
       l: "Revenue · mes",
+      tip: "Ingresos captured del mes calendario atribuidos al club (transacciones reales).",
       align: "right",
       render: (c) => <b style={{ color: "var(--primary)" }}>{c.rev}</b>,
     },
     {
       k: "status",
       l: "Estado",
+      tip: "Verificado = operativo · Pendiente = en pipeline · Rechazado = solicitud denegada.",
       render: (c) => <RSPill bg={ST_COLOR[c.status]}>{ST_LABEL[c.status]}</RSPill>,
     },
     {
       k: "plan",
       l: "Plan",
+      tip: "Starter (free), Club Pro o Partner. Otorgar/revocar desde el menú ⋯ afecta club_featuring y billing manual.",
       render: (c) => <PlanBadge tier={c.planTier} expiresAt={c.planExpiresAt} />,
     },
     {
@@ -666,10 +715,30 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
         title={
           <>
             Clubes <span className="dot">●</span> {data.rows.length}
+            <InfoTip maxWidth={260} text="Clubes verificados y pipeline de solicitudes. Plan Pro/Partner y suspensiones se gestionan desde el menú ⋯ de cada fila." />
           </>
         }
         action={
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
+                <Icon name="search" size={13} />
+              </span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar club o ciudad…"
+                aria-label="Buscar clubes"
+                style={{
+                  padding: "8px 14px 8px 32px",
+                  border: RS_BORDER,
+                  borderRadius: 9999,
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  minWidth: 220,
+                }}
+              />
+            </div>
             <button
               className="btn"
               style={{ background: "#fff", border: RS_BORDER }}

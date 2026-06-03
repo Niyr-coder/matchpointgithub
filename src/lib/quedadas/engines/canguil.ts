@@ -1,9 +1,10 @@
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine, RoundPlan } from "../types";
 import { draftFromTeams, nextRoundNo, playersFromPairs, shuffle } from "./shared";
 
 export const canguilEngine: QuedadaEngine = {
   format: "canguil",
-  label: "Canguil",
+  label: quedadaFormatLabel("canguil"),
   rosterMode: () => "individual",
   standingsMode: () => "individual",
   canGenerateRound: true,

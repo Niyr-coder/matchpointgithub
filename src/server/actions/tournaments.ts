@@ -27,6 +27,8 @@ import {
   TournamentPaymentPolicySchema,
   TournamentRegisterSchema,
   TournamentSchema,
+  ScoringConfigSchema,
+  GroupPlayoffConfigSchema,
   type Bracket,
   type League,
   type Registration,
@@ -52,6 +54,18 @@ function mapLeague(row: Record<string, unknown>): League {
   });
 }
 
+function parseScoringConfig(raw: unknown) {
+  if (!raw) return null;
+  const parsed = ScoringConfigSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseGroupPlayoffConfig(raw: unknown) {
+  if (!raw) return null;
+  const parsed = GroupPlayoffConfigSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 function mapTournament(row: Record<string, unknown>): Tournament {
   return TournamentSchema.parse({
     id: row.id,
@@ -75,6 +89,8 @@ function mapTournament(row: Record<string, unknown>): Tournament {
     paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     prizePoolCents: (row.prize_pool_cents as number | null) ?? null,
     rulesUrl: (row.rules_url as string | null) ?? null,
+    modality: (row.modality as Tournament["modality"]) ?? null,
+    scoringConfig: parseScoringConfig(row.scoring_config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -280,6 +296,10 @@ export async function getTournament(input: unknown): Promise<ActionResult<Tourna
             ageMin: (c.age_min as number | null) ?? null,
             ageMax: (c.age_max as number | null) ?? null,
             maxTeams: (c.max_teams as number | null) ?? null,
+            mprMin: c.mpr_min != null ? Number(c.mpr_min) : null,
+            mprMax: c.mpr_max != null ? Number(c.mpr_max) : null,
+            stage: (c.stage as TournamentDetail["categories"][number]["stage"]) ?? null,
+            groupPlayoffConfig: parseGroupPlayoffConfig(c.group_playoff_config),
           }),
         ),
         registrationCount: count ?? 0,
@@ -331,6 +351,27 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
       }
       throw new MpError("TOURNAMENTS.CREATE_FAILED", error.message, 500);
     }
+
+    if (data.format === "groups_to_knockout" && data.groupPlayoffConfig) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "partner");
+      const modalityLabel =
+        data.modality === "singles"
+          ? "Singles"
+          : data.modality === "mixed_doubles"
+            ? "Mixto"
+            : "Dobles";
+      const { error: catErr } = await admin.from("tournament_categories").insert({
+        tournament_id: row.id,
+        name: modalityLabel,
+        stage: "pending_groups",
+        group_playoff_config: data.groupPlayoffConfig,
+      } as never);
+      if (catErr) {
+        throw new MpError("TOURNAMENTS.CATEGORY_FAILED", catErr.message, 500);
+      }
+    }
+
     return mapTournament(row);
   });
 }
@@ -793,6 +834,13 @@ export async function generateBracket(
       .single();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
     if (t.partner_id) await requirePartnerAdmin(t.partner_id as string);
+    if (t.format === "groups_to_knockout") {
+      throw new MpError(
+        "BRACKETS.USE_GROUP_FLOW",
+        "Este torneo usa fase de grupos. Sortea grupos y genera la llave desde el panel de fase de grupos.",
+        422,
+      );
+    }
 
     let regQ = supabase
       .from("registrations")
@@ -1445,19 +1493,35 @@ export async function createTournamentCategory(
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
     await setAuditActor(admin, editor.userId, editor.actorRole);
+
+    const { data: tRow } = await admin
+      .from("tournaments")
+      .select("format")
+      .eq("id", tournamentId)
+      .single();
+    const insertRow: Record<string, unknown> = {
+      tournament_id: tournamentId,
+      name: body.name,
+      gender: body.gender ?? null,
+      level: body.level ?? null,
+      mpr_min: body.mprMin ?? null,
+      mpr_max: body.mprMax ?? null,
+      age_min: body.ageMin ?? null,
+      age_max: body.ageMax ?? null,
+      max_teams: body.maxTeams ?? null,
+    };
+    if (tRow?.format === "groups_to_knockout") {
+      insertRow.stage = "pending_groups";
+      insertRow.group_playoff_config = {
+        groupsCount: 2,
+        advancePerGroup: 4,
+        finalScoringOverride: null,
+      };
+    }
+
     const { data, error } = await admin
       .from("tournament_categories")
-      .insert({
-        tournament_id: tournamentId,
-        name: body.name,
-        gender: body.gender ?? null,
-        level: body.level ?? null,
-        mpr_min: body.mprMin ?? null,
-        mpr_max: body.mprMax ?? null,
-        age_min: body.ageMin ?? null,
-        age_max: body.ageMax ?? null,
-        max_teams: body.maxTeams ?? null,
-      } as never)
+      .insert(insertRow as never)
       .select()
       .single();
     if (error) throw new MpError("CATEGORY.CREATE_FAILED", error.message, 500);

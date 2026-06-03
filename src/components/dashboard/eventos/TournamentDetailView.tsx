@@ -13,6 +13,7 @@ import type { TournamentDetail } from "@/lib/schemas/tournaments";
 import { cancelMyRegistration, registerToTournament } from "@/server/actions/tournaments";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
+import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPanel";
 
 export type MyRegistration = {
   id: string;
@@ -508,10 +509,35 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
             {date.full}
             <span className="dot">.</span>
           </h2>
-          <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#0a0a0a", marginBottom: 32 }}>
+          <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#0a0a0a", marginBottom: 24 }}>
             {t.description ??
               `${fmt}. Inscripción ${fee > 0 ? `desde $${fee} por jugador` : "gratis"}. Premios para top 3 y kit oficial MATCHPOINT para todos los inscritos.`}
           </p>
+
+          <div className="card" style={{ padding: 22, marginBottom: 32 }}>
+            <EventPlayerConfigPanel
+              kind="tournament"
+              format={t.format}
+              modality={t.modality ?? null}
+              scoringConfig={t.scoringConfig ?? null}
+              paymentPolicy={t.paymentPolicy}
+              entryFeeCents={t.entryFeeCents}
+              maxParticipants={t.maxParticipants}
+              categories={categories.map((c) => ({
+                name: c.name,
+                gender: c.gender,
+                level: c.level,
+                ageMin: c.ageMin,
+                ageMax: c.ageMax,
+                maxTeams: c.maxTeams,
+                mprMin: c.mprMin ?? null,
+                mprMax: c.mprMax ?? null,
+                stage: c.stage ?? null,
+                groupPlayoffConfig: c.groupPlayoffConfig ?? null,
+              }))}
+            />
+          </div>
+
           <div className="label-mp">Cronograma</div>
           <h2
             className="font-heading"

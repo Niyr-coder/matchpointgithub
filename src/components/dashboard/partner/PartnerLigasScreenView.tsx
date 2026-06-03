@@ -30,16 +30,9 @@ const ST_COLOR: Record<LigaStatus, string> = {
 
 function LigaCard({ l }: { l: LigaRow }) {
   return (
-    <div className="card" style={{ padding: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-        }}
-      >
-        <div>
+    <div className="card mp-partner-liga-card" style={{ padding: 18 }}>
+      <div className="mp-partner-liga-head">
+        <div style={{ minWidth: 0, flex: 1 }}>
           <RSPill bg={ST_COLOR[l.st]}>{l.st}</RSPill>
           <div
             className="font-heading"
@@ -55,16 +48,16 @@ function LigaCard({ l }: { l: LigaRow }) {
             <span style={{ color: "var(--primary)" }}>.</span>
           </div>
         </div>
-        <button className="btn btn-primary">Ver detalle</button>
+        <button className="btn btn-primary mp-partner-liga-cta">Ver detalle</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+      <div className="mp-partner-liga-stats">
         {[
           { l: "Equipos", v: String(l.teams), c: "#0a0a0a" },
           { l: "Jornada", v: l.jornada, c: "#0a0a0a" },
           { l: "Revenue", v: l.revenue, c: "var(--primary)" },
         ].map((s) => (
-          <div key={s.l} style={{ padding: 10, background: "var(--muted)", borderRadius: 8 }}>
-            <div className="label-mp">{s.l}</div>
+          <div key={s.l} className="mp-partner-liga-stat" style={{ padding: 10, background: "var(--muted)", borderRadius: 8 }}>
+            <div className="label-mp mp-rh-kpi-label">{s.l}</div>
             <div
               className="font-heading"
               style={{ fontSize: 16, fontWeight: 900, marginTop: 3, color: s.c }}
@@ -80,24 +73,9 @@ function LigaCard({ l }: { l: LigaRow }) {
 
 function LigaPlaceholder() {
   return (
-    <div
-      style={{
-        padding: 18,
-        borderRadius: 12,
-        border: "1px dashed var(--border)",
-        background: "#fafafa",
-        opacity: 0.6,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-        }}
-      >
-        <div>
+    <div className="card mp-partner-liga-card mp-partner-liga-card--ph" style={{ padding: 18, border: "1px dashed var(--border)", background: "#fafafa", opacity: 0.6 }}>
+      <div className="mp-partner-liga-head">
+        <div style={{ minWidth: 0, flex: 1 }}>
           <RSPill bg="var(--muted-fg)">—</RSPill>
           <div
             className="font-heading"
@@ -113,18 +91,18 @@ function LigaPlaceholder() {
             Sin ligas
           </div>
         </div>
-        <button className="btn btn-primary" disabled>
+        <button className="btn btn-primary mp-partner-liga-cta" disabled>
           Ver detalle
         </button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+      <div className="mp-partner-liga-stats">
         {[
           { l: "Equipos", v: "0" },
           { l: "Jornada", v: "— / —" },
           { l: "Revenue", v: "$—" },
         ].map((s) => (
-          <div key={s.l} style={{ padding: 10, background: "var(--muted)", borderRadius: 8 }}>
-            <div className="label-mp">{s.l}</div>
+          <div key={s.l} className="mp-partner-liga-stat" style={{ padding: 10, background: "var(--muted)", borderRadius: 8 }}>
+            <div className="label-mp mp-rh-kpi-label">{s.l}</div>
             <div
               className="font-heading"
               style={{ fontSize: 16, fontWeight: 900, marginTop: 3, color: "var(--muted-fg)" }}
@@ -216,9 +194,11 @@ export function PartnerLigasScreenView({ data }: { data: LigasData }) {
           </button>
         }
       />
+      <div className="mp-partner-ligas-list">
       {hasReal
         ? data.rows.map((l) => <LigaCard key={l.id} l={l} />)
         : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => <LigaPlaceholder key={k} />)}
+      </div>
     </>
   );
 }

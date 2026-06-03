@@ -103,13 +103,14 @@ async function assertConversationWritable(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: convRow, error: convErr } = await (supabase as any)
     .from("conversations")
-    .select("kind,match_id")
+    .select("kind,match_id,quedada_id")
     .eq("id", conversationId)
     .maybeSingle();
   if (convErr) throw new MpError("MESSAGING.DB_ERROR", convErr.message, 500);
 
   const kind = (convRow as { kind?: string } | null)?.kind;
   const matchId = (convRow as { match_id?: string | null } | null)?.match_id ?? null;
+  const quedadaId = (convRow as { quedada_id?: string | null } | null)?.quedada_id ?? null;
   if (kind === "match" && matchId) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: matchRow, error: matchErr } = await (supabase as any)
@@ -122,6 +123,23 @@ async function assertConversationWritable(
       throw new MpError(
         "MESSAGING.READ_ONLY",
         "Este partido fue cancelado. El chat quedó cerrado.",
+        403,
+      );
+    }
+  }
+
+  if (kind === "quedada" && quedadaId) {
+    const { data: quedadaRow, error: quedadaErr } = await (supabase as any)
+      .from("quedadas")
+      .select("status")
+      .eq("id", quedadaId)
+      .maybeSingle();
+    if (quedadaErr) throw new MpError("MESSAGING.DB_ERROR", quedadaErr.message, 500);
+    const qStatus = (quedadaRow as { status?: string } | null)?.status;
+    if (qStatus === "finished" || qStatus === "cancelled") {
+      throw new MpError(
+        "MESSAGING.READ_ONLY",
+        "El chat de esta quedada está cerrado.",
         403,
       );
     }
@@ -256,6 +274,14 @@ export type ThreadMatchContext = {
   reliabilityEnabled: boolean;
   matchTimePassed: boolean;
   others: { id: string; name: string }[];
+  teamAPlayerIds: string[];
+  teamBPlayerIds: string[];
+  acceptedBy: string[];
+  pendingAcceptance: boolean;
+  reportedBy: string | null;
+  confirmedBy: string[];
+  scoreSets: { a: number; b: number }[] | null;
+  scoreWinner: "a" | "b" | null;
 };
 
 export type ConversationThread = {
@@ -330,15 +356,14 @@ export async function loadConversationThread(
       const { data: m } = await (supabase as any)
         .from("matches")
         .select(
-          "id,status,played_at,sport,mode,duration_min,club_id,court_id,score,team_a_player_ids,team_b_player_ids",
+          "id,status,played_at,sport,mode,duration_min,club_id,court_id,score,team_a_player_ids,team_b_player_ids,accepted_by,reported_by,confirmed_by",
         )
         .eq("id", matchId)
         .maybeSingle();
       if (m) {
-        const allPlayers: string[] = [
-          ...((m.team_a_player_ids as string[] | null) ?? []),
-          ...((m.team_b_player_ids as string[] | null) ?? []),
-        ];
+        const teamA = ((m.team_a_player_ids as string[] | null) ?? []) as string[];
+        const teamB = ((m.team_b_player_ids as string[] | null) ?? []) as string[];
+        const allPlayers = [...teamA, ...teamB];
         const otherIds = allPlayers.filter((id) => id !== userId);
         const { data: oProfiles } = otherIds.length
           ? await supabase.from("profiles").select("id,display_name").in("id", otherIds)
@@ -387,6 +412,17 @@ export async function loadConversationThread(
         const courtName =
           (courtRow?.name as string | null)?.trim() ||
           (courtRow?.code ? `Cancha ${courtRow.code as string}` : null);
+        const acceptedBy = ((m.accepted_by as string[] | null) ?? []) as string[];
+        const pendingAcceptance = allPlayers.some((id) => !acceptedBy.includes(id));
+        const rawScore = m.score as Record<string, unknown> | null;
+        const scoreSets =
+          rawScore && Array.isArray(rawScore.sets)
+            ? (rawScore.sets as { a: number; b: number }[])
+            : null;
+        const scoreWinner =
+          rawScore?.winner === "a" || rawScore?.winner === "b"
+            ? (rawScore.winner as "a" | "b")
+            : null;
         activeMatch = {
           matchId: m.id as string,
           status: m.status as string,
@@ -406,6 +442,14 @@ export async function loadConversationThread(
           reliabilityEnabled,
           matchTimePassed: new Date(m.played_at as string).getTime() < Date.now(),
           others: otherIds.map((id) => ({ id, name: nameById.get(id) ?? "Jugador" })),
+          teamAPlayerIds: teamA,
+          teamBPlayerIds: teamB,
+          acceptedBy,
+          pendingAcceptance,
+          reportedBy: (m.reported_by as string | null) ?? null,
+          confirmedBy: ((m.confirmed_by as string[] | null) ?? []) as string[],
+          scoreSets,
+          scoreWinner,
         };
       }
     }

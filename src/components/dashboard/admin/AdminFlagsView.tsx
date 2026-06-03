@@ -4,7 +4,9 @@
 // crítico, kill switch, targeting, historial) y los conecta a datos/acciones
 // reales: feature_flags (+ env/impact/owner/segment, mig 152) +
 // feature_flag_assignments + audit_log (historial). Recibe `data: FlagsData`.
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
@@ -296,30 +298,6 @@ function FlagRowItem({ f, last, pending, onToggle, onOpen }: { f: FlagRow; last:
   );
 }
 
-// Tooltip accesible (hover + foco + tap). Posición fixed para no quedar recortado
-// por contenedores con overflow (tablas, drawer). Texto en español sencillo.
-function InfoTip({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
-  const ref = useRef<HTMLButtonElement>(null);
-  const show = () => {
-    const r = ref.current?.getBoundingClientRect();
-    if (r) setCoords({ x: Math.min(r.left, window.innerWidth - 250), y: r.bottom + 6 });
-    setOpen(true);
-  };
-  const hide = () => setOpen(false);
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center" }}>
-      <button ref={ref} type="button" aria-label={text} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} onClick={(e) => { e.stopPropagation(); if (open) hide(); else show(); }} style={{ background: "transparent", border: 0, padding: 0, margin: 0, cursor: "help", display: "inline-flex", color: "var(--muted-fg)", lineHeight: 0 }}>
-        <Icon name="info" size={12} color="var(--muted-fg)" />
-      </button>
-      {open && coords && (
-        <span role="tooltip" style={{ position: "fixed", left: coords.x, top: coords.y, zIndex: 1200, maxWidth: 240, background: "#0a0a0a", color: "#fff", fontSize: 11, lineHeight: 1.45, fontWeight: 500, letterSpacing: 0, textTransform: "none", padding: "8px 11px", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.28)", pointerEvents: "none" }}>{text}</span>
-      )}
-    </span>
-  );
-}
-
 function FFKpi({ icon, label, value, sub, emerald, warn, danger, tip }: { icon: string; label: string; value: string; sub?: string; emerald?: boolean; warn?: boolean; danger?: boolean; tip?: string }) {
   const c = danger ? "#dc2626" : emerald ? "#047857" : warn ? "#92400e" : "#0a0a0a";
   const bg = danger ? "#fee2e2" : emerald ? "rgba(16,185,129,0.12)" : warn ? "#fef3c7" : "var(--muted)";
@@ -374,6 +352,19 @@ function FlagDrawer({ f, clubs, pending, onClose, onSetRollout, onToggle, onDele
   const [segment, setSegment] = useState(f.segment ?? "");
   const [history, setHistory] = useState<FlagHistoryEntry[] | null>(null);
   const [loadingHist, setLoadingHist] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [enter, setEnter] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const id = requestAnimationFrame(() => setEnter(true));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      cancelAnimationFrame(id);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
 
   const loadHistory = () => {
     setLoadingHist(true);
@@ -386,31 +377,50 @@ function FlagDrawer({ f, clubs, pending, onClose, onSetRollout, onToggle, onDele
   const codeSnippet = `if (await isFlagEnabled('${f.k}')) {\n  // feature on\n}`;
   const targetingSnippet = `// el ${f.rollout}% recibe el flag\nif (hash(user.id) % 100 < ${f.rollout}) enable('${f.k}')`;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(10,10,10,0.55)", display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
-        <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 20%, rgba(124,58,237,0.2), transparent 60%)" }} />
-          <button onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
-            <Icon name="x" size={13} color="#fff" />
-          </button>
-          <div style={{ position: "relative" }}>
-            <div className="label-mp" style={{ color: "#c4b5fd" }}>● Feature flag</div>
-            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 10, wordBreak: "break-all" }}>{f.k}</div>
-            <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "6px 0 0" }}>
-              {displayName}<span style={{ color: "var(--primary)" }}>.</span>
-            </h2>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.1)", fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "#fff" }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: em.c }} />{em.l}
-              </span>
-              <span style={{ padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.1)", color: sm.c, fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>● {sm.l}</span>
-              {f.impact === "high" && <span style={{ padding: "3px 9px", borderRadius: 9999, background: "#fee2e2", color: "#dc2626", fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>Crítico</span>}
-              <Toggle on={f.enabled} disabled={pending} onChange={onToggle} />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          background: "#fff",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "-12px 0 32px rgba(0,0,0,0.18)",
+          transform: enter ? "none" : "translateX(100%)",
+          transition: "transform 220ms cubic-bezier(0.16,1,0.3,1)",
+        }}
+      >
+        <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden", flexShrink: 0 }}>
+          <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 20%, rgba(124,58,237,0.2), transparent 60%)", pointerEvents: "none" }} />
+          <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="label-mp" style={{ color: "#c4b5fd" }}>● Feature flag</div>
+              <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 10, wordBreak: "break-all" }}>{f.k}</div>
+              <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "6px 0 0" }}>
+                {displayName}<span style={{ color: "var(--primary)" }}>.</span>
+              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.1)", fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "#fff" }}>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: em.c }} />{em.l}
+                </span>
+                <span style={{ padding: "3px 9px", borderRadius: 9999, background: "rgba(255,255,255,0.1)", color: sm.c, fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>● {sm.l}</span>
+                {f.impact === "high" && <span style={{ padding: "3px 9px", borderRadius: 9999, background: "#fee2e2", color: "#dc2626", fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase" }}>Crítico</span>}
+                <Toggle on={f.enabled} disabled={pending} onChange={onToggle} />
+              </div>
             </div>
+            <button type="button" onClick={onClose} aria-label="Cerrar" className="mp-press" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
+              <Icon name="x" size={13} color="#fff" />
+            </button>
           </div>
         </div>
 
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         {/* Qué controla (según el registro de código) */}
         <div style={{ padding: 18, borderBottom: "1px solid var(--border)", background: known ? (known.wired ? "rgba(16,185,129,0.04)" : "#fffbeb") : "#fef2f2" }}>
           <div className="label-mp" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
@@ -545,8 +555,10 @@ function FlagDrawer({ f, clubs, pending, onClose, onSetRollout, onToggle, onDele
             <Icon name="trash-2" size={13} color="#dc2626" />Eliminar flag
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -21,8 +21,10 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { Icon } from "@/components/Icon";
+import { CourtMatchup } from "@/components/quedadas/CourtMatchup";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
+import { LabelWithTip } from "../widgets/InfoTip";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import {
   getQuedadaManageData,
@@ -50,6 +52,7 @@ import {
   reportGame,
   deleteRound,
   finishQuedada,
+  finishQuedadaCategory,
   startAmericanoRolling,
   reportRollingGame,
   reportQuedada,
@@ -57,6 +60,7 @@ import {
 import { QuedadaGameView } from "./QuedadaGameView";
 import { individualStandings, type StandingRow, type GameForStandings } from "@/lib/quedadas/standings";
 import { getQuedadaEngine, rosterModeFor, standingsModeFor } from "@/lib/quedadas/engines/registry";
+import { quedadaFormatLabel } from "@/lib/quedadas/format-labels";
 import type { PaymentAccount, Prize, QuedadaRule } from "@/lib/schemas/quedadas";
 import {
   BankAccountFields,
@@ -66,6 +70,7 @@ import {
   type BankDraft,
 } from "./quedada-fields/BankAccountFields";
 import { PrizesEditor, prizesToDrafts, prizeDraftsToPrizes, type PrizeDraft } from "./quedada-fields/PrizesEditor";
+import { QuedadaPrizeRow } from "./quedada-fields/QuedadaPrizeRow";
 import { RulesEditor, rulesToDrafts, ruleDraftsToRules, type RuleDraft } from "./quedada-fields/RulesEditor";
 import { SUMA_MIN, SUMA_MAX, parseSuma, sumaLabel } from "@/lib/quedadas/level";
 import { Skeleton as SkBar } from "@/components/ui/Skeleton";
@@ -82,6 +87,8 @@ type ManageQuedada = {
   visibility: "open" | "private";
   status: string;
   starts_at: string;
+  live_at: string | null;
+  updated_at: string;
   location_text: string | null;
   perks_text: string | null;
   fee_cents: number;
@@ -106,6 +113,8 @@ type ManageCategory = {
   max_slots: number | null;
   target_points: number | null;
   sort_order: number;
+  status?: "scheduled" | "active" | "finished";
+  finished_at?: string | null;
 };
 type ManagePair = {
   id: string;
@@ -122,7 +131,7 @@ type ManageParticipant = {
   payment_reminded_at: string | null;
   points: number | null;
   final_rank: number | null;
-  profiles: { display_name: string | null; username: string | null } | null;
+  profiles: { display_name: string | null; username: string | null; avatar_url: string | null } | null;
 };
 type ManageCohost = {
   user_id: string;
@@ -164,16 +173,60 @@ type ManageData = {
   games: ManageGame[];
 };
 
-const FORMAT_LABEL: Record<string, string> = {
-  americano: "Americano",
-  mexicano: "Mexicano",
-  round_robin: "Round Robin",
-  kotc: "Rey de Cancha",
-  canguil: "Canguil",
-  libre: "Libre",
-};
-
 type TabKey = "resumen" | "parejas" | "juego" | "pagos" | "resultados" | "config";
+
+function quedadaIsLocked(status: string): boolean {
+  return status === "finished" || status === "cancelled";
+}
+
+function quedadaTimerFrozenAt(q: ManageQuedada): string | null {
+  if (!quedadaIsLocked(q.status)) return null;
+  return q.updated_at || q.live_at || q.starts_at;
+}
+
+type CategoryFlowStatus = "scheduled" | "active" | "finished";
+
+function categoryFlowStatus(c: ManageCategory, quedadaStatus: string): CategoryFlowStatus {
+  if (c.status) return c.status;
+  if (quedadaStatus === "finished") return "finished";
+  if (quedadaStatus === "live") return "active";
+  return "scheduled";
+}
+
+function standingsForCategory(
+  data: ManageData,
+  categoryId: string,
+  q: ManageQuedada,
+  nameById: (id: string) => string,
+): StandingRow[] {
+  const players = data.pairs
+    .filter((p) => p.category_id === categoryId)
+    .flatMap((p) => [p.player_a_id, p.player_b_id].filter((id): id is string => !!id));
+  if (standingsModeFor(q.format, q.match_mode) !== "individual" || players.length === 0) return [];
+  const catGames = data.games.filter((g) => g.category_id === categoryId);
+  return individualStandings(catGames as GameForStandings[], players, nameById);
+}
+
+function QuedadaLockedNotice() {
+  return (
+    <div
+      className="card"
+      style={{
+        padding: "12px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        background: "var(--muted)",
+        border: "1px solid var(--border)",
+        fontSize: 12.5,
+        color: "var(--muted-fg)",
+      }}
+    >
+      <Icon name="lock" size={14} color="var(--muted-fg)" />
+      <span>Quedada finalizada — solo lectura. No se pueden cambiar marcadores, roster ni pagos.</span>
+    </div>
+  );
+}
 
 function quedadaStatusMeta(status: string): { label: string; bg: string; fg: string } {
   switch (status) {
@@ -266,87 +319,22 @@ function HeaderBtn({
 function StatCard({ label, value, sub, valueColor }: { label: string; value: string; sub?: string; valueColor?: string }) {
   const isText = !/^[\d/.$]+$/.test(value);
   return (
-    <div className="card" style={{ padding: "13px 15px" }}>
+    <div
+      className="card"
+      style={{ padding: "13px 15px", height: "100%", display: "flex", flexDirection: "column", minHeight: 88 }}
+    >
       <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</div>
-      <div className="font-heading" style={{ fontSize: isText ? 18 : 22, fontWeight: 900, lineHeight: 1.15, marginTop: 5, color: valueColor ?? "var(--fg)" }}>{value}</div>
-      {sub && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.4 }}>{sub}</div>}
-    </div>
-  );
-}
-
-// Matchup como CANCHA de pickleball (vista superior): equipo A en los cuadrantes
-// izquierdos, equipo B en los derechos, "vs" sobre la red. La cancha se dibuja con
-// líneas vectoriales finas (stroke no-escalable → grosor constante en px).
-function CourtMatchup({ teamA, teamB, nameSize = 12 }: { teamA: string[]; teamB: string[]; nameSize?: number }) {
-  // Centros (% del viewBox 480×224) de los 4 cuadrantes de servicio.
-  const spots = [
-    { x: 18.5, y: 26.5, name: teamA[0] },
-    { x: 18.5, y: 73.5, name: teamA[1] },
-    { x: 81.5, y: 26.5, name: teamB[0] },
-    { x: 81.5, y: 73.5, name: teamB[1] },
-  ].filter((s): s is { x: number; y: number; name: string } => !!s.name);
-  const lineProps = { stroke: "var(--border)", strokeWidth: 1.5, vectorEffect: "non-scaling-stroke" as const };
-  return (
-    <div style={{ position: "relative", marginTop: 10 }}>
-      <svg viewBox="0 0 480 224" width="100%" style={{ display: "block" }}>
-        <g fill="none" strokeLinejoin="miter">
-          {/* perímetro */}
-          <rect x={6} y={6} width={468} height={212} {...lineProps} />
-          {/* red (centro) */}
-          <line x1={240} y1={6} x2={240} y2={218} {...lineProps} />
-          {/* líneas de cocina (a cada lado de la red) */}
-          <line x1={170} y1={6} x2={170} y2={218} {...lineProps} />
-          <line x1={310} y1={6} x2={310} y2={218} {...lineProps} />
-          {/* líneas centrales de servicio (baseline → cocina) */}
-          <line x1={6} y1={112} x2={170} y2={112} {...lineProps} />
-          <line x1={310} y1={112} x2={474} y2={112} {...lineProps} />
-        </g>
-      </svg>
-      {spots.map((s, i) => {
-        const parts = s.name.split(" ");
-        const first = parts[0];
-        const rest = parts.slice(1).join(" ");
-        return (
-          <div
-            key={i}
-            className="font-heading"
-            style={{
-              position: "absolute",
-              left: `${s.x}%`,
-              top: `${s.y}%`,
-              transform: "translate(-50%,-50%)",
-              maxWidth: "28%",
-              textAlign: "center",
-              fontSize: nameSize,
-              fontWeight: 800,
-              lineHeight: 1.2,
-              color: "var(--fg)",
-            }}
-          >
-            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{first}</span>
-            {rest && <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{rest}</span>}
-          </div>
-        );
-      })}
-      {/* "vs" verde sobre la red */}
-      <span
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%,-50%)",
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "#fff",
-          background: "var(--primary)",
-          padding: "3px 8px",
-          borderRadius: 9999,
-        }}
+      <div
+        className="font-heading"
+        style={{ fontSize: isText ? 18 : 22, fontWeight: 900, lineHeight: 1.15, marginTop: 5, color: valueColor ?? "var(--fg)" }}
       >
-        vs
-      </span>
+        {value}
+      </div>
+      {sub ? (
+        <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: "auto", paddingTop: 8, lineHeight: 1.4 }}>{sub}</div>
+      ) : (
+        <div style={{ marginTop: "auto" }} aria-hidden />
+      )}
     </div>
   );
 }
@@ -385,14 +373,18 @@ function fmtDurMin(ms: number): string {
   return min < 1 ? "<1 min" : `${min} min`;
 }
 // Cronómetro en vivo: tiempo transcurrido desde `since` (created_at del partido).
-function LiveTimer({ since }: { since: string }) {
+// Con `frozenAt` deja de tickar (p. ej. quedada finalizada).
+function LiveTimer({ since, frozenAt }: { since: string; frozenAt?: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (frozenAt) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [frozenAt]);
   const start = Date.parse(since);
-  return <span className="tabular">{fmtClock(Number.isNaN(start) ? 0 : now - start)}</span>;
+  const end = frozenAt ? Date.parse(frozenAt) : now;
+  const ms = Number.isNaN(start) ? 0 : Math.max(0, (Number.isNaN(end) ? now : end) - start);
+  return <span className="tabular">{fmtClock(ms)}</span>;
 }
 
 function ScoreEditor({ initialA, initialB, saving, onSave, compact = false }: { initialA: number | null; initialB: number | null; saving: boolean; onSave: (a: number, b: number) => void; compact?: boolean }) {
@@ -502,6 +494,7 @@ function MatchCarouselCard({
   courtMaxWidth,
   courtNameSize,
   showPrev = true,
+  timerFrozenAt,
 }: {
   matches: CourtMatch[];
   emptyTitle: string;
@@ -513,6 +506,7 @@ function MatchCarouselCard({
   courtMaxWidth?: number;
   courtNameSize?: number;
   showPrev?: boolean;
+  timerFrozenAt?: string | null;
 }) {
   const [idx, setIdx] = useState(0);
   const n = matches.length;
@@ -556,9 +550,13 @@ function MatchCarouselCard({
                         <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--success-fg)", background: "var(--success-bg)", padding: "4px 9px", borderRadius: 9999 }}>
                           <Icon name="check" size={12} color="var(--success-fg)" /> Libre
                         </span>
+                      ) : timerFrozenAt ? (
+                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted-fg)", background: "var(--muted)", padding: "4px 9px", borderRadius: 9999 }}>
+                          <Icon name="flag" size={12} color="var(--muted-fg)" /> <LiveTimer since={m.startedAt} frozenAt={timerFrozenAt} />
+                        </span>
                       ) : (
                         <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", color: "#b45309", background: "rgba(251,191,36,0.18)", padding: "4px 9px", borderRadius: 9999 }}>
-                          <Icon name="clock" size={12} color="#b45309" /> <LiveTimer since={m.startedAt} />
+                          <Icon name="clock" size={12} color="#b45309" /> <LiveTimer since={m.startedAt} frozenAt={timerFrozenAt} />
                         </span>
                       )}
                     </div>
@@ -667,11 +665,121 @@ function MatchCarouselCard({
   );
 }
 
-// Tabla de posiciones (ranking individual del americano). Derivada de los games
-// jugados. Top 3 en color primary. Columnas: #, Jugador, PJ, V, PF, DIF.
-function StandingsCard({ rows, nameOf }: { rows: StandingRow[]; nameOf: (id: string) => string }) {
+/** Micro-label igual al de las cards llenas. */
+const skLbl: React.CSSProperties = {
+  fontSize: 9.5,
+  fontWeight: 900,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "var(--muted-fg)",
+};
+
+/** Skeleton del carrusel — solo mientras carga la página. */
+function MatchCarouselSkeleton() {
+  return (
+    <div className="card" style={{ width: "100%", minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+      <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        Siguiente partido
+      </span>
+      <SkBar w="58%" h={22} r={6} />
+      <SkBar w="100%" h={72} r={12} />
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <SkBar w={88} h={32} r={8} />
+      </div>
+      <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        <span style={skLbl}>Partido anterior</span>
+        <SkBar w="100%" h={36} r={8} />
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton de insight — solo mientras carga la página. */
+function InsightCardSkeleton() {
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+      <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+        Insight de juego<span className="dot">.</span>
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+          <span style={skLbl}>Progreso de partidos</span>
+          <SkBar w={72} h={14} r={4} />
+        </div>
+        <SkBar h={6} r={9999} />
+        <SkBar w="46%" h={10} r={4} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={skLbl}>Puntos totales</span>
+          <SkBar w="70%" h={22} r={6} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={skLbl}>Promedio/partido</span>
+          <SkBar w="55%" h={22} r={6} />
+        </div>
+      </div>
+      {(["Partido más reñido", "Partido más largo"] as const).map((label) => (
+        <div key={label} style={{ borderTop: "1px dashed var(--border)", paddingTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <span style={skLbl}>{label}</span>
+          <SkBar w={64} h={14} r={4} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton de tabla — solo mientras carga la página. */
+function StandingsCardSkeleton() {
   const cols = "26px minmax(0,1fr) 30px 28px 38px 42px";
-  const played = rows.some((r) => r.played > 0);
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+          Tabla de posiciones<span className="dot">.</span>
+        </h3>
+        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: cols,
+          gap: 8,
+          padding: "0 4px 6px",
+          fontSize: 9.5,
+          fontWeight: 900,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--muted-fg)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <span>#</span>
+        <span>Jugador</span>
+        <span style={{ textAlign: "center" }}>PJ</span>
+        <span style={{ textAlign: "center" }}>V</span>
+        <span style={{ textAlign: "center" }}>PF</span>
+        <span style={{ textAlign: "center" }}>DIF</span>
+      </div>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px" }}>
+          <SkBar w={18} h={14} r={4} />
+          <SkBar w="85%" h={14} r={4} />
+          <SkBar w={22} h={14} r={4} />
+          <SkBar w={22} h={14} r={4} />
+          <SkBar w={28} h={14} r={4} />
+          <SkBar w={32} h={14} r={4} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const dashCell: React.CSSProperties = { textAlign: "center", color: "var(--muted-fg)", fontWeight: 700 };
+
+/** Tabla vacía (datos cargados, aún sin ranking). */
+function StandingsCardEmpty({ hint = "Aún sin partidos jugados." }: { hint?: string }) {
+  const cols = "26px minmax(0,1fr) 30px 28px 38px 42px";
   return (
     <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -688,15 +796,61 @@ function StandingsCard({ rows, nameOf }: { rows: StandingRow[]; nameOf: (id: str
         <span style={{ textAlign: "center" }}>PF</span>
         <span style={{ textAlign: "center" }}>DIF</span>
       </div>
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "4px 4px 0", fontSize: 13 }}>
+        <span className="font-heading tabular" style={{ fontWeight: 900, color: "var(--muted-fg)" }}>—</span>
+        <span style={{ color: "var(--muted-fg)" }}>—</span>
+        <span className="tabular" style={dashCell}>—</span>
+        <span className="tabular" style={dashCell}>—</span>
+        <span className="tabular" style={dashCell}>—</span>
+        <span className="tabular" style={dashCell}>—</span>
+      </div>
+      <p style={{ margin: 0, fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>{hint}</p>
+    </div>
+  );
+}
+
+// Tabla de posiciones (ranking individual del americano). Derivada de los games
+// jugados. Top 3 en color primary. Columnas: #, Jugador, PJ, V, PF, DIF.
+function StandingsCard({
+  rows,
+  nameOf,
+  avatarOf,
+}: {
+  rows: StandingRow[];
+  nameOf: (id: string) => string;
+  avatarOf?: (id: string) => string | null;
+}) {
+  const cols = avatarOf ? "26px 34px minmax(0,1fr) 30px 28px 38px 42px" : "26px minmax(0,1fr) 30px 28px 38px 42px";
+  const played = rows.some((r) => r.played > 0);
+  return (
+    <div className="card" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
+          Tabla de posiciones<span className="dot">.</span>
+        </h3>
+        <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+        <span>#</span>
+        {avatarOf && <span aria-hidden />}
+        <span>Jugador</span>
+        <span style={{ textAlign: "center" }}>PJ</span>
+        <span style={{ textAlign: "center" }}>V</span>
+        <span style={{ textAlign: "center" }}>PF</span>
+        <span style={{ textAlign: "center" }}>DIF</span>
+      </div>
       {rows.map((r, i) => (
         <div key={r.userId} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px", fontSize: 13 }}>
           <span className="font-heading tabular" style={{ fontWeight: 900, color: played && i < 3 ? "var(--primary)" : "var(--muted-fg)" }}>{i + 1}</span>
+          {avatarOf && (
+            <PlayerStandingAvatar name={nameOf(r.userId)} avatarUrl={avatarOf(r.userId)} size={28} />
+          )}
           <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{nameOf(r.userId)}</span>
-          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.played}</span>
-          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.wins}</span>
-          <span className="tabular" style={{ textAlign: "center", fontWeight: 800 }}>{r.pf}</span>
-          <span className="tabular" style={{ textAlign: "center", color: r.diff > 0 ? "var(--success-fg)" : r.diff < 0 ? "var(--destructive-border)" : "var(--muted-fg)" }}>
-            {r.diff > 0 ? `+${r.diff}` : r.diff}
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.played > 0 ? r.played : "—"}</span>
+          <span className="tabular" style={{ textAlign: "center", color: "var(--muted-fg)" }}>{r.played > 0 ? r.wins : "—"}</span>
+          <span className="tabular" style={{ textAlign: "center", fontWeight: 800 }}>{r.played > 0 ? r.pf : "—"}</span>
+          <span className="tabular" style={{ textAlign: "center", color: r.played > 0 ? (r.diff > 0 ? "var(--success-fg)" : r.diff < 0 ? "var(--destructive-border)" : "var(--muted-fg)") : "var(--muted-fg)" }}>
+            {r.played > 0 ? (r.diff > 0 ? `+${r.diff}` : r.diff) : "—"}
           </span>
         </div>
       ))}
@@ -737,7 +891,7 @@ function InsightCard({ playedN, scheduledN, totalPts, avg, closest, longest, str
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
           <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Progreso de partidos</span>
-          <span className="font-heading tabular" style={{ fontSize: 14, fontWeight: 900 }}>{playedN} jugados</span>
+          <span className="font-heading tabular" style={{ fontSize: 14, fontWeight: 900 }}>{playedN > 0 ? `${playedN} jugados` : "—"}</span>
         </div>
         <div style={{ height: 6, borderRadius: 9999, background: "var(--muted)", overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${pct}%`, background: "var(--primary)", borderRadius: 9999, transition: "width 320ms var(--ease-out)" }} />
@@ -747,7 +901,7 @@ function InsightCard({ playedN, scheduledN, totalPts, avg, closest, longest, str
 
       {/* Puntos / promedio */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {stat("Puntos totales", String(totalPts))}
+        {stat("Puntos totales", playedN > 0 ? String(totalPts) : "—")}
         {stat("Promedio/partido", playedN > 0 ? avg.toFixed(1) : "—")}
       </div>
 
@@ -883,6 +1037,17 @@ function PartidosTabView({
   cards,
   history,
   lastPerCourt,
+  showNextRound,
+  showFillCourts,
+  roundLabel,
+  onNextRound,
+  onFillCourts,
+  roundBusy,
+  showFinish,
+  finishLabel = "Finalizar quedada",
+  onFinish,
+  isLocked,
+  timerFrozenAt,
 }: {
   matches: CourtMatch[];
   standings: StandingRow[];
@@ -895,6 +1060,17 @@ function PartidosTabView({
   cards: GameViewCards;
   history: HistoryItem[];
   lastPerCourt: HistoryItem[];
+  showNextRound: boolean;
+  showFillCourts: boolean;
+  roundLabel: string;
+  onNextRound: () => void;
+  onFillCourts: () => void;
+  roundBusy: boolean;
+  showFinish: boolean;
+  finishLabel?: string;
+  onFinish: () => void;
+  isLocked: boolean;
+  timerFrozenAt?: string | null;
 }) {
   return (
     <div className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -902,11 +1078,32 @@ function PartidosTabView({
       <div style={{ flex: "1 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Banner VISTA DE JUEGO con carrusel grande */}
         <div style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-mp-card, 14.4px)", padding: 22, background: "linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)", color: "#fff" }}>
-          <div className="label-mp" style={{ color: "var(--primary)" }}>● En vivo</div>
-          <h2 className="font-heading" style={{ margin: "8px 0 14px", fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-            Vista de juego<span style={{ color: "#34d399" }}>.</span>
-          </h2>
-          <MatchCarouselCard matches={matches} seqWord={seqWord} canReport={canReport} reporting={reporting} onReport={onReport} courtMaxWidth={620} courtNameSize={16} showPrev={false} emptyTitle="Canchas vacías" emptySub="Aún no hay partidos en cancha." />
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="label-mp" style={{ color: isLocked ? "var(--muted-fg)" : "var(--primary)" }}>
+                {isLocked ? "● Finalizada" : "● En vivo"}
+              </div>
+              <h2 className="font-heading" style={{ margin: "8px 0 0", fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+                Vista de juego<span style={{ color: "#34d399" }}>.</span>
+              </h2>
+            </div>
+            {showNextRound && (
+              <HeaderBtn onClick={onNextRound} disabled={roundBusy} icon="arrow-right" tone="primary">
+                Siguiente {roundLabel.toLowerCase()}
+              </HeaderBtn>
+            )}
+            {showFillCourts && (
+              <HeaderBtn onClick={onFillCourts} disabled={roundBusy} icon="layout-grid" tone="primary">
+                Llenar canchas
+              </HeaderBtn>
+            )}
+            {showFinish && (
+              <HeaderBtn onClick={onFinish} disabled={roundBusy} icon="flag" tone="danger">
+                {finishLabel}
+              </HeaderBtn>
+            )}
+          </div>
+          <MatchCarouselCard matches={matches} seqWord={seqWord} canReport={canReport} reporting={reporting} onReport={onReport} courtMaxWidth={620} courtNameSize={16} showPrev={false} emptyTitle="Canchas vacías" emptySub="Aún no hay partidos en cancha." timerFrozenAt={timerFrozenAt} />
         </div>
 
         {/* Cards de estado */}
@@ -933,11 +1130,24 @@ function PartidosTabView({
                     <span style={{ fontSize: 10, fontWeight: 800, color: m.played ? "var(--success-fg)" : "#b45309" }}>{m.played ? "Libre" : `${seqWord} ${m.seqNo}`}</span>
                   </div>
                   <CourtMatchup teamA={m.teamA} teamB={m.teamB} />
-                  {m.played && (
-                    <span className="font-heading tabular" style={{ alignSelf: "center", fontSize: 16, fontWeight: 900 }}>
-                      {m.pointsA ?? 0}<span style={{ color: "var(--primary)", margin: "0 3px" }}>–</span>{m.pointsB ?? 0}
-                    </span>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, marginTop: 2 }}>
+                    {m.played ? (
+                      <span className="font-heading tabular" style={{ fontSize: 16, fontWeight: 900 }}>
+                        {m.pointsA ?? 0}<span style={{ color: "var(--primary)", margin: "0 3px" }}>–</span>{m.pointsB ?? 0}
+                      </span>
+                    ) : canReport ? (
+                      <ScoreEditor
+                        key={m.gameId}
+                        initialA={m.pointsA}
+                        initialB={m.pointsB}
+                        saving={reporting}
+                        onSave={(a, b) => onReport(m.gameId, a, b)}
+                        compact
+                      />
+                    ) : (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-fg)" }}>Por jugar</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1001,6 +1211,7 @@ type QuedadaPlayerHistory = {
 // estado, pago, categorías y reportar) + gestión de roster (SlotsSection).
 function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameOf: (id: string) => string; onChanged: () => Promise<void> }) {
   const toast = useToast();
+  const readOnly = quedadaIsLocked(data.quedada.status);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [reportFor, setReportFor] = useState<string | null>(null);
@@ -1182,7 +1393,7 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
             const pending = pendingById.get(p.user_id) ?? 0;
             const nc = catCount(p.user_id);
             const catNames = catNamesFor(p.user_id);
-            const canAssign = nc === 0 && individualRoster && categoriesWithFreeSlot.length > 0;
+            const canAssign = !readOnly && nc === 0 && individualRoster && categoriesWithFreeSlot.length > 0;
             const picking = assignFor === p.user_id;
             return (
               <div key={p.user_id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : undefined }}>
@@ -1221,15 +1432,17 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
                 >
                   <Icon name="history" size={13} color="var(--muted-fg)" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { setReportFor(p.user_id); setReason(""); }}
-                  aria-label={`Reportar a ${nameOf(p.user_id)}`}
-                  title="Reportar comportamiento indebido"
-                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
-                >
-                  <Icon name="flag" size={13} color="var(--muted-fg)" />
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => { setReportFor(p.user_id); setReason(""); }}
+                    aria-label={`Reportar a ${nameOf(p.user_id)}`}
+                    title="Reportar comportamiento indebido"
+                    style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
+                  >
+                    <Icon name="flag" size={13} color="var(--muted-fg)" />
+                  </button>
+                )}
                 </div>
                 {picking && (
                   <div className="mp-tab-in" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 2px 12px 46px" }}>
@@ -1387,19 +1600,41 @@ function nameOf(p: { display_name: string | null; username: string | null } | nu
   if (!p) return "Jugador";
   return p.display_name || (p.username ? `@${p.username}` : "Jugador");
 }
-// Tiempo relativo legible respecto a `starts_at` ("Empieza en 3 días" /
-// "Empezó hace 2 h"). Para el subtítulo de la card Estado.
+// Tiempo relativo legible respecto a una fecha ISO.
+function relSpan(absMs: number): string {
+  const mins = Math.round(absMs / 60000);
+  const hours = Math.floor(absMs / 3600000);
+  const days = Math.floor(absMs / 86400000);
+  return days >= 1 ? `${days} día${days > 1 ? "s" : ""}` : hours >= 1 ? `${hours} h` : `${Math.max(1, mins)} min`;
+}
+// Respecto a `starts_at` programado ("Empieza en 3 días" / pasado genérico).
 function startRel(iso: string): string | undefined {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return undefined;
   const diff = t - Date.now();
   const future = diff >= 0;
-  const abs = Math.abs(diff);
-  const mins = Math.round(abs / 60000);
-  const hours = Math.floor(abs / 3600000);
-  const days = Math.floor(abs / 86400000);
-  const span = days >= 1 ? `${days} día${days > 1 ? "s" : ""}` : hours >= 1 ? `${hours} h` : `${Math.max(1, mins)} min`;
+  const span = relSpan(Math.abs(diff));
   return future ? `Empieza en ${span}` : `Empezó hace ${span}`;
+}
+function elapsedRel(iso: string, prefix = "Empezó hace"): string | undefined {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return undefined;
+  const diff = Date.now() - t;
+  if (diff < 0) return undefined;
+  return `${prefix} ${relSpan(diff)}`;
+}
+// Subtítulo del card Estado: en vivo usa live_at; antes de iniciar, la fecha programada.
+function estadoSub(q: ManageQuedada): string | undefined {
+  if (q.status === "finished") return "Podio publicado";
+  if (q.status === "live") {
+    return q.live_at ? elapsedRel(q.live_at) : undefined;
+  }
+  if (q.status === "registration_closed") {
+    const t = Date.parse(q.starts_at);
+    if (!Number.isNaN(t) && t <= Date.now()) return "Lista para iniciar";
+    return startRel(q.starts_at);
+  }
+  return startRel(q.starts_at);
 }
 function hourLabel(iso: string | null): string {
   if (!iso) return "";
@@ -1423,6 +1658,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const [section, setSection] = useState<"gestion" | "juego">("gestion");
   // Tabs de nivel de página (arriba del banner): cambian toda la interfaz.
   const [pageTab, setPageTab] = useState<"resumen" | "partidos" | "roster" | "pagos" | "config">("resumen");
+  const [viewCategoryId, setViewCategoryId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const res = await getQuedadaManageData({ quedadaId });
@@ -1573,7 +1809,17 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
         toast({ icon: "alert-triangle", title: "No se pudo cambiar el estado", sub: res.error.message });
         return;
       }
-      toast({ icon: "check", title: "Estado actualizado" });
+      if (status === "live" && res.data.bootstrapped) {
+        const b = res.data.bootstrapped;
+        const roundWord = q ? getQuedadaEngine(q.format).roundLabel : "Ronda";
+        toast({
+          icon: "check-circle-2",
+          title: "Quedada en vivo",
+          sub: `${roundWord} ${b.roundNo} armada · ${b.created} partido${b.created === 1 ? "" : "s"}${b.byes > 0 ? ` · ${b.byes} descansan` : ""}`,
+        });
+      } else {
+        toast({ icon: "check", title: status === "live" ? "Quedada en vivo" : "Estado actualizado" });
+      }
       await afterMutation();
     });
   };
@@ -1597,23 +1843,87 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     });
   };
 
+  const doFinishQuedada = async () => {
+    if (!data || !q) return;
+    const sorted = [...data.categories].sort((a, b) => a.sort_order - b.sort_order);
+    const active =
+      sorted.find((c) => categoryFlowStatus(c, q.status) === "active") ??
+      sorted.find((c) => categoryFlowStatus(c, q.status) !== "finished") ??
+      sorted[0] ??
+      null;
+    if (!active) {
+      toast({ icon: "alert-triangle", title: "Sin categoría activa" });
+      return;
+    }
+    const hasNext = sorted.some((c) => categoryFlowStatus(c, q.status) === "scheduled");
+    const multi = sorted.length > 1;
+    const ok = await confirm({
+      title: multi && hasNext ? "Finalizar categoría" : "Finalizar quedada",
+      body:
+        multi && hasNext
+          ? `Se publica el podio de «${active.name}» y pasas a la siguiente categoría. ¿Continuar?`
+          : "Se calcula el podio según la tabla de posiciones y cierras la quedada. ¿Finalizar ahora?",
+      confirmLabel: multi && hasNext ? "Finalizar y continuar" : "Finalizar y publicar podio",
+      cancelLabel: "Seguir jugando",
+    });
+    if (!ok) return;
+    startBusy(async () => {
+      const res = await finishQuedadaCategory({ quedadaId, categoryId: active.id });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo finalizar", sub: res.error.message });
+        return;
+      }
+      if (res.data.quedadaFinished) {
+        toast({ icon: "trophy", title: "Quedada finalizada", sub: "El podio ya está publicado en el resumen." });
+        setPageTab("resumen");
+      } else {
+        toast({
+          icon: "trophy",
+          title: `Podio de «${active.name}» publicado`,
+          sub: res.data.nextCategoryName ? `Siguiente: ${res.data.nextCategoryName}` : undefined,
+        });
+        if (res.data.nextCategoryId) setViewCategoryId(res.data.nextCategoryId);
+        setPageTab("partidos");
+      }
+      await afterMutation();
+    });
+  };
+
   const q = data?.quedada ?? null;
+  const isQuedadaLocked = q != null && quedadaIsLocked(q.status);
   const joinedCount = data ? data.participants.filter((p) => p.status === "joined").length : 0;
   const paidCount = data ? data.participants.filter((p) => p.paid).length : 0;
   const sm = q ? quedadaStatusMeta(q.status) : null;
   const engine = q ? getQuedadaEngine(q.format) : null;
 
-  // Categoría principal (la primera por orden): contexto para "Generar ronda" y
-  // para el partido destacado del header en Americano.
-  const mainCategory = data
-    ? [...data.categories].sort((a, b) => a.sort_order - b.sort_order)[0] ?? null
-    : null;
+  const sortedCategories = data ? [...data.categories].sort((a, b) => a.sort_order - b.sort_order) : [];
+  const activeCategory =
+    sortedCategories.find((c) => categoryFlowStatus(c, q?.status ?? "") === "active") ??
+    sortedCategories.find((c) => categoryFlowStatus(c, q?.status ?? "") !== "finished") ??
+    sortedCategories[0] ??
+    null;
+  const viewCategory = sortedCategories.find((c) => c.id === viewCategoryId) ?? activeCategory;
+  const multiCategory = sortedCategories.length > 1;
+  const hasNextCategory = sortedCategories.some((c) => categoryFlowStatus(c, q?.status ?? "") === "scheduled");
+  const finishActionLabel = multiCategory && hasNextCategory ? "Finalizar categoría" : "Finalizar quedada";
+  const viewCategoryIsActive = viewCategory != null && categoryFlowStatus(viewCategory, q?.status ?? "") === "active";
+
+  useEffect(() => {
+    if (!viewCategoryId && activeCategory) setViewCategoryId(activeCategory.id);
+  }, [viewCategoryId, activeCategory?.id]);
+
+  // Categoría en pantalla (selector) vs categoría activa (motor / finalizar).
+  const mainCategory = viewCategory;
 
   // Ronda actual (la más alta generada en la categoría principal) — para el
   // texto "Ronda N en vivo" del card Estado.
   const nameById = (id: string): string =>
     nameOf(data?.participants.find((p) => p.user_id === id)?.profiles ?? null);
+  const avatarById = (id: string): string | null =>
+    data?.participants.find((p) => p.user_id === id)?.profiles?.avatar_url ?? null;
   const catGames = data && mainCategory ? data.games.filter((g) => g.category_id === mainCategory.id) : [];
+  const activeCatGames = data && activeCategory ? data.games.filter((g) => g.category_id === activeCategory.id) : [];
+  const hasPlayedGames = activeCatGames.some((g) => g.status === "played");
   const currentRoundNo = catGames.reduce((m, g) => Math.max(m, g.round_no ?? 0), 0);
   const isRolling = q?.engine_mode === "rolling";
   const seqWord = isRolling ? "Partido" : engine?.roundLabel ?? "Ronda";
@@ -1651,6 +1961,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   // y el anterior es el historial (catGames viene ordenado por created_at asc).
   const courtMatches: CourtMatch[] = (() => {
     if (!data || !engine || !mainCategory) return [];
+    const locked = q != null && quedadaIsLocked(q.status);
     const byCourt = new Map<number, ManageGame[]>();
     for (const g of catGames) {
       if (g.court_no == null) continue;
@@ -1660,7 +1971,21 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     }
     return [...byCourt.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([, list]) => toMatch(list[list.length - 1], list.length > 1 ? list[list.length - 2] : null));
+      .map(([, list]) => {
+        const played = list.filter((g) => g.status === "played");
+        const current = locked ? played[played.length - 1] : list[list.length - 1];
+        if (!current) return null;
+        const prevIdx = locked
+          ? played.length > 1
+            ? played.length - 2
+            : -1
+          : list.length > 1
+            ? list.length - 2
+            : -1;
+        const prevGame = prevIdx >= 0 ? (locked ? played[prevIdx] : list[prevIdx]) : null;
+        return toMatch(current, prevGame);
+      })
+      .filter((m): m is CourtMatch => m != null);
   })();
 
   // Insights del juego (derivados de los games de la categoría principal).
@@ -1728,10 +2053,16 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     };
   })();
 
+
+
   // Tabla de posiciones (ranking individual): roster de la categoría principal,
   // derivado de los games jugados.
   const standingsPlayers =
-    data && mainCategory ? data.pairs.filter((p) => p.category_id === mainCategory.id).map((p) => p.player_a_id) : [];
+    data && mainCategory
+      ? data.pairs
+          .filter((p) => p.category_id === mainCategory.id)
+          .flatMap((p) => [p.player_a_id, p.player_b_id].filter((id): id is string => !!id))
+      : [];
   const standings: StandingRow[] =
     q && standingsModeFor(q.format, q.match_mode) === "individual" && standingsPlayers.length > 0
       ? individualStandings(catGames as GameForStandings[], standingsPlayers, nameById)
@@ -1795,19 +2126,19 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
 
   // Generar la siguiente ronda desde el motor del formato.
   const genRound = () => {
-    if (!mainCategory) {
+    if (!activeCategory) {
       toast({ icon: "alert-triangle", title: "Crea una categoría primero" });
       return;
     }
     startBusy(async () => {
-      const res = await generateQuedadaRound({ quedadaId, categoryId: mainCategory.id });
+      const res = await generateQuedadaRound({ quedadaId, categoryId: activeCategory.id });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo generar la ronda", sub: res.error.message });
         return;
       }
       toast({
         icon: "check-circle-2",
-        title: `Ronda ${res.data.roundNo} generada`,
+        title: `${engine?.roundLabel ?? "Ronda"} ${res.data.roundNo} armada`,
         sub: res.data.byes > 0 ? `${res.data.byes} jugador(es) descansan` : undefined,
       });
       await afterMutation();
@@ -1816,12 +2147,12 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
 
   // Rolling: llenar las canchas libres con un partido inicial.
   const startRolling = () => {
-    if (!mainCategory) {
+    if (!activeCategory) {
       toast({ icon: "alert-triangle", title: "Crea una categoría primero" });
       return;
     }
     startBusy(async () => {
-      const res = await startAmericanoRolling({ quedadaId, categoryId: mainCategory.id });
+      const res = await startAmericanoRolling({ quedadaId, categoryId: activeCategory.id });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudieron llenar las canchas", sub: res.error.message });
         return;
@@ -1926,7 +2257,14 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           <HeaderBtn onClick={startRolling} disabled={busy} icon="layout-grid" tone="primary">Llenar canchas</HeaderBtn>
         )}
         {data.isCreator && q.status === "live" && engine?.canGenerateRound && !isRolling && (
-          <HeaderBtn onClick={genRound} disabled={busy} icon="plus" tone="primary">Generar {engine.roundLabel.toLowerCase()}</HeaderBtn>
+          <HeaderBtn onClick={genRound} disabled={busy} icon="arrow-right" tone="primary">
+            Siguiente {engine.roundLabel.toLowerCase()}
+          </HeaderBtn>
+        )}
+        {data.isCreator && q.status === "live" && hasPlayedGames && activeCategory && (
+          <HeaderBtn onClick={doFinishQuedada} disabled={busy} icon="flag" tone="danger">
+            {finishActionLabel}
+          </HeaderBtn>
         )}
         <HeaderBtn onClick={sharePlayerView} icon="share-2" tone="ghost">Compartir vista jugador</HeaderBtn>
       </div>
@@ -1937,17 +2275,24 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     <MatchCarouselCard
       matches={courtMatches}
       seqWord={seqWord}
-      canReport={!!data.canManage && q != null && q.status === "live"}
+      timerFrozenAt={q ? quedadaTimerFrozenAt(q) : null}
+      canReport={!!data.canManage && q != null && q.status === "live" && viewCategoryIsActive}
       reporting={busy}
-      onReport={isRolling ? reportRolling : (gameId, a, b) => {
-        // En modo rondas, reportar sin auto-avance.
-        startBusy(async () => {
-          const res = await reportGame({ gameId, pointsA: a, pointsB: b });
-          if (!res.ok) { toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message }); return; }
-          toast({ icon: "check", title: "Marcador guardado" });
-          await afterMutation();
-        });
-      }}
+      onReport={
+        isRolling
+          ? reportRolling
+          : (gameId, a, b) => {
+              startBusy(async () => {
+                const res = await reportGame({ gameId, pointsA: a, pointsB: b });
+                if (!res.ok) {
+                  toast({ icon: "alert-triangle", title: "No se pudo guardar el marcador", sub: res.error.message });
+                  return;
+                }
+                toast({ icon: "check", title: "Marcador guardado" });
+                await afterMutation();
+              });
+            }
+      }
       emptyTitle={isRolling ? "Canchas vacías" : "Sin rondas todavía"}
       emptySub={
         data.isCreator
@@ -1958,6 +2303,8 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
       }
     />
   ) : null;
+
+  const insightCard = data ? <InsightCard {...insights} /> : null;
 
   const header = (
     <div
@@ -2045,20 +2392,20 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
         ? `${engine?.roundLabel ?? "Ronda"} ${currentRoundNo} en vivo`
         : sm?.label ?? q.status;
   const statsRow = (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12, alignItems: "stretch" }}>
       {q ? (
         <>
-          <StatCard label="Estado" value={estadoValue} sub={startRel(q.starts_at)} valueColor={quedadaStatusSolid(q.status)} />
+          <StatCard label="Estado" value={estadoValue} sub={estadoSub(q)} valueColor={quedadaStatusSolid(q.status)} />
           <StatCard label="Jugadores" value={`${joinedCount} confirmados`} sub={cuposSub} />
           <StatCard label="Cobros" value={`${paidCount}/${joinedCount} pagados`} sub={pendingPay === 0 ? "Todos al día" : `${pendingPay} pendiente${pendingPay > 1 ? "s" : ""}`} />
-          <StatCard label="Formato" value={FORMAT_LABEL[q.format] ?? q.format} sub={engine ? `${engine.tableEntityLabel} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}` : q.match_mode === "singles" ? "Singles" : "Dobles"} />
+          <StatCard label="Formato" value={quedadaFormatLabel(q.format)} sub={engine ? `${engine.tableEntityLabel} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}` : q.match_mode === "singles" ? "Singles" : "Dobles"} />
         </>
       ) : (
-        [0, 1, 2, 3].map((i) => (
-          <div key={i} className="card" style={{ padding: "13px 15px" }}>
-            <SkBar w={54} h={9} r={4} />
+        (["Estado", "Jugadores", "Cobros", "Formato"] as const).map((label) => (
+          <div key={label} className="card" style={{ padding: "13px 15px", height: "100%", minHeight: 88, display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)" }}>{label}</span>
             <div style={{ marginTop: 7 }}><SkBar w={90} h={20} r={5} /></div>
-            <div style={{ marginTop: 7 }}><SkBar w={70} h={10} r={4} /></div>
+            <div style={{ marginTop: "auto", paddingTop: 7 }}><SkBar w={70} h={10} r={4} /></div>
           </div>
         ))
       )}
@@ -2209,7 +2556,13 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     : [];
   const activePageTab = pageTabs.some((t) => t.k === pageTab) ? pageTab : "resumen";
   const pageTabsBar =
-    data && data.canManage ? (
+    loading ? (
+      <div style={{ display: "flex", gap: 22, padding: "0 2px 12px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+        {[72, 68, 80, 56, 108].map((w, i) => (
+          <SkBar key={i} w={w} h={12} r={6} />
+        ))}
+      </div>
+    ) : data && data.canManage ? (
       <div style={{ display: "flex", gap: 22, padding: "0 2px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
         {pageTabs.map((t) => {
           const on = t.k === activePageTab;
@@ -2245,6 +2598,15 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     <div className="mp-quedada-root" style={{ width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
       {backLink}
       {pageTabsBar}
+      {!loading && data && multiCategory && q && (q.status === "live" || q.status === "finished") && (
+        <CategoryFlowStrip
+          categories={sortedCategories}
+          quedadaStatus={q.status}
+          viewId={viewCategory?.id ?? null}
+          onView={setViewCategoryId}
+        />
+      )}
+      {!loading && isQuedadaLocked && <QuedadaLockedNotice />}
 
       {!loading && loadError && (
         <div className="card" style={{ padding: 18, background: "var(--destructive-bg)", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", fontSize: 13 }}>
@@ -2253,16 +2615,104 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
       )}
 
       {activePageTab === "resumen" && (
-        <div key="resumen" className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div key="resumen" className="mp-tab-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {data && q && sortedCategories.some((c) => categoryFlowStatus(c, q.status) === "finished") && (
+            <>
+              {sortedCategories
+                .filter((c) => categoryFlowStatus(c, q.status) === "finished")
+                .map((cat) => {
+                  const rows = standingsForCategory(data, cat.id, q, nameById);
+                  if (rows.length === 0) return null;
+                  return (
+                    <PodiumHero
+                      key={cat.id}
+                      rows={rows}
+                      nameOf={nameById}
+                      avatarOf={avatarById}
+                      categoryName={cat.name}
+                    />
+                  );
+                })}
+            </>
+          )}
+          {data && q?.status === "finished" ? (
+            <CollapsibleResumenDetail title="Detalle de la quedada" sub="Banner, estadísticas, tabla completa y partidos">
+              <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+                  {header}
+                  {statsRow}
+                  {loading ? (
+                    <StandingsCardSkeleton />
+                  ) : standings.length > 0 ? (
+                    <StandingsCard rows={standings} nameOf={nameById} avatarOf={avatarById} />
+                  ) : data && mainCategory ? (
+                    <StandingsCardEmpty hint="El ranking se llena cuando empieces a jugar partidos." />
+                  ) : null}
+                </div>
+                <div className="mp-quedada-side" style={{ maxWidth: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+                  {loading ? (
+                    <>
+                      <MatchCarouselSkeleton />
+                      <InsightCardSkeleton />
+                    </>
+                  ) : (
+                    <>
+                      {isQuedadaLocked ? (
+                        courtMatches.length > 0 ? (
+                          <MatchCarouselCard
+                            matches={courtMatches}
+                            seqWord={seqWord}
+                            timerFrozenAt={q ? quedadaTimerFrozenAt(q) : null}
+                            canReport={false}
+                            reporting={false}
+                            onReport={() => {}}
+                            emptyTitle="Sin partidos jugados"
+                            emptySub="No hubo partidos con marcador en cancha."
+                          />
+                        ) : (
+                          <div className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div className="label-mp" style={{ color: "var(--muted-fg)" }}>● Cerrada</div>
+                            <div className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase" }}>Quedada finalizada<span className="dot">.</span></div>
+                            <p style={{ margin: 0, fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.5 }}>El podio y la tabla de posiciones tienen los resultados finales.</p>
+                          </div>
+                        )
+                      ) : (
+                        nextMatchCard
+                      )}
+                      {insightCard}
+                    </>
+                  )}
+                </div>
+              </div>
+            </CollapsibleResumenDetail>
+          ) : (
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
             {header}
             {statsRow}
-            {standings.length > 0 && <StandingsCard rows={standings} nameOf={nameById} />}
+            {loading ? (
+              <StandingsCardSkeleton />
+            ) : standings.length > 0 ? (
+              <StandingsCard rows={standings} nameOf={nameById} avatarOf={avatarById} />
+            ) : data && mainCategory ? (
+              <StandingsCardEmpty hint="El ranking se llena cuando empieces a jugar partidos." />
+            ) : null}
           </div>
           <div className="mp-quedada-side" style={{ maxWidth: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-            {nextMatchCard}
-            {data && <InsightCard {...insights} />}
+            {loading ? (
+              <>
+                <MatchCarouselSkeleton />
+                <InsightCardSkeleton />
+              </>
+            ) : (
+              <>
+                {nextMatchCard}
+                {insightCard}
+              </>
+            )}
           </div>
+          </div>
+          )}
         </div>
       )}
 
@@ -2273,7 +2723,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           insights={insights}
           nameOf={nameById}
           seqWord={seqWord}
-          canReport={!!data.canManage && q != null && q.status === "live"}
+          canReport={!!data.canManage && q != null && q.status === "live" && viewCategoryIsActive}
           reporting={busy}
           onReport={isRolling ? reportRolling : (gameId, a, b) => {
             startBusy(async () => {
@@ -2286,6 +2736,17 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
           cards={gameViewCards}
           history={gameHistory}
           lastPerCourt={lastPerCourt}
+          showNextRound={!!data.isCreator && q?.status === "live" && !!engine?.canGenerateRound && !isRolling && viewCategoryIsActive && viewCategory?.id === activeCategory?.id}
+          showFillCourts={!!data.isCreator && q?.status === "live" && isRolling && q.format === "americano" && viewCategoryIsActive}
+          roundLabel={engine?.roundLabel ?? "Ronda"}
+          onNextRound={genRound}
+          onFillCourts={startRolling}
+          roundBusy={busy}
+          showFinish={!!data.isCreator && q?.status === "live" && hasPlayedGames && !!activeCategory}
+          finishLabel={finishActionLabel}
+          onFinish={doFinishQuedada}
+          isLocked={isQuedadaLocked}
+          timerFrozenAt={q ? quedadaTimerFrozenAt(q) : null}
         />
       )}
 
@@ -2337,6 +2798,7 @@ function ConfigTab({
   busy: boolean;
 }) {
   const [step, setStep] = useState<ConfigStepKey>("general");
+  const readOnly = quedadaIsLocked(data.quedada.status);
 
   return (
     <div key="config" className="mp-tab-in" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -2402,14 +2864,19 @@ function ConfigTab({
       {/* Panel de la sección activa (trae su propio header). */}
       <div style={{ flex: "1 1 480px", minWidth: 0 }}>
         <div key={step} className="card mp-tab-in" style={{ padding: 18 }}>
-          {step === "general" && <DetailsSection data={data} onSaved={afterMutation} />}
-          {step === "logistica" && <LogisticsSection data={data} onSaved={afterMutation} />}
-          {step === "cobro" && <BankPrizesSection data={data} onSaved={afterMutation} />}
-          {step === "categorias" && <CategoriesSection data={data} onChanged={afterMutation} />}
-          {step === "cohosts" && <CohostsSection data={data} onChanged={afterMutation} />}
-          {step === "motor" && <EngineSection data={data} onSaved={afterMutation} />}
-          {step === "compartir" && <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} quedadaId={data.quedada.id} onChanged={afterMutation} />}
-          {step === "peligro" && <DangerZoneSection onCancel={doCancel} canceling={busy} status={data.quedada.status} />}
+          {step === "compartir" ? (
+            <InviteLinkSection inviteCode={data.quedada.invite_code} toast={toast} quedadaId={data.quedada.id} onChanged={afterMutation} readOnly={readOnly} />
+          ) : (
+            <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              {step === "general" && <DetailsSection data={data} onSaved={afterMutation} />}
+              {step === "logistica" && <LogisticsSection data={data} onSaved={afterMutation} />}
+              {step === "cobro" && <BankPrizesSection data={data} onSaved={afterMutation} />}
+              {step === "categorias" && <CategoriesSection data={data} onChanged={afterMutation} />}
+              {step === "cohosts" && <CohostsSection data={data} onChanged={afterMutation} />}
+              {step === "motor" && <EngineSection data={data} onSaved={afterMutation} />}
+              {step === "peligro" && <DangerZoneSection onCancel={doCancel} canceling={busy} status={data.quedada.status} />}
+            </fieldset>
+          )}
         </div>
       </div>
     </div>
@@ -2422,6 +2889,7 @@ function ConfigTab({
 function Section({
   label,
   title,
+  titleTip,
   sub,
   children,
   collapsible = false,
@@ -2430,6 +2898,7 @@ function Section({
 }: {
   label?: string;
   title: string;
+  titleTip?: string;
   sub?: string;
   children: React.ReactNode;
   collapsible?: boolean;
@@ -2446,7 +2915,7 @@ function Section({
           className="font-heading"
           style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.01em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}
         >
-          {title}
+          <LabelWithTip tip={titleTip}>{title}</LabelWithTip>
           {badge != null && (
             <span style={{ fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", letterSpacing: 0 }}>{badge}</span>
           )}
@@ -2515,7 +2984,7 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: "14px 18px" }}>
           <InfoRow label="Cuándo" value={when} />
           <InfoRow label="Lugar" value={q.location_text || "Sin definir"} />
-          <InfoRow label="Formato" value={`${FORMAT_LABEL[q.format] ?? q.format} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
+          <InfoRow label="Formato" value={`${quedadaFormatLabel(q.format)} · ${q.match_mode === "singles" ? "Singles" : "Dobles"}`} />
           <InfoRow label="Cuota" value={q.fee_cents > 0 ? money(q.fee_cents) : "Gratis"} />
           {cohostNames.length > 0 && <InfoRow label="Co-hosts" value={cohostNames.join(", ")} />}
         </div>
@@ -2541,10 +3010,8 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
           <Section title="Premios">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {q.prizes.map((p, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, background: "var(--muted)", border: "1px solid var(--border)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 900, color: "var(--primary)", minWidth: 44 }}>{p.place}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{p.prize}</span>
-                  {p.valueCents != null && <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>{money(p.valueCents)}</span>}
+                <div key={`${p.place}-${i}`} style={{ padding: "8px 11px", borderRadius: 9, background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  <QuedadaPrizeRow prize={p} />
                 </div>
               ))}
             </div>
@@ -2564,8 +3031,285 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Podio por categoría (cuando la quedada está finalizada): parejas ordenadas por
-// final_rank. Sin emoji (regla del kit): puesto en texto, top 3 en primary.
+// Avatar circular para filas de ranking (podio / tabla).
+function PlayerStandingAvatar({
+  name,
+  avatarUrl,
+  size = 34,
+  onDark = false,
+}: {
+  name: string;
+  avatarUrl: string | null;
+  size?: number;
+  onDark?: boolean;
+}) {
+  return (
+    <span
+      style={{
+        flexShrink: 0,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: onDark ? "rgba(255,255,255,0.12)" : "var(--muted)",
+        border: onDark ? "1.5px solid rgba(255,255,255,0.22)" : "1px solid var(--border)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "var(--font-heading, inherit)",
+        fontSize: Math.max(10, size * 0.34),
+        fontWeight: 900,
+        color: onDark ? "#fff" : "var(--fg)",
+        overflow: "hidden",
+      }}
+    >
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt="" width={size} height={size} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        initialsOf(name)
+      )}
+    </span>
+  );
+}
+
+function CategoryFlowStrip({
+  categories,
+  quedadaStatus,
+  viewId,
+  onView,
+}: {
+  categories: ManageCategory[];
+  quedadaStatus: string;
+  viewId: string | null;
+  onView: (id: string) => void;
+}) {
+  if (categories.length <= 1) return null;
+  const badge = (st: CategoryFlowStatus) => {
+    if (st === "active") return { label: "En juego", fg: "var(--primary)", bg: "var(--success-bg)" };
+    if (st === "finished") return { label: "Finalizada", fg: "var(--muted-fg)", bg: "var(--muted)" };
+    return { label: "Pendiente", fg: "#b45309", bg: "#fff7ed" };
+  };
+  return (
+    <div className="card mp-tab-in" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        Categorías · finaliza una y continúa con la siguiente
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {categories.map((c) => {
+          const st = categoryFlowStatus(c, quedadaStatus);
+          const on = c.id === viewId;
+          const b = badge(st);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onView(c.id)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: on ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+                background: on ? "#fff" : "var(--muted)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--fg)" }}>{c.name}</span>
+              <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 9999, color: b.fg, background: b.bg }}>{b.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CollapsibleResumenDetail({
+  title,
+  sub,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card mp-tab-in" style={{ padding: 0, overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 18px",
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.01em" }}>
+            {title}<span className="dot">.</span>
+          </div>
+          {sub && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>{sub}</div>}
+        </div>
+        <span style={{ flexShrink: 0, transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)" }}>
+          <Icon name="chevron-down" size={18} color="var(--muted-fg)" />
+        </span>
+      </button>
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 240ms var(--ease-out)" }}>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <div style={{ padding: open ? "16px 18px 18px" : "0 18px 18px", borderTop: open ? "1px solid var(--border)" : undefined }}>{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Podio (top 3) cuando la quedada está finalizada — filas con avatar como el ranking.
+function PodiumHero({
+  rows,
+  nameOf,
+  avatarOf,
+  categoryName,
+}: {
+  rows: StandingRow[];
+  nameOf: (id: string) => string;
+  avatarOf: (id: string) => string | null;
+  categoryName?: string;
+}) {
+  const [open, setOpen] = useState(true);
+  const top3 = rows.slice(0, 3);
+  if (top3.length === 0) return null;
+
+  const cols = "28px 40px minmax(0,1fr) 36px 36px 42px";
+
+  return (
+    <div
+      className="card mp-tab-in"
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        padding: 0,
+        background:
+          "radial-gradient(115% 130% at 98% 112%, rgba(124,58,237,0.28) 0%, rgba(124,58,237,0) 52%), linear-gradient(135deg, #0a0a0a 0%, #18162e 58%, #3b0764 100%)",
+        color: "#fff",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          fontFamily: "Plus Jakarta Sans",
+          fontWeight: 900,
+          fontSize: 140,
+          color: "rgba(255,255,255,0.05)",
+          letterSpacing: "-0.06em",
+          lineHeight: 0.8,
+          transform: "rotate(-6deg) translate(12%, -18%)",
+          textTransform: "uppercase",
+          pointerEvents: "none",
+        }}
+      >
+        PODIO
+      </div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          position: "relative",
+          width: "100%",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "22px 24px",
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
+          color: "inherit",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div className="label-mp" style={{ color: "var(--primary)" }}>● Podio publicado</div>
+          <h2 className="font-heading" style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+            Top 3<span style={{ color: "#34d399" }}>.</span>
+          </h2>
+          {categoryName && (
+            <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>{categoryName} · ranking individual</div>
+          )}
+        </div>
+        <span style={{ flexShrink: 0, marginTop: 4, transition: "transform 200ms var(--ease-out)", transform: open ? "rotate(180deg)" : "none", display: "inline-flex", color: "rgba(255,255,255,0.65)" }}>
+          <Icon name="chevron-down" size={20} color="rgba(255,255,255,0.65)" />
+        </span>
+      </button>
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 240ms var(--ease-out)" }}>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <div style={{ position: "relative", padding: "0 20px 20px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 10px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+              <span>#</span>
+              <span aria-hidden />
+              <span>Jugador</span>
+              <span style={{ textAlign: "center" }}>PJ</span>
+              <span style={{ textAlign: "center" }}>PF</span>
+              <span style={{ textAlign: "center" }}>DIF</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+              {top3.map((r, i) => {
+                const rank = i + 1;
+                const name = nameOf(r.userId);
+                return (
+                  <div
+                    key={r.userId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: cols,
+                      gap: 8,
+                      alignItems: "center",
+                      padding: "10px 4px",
+                      borderRadius: 10,
+                      background: rank === 1 ? "rgba(16,185,129,0.12)" : "transparent",
+                    }}
+                  >
+                    <span className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14, color: rank === 1 ? "#34d399" : "rgba(255,255,255,0.7)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      {rank === 1 && <Icon name="trophy" size={13} color="#34d399" />}
+                      {rank}
+                    </span>
+                    <PlayerStandingAvatar name={name} avatarUrl={avatarOf(r.userId)} size={36} onDark />
+                    <span style={{ fontWeight: 800, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{name}</span>
+                    <span className="tabular" style={{ textAlign: "center", fontSize: 12.5, color: "rgba(255,255,255,0.65)" }}>{r.played}</span>
+                    <span className="tabular" style={{ textAlign: "center", fontSize: 13, fontWeight: 800 }}>{r.pf}</span>
+                    <span className="tabular" style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: r.diff > 0 ? "#34d399" : "rgba(255,255,255,0.55)" }}>
+                      {r.diff > 0 ? `+${r.diff}` : r.diff}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Podio por categoría (legacy / multi-categoría): parejas con final_rank en DB.
 function PodiumSection({ data }: { data: ManageData }) {
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
   const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
@@ -2627,6 +3371,7 @@ function PagosTab({
 }) {
   const toast = useToast();
   const q = data.quedada;
+  const readOnly = quedadaIsLocked(q.status);
   const acct = q.payment_account;
   const joined = data.participants.filter((p) => p.status === "joined");
   const paidN = joined.filter((p) => p.paid).length;
@@ -2703,6 +3448,7 @@ function PagosTab({
         <button
           type="button"
           onClick={() => onToggleCheckedIn(p.user_id)}
+          disabled={readOnly}
           className="btn"
           title={present ? "Marcar como ausente" : "Registrar check-in"}
           style={{ justifySelf: "start", gap: 5, padding: "5px 10px", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", borderRadius: 9999, border: present ? 0 : "1px solid var(--border)", background: present ? "var(--fg)" : "#fff", color: present ? "#fff" : "var(--muted-fg)" }}
@@ -2716,7 +3462,7 @@ function PagosTab({
           <button
             type="button"
             onClick={() => onRemind([p.user_id])}
-            disabled={reminding}
+            disabled={reminding || readOnly}
             className="btn"
             title="Enviar aviso de pago"
             aria-label={`Avisar a ${name}`}
@@ -2729,6 +3475,7 @@ function PagosTab({
         <button
           type="button"
           onClick={() => onTogglePaid(p.user_id)}
+          disabled={readOnly}
           className="btn"
           title={p.paid ? "Marcar como pendiente" : "Marcar como pagado"}
           style={{ justifySelf: "start", gap: 6, padding: "5px 10px", fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", borderRadius: 9999, border: p.paid ? 0 : "1px solid var(--border)", background: p.paid ? "var(--success-fg)" : "#fff", color: p.paid ? "#fff" : "var(--muted-fg)" }}
@@ -2803,7 +3550,12 @@ function PagosTab({
           <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
             <div style={{ minWidth: 0, flex: "1 1 160px" }}>
               <div className="label-mp" style={{ color: "var(--primary)" }}>Control · {paidN}/{joined.length}</div>
-              <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase" }}>Pago y asistencia<span className="dot">.</span></div>
+              <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <LabelWithTip tip="Marca pagado cuando confirmes la transferencia. Check-in es asistencia el día del evento. Avisar envía notificación a quienes deben.">
+                  Pago y asistencia
+                </LabelWithTip>
+                <span className="dot">.</span>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 160px", minWidth: 0, border: "1px solid var(--border)", borderRadius: 9999, padding: "6px 12px", background: "#fff" }}>
               <Icon name="search" size={13} color="var(--muted-fg)" />
@@ -2840,15 +3592,15 @@ function PagosTab({
             <>
               <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Bulk:</span>
-                <button type="button" onClick={() => onSetAllCheckedIn(!allCheckedIn)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
+                <button type="button" onClick={() => onSetAllCheckedIn(!allCheckedIn)} disabled={readOnly} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
                   <Icon name={allCheckedIn ? "circle-x" : "user-check"} size={12} /> {allCheckedIn ? "Quitar presentes" : "Todos presentes"}
                 </button>
-                <button type="button" onClick={() => onSetAllPaid(!allPaid)} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
+                <button type="button" onClick={() => onSetAllPaid(!allPaid)} disabled={readOnly} className="btn" style={{ background: "#fff", border: "1px solid var(--border)", gap: 5 }}>
                   <Icon name={allPaid ? "circle-x" : "check-check"} size={12} /> {allPaid ? "Quitar pagos" : "Todos pagado"}
                 </button>
                 <span style={{ flex: 1 }} />
                 {pendingPlayers.length > 0 && (
-                  <button type="button" onClick={() => onRemind()} disabled={reminding} className="btn" title="Notif + mensaje a los inscritos que aún no pagan (cooldown 30 min)" style={{ background: "var(--fg)", color: "#fff", border: 0, gap: 6 }}>
+                  <button type="button" onClick={() => onRemind()} disabled={reminding || readOnly} className="btn" title="Notif + mensaje a los inscritos que aún no pagan (cooldown 30 min)" style={{ background: "var(--fg)", color: "#fff", border: 0, gap: 6 }}>
                     <Icon name="bell" size={13} color="#fff" /> Avisar a {pendingPlayers.length} pendiente{pendingPlayers.length === 1 ? "" : "s"} · {money(pendingCents)}
                   </button>
                 )}
@@ -3198,11 +3950,13 @@ function InviteLinkSection({
   toast,
   quedadaId,
   onChanged,
+  readOnly = false,
 }: {
   inviteCode: string | null;
   toast: ReturnType<typeof useToast>;
   quedadaId?: string;
   onChanged?: () => Promise<void>;
+  readOnly?: boolean;
 }) {
   const { confirm } = usePromptModal();
   const [regenerating, startRegen] = useTransition();
@@ -3273,7 +4027,7 @@ function InviteLinkSection({
             Copiar link
           </button>
           {canRegen && (
-            <button className="btn btn-outline" onClick={regenerate} disabled={regenerating} style={{ flexShrink: 0 }}>
+            <button className="btn btn-outline" onClick={regenerate} disabled={regenerating || readOnly} style={{ flexShrink: 0 }}>
               <Icon name="refresh-cw" size={13} />
               {regenerating ? "Regenerando…" : "Regenerar"}
             </button>
@@ -3415,7 +4169,12 @@ function EngineSection({ data, onSaved }: { data: ManageData; onSaved: () => Pro
   };
 
   return (
-    <Section label="Juego" title="Motor de juego" sub={`Formato ${engine.label}: ${engine.canGenerateRound ? "emparejamiento automático por rondas" : "partidos manuales"}.`}>
+    <Section
+      label="Juego"
+      title="Motor de juego"
+      titleTip="Genera rondas automáticas o crea partidos a mano según el formato. No cambia el formato de la quedada."
+      sub={`Formato ${engine.label}: ${engine.canGenerateRound ? "emparejamiento automático por rondas" : "partidos manuales"}.`}
+    >
       <Field label="Modo de emparejamiento">
         <div style={{ display: "flex", gap: 8 }}>
           {([["rounds", "Por rondas"], ["rolling", "Continuo por cancha"]] as const).map(([v, label]) => {
@@ -3526,7 +4285,12 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
   };
 
   return (
-    <Section label="Costos" title="Logística de canchas" sub="Define cuántas canchas, horas y el precio por hora.">
+    <Section
+      label="Costos"
+      title="Logística de canchas"
+      titleTip="Opcional. Calcula costo total y un reparto sugerido según los inscritos actuales."
+      sub="Define cuántas canchas, horas y el precio por hora."
+    >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
         <Field label="Canchas (#)">
           <input type="number" min={1} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="2" style={fieldInput} />
@@ -3610,11 +4374,19 @@ function BankPrizesSection({ data, onSaved }: { data: ManageData; onSaved: () =>
   };
 
   return (
-    <Section label="Cobro" title="Datos del organizador, premios y reglas" sub="Para que los jugadores te transfieran y vean qué se juega y las reglas.">
-      <Field label="Datos del organizador (para el pago)">
+    <Section
+      label="Cobro"
+      title="Datos del organizador, premios y reglas"
+      titleTip="Lo que guardes aquí lo ven los inscritos al pagar y en el detalle público de la quedada."
+      sub="Para que los jugadores te transfieran y vean qué se juega y las reglas."
+    >
+      <Field
+        label="Datos del organizador (para el pago)"
+        tip="Aparecen en Pagos y al inscribirse. Completa todo o déjalo vacío si no usas transferencia."
+      >
         <BankAccountFields value={bank} onChange={setBank} />
       </Field>
-      <Field label="Premios">
+      <Field label="Premios" tip="Se listan en el resumen de la quedada. El valor en verde es opcional si solo describes el premio.">
         <PrizesEditor value={prizeRows} onChange={setPrizeRows} />
       </Field>
       <Field label="Reglas clave">
@@ -3763,7 +4535,12 @@ function CategoriesSection({ data, onChanged }: { data: ManageData; onChanged: (
   };
 
   return (
-    <Section label="Setup" title="Categorías" sub="Cada categoría tiene su hora y cupos.">
+    <Section
+      label="Setup"
+      title="Categorías"
+      titleTip="Un jugador puede estar en varias categorías; cada una genera su propio cupo y pago."
+      sub="Cada categoría tiene su hora y cupos."
+    >
       {data.categories.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {data.categories.map((c) =>
@@ -3975,6 +4752,7 @@ function CategoryForm({
 
 // ── 5. Roster por categoría (parejas fijas o jugadores individuales) ──────────
 function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => Promise<void> }) {
+  const readOnly = quedadaIsLocked(data.quedada.status);
   const individualRoster = rosterModeFor(data.quedada.format, data.quedada.match_mode) === "individual";
   const title = individualRoster ? "Jugadores por categoría" : "Parejas por categoría";
   const sub = individualRoster ? "Asigna un jugador a cada cupo; el motor decide cómo rota en los partidos." : "Asigna parejas a cada cupo.";
@@ -3988,7 +4766,7 @@ function SlotsSection({ data, onChanged }: { data: ManageData; onChanged: () => 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {data.categories.map((c, i) => (
             <div key={c.id} className="mp-rise" style={{ animationDelay: `${i * 50}ms` }}>
-              <CategorySlots data={data} category={c} onChanged={onChanged} />
+              <CategorySlots data={data} category={c} onChanged={onChanged} readOnly={readOnly} />
             </div>
           ))}
         </div>
@@ -4001,10 +4779,12 @@ function CategorySlots({
   data,
   category,
   onChanged,
+  readOnly = false,
 }: {
   data: ManageData;
   category: ManageCategory;
   onChanged: () => Promise<void>;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
@@ -4100,7 +4880,7 @@ function CategorySlots({
               <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Define cuántos cupos tiene esta categoría (en Configurar).</div>
             ) : (
               <>
-                {emptyCount > 0 && available.length > 0 && (
+                {emptyCount > 0 && available.length > 0 && !readOnly && (
                   <div style={{ marginBottom: 10 }}>
                     <button
                       type="button"
@@ -4124,8 +4904,8 @@ function CategorySlots({
                         nameA={pair ? nameFor(pair.player_a_id) : null}
                         nameB={pair ? nameFor(pair.player_b_id) : null}
                         active={assigningSlot === n}
-                        onAssign={() => setAssigningSlot(n)}
-                        onRemove={pair ? () => removePairById(pair.id, n) : undefined}
+                        onAssign={readOnly ? undefined : () => setAssigningSlot(n)}
+                        onRemove={readOnly || !pair ? undefined : () => removePairById(pair.id, n)}
                       />
                     );
                   })}
@@ -4169,7 +4949,7 @@ function SlotCell({
   nameA: string | null;
   nameB: string | null;
   active: boolean;
-  onAssign: () => void;
+  onAssign?: () => void;
   onRemove?: () => void;
 }) {
   // Pestaña de número a la izquierda, de altura completa (ancla los dos pisos).
@@ -4219,13 +4999,17 @@ function SlotCell({
     return (
       <div style={cellStyle}>
         {tab}
-        <button
-          type="button"
-          onClick={onAssign}
-          style={{ flex: 1, textAlign: "left", background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 11px" }}
-        >
-          <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
-        </button>
+        {onAssign ? (
+          <button
+            type="button"
+            onClick={onAssign}
+            style={{ flex: 1, textAlign: "left", background: "transparent", border: 0, color: "var(--muted-fg)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 11px" }}
+          >
+            <Icon name="plus" size={12} color="var(--muted-fg)" /> Asignar
+          </button>
+        ) : (
+          <span style={{ flex: 1, padding: "9px 11px", fontSize: 12, fontWeight: 700, color: "var(--muted-fg)" }}>Vacío</span>
+        )}
       </div>
     );
   }
@@ -4353,7 +5137,7 @@ function AssignPairForm({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, tip, children }: { label: string; tip?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <span
@@ -4363,9 +5147,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
           textTransform: "uppercase",
           letterSpacing: "0.12em",
           color: "var(--muted-fg)",
+          display: "inline-flex",
+          alignItems: "center",
         }}
       >
-        {label}
+        <LabelWithTip tip={tip}>{label}</LabelWithTip>
       </span>
       {children}
     </div>

@@ -34,14 +34,7 @@ export const QUEDADA_STATUS_META: Record<QuedadaStatus, ChipMeta> = {
   full: { label: "Llena", bg: "#fef9c3", fg: "#a16207" },
 };
 
-export const QUEDADA_FORMAT_LABEL: Record<QuedadaFormat, string> = {
-  americano: "Americano",
-  mexicano: "Mexicano",
-  round_robin: "Round Robin",
-  kotc: "Rey de Cancha",
-  canguil: "Canguil",
-  libre: "Libre",
-};
+export { QUEDADA_FORMAT_LABEL } from "@/lib/quedadas/format-labels";
 
 export const SEVERITY_META: Record<Severity, ChipMeta> = {
   high: { label: "● Alta", bg: "rgba(220,38,38,0.12)", fg: "#dc2626" },

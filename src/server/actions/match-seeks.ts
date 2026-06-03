@@ -653,6 +653,7 @@ export async function acceptApplicant(
       teamAPlayerIds: teamA,
       teamBPlayerIds: teamB,
       isRanked: s.ranked,
+      skipChallengeAcceptance: true,
     });
     if (!matchRes.ok) {
       throw new MpError("MATCH_SEEK.MATCH_CREATE_FAILED", matchRes.error.message, 422);

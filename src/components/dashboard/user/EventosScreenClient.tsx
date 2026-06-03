@@ -1,7 +1,7 @@
 // Client child de EventosScreen — recibe tournaments + mis registrations.
 "use client";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
@@ -155,6 +155,8 @@ function padRows(arr: TournamentFeatured[]): RowItem[] {
 
 export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchQ, setSearchQ] = useState("");
   // Realtime: solo INSERT de torneos nuevos. Drop registrations y UPDATEs
   // de tournaments para no refrescar a TODOS los users del país por cada
   // edit ajeno (ver docs/architecture/50-realtime.md §Carga global).
@@ -163,8 +165,28 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
     { debounceMs: 5000 },
   );
 
+  useEffect(() => {
+    const fromUrl = searchParams.get("q")?.trim();
+    if (fromUrl) setSearchQ(fromUrl);
+  }, [searchParams]);
+
   const [tab, setTab] = useState<Tab>("Próximos");
   const myIds = new Set(myRegisteredIds);
+
+  const matchesSearch = (t: TournamentFeatured) => {
+    const needle = searchQ.trim().toLowerCase();
+    if (!needle) return true;
+    return (
+      t.name.toLowerCase().includes(needle) ||
+      (t.clubName?.toLowerCase().includes(needle) ?? false) ||
+      (t.clubCity?.toLowerCase().includes(needle) ?? false)
+    );
+  };
+
+  const visibleTournaments = useMemo(
+    () => tournaments.filter(matchesSearch),
+    [tournaments, searchQ],
+  );
   // El click navega a /dashboard/eventos/[slug] — ruta real con shell del
   // dashboard. El flow de inscripción + paymentMode vive ahí, no aquí.
   const openTournament = (slug: string) => {
@@ -172,10 +194,10 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
   };
 
   const partitioned = {
-    Próximos: tournaments.filter((t) => categorize(t) === "proximos"),
-    "En curso": tournaments.filter((t) => categorize(t) === "curso"),
-    Pasados: tournaments.filter((t) => categorize(t) === "pasados"),
-    "Mis eventos": tournaments.filter((t) => myIds.has(t.id)),
+    Próximos: visibleTournaments.filter((t) => categorize(t) === "proximos"),
+    "En curso": visibleTournaments.filter((t) => categorize(t) === "curso"),
+    Pasados: visibleTournaments.filter((t) => categorize(t) === "pasados"),
+    "Mis eventos": visibleTournaments.filter((t) => myIds.has(t.id)),
   } satisfies Record<Tab, TournamentFeatured[]>;
 
   const list = partitioned[tab];
@@ -190,9 +212,43 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
         <h1 className="font-heading display-md" style={{ margin: 0 }}>
           Calendario <span className="dot">●</span> {new Date().getFullYear()}
         </h1>
+        {searchQ.trim() ? (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px",
+              borderRadius: 9999,
+              background: "var(--muted)",
+              fontSize: 12,
+            }}
+          >
+            <Icon name="search" size={12} color="var(--muted-fg)" />
+            <span>
+              Resultados para <b>“{searchQ.trim()}”</b>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearchQ("")}
+              aria-label="Quitar búsqueda"
+              style={{
+                border: 0,
+                background: "transparent",
+                cursor: "pointer",
+                padding: 2,
+                display: "inline-flex",
+                color: "var(--muted-fg)",
+              }}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div
+        className="mp-noscroll"
         style={{
           display: "flex",
           gap: 0,

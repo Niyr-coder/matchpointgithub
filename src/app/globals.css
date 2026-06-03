@@ -87,6 +87,28 @@
   --mp-gradient-surface-premium-dark:
     radial-gradient(115% 130% at 98% 112%, rgba(251, 191, 36, 0.28) 0%, rgba(251, 191, 36, 0) 52%),
     linear-gradient(135deg, #0a0a0a 0%, #1c1910 58%, #422006 100%);
+
+  /* Torneo · paleta championship (player view) */
+  --mp-torneo-grad-mid: #1c1410;
+  --mp-torneo-grad-end: #78350f;
+  --mp-torneo-glow: rgba(245, 158, 11, 0.28);
+  --mp-torneo-accent: #fbbf24;
+  --mp-torneo-accent-soft: #fde68a;
+  --mp-torneo-chip-bg: rgba(251, 191, 36, 0.16);
+  --mp-torneo-chip-fg: #fef3c7;
+  --mp-torneo-light: #fffbeb;
+  --mp-torneo-light-fg: #92400e;
+
+  /* Alias cortos usados por el handoff player view */
+  --torneo-grad-mid: var(--mp-torneo-grad-mid);
+  --torneo-grad-end: var(--mp-torneo-grad-end);
+  --torneo-glow: var(--mp-torneo-glow);
+  --torneo-accent: var(--mp-torneo-accent);
+  --torneo-accent-soft: var(--mp-torneo-accent-soft);
+  --torneo-chip-bg: var(--mp-torneo-chip-bg);
+  --torneo-chip-fg: var(--mp-torneo-chip-fg);
+  --torneo-light: var(--mp-torneo-light);
+  --torneo-light-fg: var(--mp-torneo-light-fg);
 }
 
 /* Icono MP+ en tile cuadrado (Amigos SmartMatches, insignias perfil). */
@@ -336,7 +358,35 @@ body {
 }
 .btn-outline { background: transparent; color: #0a0a0a; border: 1.5px solid var(--border); padding: 8.5px 16.5px; }
 .btn-outline:hover { border-color: #0a0a0a; }
+.btn-amber { background: var(--torneo-accent); color: #0a0a0a; }
+.btn-amber:hover { filter: brightness(0.93); }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 14.4px; }
+
+/* Player view — tab strip + entrada sutil */
+.pv-tab {
+  padding: 0 1px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 150ms var(--ease-out);
+}
+.pv-tab[data-on="true"] { color: var(--fg); border-bottom-color: var(--primary); }
+.pv-tab[data-on="true"][data-tone="torneo"] { border-bottom-color: var(--torneo-accent); }
+.pv-tab:disabled { opacity: 0.6; cursor: not-allowed; }
+@keyframes pvRise { from { transform: translateY(8px); } to { transform: none; } }
+.pv-rise { animation: pvRise 320ms var(--ease-out); }
 .label-mp { font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted-fg); }
 /* Título de card — mismo patrón que PanelShell en /dashboard/user. */
 .card-title {
@@ -591,6 +641,17 @@ body {
 .mp-noscroll { scrollbar-width: none; -ms-overflow-style: none; }
 .mp-noscroll::-webkit-scrollbar { display: none; }
 
+/* Fila horizontal deslizable — ancho acotado al padre, pan-x en touch */
+.mp-hscroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+
 /* ── Motion utilities (Emil-style polish) ─────────────────────
    Solo transform + opacity = GPU, off-main-thread, no repaint.
    Hover gated a `hover: hover` para no triggear en touch. */
@@ -694,6 +755,14 @@ body {
 }
 @media (max-width: 560px) {
   .mp-ccfg-tiers, .mp-ccfg-reglas { grid-template-columns: 1fr !important; }
+  .mp-ccfg-ident-card { padding: 18px !important; }
+  .mp-ccfg-ident-logo-row { grid-template-columns: 1fr !important; }
+  .mp-ccfg-ident-contact { grid-template-columns: 1fr !important; }
+  .mp-ccfg-cover-preview { height: 150px !important; min-height: 150px !important; }
+  .mp-ccfg-cover-title { font-size: 16px !important; white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mp-ccfg-cover-actions .btn { flex: 1 1 calc(50% - 4px); justify-content: center; min-width: 0; }
+  .mp-ccfg-ident-save { flex-direction: column; align-items: stretch !important; }
+  .mp-ccfg-ident-save .btn-primary { width: 100%; justify-content: center; }
 }
 
 /* Finanzas club v2: hero+KPIs y splits 2-col colapsan; fuentes 4→2→1. */
@@ -779,6 +848,429 @@ body {
 @media (max-width: 900px) {
   .mp-metrics-split { grid-template-columns: 1fr !important; }
 }
+
+/* Role homes (owner, partner, coach…): KPIs + paneles apilan en tablet/móvil. */
+.mp-role-home-kpis {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.mp-role-home-panels {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+.mp-role-home-split {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.mp-role-home-calendar-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin: 0 -2px;
+  padding-bottom: 4px;
+}
+/* Grid semanal de reservas: columnas fijas compartidas entre filas */
+.mp-reservas-grid-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin: 0 -2px;
+  padding-bottom: 4px;
+}
+.mp-reservas-week-grid {
+  min-width: 100%;
+  width: max(100%, 320px);
+}
+@media (max-width: 480px) {
+  .mp-reservas-week-grid {
+    min-width: 300px;
+  }
+}
+.mp-reservas-cell {
+  box-sizing: border-box;
+}
+@media (hover: none) {
+  .mp-reservas-cell:hover {
+    transform: none !important;
+  }
+}
+
+/* Canchas owner: header, KPIs, galería y tabs en móvil */
+.mp-canchas-kpis {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+}
+.mp-canchas-kpi-hero,
+.mp-canchas-kpis > .card {
+  min-width: 0;
+}
+.mp-canchas-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex-wrap: nowrap !important;
+}
+.mp-canchas-tabs::-webkit-scrollbar {
+  display: none;
+}
+.mp-canchas-tabs button {
+  flex-shrink: 0;
+}
+.mp-canchas-gallery {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+.mp-canchas-pricing-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin: 0 -4px;
+  padding-bottom: 4px;
+}
+.mp-canchas-pricing-grid {
+  min-width: 560px;
+}
+@media (max-width: 1100px) {
+  .mp-canchas-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 900px) {
+  .mp-canchas-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mp-canchas-kpi-hero {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .mp-canchas-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+  .mp-canchas-tabs {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted-fg) 22%, transparent) transparent;
+    padding-bottom: 3px;
+  }
+  .mp-canchas-tabs::-webkit-scrollbar {
+    display: block;
+    height: 3px;
+  }
+  .mp-canchas-tabs::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .mp-canchas-tabs::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--muted-fg) 20%, transparent);
+    border-radius: 9999px;
+  }
+  .mp-canchas-title {
+    font-size: 32px !important;
+  }
+  .mp-canchas-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .mp-canchas-actions .btn {
+    justify-content: center;
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 11px;
+  }
+  .mp-canchas-kpis {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .mp-canchas-gallery {
+    grid-template-columns: 1fr !important;
+  }
+  .mp-canchas-gallery-head {
+    grid-template-columns: 72px 1fr !important;
+    padding: 16px 16px 12px !important;
+  }
+  .mp-canchas-gallery-num {
+    font-size: 64px !important;
+  }
+  .mp-canchas-floorplan {
+    grid-template-columns: 1fr !important;
+  }
+  .mp-canchas-drawer-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .mp-canchas-occ-sub {
+    margin-left: 0 !important;
+    flex-basis: 100%;
+  }
+  .mp-canchas-mgmt-card {
+    grid-template-columns: 1fr !important;
+  }
+  .mp-canchas-pricing-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .mp-canchas-pricing-actions > div:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+}
+@media (max-width: 1100px) {
+  .mp-role-home-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .mp-role-home-panels,
+  .mp-role-home-split { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 640px) {
+  .mp-role-home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .mp-rh-welcome { padding: 22px 20px !important; }
+  .mp-rh-welcome-inner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+  .mp-rh-welcome-copy { flex: 1 1 auto !important; }
+  .mp-rh-welcome-context { text-align: left !important; width: 100%; }
+  .mp-rh-welcome-deco {
+    font-size: 72px !important;
+    letter-spacing: -0.02em !important;
+    transform: rotate(-5deg) translate(6%, -8%) !important;
+    opacity: 0.7;
+  }
+  .mp-rh-welcome-title {
+    font-size: 28px !important;
+    letter-spacing: -0.015em !important;
+    line-height: 1.1 !important;
+    margin: 10px 0 8px !important;
+  }
+  .mp-rh-welcome-desc {
+    line-height: 1.55 !important;
+    padding-right: 4px;
+  }
+  .mp-rh-kpi-value { font-size: 24px !important; }
+  .mp-rh-kpi-label {
+    letter-spacing: 0.06em !important;
+    font-size: 9px !important;
+    line-height: 1.35 !important;
+  }
+  .mp-rh-kpi-sub { font-size: 10px !important; line-height: 1.45 !important; }
+  .mp-rs-header { align-items: stretch !important; }
+  .mp-rs-header-title { font-size: 28px !important; }
+  .mp-rs-header-action { width: 100%; }
+  .mp-rs-header-action .btn { width: 100%; justify-content: center; }
+}
+
+/* ── Partner role: home, torneos, ligas, marketing, finanzas ── */
+.mp-partner-home {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mp-partner-marketing {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mp-partner-home-kpis,
+.mp-partner-marketing-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.mp-rh-kpi .label-mp,
+.mp-rh-kpi-label {
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.mp-partner-torneo-stat-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.mp-partner-torneo-stat-value {
+  font-size: 14px;
+  font-weight: 900;
+  margin-top: 2px;
+}
+
+/* Home: fila compacta de torneo */
+.mp-partner-torneo-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 10px;
+}
+.mp-partner-torneo-main {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  min-width: 0;
+}
+.mp-partner-torneo-accent {
+  width: 4px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  min-height: 36px;
+}
+.mp-partner-torneo-info {
+  flex: 1;
+  min-width: 0;
+}
+.mp-partner-torneo-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.mp-partner-torneo-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  margin-left: 18px;
+  border-top: 1px dashed var(--border);
+}
+@media (min-width: 521px) {
+  .mp-partner-torneo-row {
+    flex-direction: row;
+    align-items: center;
+  }
+  .mp-partner-torneo-main { flex: 1; }
+  .mp-partner-torneo-stats {
+    border-top: 0;
+    padding-top: 0;
+    margin-left: 0;
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+  .mp-partner-torneo-stat { text-align: right; }
+}
+
+/* Mis torneos: card apilable */
+.mp-partner-torneo-card-inner {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) repeat(3, minmax(72px, auto)) minmax(140px, auto);
+  align-items: stretch;
+}
+.mp-partner-torneo-card-accent {
+  border-radius: var(--radius, 12px) 0 0 var(--radius, 12px);
+}
+.mp-partner-torneo-card-main {
+  padding: 16px;
+  min-width: 0;
+}
+.mp-partner-torneo-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-partner-torneo-card-metric {
+  padding: 16px;
+  border-left: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  min-width: 0;
+}
+.mp-partner-torneo-card-actions {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8;
+  justify-content: flex-end;
+  position: relative;
+}
+
+/* Ligas */
+.mp-partner-ligas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mp-partner-liga-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.mp-partner-liga-cta {
+  flex-shrink: 0;
+}
+.mp-partner-liga-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .mp-partner-home-kpis,
+  .mp-partner-marketing-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .mp-partner-torneo-card-inner {
+    grid-template-columns: 4px minmax(0, 1fr);
+  }
+  .mp-partner-torneo-card-accent {
+    grid-row: 1 / span 3;
+    border-radius: var(--radius, 12px) 0 0 var(--radius, 12px);
+  }
+  .mp-partner-torneo-card-metrics {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+  }
+  .mp-partner-torneo-card-metric {
+    border-left: 0;
+    border-right: 1px dashed var(--border);
+    align-items: flex-start;
+    padding: 12px 14px;
+  }
+  .mp-partner-torneo-card-metric:last-child { border-right: 0; }
+  .mp-partner-torneo-card-actions {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    justify-content: stretch;
+  }
+  .mp-partner-torneo-card-actions .btn-primary { flex: 1; justify-content: center; }
+}
+@media (max-width: 640px) {
+  .mp-partner-torneo-name,
+  .mp-partner-torneo-card-title { white-space: normal; }
+  .mp-partner-liga-stats { grid-template-columns: 1fr; }
+  .mp-partner-liga-cta { width: 100%; justify-content: center; }
+  .mp-partner-fin-kpis-secondary { grid-template-columns: 1fr !important; }
+  .mp-partner-fin-hero-value { font-size: 44px !important; }
+}
+@media (max-width: 520px) {
+  .mp-partner-torneo-card-metrics { grid-template-columns: 1fr; }
+  .mp-partner-torneo-card-metric {
+    border-right: 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .mp-partner-torneo-card-metric:last-child { border-bottom: 0; }
+}
+
+@media (max-width: 640px) {
+  .mp-rs-header-title { font-size: 26px !important; }
+}
+
+/* RS headers compartidos */
+.mp-rs-header-copy { min-width: 0; }
 
 /* Admin reservas v2: la tabla usa tracks flexibles en desktop y se apila como
    cards cuando el ancho ya no alcanza para siete columnas legibles. */
@@ -1189,15 +1681,86 @@ body {
   }
 }
 
-/* Mensajes: chips de filtro — scroll horizontal sin barra visible */
+/* Tablas — overflow contenido; barra fina visible (evita que el flex padre se expanda) */
+.mp-table-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--border) 70%, transparent) transparent;
+}
+.mp-table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.mp-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mp-table-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 9999px;
+}
+@media (hover: none) and (pointer: coarse) {
+  .mp-table-scroll {
+    touch-action: pan-x;
+  }
+}
+
+/* Hijos directos del main del dashboard no empujan el ancho en flex */
+.mp-dashboard-main > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Scroll horizontal sutil — sin barra en touch; fina y casi invisible en desktop */
+.mp-subtle-hscroll,
 .mp-msg-filter-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+.mp-subtle-hscroll::-webkit-scrollbar,
 .mp-msg-filter-scroll::-webkit-scrollbar {
   display: none;
   height: 0;
   width: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-subtle-hscroll,
+  .mp-msg-filter-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--border) 80%, transparent) transparent;
+    padding-bottom: 2px;
+  }
+  .mp-subtle-hscroll::-webkit-scrollbar,
+  .mp-msg-filter-scroll::-webkit-scrollbar {
+    display: block;
+    height: 5px;
+  }
+  .mp-subtle-hscroll::-webkit-scrollbar-thumb,
+  .mp-msg-filter-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 9999px;
+  }
+}
+@media (hover: none) and (pointer: coarse) {
+  .mp-subtle-hscroll,
+  .mp-msg-filter-scroll {
+    touch-action: pan-x;
+  }
+}
+
+/* Mensajes / tabs: fila flex deslizable */
+.mp-msg-filter-scroll {
+  display: flex;
+  gap: 6;
 }
 
 /* Panel de notificaciones — entrada suave al abrir desde el bell.

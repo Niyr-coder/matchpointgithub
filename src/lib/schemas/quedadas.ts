@@ -53,7 +53,7 @@ export const QuedadaRuleSchema = z
 export const CreateQuedadaSchema = z
   .object({
     title: z.string().trim().min(3).max(80),
-    description: z.string().trim().max(500).optional(),
+    description: z.string().trim().min(3).max(500),
     format: QuedadaFormatSchema,
     matchMode: MpMatchModeSchema.default("doubles"),
     visibility: QuedadaVisibilitySchema.default("open"),
@@ -70,13 +70,13 @@ export const CreateQuedadaSchema = z
     // Largo del partido a X puntos (motor de juego). Fallback por categoría → quedada → 24.
     targetPoints: z.coerce.number().int().min(1).max(999).optional(),
     // Bancarios + premios estructurados (reemplazan paymentInfo/prizesText texto).
-    paymentAccount: PaymentAccountSchema.optional(),
+    paymentAccount: PaymentAccountSchema,
     prizes: z.array(PrizeSchema).max(10).optional(),
-    rules: z.array(QuedadaRuleSchema).max(12).optional(),
+    rules: z.array(QuedadaRuleSchema).min(1).max(12),
     // Deprecados (texto libre, mig 133). Se mantienen opcionales por compat.
     paymentInfo: z.string().trim().max(500).optional(),
     prizesText: z.string().trim().max(500).optional(),
-    // Categorías iniciales (los slots/parejas se llenan después en gestión).
+    // Categorías iniciales (obligatorias al crear; slots/parejas se llenan en gestión).
     categories: z
       .array(
         z.object({
@@ -84,12 +84,12 @@ export const CreateQuedadaSchema = z
           levelLabel: z.string().trim().max(40).optional(),
           startsAt: z.string().datetime({ offset: true }).optional(),
           courtLabel: z.string().trim().max(40).optional(),
-          maxSlots: z.coerce.number().int().min(1).max(64).optional(),
+          maxSlots: z.coerce.number().int().min(1).max(64),
           targetPoints: z.coerce.number().int().min(1).max(999).optional(),
         }),
       )
-      .max(20)
-      .optional(),
+      .min(1)
+      .max(20),
   })
   .openapi("CreateQuedada");
 
@@ -309,6 +309,9 @@ export const RoundIdSchema = z.object({ roundId: UuidSchema }).openapi("QuedadaR
 // Cierra la quedada: calcula el podio individual (ranking por puntos a favor) y
 // la pasa a 'finished'.
 export const FinishQuedadaSchema = z.object({ quedadaId: UuidSchema }).openapi("FinishQuedada");
+export const FinishQuedadaCategorySchema = z
+  .object({ quedadaId: UuidSchema, categoryId: UuidSchema })
+  .openapi("FinishQuedadaCategory");
 
 export type CreateQuedada = z.infer<typeof CreateQuedadaSchema>;
 export type Quedada = z.infer<typeof QuedadaSchema>;

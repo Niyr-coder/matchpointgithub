@@ -96,8 +96,16 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     impact: "high",
     wired: true,
   },
+  {
+    key: "read_only_mode",
+    label: "Modo solo lectura",
+    description: "Kill switch global: bloquea mutaciones sensibles (inscripciones, pagos, scoring) pero deja navegación. Más fuerte que el banner de mantenimiento.",
+    surfaces: ["pending: middleware o guard en server actions críticas"],
+    impact: "high",
+    wired: false,
+  },
 
-  // ── Kill-switches de paywalls (mig 172) ────────────────────────────────
+  // ── Juego social / matchmaking ─────────────────────────────────────────
   // Sembrados en false. Cuando un caller los cablea con requirePlanWithFlag,
   // marcar wired=true y agregar la superficie correspondiente.
   {
@@ -162,6 +170,50 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     description: "Encendido = partners free limitados a N torneos activos simultáneos; premium ilimitado.",
     surfaces: ["pending: src/server/actions/tournaments.ts (createTournament)"],
     impact: "med",
+    wired: false,
+  },
+
+  // ── Legacy / huérfanos en DB ───────────────────────────────────────────
+  {
+    key: "profile_customization",
+    label: "Personalización de perfil (legacy)",
+    description: "Kill switch antiguo (mig 113). El código ya no lee esta key; usar paywall_enforce_profile_customization cuando se cablee el paywall. Candidato a deprecar en DB.",
+    surfaces: ["(ninguna — huérfano)"],
+    impact: "low",
+    wired: false,
+  },
+
+  // ── Recomendados: crear en DB cuando se cableen ────────────────────────
+  {
+    key: "user_teams_enabled",
+    label: "Teams de jugadores",
+    description: "Habilita crear/unirse a teams, discovery y pantallas de equipo. Apagado = ocultar del sidebar y bloquear mutaciones.",
+    surfaces: ["pending: TeamScreen, sidebar user, server/actions/teams"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "native_sponsors_enabled",
+    label: "Patrocinios nativos",
+    description: "Renderiza placements de sponsors en slots de la app (home, listados, etc.). Apagado = no se muestran creatives aunque existan en admin.",
+    surfaces: ["pending: componentes de placement + slots publicados"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "shop_enabled",
+    label: "Tienda / Pro shop",
+    description: "Habilita la tienda en dashboard jugador y flujos de compra del pro shop.",
+    surfaces: ["pending: ShopScreen, EmployeeProShopScreen"],
+    impact: "med",
+    wired: false,
+  },
+  {
+    key: "payments_capture_enabled",
+    label: "Captura de pagos",
+    description: "Kill switch de pagos: apagado = no se crean nuevas transacciones captured ni comprobantes pending (mantenimiento de cobros).",
+    surfaces: ["pending: payment-proofs, inscripciones, player-subscriptions"],
+    impact: "high",
     wired: false,
   },
 ];

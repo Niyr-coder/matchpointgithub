@@ -169,13 +169,21 @@ export async function sendFriendRequest(input: unknown): Promise<ActionResult<Fr
       row = inserted as typeof row;
     }
 
+    const { data: fromProf } = await supabase
+      .from("profiles")
+      .select("display_name,username")
+      .eq("id", fromUserId)
+      .maybeSingle();
+    const fromName =
+      ((fromProf?.display_name as string | null) ?? (fromProf?.username as string | null) ?? "Un jugador").trim();
+
     await notify({
       userId: toUserId,
       role: "user",
       kind: "friend_request_new",
-      title: "Nueva solicitud de amistad",
-      body: null,
-      payload: { requestId: row.id, fromUserId },
+      title: `${fromName} te envió una solicitud`,
+      body: fromName,
+      payload: { requestId: row.id, fromUserId, fromUserName: fromName },
     });
 
     revalidatePath("/dashboard/user/amigos");
@@ -246,13 +254,23 @@ export async function acceptFriendRequest(
       }
     }
 
+    const { data: accepterProf } = await supabase
+      .from("profiles")
+      .select("display_name,username")
+      .eq("id", userId)
+      .maybeSingle();
+    const accepterName =
+      ((accepterProf?.display_name as string | null) ??
+        (accepterProf?.username as string | null) ??
+        "Un jugador").trim();
+
     await notify({
       userId: fromId,
       role: "user",
       kind: "friend_request_accepted",
-      title: "Solicitud de amistad aceptada",
-      body: null,
-      payload: { requestId, friendUserId: userId },
+      title: `${accepterName} aceptó tu solicitud`,
+      body: accepterName,
+      payload: { requestId, friendUserId: userId, fromUserName: accepterName },
     });
 
     revalidatePath("/dashboard/user/amigos");

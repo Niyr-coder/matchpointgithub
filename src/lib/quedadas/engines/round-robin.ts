@@ -1,9 +1,10 @@
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine, RoundPlan } from "../types";
 import { fixedTeamsFromPairs, matchupKey, nextRoundNo } from "./shared";
 
 export const roundRobinEngine: QuedadaEngine = {
   format: "round_robin",
-  label: "Round Robin",
+  label: quedadaFormatLabel("round_robin"),
   rosterMode: (mode) => (mode === "singles" ? "individual" : "fixed_pairs"),
   standingsMode: (mode) => (mode === "singles" ? "individual" : "pair"),
   canGenerateRound: true,

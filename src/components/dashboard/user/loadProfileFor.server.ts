@@ -3,6 +3,7 @@ import "server-only";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import type { ProfileData, ModeRating, ProfileFriendPreview } from "./profile-types";
+import { loadQuedadaProfileStats } from "./loadQuedadaProfileStats.server";
 
 const STARTING_RATING = 2500;
 const SPORT_PRIMARY = "pickleball" as const;
@@ -70,6 +71,7 @@ export async function loadProfileFor(
       badges: [],
       country: null,
       friendsPreview: null,
+      quedadaStats: null,
     };
   }
 
@@ -316,6 +318,8 @@ export async function loadProfileFor(
     }
   }
 
+  const quedadaStats = await loadQuedadaProfileStats(userId, { useAdmin: !isOwn });
+
   return {
     meUserId: userId,
     name: (profile?.display_name as string | undefined) ?? "Jugador",
@@ -351,6 +355,7 @@ export async function loadProfileFor(
     badges: await loadBadgesFor(supabase, userId),
     editable,
     friendsPreview,
+    quedadaStats,
   };
 }
 

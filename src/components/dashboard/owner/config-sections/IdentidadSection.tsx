@@ -129,37 +129,153 @@ export function IdentidadSection({
 
   return (
     <div className="mp-ccfg-ident" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18, alignItems: "flex-start" }}>
-      <div className="card" style={{ padding: 24 }}>
-        <div style={{ marginBottom: 22 }}>
-          <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Foto de portada</label>
-          <div style={{ position: "relative", height: 180, borderRadius: 12, overflow: "hidden", background: data?.coverUrl ? `url(${data.coverUrl}) center/cover` : "linear-gradient(135deg, #166534, #10b981 60%, #34d399)" }}>
-            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 25% 80%, rgba(255,255,255,0.18), transparent 50%)" }} />
-            <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6 }}>
-              <button className="btn" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", fontSize: 10 }} onClick={() => onAction("Cambiar portada · próximamente")}><Icon name="upload" size={12} color="#fff" />Cambiar</button>
-              <button className="btn" style={{ background: "rgba(0,0,0,0.6)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", fontSize: 10 }} onClick={() => onAction("Encuadrar · próximamente")}><Icon name="crop" size={12} color="#fff" />Encuadrar</button>
-            </div>
-            <div style={{ position: "absolute", left: 18, bottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 64, height: 64, borderRadius: 14, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "3px solid #fff", boxShadow: "0 4px 12px rgba(0,0,0,0.2)", overflow: "hidden" }}>
+      <div className="card mp-ccfg-ident-card" style={{ padding: 24 }}>
+        <div className="mp-ccfg-cover-block" style={{ marginBottom: 24 }}>
+          <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
+            Foto de portada
+          </label>
+          <div
+            className="mp-ccfg-cover-preview"
+            style={{
+              position: "relative",
+              minHeight: 160,
+              height: 180,
+              borderRadius: 12,
+              overflow: "hidden",
+              background: data?.coverUrl
+                ? `url(${data.coverUrl}) center/cover`
+                : "linear-gradient(135deg, #166534, #10b981 60%, #34d399)",
+            }}
+          >
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.08) 42%, rgba(0,0,0,0.55) 100%)",
+              }}
+            />
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "radial-gradient(circle at 25% 80%, rgba(255,255,255,0.18), transparent 50%)",
+              }}
+            />
+            <span
+              className="mp-ccfg-cover-badge"
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 12,
+                padding: "3px 10px",
+                borderRadius: 9999,
+                background: "rgba(0,0,0,0.65)",
+                color: "#fff",
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: "0.15em",
+              }}
+            >
+              ● PREVIEW HEADER
+            </span>
+            <div
+              className="mp-ccfg-cover-content"
+              style={{
+                position: "absolute",
+                left: 14,
+                right: 14,
+                bottom: 14,
+                display: "flex",
+                alignItems: "flex-end",
+                gap: 12,
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  flexShrink: 0,
+                  borderRadius: 14,
+                  background: "#0a0a0a",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "3px solid #fff",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                  overflow: "hidden",
+                }}
+              >
                 {data?.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={data.logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  <span className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em" }}>{initials}</span>
+                  <span className="font-heading" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.03em" }}>
+                    {initials}
+                  </span>
                 )}
               </div>
-              <div style={{ color: "#fff" }}>
-                <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.025em", textTransform: "uppercase", textShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>{form.name || "Sin nombre"}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.9 }}>{cityLine}</div>
+              <div style={{ color: "#fff", minWidth: 0, flex: 1 }}>
+                <div
+                  className="font-heading mp-ccfg-cover-title"
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    letterSpacing: "-0.025em",
+                    textTransform: "uppercase",
+                    textShadow: "0 1px 4px rgba(0,0,0,0.35)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {form.name || "Sin nombre"}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    opacity: 0.92,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {cityLine}
+                </div>
               </div>
             </div>
-            <span style={{ position: "absolute", top: 12, left: 12, padding: "3px 10px", borderRadius: 9999, background: "rgba(0,0,0,0.65)", color: "#fff", fontSize: 9, fontWeight: 900, letterSpacing: "0.15em" }}>● PREVIEW HEADER</span>
+          </div>
+          <div className="mp-ccfg-cover-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 11 }}
+              onClick={() => onAction("Cambiar portada · próximamente")}
+            >
+              <Icon name="upload" size={12} />
+              Cambiar
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 11 }}
+              onClick={() => onAction("Encuadrar · próximamente")}
+            >
+              <Icon name="crop" size={12} />
+              Encuadrar
+            </button>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 14, marginBottom: 14 }}>
+        <div className="mp-ccfg-ident-logo-row" style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 14, marginBottom: 18 }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Logo</label>
-            <button onClick={() => onAction("Cambiar logo · próximamente")} style={{ width: 100, height: 100, borderRadius: 14, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: 0, overflow: "hidden" }}>
+            <button type="button" onClick={() => onAction("Cambiar logo · próximamente")} style={{ width: 100, height: 100, borderRadius: 14, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: 0, overflow: "hidden" }}>
               {data?.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={data.logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -168,20 +284,20 @@ export function IdentidadSection({
               )}
             </button>
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <Field l="Nombre comercial" v={form.name} onChange={update("name")} hint="Aparece en el browse y en compartidos sociales." />
-            <Field l="Razón social (factura)" v={form.legalName} onChange={update("legalName")} hint="Pendiente · no se guarda todavía" />
+            <Field l="Razón social (factura)" v={form.legalName} disabled hint="Próximamente — aún no editable" />
           </div>
         </div>
 
         <Field l="Descripción corta" v={form.description} onChange={update("description")} hint={`Máx. 280 caracteres · ${form.description.length} / 280`} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="mp-ccfg-ident-contact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field l="Teléfono" v={form.phone} onChange={update("phone")} icon="phone" />
-          <Field l="WhatsApp" v={form.whatsapp} onChange={update("whatsapp")} icon="message-circle" hint="Pendiente · no se guarda todavía" />
+          <Field l="WhatsApp" v={form.whatsapp} disabled icon="message-circle" hint="Próximamente — aún no editable" />
           <Field l="Email" v={form.email} onChange={update("email")} icon="mail" />
-          <Field l="Website" v={form.website} onChange={update("website")} icon="globe" hint="Pendiente · no se guarda todavía" />
-          <Field l="Instagram" v={form.instagram} onChange={update("instagram")} icon="at-sign" hint="Pendiente · no se guarda todavía" />
-          <Field l="TikTok" v={form.tiktok} onChange={update("tiktok")} icon="music" hint="Pendiente · no se guarda todavía" />
+          <Field l="Website" v={form.website} disabled icon="globe" hint="Próximamente — aún no editable" />
+          <Field l="Instagram" v={form.instagram} disabled icon="at-sign" hint="Próximamente — aún no editable" />
+          <Field l="TikTok" v={form.tiktok} disabled icon="music" hint="Próximamente — aún no editable" />
         </div>
 
         <div style={{ marginTop: 18, padding: 14, background: "var(--muted)", borderRadius: 10 }}>
@@ -189,11 +305,11 @@ export function IdentidadSection({
             <Icon name="map-pin" size={14} color="var(--primary)" />
             <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>Ubicación física</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-ccfg-ident-contact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field l="Ciudad" v={form.city} onChange={update("city")} />
             <Field l="País" v={form.country} onChange={update("country")} />
             <Field l="Dirección" v={form.address} onChange={update("address")} />
-            <Field l="Referencia" v={form.reference} onChange={update("reference")} hint="Pendiente · no se guarda todavía" />
+            <Field l="Referencia" v={form.reference} disabled hint="Próximamente — aún no editable" />
           </div>
           <div style={{ height: 110, borderRadius: 8, background: "linear-gradient(135deg, #d4f1de 0%, #bbf7d0 60%, #ecfdf5 100%)", position: "relative", overflow: "hidden", marginTop: 4 }}>
             <svg viewBox="0 0 400 110" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} aria-hidden>
@@ -210,7 +326,7 @@ export function IdentidadSection({
           </div>
         </div>
 
-        <div style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div className="mp-ccfg-ident-save" style={{ marginTop: 18, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 10.5, color: err ? "#dc2626" : "var(--muted-fg)" }}>
             {err ?? "Los cambios se aplican al instante en el perfil público."}
           </div>

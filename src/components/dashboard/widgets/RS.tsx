@@ -2,6 +2,7 @@
 // Migrado 1:1 desde ui_kits/dashboard/RoleScreens.jsx (líneas 5-68).
 "use client";
 import type { CSSProperties, ReactNode } from "react";
+import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
 
 export const RS_BORDER = "1px solid var(--border)";
 
@@ -16,6 +17,7 @@ export function RSHeader({
 }) {
   return (
     <div
+      className="mp-rs-header"
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -24,10 +26,10 @@ export function RSHeader({
         flexWrap: "wrap",
       }}
     >
-      <div>
+      <div className="mp-rs-header-copy" style={{ minWidth: 0 }}>
         <div className="label-mp">{label}</div>
         <h1
-          className="font-heading"
+          className="font-heading mp-rs-header-title"
           style={{
             margin: "6px 0 0",
             fontSize: 36,
@@ -41,7 +43,7 @@ export function RSHeader({
           <span className="dot">.</span>
         </h1>
       </div>
-      {action}
+      {action && <div className="mp-rs-header-action">{action}</div>}
     </div>
   );
 }
@@ -150,6 +152,7 @@ export type RSColumn<R> = {
   l: string;
   align?: "left" | "center" | "right";
   valign?: CSSProperties["verticalAlign"];
+  tip?: string;
   render?: (row: R, i: number) => ReactNode;
 };
 
@@ -167,8 +170,8 @@ export function RSTable<R extends Record<string, unknown>>({
   rowOnClick?: (row: R, i: number) => void;
 }) {
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ overflow: "auto" }}>
+    <div className="card min-w-0 w-full max-w-full" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="mp-table-scroll">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
           <thead>
             <tr style={{ background: "var(--muted)" }}>
@@ -183,10 +186,16 @@ export function RSTable<R extends Record<string, unknown>>({
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
                     color: "var(--muted-fg)",
-                    whiteSpace: "nowrap",
                   }}
                 >
-                  {c.l}
+                  {c.tip ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ whiteSpace: "nowrap" }}>{c.l}</span>
+                      <InfoTip text={c.tip} maxWidth={240} />
+                    </span>
+                  ) : (
+                    <span style={{ whiteSpace: "nowrap" }}>{c.l}</span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -204,6 +213,11 @@ export function RSTable<R extends Record<string, unknown>>({
                 {cols.map((c) => (
                   <td
                     key={c.k}
+                    onClick={(e) => {
+                      if (rowOnClick && (e.target as HTMLElement).closest("button, a, input, select, textarea, label")) {
+                        e.stopPropagation();
+                      }
+                    }}
                     style={{
                       padding: "11px 14px",
                       textAlign: c.align || "left",

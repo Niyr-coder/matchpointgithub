@@ -1,8 +1,9 @@
+import { quedadaFormatLabel } from "../format-labels";
 import type { QuedadaEngine } from "../types";
 
 export const libreEngine: QuedadaEngine = {
   format: "libre",
-  label: "Libre",
+  label: quedadaFormatLabel("libre"),
   rosterMode: (mode) => (mode === "singles" ? "individual" : "fixed_pairs"),
   standingsMode: () => "manual",
   canGenerateRound: false,
