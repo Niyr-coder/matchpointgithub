@@ -54,10 +54,12 @@ export async function executeGiveawayDraw(
   if (entErr) throw new MpError("GIVEAWAY.DRAW_FAILED", entErr.message, 500);
 
   const pool = buildWeightedPool(
-    (entries ?? []).map((e) => ({
-      userId: e.user_id as string,
-      totalEntries: Number(e.total_entries) || 1,
-    })),
+    (entries ?? [])
+      .filter((e) => Number(e.total_entries) >= 1)
+      .map((e) => ({
+        userId: e.user_id as string,
+        totalEntries: 1,
+      })),
   );
   if (pool.length === 0) {
     throw new MpError("GIVEAWAY.NO_ENTRIES", "No hay participantes para sortear", 409);

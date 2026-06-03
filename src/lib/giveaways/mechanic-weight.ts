@@ -41,8 +41,7 @@ export async function resolveMechanicWeightApplied(
 
   if (kind === "pay") {
     const tickets = await countCapturedPayTickets(admin, ctx, since, until);
-    if (tickets <= 0) return 0;
-    return Math.min(tickets, MAX_PAY_TICKETS) * configuredWeight;
+    return tickets > 0 ? 1 : 0;
   }
 
   if (kind === "share") {

@@ -12,8 +12,8 @@ import { AuthError } from "@/lib/auth/session";
 import { notify } from "@/server/notifications/dispatch";
 import { isClubMembershipActive } from "@/lib/clubs/membership";
 import { isGiveawayEligible } from "@/lib/clubs/comms-eligibility";
-import { entryProbability } from "@/lib/giveaways/draw";
 import { resolveMechanicWeightApplied, MAX_PAY_TICKETS } from "@/lib/giveaways/mechanic-weight";
+import { isGiveawayQualified, qualifiedProbabilityPct } from "@/lib/giveaways/qualification";
 import {
   mechanicByKind,
   maxEntriesFromMechanics,
@@ -33,17 +33,20 @@ import {
   ClubFeedPostViewSchema,
   GiveawayDetailViewSchema,
   MyGiveawayRowSchema,
+  MyGiveawaysDashboardSchema,
   GiveawayOrgManageViewSchema,
   GiveawayOrgWinnerViewSchema,
   type ClubFeedPostView,
   type GiveawayDetailView,
   type MyGiveawayRow,
+  type MyGiveawaysDashboard,
   type GiveawayOrgManageView,
   type GiveawayOrgWinnerView,
 } from "@/lib/schemas/giveaways";
 import { z } from "zod";
 import { toggleFollowClub } from "@/server/actions/clubs";
 import { executeGiveawayDraw } from "@/server/giveaways/execute-draw";
+import { buildMyGiveawaysDashboard, type GiveawayBundle } from "@/lib/giveaways/build-my-dashboard";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -125,8 +128,7 @@ async function userGiveawayFlags(userId: string, clubId: string) {
 
 async function recalculateUserEntries(giveawayId: string, userId: string): Promise<number> {
   const g = await loadGiveawayRow(giveawayId);
-  const mechanics = parseMechanics(g.mechanics);
-  const maxCap = Number(g.max_entries_per_user) || maxEntriesFromMechanics(mechanics) || 1;
+  const mechanics = parseMechanics(g.mechanics).filter((m) => m.enabled);
 
   const admin = getAdminClient();
   const { data: progress } = await admin
@@ -135,35 +137,39 @@ async function recalculateUserEntries(giveawayId: string, userId: string): Promi
     .eq("giveaway_id", giveawayId)
     .eq("user_id", userId);
 
-  let total = 0;
-  for (const p of progress ?? []) {
-    total += Number(p.weight_applied) || 0;
-  }
-  total = Math.min(Math.max(total, 0), maxCap);
+  const doneKinds = new Set(
+    (progress ?? []).filter((p) => Number(p.weight_applied) > 0).map((p) => p.kind as string),
+  );
+  const qualified = isGiveawayQualified(mechanics, doneKinds);
+  const total = qualified ? 1 : 0;
 
-  if (total > 0) {
+  const { data: existing } = await admin
+    .from("club_giveaway_entries")
+    .select("user_id")
+    .eq("giveaway_id", giveawayId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
     await (admin as any)
       .from("club_giveaway_entries")
-      .upsert(
-        {
-          giveaway_id: giveawayId,
-          user_id: userId,
-          total_entries: total,
-        },
-        { onConflict: "giveaway_id,user_id" },
-      );
+      .update({ total_entries: total })
+      .eq("giveaway_id", giveawayId)
+      .eq("user_id", userId);
   }
+
   return total;
 }
 
-async function recalculateGiveawayPool(giveawayId: string): Promise<void> {
+async function recalculateGiveawayPool(giveawayId: string): Promise<number> {
   const admin = getAdminClient();
   const { data: entries } = await admin
     .from("club_giveaway_entries")
     .select("total_entries")
     .eq("giveaway_id", giveawayId);
-  const sum = (entries ?? []).reduce((acc, e) => acc + (Number(e.total_entries) || 1), 0);
-  await (admin as any).from("club_giveaways").update({ total_entry_weight: sum }).eq("id", giveawayId);
+  const qualifierCount = (entries ?? []).filter((e) => Number(e.total_entries) >= 1).length;
+  await (admin as any).from("club_giveaways").update({ total_entry_weight: qualifierCount }).eq("id", giveawayId);
+  return qualifierCount;
 }
 
 const FEED_BADGE_BY_KIND: Record<string, string> = {
@@ -543,8 +549,8 @@ export async function getGiveawayDetail(input: unknown): Promise<ActionResult<Gi
       entryCount: poolSize,
       totalEntryWeight: poolSize,
       myEntries,
-      myProbabilityPct: entryProbability(myEntries, poolSize),
-      hasJoined: myEntries > 0,
+      myProbabilityPct: qualifiedProbabilityPct(myEntries >= 1, poolSize),
+      hasJoined: Boolean(myEntry),
       won: iWon,
       winners: winnerRows.map((w: Record<string, unknown>) => ({
         userId: w.user_id,
@@ -610,7 +616,7 @@ export async function enterGiveawayWithPrereqs(
       {
         giveaway_id: data.giveawayId,
         user_id: userId,
-        total_entries: followMech ? followMech.weight : 1,
+        total_entries: 0,
         rules_accepted_at: now,
         entered_at: now,
       },
@@ -622,7 +628,7 @@ export async function enterGiveawayWithPrereqs(
 
     return {
       myEntries,
-      maxEntries: Number(g.max_entries_per_user) || maxEntriesFromMechanics(mechanics) || 1,
+      maxEntries: 1,
     };
   });
 }
@@ -924,6 +930,156 @@ export async function listMyGiveaways(input: unknown): Promise<ActionResult<MyGi
         won,
       });
     });
+  });
+}
+
+export async function getMyGiveawaysDashboard(
+  input: unknown,
+): Promise<ActionResult<MyGiveawaysDashboard>> {
+  return runAction(z.object({}).optional(), input ?? {}, async () => {
+    const userId = await requireUserId();
+    const admin = getAdminClient();
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("display_name,username")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const displayName =
+      (profile?.display_name as string | null) ??
+      (profile?.username as string | null) ??
+      "Jugador";
+    const username = (profile?.username as string | null) ?? null;
+
+    const { data: entries, error } = await admin
+      .from("club_giveaway_entries")
+      .select("giveaway_id,total_entries,entered_at")
+      .eq("user_id", userId)
+      .order("entered_at", { ascending: false })
+      .limit(80);
+    if (error) throw new MpError("GIVEAWAY.READ_FAILED", error.message, 500);
+
+    const giveawayIds = (entries ?? []).map((e) => e.giveaway_id as string);
+    if (!giveawayIds.length) {
+      return MyGiveawaysDashboardSchema.parse({
+        displayName,
+        username,
+        adentro: [],
+        pendientes: [],
+        ganados: [],
+        pasados: [],
+        unlockActions: [],
+        nextDraw: null,
+        stats: { adentro: 0, pendientes: 0, ganados: 0, pasados: 0, winRatePct: 0 },
+      });
+    }
+
+    const { data: giveaways } = await (admin as any)
+      .from("club_giveaways")
+      .select(
+        "id,title,subtitle,status,closes_at,draw_at,draw_channel,prize_label,prize_image_url,owner_type,club_id,total_entry_weight,mechanics,drawn_at",
+      )
+      .in("id", giveawayIds);
+
+    const clubIds = [
+      ...new Set<string>((giveaways ?? []).map((g: { club_id: string }) => g.club_id)),
+    ];
+    const { data: clubs } = await admin.from("clubs").select("id,name,slug").in("id", clubIds);
+    const clubMap = new Map((clubs ?? []).map((c) => [c.id as string, c]));
+
+    const { data: progressRows } = await admin
+      .from("club_giveaway_mechanic_progress")
+      .select("giveaway_id,kind,weight_applied")
+      .eq("user_id", userId)
+      .in("giveaway_id", giveawayIds);
+
+    const progressByGiveaway = new Map<string, Set<string>>();
+    for (const row of progressRows ?? []) {
+      if (Number(row.weight_applied) <= 0) continue;
+      const gid = row.giveaway_id as string;
+      if (!progressByGiveaway.has(gid)) progressByGiveaway.set(gid, new Set());
+      progressByGiveaway.get(gid)!.add(row.kind as string);
+    }
+
+    const { data: shareSubs } = await admin
+      .from("club_giveaway_manual_submissions")
+      .select("giveaway_id,status")
+      .eq("user_id", userId)
+      .eq("kind", "share")
+      .in("giveaway_id", giveawayIds);
+    const sharePendingSet = new Set(
+      (shareSubs ?? [])
+        .filter((s) => s.status === "pending")
+        .map((s) => s.giveaway_id as string),
+    );
+
+    const { data: myWins } = await admin
+      .from("club_giveaway_winners")
+      .select("giveaway_id")
+      .eq("user_id", userId)
+      .in("giveaway_id", giveawayIds);
+    const wonSet = new Set((myWins ?? []).map((w) => w.giveaway_id as string));
+
+    const drawnIds = (giveaways ?? [])
+      .filter((g: { status: string }) => g.status === "drawn")
+      .map((g: { id: string }) => g.id as string);
+
+    const winnerNameByGiveaway = new Map<string, string>();
+    if (drawnIds.length) {
+      const { data: topWinners } = await admin
+        .from("club_giveaway_winners")
+        .select("giveaway_id,profiles(display_name)")
+        .in("giveaway_id", drawnIds)
+        .eq("rank", 1);
+      for (const w of topWinners ?? []) {
+        const name =
+          ((w.profiles as { display_name?: string } | null)?.display_name as string | undefined) ??
+          "Jugador";
+        winnerNameByGiveaway.set(w.giveaway_id as string, name);
+      }
+    }
+
+    const entryMap = new Map(
+      (entries ?? []).map((e) => [e.giveaway_id as string, Number(e.total_entries) || 0]),
+    );
+    const giveawayMap = new Map<string, Record<string, unknown>>(
+      (giveaways ?? []).map((g: Record<string, unknown>) => [g.id as string, g]),
+    );
+
+    const bundles: GiveawayBundle[] = giveawayIds
+      .map((gid) => {
+        const g = giveawayMap.get(gid);
+        if (!g) return null;
+        const club = clubMap.get(g.club_id as string);
+        return {
+          id: gid,
+          title: g.title as string,
+          subtitle: (g.subtitle as string | null) ?? null,
+          status: g.status as string,
+          closesAt: (g.closes_at as string | null) ?? null,
+          drawAt: (g.draw_at as string | null) ?? null,
+          drawChannel: (g.draw_channel as string | null) ?? null,
+          prizeLabel: (g.prize_label as string) ?? "Premio",
+          prizeImageUrl: (g.prize_image_url as string | null) ?? null,
+          ownerType: (g.owner_type as string) ?? "club",
+          clubId: g.club_id as string,
+          clubName: (club?.name as string | null) ?? "Club",
+          clubSlug: (club?.slug as string | null) ?? "",
+          qualifierCount: Number(g.total_entry_weight) || 0,
+          mechanics: parseMechanics(g.mechanics),
+          doneKinds: progressByGiveaway.get(gid) ?? new Set<string>(),
+          sharePending: sharePendingSet.has(gid),
+          totalEntries: entryMap.get(gid) ?? 0,
+          drawnAt: (g.drawn_at as string | null) ?? null,
+          winnerName: winnerNameByGiveaway.get(gid) ?? null,
+          userWon: wonSet.has(gid),
+        } satisfies GiveawayBundle;
+      })
+      .filter((b): b is GiveawayBundle => b !== null);
+
+    const dashboard = buildMyGiveawaysDashboard({ displayName, username, bundles });
+    return MyGiveawaysDashboardSchema.parse(dashboard);
   });
 }
 

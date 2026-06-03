@@ -171,6 +171,103 @@ export const MyGiveawayRowSchema = z.object({
   won: z.boolean().nullable(),
 });
 
+export const MyGiveawayRequirementSchema = z.object({
+  kind: z.string(),
+  label: z.string(),
+  met: z.boolean(),
+  pending: z.boolean().optional(),
+});
+
+export const MyGiveawayAdentroSchema = z.object({
+  id: UuidSchema,
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  clubName: z.string(),
+  clubSlug: z.string(),
+  ownerType: GiveawayOwnerTypeSchema,
+  prizeImageUrl: z.string().nullable(),
+  prizeLabel: z.string(),
+  qualifierCount: z.number().int(),
+  probabilityPct: z.number(),
+  closesAt: z.string().nullable(),
+  drawAt: z.string().nullable(),
+  drawChannel: z.string().nullable(),
+  urgent: z.boolean(),
+});
+
+export const MyGiveawayPendingSchema = MyGiveawayAdentroSchema.extend({
+  requirements: z.array(MyGiveawayRequirementSchema),
+  metCount: z.number().int(),
+  totalReq: z.number().int(),
+});
+
+export const MyGiveawayWonSchema = z.object({
+  id: UuidSchema,
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  clubName: z.string(),
+  clubSlug: z.string(),
+  ownerType: GiveawayOwnerTypeSchema,
+  prizeImageUrl: z.string().nullable(),
+  prizeLabel: z.string(),
+  drawnAt: z.string().nullable(),
+  claimStatus: z.enum(["pending", "claimed"]),
+  claimHint: z.string().nullable(),
+});
+
+export const MyGiveawayLostSchema = z.object({
+  id: UuidSchema,
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  clubName: z.string(),
+  clubSlug: z.string(),
+  ownerType: GiveawayOwnerTypeSchema,
+  prizeImageUrl: z.string().nullable(),
+  qualifierCount: z.number().int(),
+  drawnAt: z.string().nullable(),
+});
+
+export const MyGiveawayUnlockQualifySchema = z.object({
+  sorteo: z.string(),
+  giveawayId: UuidSchema,
+  already: z.boolean(),
+});
+
+export const MyGiveawayUnlockActionSchema = z.object({
+  kind: z.string(),
+  label: z.string(),
+  icon: z.string(),
+  autoVerify: z.boolean(),
+  qualifiesFor: z.array(MyGiveawayUnlockQualifySchema),
+});
+
+export const MyGiveawayNextDrawSchema = z.object({
+  giveawayId: UuidSchema,
+  title: z.string(),
+  drawAt: z.string(),
+  drawChannel: z.string().nullable(),
+  probabilityPct: z.number(),
+  urgent: z.boolean(),
+});
+
+export const MyGiveawaysDashboardSchema = z.object({
+  displayName: z.string(),
+  username: z.string().nullable(),
+  adentro: z.array(MyGiveawayAdentroSchema),
+  pendientes: z.array(MyGiveawayPendingSchema),
+  ganados: z.array(MyGiveawayWonSchema),
+  pasados: z.array(MyGiveawayLostSchema),
+  unlockActions: z.array(MyGiveawayUnlockActionSchema),
+  nextDraw: MyGiveawayNextDrawSchema.nullable(),
+  stats: z.object({
+    adentro: z.number().int(),
+    pendientes: z.number().int(),
+    ganados: z.number().int(),
+    pasados: z.number().int(),
+    winRatePct: z.number(),
+  }),
+});
+
 export const GiveawayOrgParticipantSchema = z.object({
   userId: UuidSchema,
   displayName: z.string(),
@@ -229,5 +326,11 @@ export const GiveawayOrgWinnerViewSchema = z.object({
 export type ClubFeedPostView = z.infer<typeof ClubFeedPostViewSchema>;
 export type GiveawayDetailView = z.infer<typeof GiveawayDetailViewSchema>;
 export type MyGiveawayRow = z.infer<typeof MyGiveawayRowSchema>;
+export type MyGiveawayAdentro = z.infer<typeof MyGiveawayAdentroSchema>;
+export type MyGiveawayPending = z.infer<typeof MyGiveawayPendingSchema>;
+export type MyGiveawayWon = z.infer<typeof MyGiveawayWonSchema>;
+export type MyGiveawayLost = z.infer<typeof MyGiveawayLostSchema>;
+export type MyGiveawayUnlockAction = z.infer<typeof MyGiveawayUnlockActionSchema>;
+export type MyGiveawaysDashboard = z.infer<typeof MyGiveawaysDashboardSchema>;
 export type GiveawayOrgManageView = z.infer<typeof GiveawayOrgManageViewSchema>;
 export type GiveawayOrgWinnerView = z.infer<typeof GiveawayOrgWinnerViewSchema>;
