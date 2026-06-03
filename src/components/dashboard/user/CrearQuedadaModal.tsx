@@ -263,8 +263,8 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
   const currentConfig = (): QuedadaInitial => ({
     title,
     description,
-    format,
-    matchMode,
+    format: format || undefined,
+    matchMode: matchMode || undefined,
     visibility,
     locationText,
     feeUsd,
