@@ -6,6 +6,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -14,34 +15,15 @@ import {
   TicketDetailSchema,
   TicketMessageSchema,
   TicketReplySchema,
-  TicketSchema,
   TicketStatusSchema,
   type Ticket,
   type TicketDetail,
 } from "@/lib/schemas/ops";
+import { mapTicket } from "@/lib/support/ticket-map";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify, notifyAdmins } from "@/server/notifications/dispatch";
 
 type TicketStatus = Ticket["status"];
-
-function mapTicket(row: Record<string, unknown>): Ticket {
-  return TicketSchema.parse({
-    id: row.id,
-    code: row.code,
-    clubId: (row.club_id as string | null) ?? null,
-    openerId: row.opener_id,
-    assigneeId: (row.assignee_id as string | null) ?? null,
-    subject: row.subject,
-    category: row.category,
-    severity: row.severity,
-    status: row.status,
-    firstResponseAt: (row.first_response_at as string | null) ?? null,
-    resolvedAt: (row.resolved_at as string | null) ?? null,
-    closedAt: (row.closed_at as string | null) ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  });
-}
 
 async function requireUserId(): Promise<string> {
   const supabase = await getServerClient();
@@ -50,6 +32,60 @@ async function requireUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
   return user.id;
+}
+
+async function isPlatformAdmin(userId: string): Promise<boolean> {
+  const supabase = await getServerClient();
+  const { data } = await supabase
+    .from("role_assignments")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .is("revoked_at", null)
+    .maybeSingle();
+  return !!data;
+}
+
+type TicketAccessRow = {
+  status: string;
+  assignee_id: string | null;
+  club_id: string | null;
+  opener_id: string;
+};
+
+async function loadTicketAccess(id: string): Promise<TicketAccessRow> {
+  const supabase = await getServerClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .select("status, assignee_id, club_id, opener_id")
+    .eq("id", id)
+    .single();
+  if (error || !data) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+  return data as TicketAccessRow;
+}
+
+async function canStaffTicket(userId: string, ticket: TicketAccessRow): Promise<boolean> {
+  if (await isPlatformAdmin(userId)) return true;
+  if (ticket.assignee_id === userId) return true;
+  if (!ticket.club_id) return false;
+  const supabase = await getServerClient();
+  const { data } = await supabase
+    .from("role_assignments")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("club_id", ticket.club_id)
+    .in("role", ["owner", "manager", "employee"])
+    .is("revoked_at", null)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
+function ticketStatusPatch(status: TicketStatus): Record<string, unknown> {
+  const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  if (status === "resolved") patch.resolved_at = new Date().toISOString();
+  if (status === "closed") patch.closed_at = new Date().toISOString();
+  return patch;
 }
 
 const STATUS_NOTIFICATION_COPY: Partial<Record<TicketStatus, { title: string; body: (ticket: Ticket) => string }>> = {
@@ -203,23 +239,43 @@ export async function replyToTicket(
 ): Promise<ActionResult<z.infer<typeof TicketMessageSchema>>> {
   return runAction(ReplyInputSchema, input, async ({ id, body }) => {
     const userId = await requireUserId();
-    const supabase = await getServerClient();
-    const { data, error } = await supabase
-      .from("ticket_messages")
-      .insert({
-        ticket_id: id,
-        author_id: userId,
-        body: body.body,
-        internal: body.internal,
-      } as never)
-      .select()
-      .single();
-    if (error) {
-      if (error.code === "42501") {
-        throw new AuthError("AUTH.ROLE_REQUIRED", "Not visible to you");
-      }
-      throw new MpError("TICKETS.REPLY_FAILED", error.message, 500);
+    const ticket = await loadTicketAccess(id);
+    const isOpener = ticket.opener_id === userId;
+    const canStaff = await canStaffTicket(userId, ticket);
+    if (!isOpener && !canStaff) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "No tienes permiso para responder este ticket");
     }
+
+    const row = {
+      ticket_id: id,
+      author_id: userId,
+      body: body.body,
+      internal: body.internal,
+    };
+
+    let data;
+    if (!isOpener && (await isPlatformAdmin(userId))) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "admin");
+      const res = await admin.from("ticket_messages").insert(row as never).select().single();
+      if (res.error) throw new MpError("TICKETS.REPLY_FAILED", res.error.message, 500);
+      data = res.data;
+    } else {
+      const supabase = await getServerClient();
+      const { data: inserted, error } = await supabase
+        .from("ticket_messages")
+        .insert(row as never)
+        .select()
+        .single();
+      if (error) {
+        if (error.code === "42501") {
+          throw new AuthError("AUTH.ROLE_REQUIRED", "Not visible to you");
+        }
+        throw new MpError("TICKETS.REPLY_FAILED", error.message, 500);
+      }
+      data = inserted;
+    }
+
     return TicketMessageSchema.parse({
       id: data.id,
       ticketId: data.ticket_id,
@@ -239,24 +295,38 @@ const AssignTicketSchema = z.object({
 
 export async function assignTicket(input: unknown): Promise<ActionResult<Ticket>> {
   return runAction(AssignTicketSchema, input, async ({ id, assigneeId }) => {
-    const supabase = await getServerClient();
-    const { data: current, error: currentError } = await supabase
-      .from("tickets")
-      .select("status")
-      .eq("id", id)
-      .single();
-    if (currentError || !current) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+    const userId = await requireUserId();
+    const ticket = await loadTicketAccess(id);
+    if (!(await canStaffTicket(userId, ticket))) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "No tienes permiso para asignar este ticket");
+    }
 
-    const { data, error } = await supabase
-      .from("tickets")
-      .update({
-        assignee_id: assigneeId,
-        status: assigneeId ? "in_progress" : "open",
-      } as never)
-      .eq("id", id)
-      .select()
-      .single();
-    if (error || !data) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+    const previousStatus = TicketStatusSchema.parse(ticket.status);
+    const patch = {
+      assignee_id: assigneeId,
+      status: assigneeId ? "in_progress" : "open",
+      updated_at: new Date().toISOString(),
+    };
+
+    let data;
+    if (await isPlatformAdmin(userId)) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "admin");
+      const res = await admin.from("tickets").update(patch as never).eq("id", id).select().single();
+      if (res.error || !res.data) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+      data = res.data;
+    } else {
+      const supabase = await getServerClient();
+      const { data: updated, error } = await supabase
+        .from("tickets")
+        .update(patch as never)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error || !updated) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+      data = updated;
+    }
+
     if (assigneeId) {
       await notify({
         userId: assigneeId,
@@ -267,9 +337,9 @@ export async function assignTicket(input: unknown): Promise<ActionResult<Ticket>
         payload: { ticketId: data.id, code: data.code, category: data.category, severity: data.severity },
       });
     }
-    const ticket = mapTicket(data);
-    await notifyTicketStatusChanged(ticket, TicketStatusSchema.parse(current.status));
-    return ticket;
+    const mapped = mapTicket(data);
+    await notifyTicketStatusChanged(mapped, previousStatus);
+    return mapped;
   });
 }
 
@@ -346,6 +416,48 @@ export async function autoAssignTickets(): Promise<ActionResult<{ assigned: numb
       assigned++;
     }
     return { assigned };
+  });
+}
+
+// ── updateTicketStatus (admin/staff) ───────────────────────────────────
+const UpdateTicketStatusSchema = z.object({
+  id: UuidSchema,
+  status: z.enum(["in_progress", "waiting_user", "resolved", "closed"]),
+});
+
+export async function updateTicketStatus(input: unknown): Promise<ActionResult<Ticket>> {
+  return runAction(UpdateTicketStatusSchema, input, async ({ id, status }) => {
+    const userId = await requireUserId();
+    const ticket = await loadTicketAccess(id);
+    if (!(await canStaffTicket(userId, ticket))) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "No tienes permiso para actualizar este ticket");
+    }
+
+    const previousStatus = TicketStatusSchema.parse(ticket.status);
+    const patch = ticketStatusPatch(status);
+
+    let data;
+    if (await isPlatformAdmin(userId)) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "admin");
+      const res = await admin.from("tickets").update(patch as never).eq("id", id).select().single();
+      if (res.error || !res.data) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+      data = res.data;
+    } else {
+      const supabase = await getServerClient();
+      const { data: updated, error } = await supabase
+        .from("tickets")
+        .update(patch as never)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error || !updated) throw new MpError("TICKETS.NOT_FOUND", "Ticket not found", 404);
+      data = updated;
+    }
+
+    const mapped = mapTicket(data);
+    await notifyTicketStatusChanged(mapped, previousStatus);
+    return mapped;
   });
 }
 

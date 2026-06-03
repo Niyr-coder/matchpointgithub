@@ -72,6 +72,10 @@ export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
     hasMembershipTiers,
     cheapestTierId,
     pendingMembershipTxId,
+    announcementsConversationId,
+    communityConversationId,
+    canAccessAnnouncements,
+    canAccessCommunityChat,
   } = data;
   const router = useRouter();
   const toast = useToast();
@@ -212,6 +216,10 @@ export function ClubSocialView({ data }: { data: ClubSocialViewData }) {
         viewerRole={viewerRole}
         membershipStatus={membershipStatus}
         hasMembershipTiers={hasMembershipTiers}
+        canAccessAnnouncements={canAccessAnnouncements}
+        announcementsConversationId={announcementsConversationId}
+        canAccessCommunityChat={canAccessCommunityChat}
+        communityConversationId={communityConversationId}
       />
 
       {/* Tabs */}
@@ -271,6 +279,10 @@ function ClubHero({
   viewerRole,
   membershipStatus,
   hasMembershipTiers,
+  canAccessAnnouncements,
+  announcementsConversationId,
+  canAccessCommunityChat,
+  communityConversationId,
 }: {
   club: ClubSocialViewData["club"];
   stats: ClubSocialViewData["stats"];
@@ -284,6 +296,10 @@ function ClubHero({
   viewerRole: ClubSocialViewData["viewerRole"];
   membershipStatus: ClubSocialViewData["membershipStatus"];
   hasMembershipTiers: ClubSocialViewData["hasMembershipTiers"];
+  canAccessAnnouncements: ClubSocialViewData["canAccessAnnouncements"];
+  announcementsConversationId: ClubSocialViewData["announcementsConversationId"];
+  canAccessCommunityChat: ClubSocialViewData["canAccessCommunityChat"];
+  communityConversationId: ClubSocialViewData["communityConversationId"];
 }) {
   const isOwnerOrManager = viewerRole === "owner" || viewerRole === "manager";
   const showUnir =
@@ -478,6 +494,58 @@ function ClubHero({
                 <Icon name={isFollowing ? "check" : "user-plus"} size={13} color={isFollowing ? "#fff" : "#0a0a0a"} />
                 {isFollowing ? "Siguiendo" : "Seguir club"}
               </button>
+              {canAccessAnnouncements && announcementsConversationId ? (
+                <Link
+                  href={`/dashboard/user/chat?conv=${announcementsConversationId}`}
+                  className="mp-follow-btn"
+                  data-following="false"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 9999,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontFamily: "inherit",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    textDecoration: "none",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                  }}
+                >
+                  <Icon name="megaphone" size={13} color="#fff" />
+                  Anuncios
+                </Link>
+              ) : null}
+              {canAccessCommunityChat && communityConversationId ? (
+                <Link
+                  href={`/dashboard/user/chat?conv=${communityConversationId}`}
+                  className="mp-follow-btn"
+                  data-following="false"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 9999,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontFamily: "inherit",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "rgba(37,99,235,0.35)",
+                    color: "#fff",
+                    textDecoration: "none",
+                    border: "1px solid rgba(147,197,253,0.45)",
+                  }}
+                >
+                  <Icon name="messages-square" size={13} color="#fff" />
+                  Chat VIP
+                </Link>
+              ) : null}
               {showUnir && (
                 <button
                   type="button"

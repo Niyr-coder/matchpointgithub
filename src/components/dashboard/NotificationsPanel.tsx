@@ -104,9 +104,53 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
       : null;
   }
   if (kind.startsWith("reservation")) {
+    if (kind === "club_reservation_new") {
+      return role === "manager"
+        ? "/dashboard/manager/club-reservas"
+        : "/dashboard/owner/club-reservas";
+    }
     return resId
-      ? `/dashboard/user/team?focus=${resId}`
-      : `/dashboard/${role}`;
+      ? `/dashboard/user/mis-reservas?focus=${resId}`
+      : "/dashboard/user/mis-reservas";
+  }
+  if (kind.startsWith("tournament") || kind.startsWith("registration")) {
+    const tId = typeof payload.tournament_id === "string" ? payload.tournament_id : null;
+    const tSlug = typeof payload.tournament_slug === "string" ? payload.tournament_slug : null;
+    if (kind === "tournament_published" || kind === "tournament_registration_new") {
+      const base = role === "partner" ? "/dashboard/partner" : `/dashboard/${role}`;
+      const section = kind === "tournament_registration_new" ? "p-inscritos" : "p-torneos";
+      return tId ? `${base}/${section}?focus=${tId}` : `${base}/${section}`;
+    }
+    if (tSlug || tId) return `/eventos/${tSlug ?? tId}`;
+    return `/dashboard/${role}`;
+  }
+  if (kind === "payout_paid") {
+    return role === "partner" ? "/dashboard/partner/p-finanzas" : "/dashboard/owner/club-finanzas";
+  }
+  if (kind === "club_featuring_activated" || kind === "club_featuring_expiring_soon") {
+    return "/dashboard/owner/club-marketing";
+  }
+  if (kind === "payment_proof_rejected") {
+    const txId = typeof payload.transaction_id === "string" ? payload.transaction_id : null;
+    return txId ? `/pagos/${txId}` : "/dashboard/user/mi-plan";
+  }
+  if (kind === "plan_expiring_soon") {
+    return "/dashboard/user/mi-plan";
+  }
+  if (kind.startsWith("event_")) {
+    const eventId = typeof payload.event_id === "string" ? payload.event_id : null;
+    const eventSlug = typeof payload.event_slug === "string" ? payload.event_slug : null;
+    return eventId ? `/dashboard/eventos/${eventSlug ?? eventId}` : "/dashboard/user";
+  }
+  if (kind.startsWith("role_assigned") || kind.startsWith("role_revoked")) {
+    const assignedRole = typeof payload.role === "string" ? payload.role : null;
+    return assignedRole ? `/dashboard/${assignedRole}` : `/dashboard/${role}`;
+  }
+  if (kind === "match_no_show_reported" || kind === "match_result_reported") {
+    const convId = typeof payload.conversation_id === "string" ? payload.conversation_id : null;
+    if (convId) return `/dashboard/user/chat?conv=${convId}`;
+    const matchId = typeof payload.match_id === "string" ? payload.match_id : null;
+    return matchId ? `/dashboard/user/partidos?focus=${matchId}` : "/dashboard/user/partidos";
   }
   if (kind.startsWith("friend_request")) {
     return friendId
@@ -154,7 +198,17 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
     return `/dashboard/${role}/club-membresias`;
   }
   if (kind.startsWith("club_membership")) {
+    const convId = typeof payload.conversation_id === "string" ? payload.conversation_id : null;
+    if (convId) return `/dashboard/user/chat?conv=${convId}`;
     return "/dashboard/user/membresias";
+  }
+  if (kind === "giveaway_started" || kind === "giveaway_drawn" || kind === "giveaway_won") {
+    const giveawayId = typeof payload.giveaway_id === "string" ? payload.giveaway_id : null;
+    if (giveawayId) return `/dashboard/clubes/giveaways/${giveawayId}`;
+  }
+  if (kind === "club_announcement_new" || kind === "club_membership_chat_welcome") {
+    const convId = typeof payload.conversation_id === "string" ? payload.conversation_id : null;
+    return convId ? `/dashboard/user/chat?conv=${convId}` : "/dashboard/user/chat";
   }
   if (kind.startsWith("club_staff")) {
     // Lo recibe el staff (manager/coach/employee) → su dashboard del club.

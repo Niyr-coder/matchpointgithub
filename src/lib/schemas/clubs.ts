@@ -231,6 +231,8 @@ export const ClubSocialViewSchema = z.object({
     isOpenNow: z.boolean(),
     latitude: z.number().nullable(),
     longitude: z.number().nullable(),
+    phone: z.string().nullable(),
+    email: z.string().email().nullable(),
   }),
   stats: z.object({
     rating: z.number().nullable(),
@@ -247,12 +249,29 @@ export const ClubSocialViewSchema = z.object({
   hasMembershipTiers: z.boolean(),
   cheapestTierId: UuidSchema.nullable(),
   pendingMembershipTxId: UuidSchema.nullable(),
+  announcementsConversationId: UuidSchema.nullable(),
+  communityConversationId: UuidSchema.nullable(),
+  canAccessAnnouncements: z.boolean(),
+  canAccessCommunityChat: z.boolean(),
   upcomingTournaments: z.array(ClubSocialTournamentSchema),
   frequentMembers: z.array(ClubSocialMemberSchema),
   friendsHere: z.array(ClubSocialMemberSchema),
   activity: z.array(ClubSocialActivitySchema),
   photos: z.array(ClubSocialPhotoSchema),
   reviews: z.array(ClubSocialReviewSchema),
+  courtOccupancy: z.array(
+    z.object({
+      id: z.string().uuid(),
+      n: z.string(),
+      sport: z.string(),
+      sportRaw: z.string(),
+      status: z.enum(["free", "busy", "class"]),
+      until: z.string(),
+    }),
+  ),
+  amenities: z.array(z.string()),
+  verified: z.boolean(),
+  isPartner: z.boolean(),
 });
 
 export type ClubSocialMember = z.infer<typeof ClubSocialMemberSchema>;

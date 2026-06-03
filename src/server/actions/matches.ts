@@ -493,6 +493,35 @@ export async function reportScore(input: unknown): Promise<ActionResult<MatchRow
     if (updErr || !updated) {
       throw new MpError("MATCH.REPORT_FAILED", updErr?.message ?? "No se pudo reportar", 500);
     }
+
+    const conversationId = await findMatchConversationId(matchId);
+    const reporter = await getProfileSummary(userId);
+    const others = [...(row.team_a_player_ids ?? []), ...(row.team_b_player_ids ?? [])].filter(
+      (id) => id !== userId,
+    );
+    const setsSummary = score.sets.map((s) => `${s.a}-${s.b}`).join(", ");
+    const body = setsSummary
+      ? `Marcador: ${setsSummary}. Confírmalo en el chat del partido.`
+      : "Confirma el resultado en el chat del partido.";
+    await Promise.all(
+      others.map((uid) =>
+        notify({
+          userId: uid,
+          role: "user",
+          kind: "match_result_reported",
+          title: `${reporter.displayName ?? "Un jugador"} reportó el resultado`,
+          body,
+          payload: {
+            match_id: matchId,
+            conversation_id: conversationId,
+            reporter_name: reporter.displayName ?? "Un jugador",
+            winner: score.winner,
+            sets_summary: setsSummary || null,
+          },
+        }),
+      ),
+    );
+
     return rowToMatch(updated as DbMatch);
   });
 }

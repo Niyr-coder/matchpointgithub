@@ -253,6 +253,17 @@ export async function approveClubMembership(input: unknown): Promise<ActionResul
     if (error) throw new MpError("CLUB_MEMBERSHIP.APPROVE_FAILED", error.message, 500);
 
     const { data: club } = await (admin as any).from("clubs").select("name").eq("id", mem.club_id).maybeSingle();
+    await (admin as any).rpc("fn_club_comms_sync_user", {
+      p_club_id: mem.club_id,
+      p_user_id: mem.user_id,
+    });
+    const { data: communityConv } = await admin
+      .from("conversations")
+      .select("id")
+      .eq("club_id", mem.club_id as string)
+      .eq("kind", "club_channel")
+      .maybeSingle();
+    const communityConvId = (communityConv?.id as string | undefined) ?? null;
     await notify({
       userId: mem.user_id as string,
       role: "user",
@@ -264,8 +275,23 @@ export async function approveClubMembership(input: unknown): Promise<ActionResul
         tier_name: tier?.name ?? "VIP",
         club_name: club?.name ?? "",
         expires_label: expiresAt.toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" }),
+        conversation_id: communityConvId,
       },
     });
+    if (communityConvId) {
+      await notify({
+        userId: mem.user_id as string,
+        role: "user",
+        kind: "club_membership_chat_welcome",
+        title: "Ya estás en el chat del club",
+        body: `Entra a la comunidad de ${club?.name ?? "tu club"}`,
+        payload: {
+          club_id: mem.club_id,
+          conversation_id: communityConvId,
+          club_name: club?.name ?? "",
+        },
+      });
+    }
     return { ok: true as const };
   });
 }

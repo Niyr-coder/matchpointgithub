@@ -16,10 +16,21 @@ export type ConvoQuedadaSummary = {
 export type ConvoLite = {
   id: string;
   name: string;
-  kind: "dm" | "group" | "support" | "club_channel" | "team_channel" | "match" | "quedada";
+  kind:
+    | "dm"
+    | "group"
+    | "support"
+    | "club_channel"
+    | "club_announcements"
+    | "team_channel"
+    | "match"
+    | "quedada";
   isGroup: boolean;
   isSystem: boolean;
   isOfficial: boolean;
+  /** Canal broadcast del club (solo lectura para no-staff). */
+  isBroadcast: boolean;
+  clubId: string | null;
   memberCount: number;
   lastBody: string | null;
   lastSenderId: string | null;

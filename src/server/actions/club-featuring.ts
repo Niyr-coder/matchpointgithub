@@ -17,6 +17,7 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
+import { notifyClubStaff } from "@/lib/notifications/helpers";
 
 // Precio base: USD 200 por 30 días. Para duraciones distintas se prorratea
 // linealmente: amountCents = round(PRICE * durationDays / 30).
@@ -278,6 +279,21 @@ export async function approveClubFeaturingAdmin(
         auditErr.message,
       );
     }
+
+    const { data: clubRow } = await supabase.from("clubs").select("name").eq("id", clubId).maybeSingle();
+    await notifyClubStaff({
+      clubId,
+      kind: "club_featuring_activated",
+      title: "Featuring activado",
+      body: `Tu club ${(clubRow?.name as string | null) ?? ""} ya aparece destacado hasta ${newExpiry.toLocaleDateString("es-EC")}.`,
+      payload: {
+        clubId,
+        club_name: clubRow?.name,
+        subscriptionId,
+        expires_at: newExpiry.toISOString(),
+      },
+      roles: ["owner"],
+    });
 
     return {
       subscriptionId,

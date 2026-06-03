@@ -13,6 +13,8 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
+import { notify } from "@/server/notifications/dispatch";
+import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -411,7 +413,7 @@ export async function registerToTournament(
         await assertNotSuspended(supabase, userId);
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -512,6 +514,40 @@ export async function registerToTournament(
           .select()
           .single();
         if (error) throw new MpError("TOURNAMENTS.REGISTER_FAILED", error.message, 500);
+
+        const clubId = (t.club_id as string | null) ?? null;
+        if (clubId) {
+          void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
+            syncActiveGiveawayMechanicsForClubUser(userId, clubId),
+          );
+        }
+
+        const partnerId = (t.partner_id as string | null) ?? null;
+        if (partnerId) {
+          const { data: playerProf } = await admin
+            .from("profiles")
+            .select("display_name,username")
+            .eq("id", userId)
+            .maybeSingle();
+          const playerName =
+            ((playerProf?.display_name as string | null) ??
+              (playerProf?.username as string | null) ??
+              "Un jugador").trim();
+          await notifyPartnerOrgStaff({
+            partnerId,
+            kind: "tournament_registration_new",
+            title: "Nueva inscripción",
+            body: `${playerName} se inscribió a ${(t.name as string) ?? "tu torneo"}.`,
+            payload: {
+              tournament_id: tournamentId,
+              tournament_name: t.name,
+              tournament_slug: t.slug,
+              registration_id: row.id,
+              player_name: playerName,
+            },
+          });
+        }
+
         return RegistrationSchema.parse({
           id: row.id,
           tournamentId: row.tournament_id,
@@ -552,7 +588,7 @@ export async function setTournamentStatus(
     const supabase = await getServerClient();
     const { data: t } = await supabase
       .from("tournaments")
-      .select("id,name,partner_id,status,starts_at,ends_at")
+      .select("id,name,slug,partner_id,status,starts_at,ends_at")
       .eq("id", tournamentId)
       .maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -606,27 +642,23 @@ export async function setTournamentStatus(
       if (userIds.length > 0) {
         const payload = {
           tournament_id: tournamentId,
+          tournament_slug: t.slug,
           tournament_name: t.name,
           starts_at: t.starts_at,
           ends_at: t.ends_at,
         };
-        const jobs = userIds.map((uid) => ({
-          user_id: uid,
-          role: "user",
-          kind: "tournament_cancelled",
-          channel: "inapp",
-          payload,
-          status: "pending",
-        }));
-        const { error: jobErr } = await admin
-          .from("notification_jobs")
-          .insert(jobs as never);
-        if (jobErr) {
-          console.error(
-            "[setTournamentStatus] enqueue cancel notifications failed:",
-            jobErr.message,
-          );
-        }
+        await Promise.all(
+          userIds.map((uid) =>
+            notify({
+              userId: uid,
+              role: "user",
+              kind: "tournament_cancelled",
+              title: "Tu torneo fue cancelado",
+              body: `${t.name as string} fue cancelado por el organizador.`,
+              payload,
+            }),
+          ),
+        );
       }
       // Audit log de la cancelación.
       await admin.rpc("fn_admin_audit_log", {
@@ -635,6 +667,57 @@ export async function setTournamentStatus(
         p_action: "tournament.cancelled",
         p_diff: { from: previousStatus, to: "cancelled" } as never,
       });
+    }
+
+    if (
+      status === "registration_open" &&
+      !["registration_open", "registration_closed", "live", "finished", "cancelled"].includes(previousStatus)
+    ) {
+      const partnerId = t.partner_id as string | null;
+      if (partnerId) {
+        await notifyPartnerOrgStaff({
+          partnerId,
+          kind: "tournament_published",
+          title: "Torneo publicado",
+          body: `${t.name as string} ya acepta inscripciones.`,
+          payload: {
+            tournament_id: tournamentId,
+            tournament_name: t.name,
+            tournament_slug: t.slug,
+          },
+        });
+      }
+    }
+
+    if (status === "finished" && previousStatus !== "finished") {
+      const { data: regs } = await admin
+        .from("registrations")
+        .select("player_ids,status")
+        .eq("tournament_id", tournamentId)
+        .in("status", ["pending", "accepted"]);
+      const userIdSet = new Set<string>();
+      for (const r of regs ?? []) {
+        for (const pid of (r.player_ids as string[]) ?? []) {
+          if (pid) userIdSet.add(pid);
+        }
+      }
+      const payload = {
+        tournament_id: tournamentId,
+        tournament_slug: t.slug,
+        tournament_name: t.name,
+      };
+      await Promise.all(
+        Array.from(userIdSet).map((uid) =>
+          notify({
+            userId: uid,
+            role: "user",
+            kind: "tournament_finished",
+            title: "Torneo finalizado",
+            body: `${t.name as string} terminó. Revisa resultados y ranking.`,
+            payload,
+          }),
+        ),
+      );
     }
 
     return { id: updated.id as string, status: updated.status as string };
@@ -780,23 +863,21 @@ export async function updateRegistrationStatus(
           registration_id: row.id,
         };
         const kind = status === "accepted" ? "registration_accepted" : "registration_rejected";
-        const jobs = userIds.map((uid) => ({
-          user_id: uid,
-          role: "user",
-          kind,
-          channel: "inapp",
-          payload,
-          status: "pending",
-        }));
-        const { error: jobErr } = await admin
-          .from("notification_jobs")
-          .insert(jobs as never);
-        if (jobErr) {
-          console.error(
-            "[updateRegistrationStatus] enqueue notifications failed:",
-            jobErr.message,
-          );
-        }
+        await Promise.all(
+          userIds.map((uid) =>
+            notify({
+              userId: uid,
+              role: "user",
+              kind,
+              title: status === "accepted" ? "Inscripción aceptada" : "Inscripción rechazada",
+              body:
+                status === "accepted"
+                  ? `Tu inscripción a ${t.name as string} fue aceptada.`
+                  : `Tu inscripción a ${t.name as string} fue rechazada.`,
+              payload,
+            }),
+          ),
+        );
       }
     }
 

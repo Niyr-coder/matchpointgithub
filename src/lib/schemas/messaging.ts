@@ -6,11 +6,20 @@ import { IsoDateTimeSchema, UuidSchema } from "./common";
 extendZodWithOpenApi(z);
 
 export const ConversationKindSchema = z
-  .enum(["dm", "group", "support", "club_channel"])
+  .enum(["dm", "group", "support", "club_channel", "club_announcements"])
   .openapi("ConversationKind");
 
 export const MessageKindSchema = z
-  .enum(["text", "image", "file", "system", "reservation_invite"])
+  .enum([
+    "text",
+    "image",
+    "file",
+    "system",
+    "reservation_invite",
+    "announcement_post",
+    "giveaway_post",
+    "giveaway_result",
+  ])
   .openapi("MessageKind");
 
 export const ConversationMemberSchema = z

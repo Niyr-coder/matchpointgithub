@@ -16,6 +16,7 @@ import {
   sendMessageClient,
 } from "@/lib/messaging/thread-client";
 import type { ConvoLite, ConvoMatchSummary } from "@/lib/messaging/convo-lite";
+import { GiveawayMessageCard } from "@/components/dashboard/club/GiveawayMessageCard";
 
 export type { ConvoLite, ConvoMatchSummary } from "@/lib/messaging/convo-lite";
 
@@ -114,6 +115,8 @@ function conversationTypeLabel(c: ConvoLite): string {
   if (c.kind === "match") return "Chat del partido";
   if (c.kind === "quedada") return `Quedada · ${c.memberCount} jugadores`;
   if (c.kind === "team_channel") return `${c.memberCount} jugadores · Equipo`;
+  if (c.kind === "club_announcements") return "Anuncios del club";
+  if (c.kind === "club_channel") return `Comunidad · ${c.memberCount} miembros`;
   if (c.isGroup) return `${c.memberCount} jugadores`;
   if (c.isSystem) return "Canal del sistema";
   return "Mensaje directo";
@@ -173,6 +176,8 @@ function statusForConversation(c: ConvoLite): ConvoStatus | null {
     return { kind: "open", label: "Coordinación del grupo" };
   }
   if (c.isOfficial) return { kind: "open", label: "Canal oficial" };
+  if (c.kind === "club_announcements") return { kind: "open", label: "Anuncios del club" };
+  if (c.kind === "club_channel") return { kind: "open", label: "Comunidad del club" };
   if (c.kind === "team_channel" || c.isGroup) return { kind: "open", label: "Coordinación abierta" };
   return null;
 }
@@ -457,6 +462,7 @@ export function MensajesScreenView({
     [convos, activeConvId],
   );
   const activeOfficial = activeConv?.isOfficial === true;
+  const activeBroadcast = activeConv?.isBroadcast === true;
   const matchChatReadOnly = isThreadReadOnly(activeConv, activeMatch);
   const latestMessage = messages[messages.length - 1] ?? null;
   const menuOpen = activeConv ? openMenuConvId === activeConv.id : false;
@@ -762,6 +768,8 @@ export function MensajesScreenView({
           isGroup: false,
           isSystem: false,
           isOfficial: false,
+          isBroadcast: false,
+          clubId: null,
           memberCount: 2,
           lastBody: null,
           lastSenderId: null,
@@ -1193,10 +1201,10 @@ export function MensajesScreenView({
                 )}
               </div>
 
-              {activeOfficial || matchChatReadOnly ? (
+              {activeOfficial || matchChatReadOnly || activeBroadcast ? (
                 <div style={{ ...readOnlyComposerStyle, flexShrink: 0 }}>
                   <Icon
-                    name={matchChatReadOnly ? (activeConv?.kind === "quedada" ? "lock" : "x-circle") : "info"}
+                    name={matchChatReadOnly ? (activeConv?.kind === "quedada" ? "lock" : "x-circle") : activeBroadcast ? "megaphone" : "info"}
                     size={12}
                     color="var(--muted-fg)"
                   />
@@ -1206,7 +1214,9 @@ export function MensajesScreenView({
                         ? "Esta quedada fue cancelada. El chat quedó cerrado y ya no puedes escribir."
                         : "Esta quedada ya finalizó. El chat quedó cerrado y ya no puedes escribir."
                       : "Este partido fue cancelado. El chat quedó cerrado y ya no puedes escribir."
-                    : "Este canal oficial es de solo lectura. Para soporte, usa la sección Soporte."}
+                    : activeBroadcast
+                      ? "Canal de anuncios del club (solo lectura). Los sorteos y avisos los publica el staff desde Anuncios y sorteos."
+                      : "Este canal oficial es de solo lectura. Para soporte, usa la sección Soporte."}
                 </div>
               ) : (
                 <>
@@ -1542,12 +1552,16 @@ function ConversationRow({
 
 function ConversationAvatar({ convo, index, size = 40 }: { convo: ConvoLite; index: number; size?: number }) {
   if (convo.isOfficial) return <MatchpointOfficialAvatar size={size} />;
-  const isGroupShape = convo.isGroup || convo.kind === "team_channel" || convo.kind === "quedada";
+  const isGroupShape = convo.isGroup || convo.kind === "team_channel" || convo.kind === "quedada" || convo.kind === "club_channel" || convo.kind === "club_announcements";
   const background =
     convo.kind === "match"
       ? "linear-gradient(135deg,#0a0a0a,#7c2d12)"
       : convo.kind === "quedada"
         ? "linear-gradient(135deg,#ea580c,#f97316)"
+        : convo.kind === "club_announcements"
+          ? "linear-gradient(135deg,#92400e,#d4af37)"
+          : convo.kind === "club_channel"
+            ? "linear-gradient(135deg,#1e3a5f,#2563eb)"
         : isGroupShape
         ? "linear-gradient(135deg,#3730a3,#6366f1)"
         : convo.isSystem
@@ -1572,6 +1586,10 @@ function ConversationAvatar({ convo, index, size = 40 }: { convo: ConvoLite; ind
         <Icon name="swords" size={Math.round(size * 0.38)} color="#fff" />
       ) : convo.kind === "quedada" ? (
         <Icon name="party-popper" size={Math.round(size * 0.38)} color="#fff" />
+      ) : convo.kind === "club_announcements" ? (
+        <Icon name="megaphone" size={Math.round(size * 0.38)} color="#fff" />
+      ) : convo.kind === "club_channel" ? (
+        <Icon name="messages-square" size={Math.round(size * 0.38)} color="#fff" />
       ) : isGroupShape ? (
         <Icon name="users" size={Math.round(size * 0.4)} color="#fff" />
       ) : convo.isSystem ? (
@@ -1777,6 +1795,42 @@ function DaySeparator({ label }: { label: string }) {
 
 function MessageItem({ message, mine }: { message: MessageLite; mine: boolean }) {
   const cardType = message.payload?.type;
+  if (message.kind === "giveaway_post") {
+    const giveawayId = message.payload?.giveaway_id as string | undefined;
+    if (giveawayId) {
+      return (
+        <GiveawayMessageCard
+          giveawayId={giveawayId}
+          title={(message.payload?.title as string) ?? "Sorteo"}
+          prizeLabel={(message.payload?.prize_label as string) ?? "Premio"}
+        />
+      );
+    }
+  }
+  if (message.kind === "announcement_post") {
+    const title = (message.payload?.title as string | undefined) ?? "Anuncio";
+    return (
+      <div style={{ display: "flex", justifyContent: "center", width: "100%", padding: "4px 8px" }}>
+        <div
+          style={{
+            maxWidth: "min(92%, 520px)",
+            width: "100%",
+            padding: "12px 14px",
+            borderRadius: 14,
+            background: "#fff",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "#92400e", marginBottom: 6 }}>
+            Anuncio del club
+          </div>
+          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>{title}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{message.body}</div>
+          <div style={{ fontSize: 9, marginTop: 8, opacity: 0.65 }}>{timeOnly(message.createdAt)}</div>
+        </div>
+      </div>
+    );
+  }
   if (
     message.kind === "reservation_invite" ||
     cardType === "court-reserved" ||
@@ -1784,7 +1838,7 @@ function MessageItem({ message, mine }: { message: MessageLite; mine: boolean })
   ) {
     return <MessageInlineCard message={message} mine={mine} />;
   }
-  if (message.kind === "system" || message.payload?.quedada_event) {
+  if (message.kind === "giveaway_result" || message.kind === "system" || message.payload?.quedada_event) {
     return (
       <div style={{ display: "flex", justifyContent: "center", width: "100%", padding: "2px 8px" }}>
         <div

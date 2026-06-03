@@ -14,6 +14,8 @@
 // Decisión del producto para minimizar fricción. Si aparecen comprobantes
 // falsos, queda audit log en `audit_log` y se puede revertir manualmente.
 // Otros kinds (plan, evento, club_featuring) siguen con revisión admin.
+// Pagos de entradas extra en sorteos (kind='custom', ref_id=sorteo): auto-captura
+// al subir comprobante, igual que inscripciones de torneo.
 //
 // Rechazo (kinds con revisión): el admin pasa la transacción de vuelta a
 // `pending_proof` con un motivo en `proof_rejection_reason`.
@@ -85,6 +87,27 @@ function amountLabel(amountCents: number | null, currency: string | null): strin
   return `${currency ?? "USD"} ${(amountCents / 100).toFixed(2)}`;
 }
 
+async function isGiveawayPayTransaction(
+  admin: ReturnType<typeof getAdminClient>,
+  kind: string,
+  refId: string | null,
+): Promise<boolean> {
+  if (kind !== "custom" || !refId) return false;
+  const { data } = await admin.from("club_giveaways").select("id").eq("id", refId).maybeSingle();
+  return Boolean(data);
+}
+
+async function maybeSyncGiveawayPayMechanics(
+  admin: ReturnType<typeof getAdminClient>,
+  tx: { kind: string; ref_id: string | null; customer_user_id: string | null; club_id: string | null },
+): Promise<void> {
+  if (tx.kind !== "custom" || !tx.ref_id || !tx.customer_user_id || !tx.club_id) return;
+  const isGiveaway = await isGiveawayPayTransaction(admin, tx.kind, tx.ref_id);
+  if (!isGiveaway) return;
+  const { syncActiveGiveawayMechanicsForClubUser } = await import("@/server/actions/giveaways");
+  await syncActiveGiveawayMechanicsForClubUser(tx.customer_user_id, tx.club_id);
+}
+
 // ── submitPaymentProof (user) ───────────────────────────────────────────
 // El usuario marca su transacción como "comprobante enviado". El archivo ya
 // fue subido a Storage (bucket `payment_proofs`) desde el cliente; aquí solo
@@ -103,7 +126,7 @@ export async function submitPaymentProof(
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
-      .select("id,customer_user_id,status,kind")
+      .select("id,customer_user_id,status,kind,ref_id,club_id")
       .eq("id", transactionId)
       .maybeSingle();
     if (readErr) throw new MpError("PAYMENT_PROOF.DB_ERROR", readErr.message, 500);
@@ -119,10 +142,12 @@ export async function submitPaymentProof(
       );
     }
 
-    // Inscripciones de torneos: auto-capturamos al subir comprobante (decisión
-    // del producto — sin revisión de admin). Otros kinds (plan, evento,
-    // club_featuring) siguen pasando por revisión manual.
-    const autoCapture = tx.kind === "tournament";
+    const admin = getAdminClient();
+    const giveawayPay = await isGiveawayPayTransaction(admin, tx.kind as string, (tx.ref_id as string | null) ?? null);
+
+    // Inscripciones de torneos y pagos de entradas extra en sorteos: auto-capturamos
+    // al subir comprobante (decisión del producto — sin revisión de admin).
+    const autoCapture = tx.kind === "tournament" || giveawayPay;
     const nowIso = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       proof_url: proofUrl,
@@ -138,7 +163,6 @@ export async function submitPaymentProof(
     // Auth ya validada arriba (customer_user_id === userId). RLS de
     // transactions no expone UPDATE al customer, así que usamos service role
     // para esta mutación — la validación de identidad ya pasó.
-    const admin = getAdminClient();
     await setAuditActor(admin, userId, "user");
     const { data, error } = await admin
       .from("transactions")
@@ -149,12 +173,19 @@ export async function submitPaymentProof(
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
 
     if (autoCapture) {
-      // Marcar la inscripción del torneo como aceptada. Reusamos el admin
-      // client ya creado arriba.
-      await admin
-        .from("registrations")
-        .update({ status: "accepted" } as never)
-        .eq("paid_transaction_id", transactionId);
+      if (tx.kind === "tournament") {
+        await admin
+          .from("registrations")
+          .update({ status: "accepted" } as never)
+          .eq("paid_transaction_id", transactionId);
+      } else if (giveawayPay) {
+        await maybeSyncGiveawayPayMechanics(admin, {
+          kind: tx.kind as string,
+          ref_id: (tx.ref_id as string | null) ?? null,
+          customer_user_id: tx.customer_user_id as string,
+          club_id: (tx.club_id as string | null) ?? null,
+        });
+      }
     }
 
     return mapResult(data);
@@ -182,7 +213,7 @@ export async function approvePaymentProofAdmin(
 
     const { data: tx, error: readErr } = await supabase
       .from("transactions")
-      .select("id,status,kind,ref_id,customer_user_id,amount_cents,currency")
+      .select("id,status,kind,ref_id,club_id,customer_user_id,amount_cents,currency")
       .eq("id", transactionId)
       .maybeSingle();
     if (readErr) throw new MpError("PAYMENT_PROOF.DB_ERROR", readErr.message, 500);
@@ -293,6 +324,13 @@ export async function approvePaymentProofAdmin(
           err,
         );
       }
+    } else if (tx.kind === "custom") {
+      await maybeSyncGiveawayPayMechanics(supabase, {
+        kind: tx.kind as string,
+        ref_id: (tx.ref_id as string | null) ?? null,
+        customer_user_id: (tx.customer_user_id as string | null) ?? null,
+        club_id: (tx.club_id as string | null) ?? null,
+      });
     }
 
     const customerId = tx.customer_user_id as string | null;
@@ -371,25 +409,19 @@ export async function rejectPaymentProofAdmin(
     // la cola, la mutación principal sigue siendo válida.
     const customerId = tx.customer_user_id as string | null;
     if (customerId) {
-      const { error: jobErr } = await supabase.from("notification_jobs").insert({
-        user_id: customerId,
+      await notify({
+        userId: customerId,
         role: "user",
         kind: "payment_proof_rejected",
-        channel: "inapp",
+        title: "Comprobante de pago rechazado",
+        body: reason,
         payload: {
           transaction_id: transactionId,
           transaction_kind: tx.kind,
           ref_id: tx.ref_id,
           rejection_reason: reason,
         },
-        status: "pending",
-      } as never);
-      if (jobErr) {
-        console.error(
-          "[rejectPaymentProofAdmin] enqueue rejection notification failed:",
-          jobErr.message,
-        );
-      }
+      });
     }
 
     return mapResult(data);

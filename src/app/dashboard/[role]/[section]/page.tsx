@@ -108,6 +108,9 @@ import { ClubReportesScreen } from "@/components/dashboard/manager/ClubReportesS
 // revocar) son REALES. ClubMembershipsScreen + ClubMembershipsView (la pantalla
 // operativa anterior) quedan preservadas y des-importadas.
 import { ClubMembresiasScreen } from "@/components/dashboard/club/ClubMembresiasScreen";
+import { ClubAnunciosScreen } from "@/components/dashboard/club/ClubAnunciosScreen";
+import { ClubSorteosScreen } from "@/components/dashboard/club/ClubSorteosScreen";
+import { MyGiveawaysScreen } from "@/components/dashboard/user/MyGiveawaysScreen";
 import { MisMembresiasScreen } from "@/components/dashboard/user/MisMembresiasScreen";
 import { EmployeeWalkinsScreen } from "@/components/dashboard/employee/EmployeeWalkinsScreen";
 import { PartnerTorneosScreen } from "@/components/dashboard/partner/PartnerTorneosScreen";
@@ -148,7 +151,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "admin-pagos": () => <AdminPagosScreen />,
     "admin-plans": () => <AdminMatchPointPlusScreenServer />,
     "admin-events": () => <AdminEventsScreen />,
-    "admin-support": () => <AdminSupportScreen />,
+    "admin-support": (sp) => <AdminSupportScreen searchParams={sp} />,
     "admin-metrics": () => <AdminMetricsScreen />,
     "admin-audit": () => <AdminAuditScreen />,
     "admin-config": () => <AdminConfigScreenServer />,
@@ -190,6 +193,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "ayuda-guias": () => <AyudaGuiasScreen />,
     "mis-reservas": () => <MisReservasScreen />,
     membresias: () => <MisMembresiasScreen />,
+    "mis-sorteos": () => <MyGiveawaysScreen />,
   },
   owner: {
     "club-reservas": () => <ClubReservasScreen />,
@@ -201,6 +205,8 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-eventos": () => <ClubEventosScreen />,
     "club-staff": () => <ClubStaffScreen />,
     "club-membresias": () => <ClubMembresiasScreen />,
+    "club-anuncios": () => <ClubAnunciosScreen roleSegment="owner" />,
+    "club-sorteos": () => <ClubSorteosScreen roleSegment="owner" />,
   },
   manager: {
     "club-reservas": () => <ClubReservasScreen />,
@@ -211,6 +217,8 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-walkins": () => <EmployeeWalkinsScreen />,
     "club-reportes": () => <ClubReportesScreen />,
     "club-membresias": () => <ClubMembresiasScreen />,
+    "club-anuncios": () => <ClubAnunciosScreen roleSegment="manager" />,
+    "club-sorteos": () => <ClubSorteosScreen roleSegment="manager" />,
   },
   partner: {
     "p-ligas": () => <PartnerLigasScreen />,

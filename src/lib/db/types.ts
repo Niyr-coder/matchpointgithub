@@ -1658,6 +1658,89 @@ export type Database = {
           },
         ]
       }
+      club_feed_posts: {
+        Row: {
+          badge: string | null
+          body: string | null
+          club_id: string
+          created_at: string
+          cta_href: string | null
+          cta_label: string | null
+          id: string
+          kind: string
+          media_url: string | null
+          payload: Json
+          published_at: string
+          published_by: string
+          ref_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          badge?: string | null
+          body?: string | null
+          club_id: string
+          created_at?: string
+          cta_href?: string | null
+          cta_label?: string | null
+          id?: string
+          kind: string
+          media_url?: string | null
+          payload?: Json
+          published_at?: string
+          published_by: string
+          ref_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          badge?: string | null
+          body?: string | null
+          club_id?: string
+          created_at?: string
+          cta_href?: string | null
+          cta_label?: string | null
+          id?: string
+          kind?: string
+          media_url?: string | null
+          payload?: Json
+          published_at?: string
+          published_by?: string
+          ref_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_feed_posts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_feed_posts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_feed_posts_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_feed_posts_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_followers: {
         Row: {
           club_id: string
@@ -1687,6 +1770,373 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_giveaway_entries: {
+        Row: {
+          entered_at: string
+          giveaway_id: string
+          rules_accepted_at: string | null
+          total_entries: number
+          user_id: string
+        }
+        Insert: {
+          entered_at?: string
+          giveaway_id: string
+          rules_accepted_at?: string | null
+          total_entries?: number
+          user_id: string
+        }
+        Update: {
+          entered_at?: string
+          giveaway_id?: string
+          rules_accepted_at?: string | null
+          total_entries?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_giveaway_entries_giveaway_id_fkey"
+            columns: ["giveaway_id"]
+            isOneToOne: false
+            referencedRelation: "club_giveaways"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_giveaway_manual_submissions: {
+        Row: {
+          created_at: string
+          evidence_url: string
+          giveaway_id: string
+          id: string
+          kind: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          evidence_url: string
+          giveaway_id: string
+          id?: string
+          kind: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          evidence_url?: string
+          giveaway_id?: string
+          id?: string
+          kind?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_giveaway_manual_submissions_giveaway_id_fkey"
+            columns: ["giveaway_id"]
+            isOneToOne: false
+            referencedRelation: "club_giveaways"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_manual_submissions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_manual_submissions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_manual_submissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_manual_submissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_giveaway_mechanic_progress: {
+        Row: {
+          completed_at: string
+          giveaway_id: string
+          kind: string
+          user_id: string
+          verified_by: string | null
+          weight_applied: number
+        }
+        Insert: {
+          completed_at?: string
+          giveaway_id: string
+          kind: string
+          user_id: string
+          verified_by?: string | null
+          weight_applied?: number
+        }
+        Update: {
+          completed_at?: string
+          giveaway_id?: string
+          kind?: string
+          user_id?: string
+          verified_by?: string | null
+          weight_applied?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_giveaway_mechanic_progress_giveaway_id_fkey"
+            columns: ["giveaway_id"]
+            isOneToOne: false
+            referencedRelation: "club_giveaways"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_mechanic_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_mechanic_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_mechanic_progress_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_mechanic_progress_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_giveaway_winners: {
+        Row: {
+          giveaway_id: string
+          notified_at: string | null
+          rank: number
+          user_id: string
+        }
+        Insert: {
+          giveaway_id: string
+          notified_at?: string | null
+          rank?: number
+          user_id: string
+        }
+        Update: {
+          giveaway_id?: string
+          notified_at?: string | null
+          rank?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_giveaway_winners_giveaway_id_fkey"
+            columns: ["giveaway_id"]
+            isOneToOne: false
+            referencedRelation: "club_giveaways"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_winners_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaway_winners_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_giveaways: {
+        Row: {
+          category: string | null
+          closes_at: string | null
+          club_id: string
+          conversation_id: string
+          created_at: string
+          created_by: string
+          description: string | null
+          draw_at: string | null
+          draw_channel: string | null
+          drawn_at: string | null
+          eligibility: string
+          estimated_value_cents: number | null
+          feed_post_id: string | null
+          id: string
+          max_entries_per_user: number
+          max_winners: number
+          mechanics: Json
+          message_id: string | null
+          opens_at: string | null
+          owner_type: string
+          prize_image_url: string | null
+          prize_label: string
+          rules: Json
+          status: string
+          subtitle: string | null
+          title: string
+          total_entry_weight: number
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          closes_at?: string | null
+          club_id: string
+          conversation_id: string
+          created_at?: string
+          created_by: string
+          description?: string | null
+          draw_at?: string | null
+          draw_channel?: string | null
+          drawn_at?: string | null
+          eligibility?: string
+          estimated_value_cents?: number | null
+          feed_post_id?: string | null
+          id?: string
+          max_entries_per_user?: number
+          max_winners?: number
+          mechanics?: Json
+          message_id?: string | null
+          opens_at?: string | null
+          owner_type?: string
+          prize_image_url?: string | null
+          prize_label: string
+          rules?: Json
+          status?: string
+          subtitle?: string | null
+          title: string
+          total_entry_weight?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          closes_at?: string | null
+          club_id?: string
+          conversation_id?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          draw_at?: string | null
+          draw_channel?: string | null
+          drawn_at?: string | null
+          eligibility?: string
+          estimated_value_cents?: number | null
+          feed_post_id?: string | null
+          id?: string
+          max_entries_per_user?: number
+          max_winners?: number
+          mechanics?: Json
+          message_id?: string | null
+          opens_at?: string | null
+          owner_type?: string
+          prize_image_url?: string | null
+          prize_label?: string
+          rules?: Json
+          status?: string
+          subtitle?: string | null
+          title?: string
+          total_entry_weight?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_giveaways_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_feed_post_fk"
+            columns: ["feed_post_id"]
+            isOneToOne: false
+            referencedRelation: "club_feed_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_giveaways_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
@@ -10113,6 +10563,22 @@ export type Database = {
         Args: { _r: Database["public"]["Tables"]["audit_log"]["Row"] }
         Returns: string
       }
+      fn_club_comms_leave: {
+        Args: { p_conversation_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      fn_club_comms_sync_all: {
+        Args: { p_club_id: string }
+        Returns: undefined
+      }
+      fn_club_comms_sync_user: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      fn_club_comms_upsert_member: {
+        Args: { p_conversation_id: string; p_role: string; p_user_id: string }
+        Returns: undefined
+      }
       fn_create_sale: {
         Args: {
           p_club_id: string
@@ -10136,9 +10602,36 @@ export type Database = {
         }
         Returns: string
       }
+      fn_ensure_club_channels: {
+        Args: { p_club_id: string }
+        Returns: {
+          announcements_id: string
+          community_id: string
+        }[]
+      }
+      fn_ensure_quedada_channel: {
+        Args: { p_quedada_id: string }
+        Returns: string
+      }
       fn_get_ranking_min_matches: { Args: never; Returns: number }
       fn_get_system_user_id: { Args: never; Returns: string }
       fn_get_team_caps: { Args: never; Returns: Json }
+      fn_is_club_announcements_publisher: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      fn_is_club_comms_staff: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      fn_is_club_follower: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      fn_is_club_vip_active: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: boolean
+      }
       fn_materialize_club_from_application: {
         Args: { p_app_id: string }
         Returns: string
@@ -10151,10 +10644,15 @@ export type Database = {
           key: string
         }[]
       }
+      fn_post_quedada_channel_message: {
+        Args: { p_body: string; p_payload?: Json; p_quedada_id: string }
+        Returns: string
+      }
       fn_process_club_featuring: { Args: never; Returns: undefined }
       fn_process_club_memberships: { Args: never; Returns: undefined }
       fn_process_club_plans: { Args: never; Returns: undefined }
       fn_process_player_plans: { Args: never; Returns: undefined }
+      fn_process_quedada_reminders: { Args: never; Returns: undefined }
       fn_purge_expired_idempotency: { Args: never; Returns: undefined }
       fn_rate_limit_consume: {
         Args: {
@@ -10167,6 +10665,12 @@ export type Database = {
           allowed: boolean
           remaining: number
           retry_after_seconds: number
+        }[]
+      }
+      fn_rebackfill_audit_chain: {
+        Args: never
+        Returns: {
+          rebuilt: number
         }[]
       }
       fn_recalculate_elo_for_match: {
@@ -10211,12 +10715,6 @@ export type Database = {
           broken_id: number
           checked: number
           ok: boolean
-        }[]
-      }
-      fn_rebackfill_audit_chain: {
-        Args: never
-        Returns: {
-          rebuilt: number
         }[]
       }
       gen_quedada_invite_code: { Args: never; Returns: string }

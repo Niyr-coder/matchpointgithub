@@ -23,6 +23,7 @@ type InboxConversationRow = {
   last_message_at: string | null;
   match_id: string | null;
   quedada_id: string | null;
+  club_id: string | null;
 };
 
 async function fetchInboxConversations(
@@ -31,7 +32,7 @@ async function fetchInboxConversations(
 ): Promise<{ data: InboxConversationRow[] | null; error: { message: string } | null }> {
   const full = await supabase
     .from("conversations")
-    .select("id,kind,title,last_message_at,match_id,quedada_id")
+    .select("id,kind,title,last_message_at,match_id,quedada_id,club_id")
     .in("id", convIds)
     .order("last_message_at", { ascending: false, nullsFirst: false });
 
@@ -48,7 +49,7 @@ async function fetchInboxConversations(
       .order("last_message_at", { ascending: false, nullsFirst: false });
     if (basic.error) return { data: null, error: basic.error };
     return {
-      data: (basic.data ?? []).map((c) => ({ ...c, quedada_id: null })),
+      data: (basic.data ?? []).map((c) => ({ ...c, quedada_id: null, club_id: null })),
       error: null,
     };
   }
@@ -231,8 +232,13 @@ export async function fetchConversationListClient(
     const cid = c.id as string;
     const otherIds = (membersByConv.get(cid) ?? []).filter((id) => id !== userId);
     const isGroup =
-      c.kind === "group" || c.kind === "club_channel" || c.kind === "team_channel" || c.kind === "quedada";
-    const isSystem = c.kind === "support" || c.kind === "club_channel";
+      c.kind === "group" ||
+      c.kind === "club_channel" ||
+      c.kind === "club_announcements" ||
+      c.kind === "team_channel" ||
+      c.kind === "quedada";
+    const isSystem = c.kind === "support";
+    const isBroadcast = c.kind === "club_announcements";
     let name = (c.title as string | null) ?? "";
     if (!name && !isGroup && otherIds[0]) {
       name = profileMap.get(otherIds[0])?.display_name ?? "Conversación";
@@ -252,7 +258,9 @@ export async function fetchConversationListClient(
       kind: c.kind as ConvoLite["kind"],
       isGroup,
       isSystem,
+      isBroadcast,
       isOfficial: otherProfile?.is_system === true,
+      clubId: (c.club_id as string | null) ?? null,
       memberCount: (membersByConv.get(cid) ?? []).length,
       lastBody: last?.body ?? null,
       lastSenderId: last?.sender_id ?? null,

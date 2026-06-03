@@ -11,7 +11,8 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { assertCapability } from "@/lib/auth/capabilities";
-import { notify } from "@/server/notifications/dispatch";
+import { notify, notifyAdmins } from "@/server/notifications/dispatch";
+import { recipientRoleForAssignedRole } from "@/lib/notifications/helpers";
 
 const ROLE = z.enum(["admin", "partner", "owner", "manager", "coach", "employee", "user"]);
 const CLUB_SCOPED_ROLES = new Set(["owner", "manager", "coach", "employee"]);
@@ -120,7 +121,7 @@ async function notifyRoleEvent(kind: "role_assigned" | "role_revoked", userId: s
   const label = ROLE_LABEL_ES[assignedRole] ?? assignedRole;
   await notify({
     userId,
-    role: "user",
+    role: recipientRoleForAssignedRole(assignedRole),
     kind,
     title: kind === "role_assigned" ? "Nuevo rol asignado" : "Rol revocado",
     body: kind === "role_assigned" ? `Tu cuenta recibió el rol ${label}.` : `Tu rol ${label} fue removido.`,
@@ -397,10 +398,10 @@ export async function approveRoleRequest(input: unknown): Promise<ActionResult<{
       if (updErr) throw new MpError("ROLES.REQUEST_UPDATE_FAILED", updErr.message, 500);
       await notify({
         userId: req.user_id as string,
-        role: "user",
+        role: recipientRoleForAssignedRole(role),
         kind: "role_request_approved",
         title: "Tu solicitud de rol fue aprobada",
-        body: `Ya tienes acceso como ${role}.`,
+        body: `Ya tienes acceso como ${ROLE_LABEL_ES[role] ?? role}.`,
         payload: { requestId, role, clubId: finalClub },
       });
       revalidatePath("/dashboard/admin/admin-roles");
@@ -438,17 +439,66 @@ export async function rejectRoleRequest(input: unknown): Promise<ActionResult<{ 
         .eq("status", "pending");
       if (error) throw new MpError("ROLES.REQUEST_UPDATE_FAILED", error.message, 500);
       if (req) {
+        const requestedRole = req.requested_role as string;
         await notify({
           userId: req.user_id as string,
-          role: "user",
+          role: recipientRoleForAssignedRole(requestedRole),
           kind: "role_request_rejected",
           title: "Tu solicitud de rol fue rechazada",
           body: notes ?? null,
-          payload: { requestId, requestedRole: req.requested_role },
+          payload: { requestId, role: requestedRole, requestedRole, notes: notes ?? null },
         });
       }
       revalidatePath("/dashboard/admin/admin-roles");
       return { ok: true as const };
+    },
+  );
+}
+
+export async function submitRoleRequest(input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(
+    z.object({
+      requestedRole: ROLE,
+      targetClubId: z.string().uuid().nullable().optional(),
+      reason: z.string().max(500).optional(),
+    }),
+    input,
+    async ({ requestedRole, targetClubId, reason }) => {
+      const userId = await requireUser();
+      if (CLUB_SCOPED_ROLES.has(requestedRole) && !targetClubId) {
+        throw new MpError("ROLES.CLUB_REQUIRED", `Role '${requestedRole}' requires a club`, 422);
+      }
+      const supabase = await getServerClient();
+      const { data: pending } = await supabase
+        .from("role_requests")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("requested_role", requestedRole)
+        .eq("status", "pending")
+        .maybeSingle();
+      if (pending) {
+        throw new MpError("ROLES.REQUEST_PENDING", "Ya tienes una solicitud pendiente para este rol.", 409);
+      }
+      const { data, error } = await supabase
+        .from("role_requests")
+        .insert({
+          user_id: userId,
+          requested_role: requestedRole,
+          target_club_id: targetClubId ?? null,
+          reason: reason ?? null,
+          status: "pending",
+        } as never)
+        .select("id")
+        .single();
+      if (error) throw new MpError("ROLES.REQUEST_CREATE_FAILED", error.message, 500);
+      await notifyAdmins({
+        kind: "role_request_new",
+        title: "Nueva solicitud de rol",
+        body: `${ROLE_LABEL_ES[requestedRole] ?? requestedRole}${targetClubId ? " · club" : ""}`,
+        payload: { requestId: data.id, requestedRole, targetClubId: targetClubId ?? null },
+      });
+      revalidatePath("/dashboard/admin/admin-roles");
+      return { id: data.id as string };
     },
   );
 }

@@ -306,6 +306,11 @@ export async function createSale(input: unknown): Promise<ActionResult<Sale>> {
           .eq("id", saleId as string)
           .single();
         if (fetchErr || !sale) throw new MpError("PROSHOP.SALE_FAILED", "Fetch sale failed", 500);
+        if (data.customerUserId) {
+          void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
+            syncActiveGiveawayMechanicsForClubUser(data.customerUserId!, data.clubId),
+          );
+        }
         return mapSale(sale);
       },
     );

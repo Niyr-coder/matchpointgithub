@@ -18,6 +18,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
+import { notify } from "@/server/notifications/dispatch";
 import { createMatch } from "@/server/actions/matches";
 import {
   AcceptApplicantSchema,
@@ -556,16 +557,14 @@ export async function applyToMatchSeek(input: unknown): Promise<ActionResult<{ o
 
     // Notif al autor del aviso (best-effort vía service role).
     const applicant = await getProfileSummary(userId);
-    const admin = getAdminClient();
-    const { error: jobErr } = await admin.from("notification_jobs").insert({
-      user_id: seek.created_by,
+    await notify({
+      userId: seek.created_by,
       role: "user",
       kind: "match_seek_applied",
-      channel: "inapp",
+      title: "Nueva postulación",
+      body: `${applicant.displayName ?? "Un jugador"} se postuló a tu aviso.`,
       payload: { seek_id: seekId, applicant_name: applicant.displayName ?? "Un jugador" },
-      status: "pending",
-    } as never);
-    if (jobErr) console.error("[applyToMatchSeek] enqueue notif failed:", jobErr.message);
+    });
 
     return { ok: true as const };
   });
@@ -681,21 +680,19 @@ export async function acceptApplicant(
 
     // Notif al postulante aceptado (best-effort).
     const author = await getProfileSummary(userId);
-    const admin = getAdminClient();
-    const { error: jobErr } = await admin.from("notification_jobs").insert({
-      user_id: app.applicant_id,
+    await notify({
+      userId: app.applicant_id,
       role: "user",
       kind: "match_seek_accepted",
-      channel: "inapp",
+      title: "Te aceptaron el partido",
+      body: `${author.displayName ?? "El autor"} aceptó tu postulación.`,
       payload: {
         seek_id: seekId,
         match_id: matchId,
         conversation_id: conversationId,
         author_name: author.displayName ?? "El autor",
       },
-      status: "pending",
-    } as never);
-    if (jobErr) console.error("[acceptApplicant] enqueue notif failed:", jobErr.message);
+    });
 
     return { matchId, conversationId };
   });

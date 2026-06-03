@@ -46,7 +46,7 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 
 | Kind | Categoría | Recipient | Disparador | Migration | Estado |
 |---|---|---|---|---|---|
-| `role_request_new` | roles | admin | `requestRole` server action | 033 | ✅ |
+| `role_request_new` | roles | admin | `submitRoleRequest` server action | 033 / 20260605130000 | ✅ |
 | `role_request_approved` | roles | user/role solicitado | `approveRoleRequest` | 033 | ✅ |
 | `role_request_rejected` | roles | user | `rejectRoleRequest` | 033 | ✅ |
 | `club_application_new` | clubs | admin | submit de club_application | 033 | ✅ |
@@ -101,8 +101,48 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `role_assigned` | roles | usuario afectado | `assignRole` admin | 176 | ✅ |
 | `role_revoked` | roles | usuario afectado | `revokeRole` admin | 176 | ✅ |
 | `welcome_owner` | clubs | owner recién aprobado | `quickApproveApplication` / `approveApplication` | 176 | ✅ |
+| `tournament_published` | tournaments | partner org | `setTournamentStatus(registration_open)` | 20260605130000 | ✅ |
+| `tournament_finished` | tournaments | jugadores pending+accepted | `setTournamentStatus(finished)` | 20260605130000 | ✅ |
+| `tournament_registration_new` | tournaments | partner org | `registerToTournament` | 20260605130000 | ✅ |
+| `payout_paid` | pagos | owner del club / partner | `markPayoutPaid` | 20260605130000 | ✅ |
+| `club_reservation_new` | reservations | owner/manager del club | `createReservation` | 20260605130000 | ✅ |
+| `club_featuring_activated` | clubs | owner del club | `approveClubFeaturingAdmin` | 20260605130000 | ✅ |
+| `quedada_reminder` | quedadas | inscritos `joined` | cron `process-quedada-reminders-hourly` | 20260605130000 | ✅ |
+| `match_result_reported` | matches | resto de participantes | `reportScore` | 20260605130000 | ✅ |
 
-## 3. Render del dispatcher (cómo derivá title/body/link)
+## 2.1 Checklist de cobertura (audit 2026-05)
+
+Usa esta tabla para QA rápido por rol. **Dispatcher** = branch en
+`fn_dispatch_inapp_notifications`. **Deep-link** = `hrefForKind` en
+`NotificationsPanel.tsx`.
+
+| Kind | Dispatcher | Deep-link panel | Disparador cableado | Notas |
+|---|---|---|---|---|
+| `role_request_new` | ✅ | ✅ admin | ✅ `submitRoleRequest` | — |
+| `role_request_approved/rejected` | ✅ | ✅ | ✅ | `recipient_role` = rol solicitado |
+| `role_assigned/revoked` | ✅ | ✅ | ✅ | `recipient_role` = rol asignado |
+| `club_application_*` | ✅ | ✅ | ✅ | — |
+| `friend_request_*` | ✅ | ✅ | ✅ | — |
+| `ticket_new/assigned/status_changed` | ✅ | ✅ | ✅ | — |
+| `reservation_*` | ✅ | ✅ | ✅ | incluye check-in / no-show |
+| `club_reservation_new` | ✅ | ✅ owner/manager | ✅ | — |
+| `quedada_*` | ✅ | ✅ | ✅ | reminder vía cron horario |
+| `club_featuring_*` | ✅ | ✅ | ✅ activado + expiring cron | — |
+| `match_seek_*` | ✅ | ✅ | ✅ vía `notify()` | — |
+| `match_challenge_*` | ✅ | ⚠️ retos | ✅ | — |
+| `tournament_published/finished` | ✅ | ✅ partner/user | ✅ | — |
+| `tournament_registration_new` | ✅ | ✅ partner | ✅ | — |
+| `registration_accepted/rejected` | ✅ | ✅ | ✅ vía `notify()` | — |
+| `tournament_cancelled` | ✅ | ✅ | ✅ vía `notify()` | — |
+| `payout_paid` | ✅ | ✅ | ✅ | — |
+| `payment_captured/proof_rejected` | ✅ | ✅ | ✅ reject vía `notify()` | — |
+| `match_result_reported` | ✅ | ✅ | ✅ `reportScore` | — |
+| `team_roster_cap_reached` | ✅ | ✅ | ✅ | — |
+| `club_membership_*` | ✅ | ✅ | ✅ + cron | — |
+| `broadcast/mp_plus_*` | ✅ | ✅ | ✅ | — |
+
+**Pendiente cross-canal (no bloquea in-app):** email para críticas, push
+(service worker), `match_result_reported` en server action de scoring.
 
 Ejemplo del branch `tournament_cancelled`:
 
@@ -324,11 +364,15 @@ top en la lista de conversaciones.
 
 ## 9. TODOs
 
-- [ ] Notif `tournament_published` (al pasar de draft → registration_open)
-- [ ] Notif `tournament_finished`
-- [ ] Notif `payment_captured` (al aprobar pago)
-- [ ] Notif `match_result_reported`
-- [ ] Notif `payout_paid` (al partner/club cuando MP les paga)
+- [x] Notif `tournament_published` (al pasar de draft → registration_open)
+- [x] Notif `tournament_finished`
+- [x] Notif `payment_captured` (al aprobar pago)
+- [x] Notif `match_result_reported` (`reportScore` → resto de participantes)
+- [x] Notif `payout_paid` (al partner/club cuando MP les paga)
+- [x] Cron `quedada_reminder` (24h antes, dedup por participante)
+- [x] Branches dispatcher para kinds legacy sin link (friends, tickets, quedadas, etc.)
+- [x] `submitRoleRequest` + `role_request_new` a admins
+- [x] Deep-links ampliados en `NotificationsPanel`
 - [ ] Email channel para notifs críticas (rescheduled, cancelled, refund)
 - [ ] Push notifications (service worker + opt-in + dispatcher Web Push)
 - [x] Base de settings para que el user elija qué notifs recibir y por qué canal

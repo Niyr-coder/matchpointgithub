@@ -13,6 +13,8 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { getTakeRatePct } from "@/server/queries/platform-config";
+import { notify } from "@/server/notifications/dispatch";
+import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 
 async function requireAdmin(): Promise<string> {
   const supabase = await getServerClient();
@@ -161,6 +163,12 @@ export async function markPayoutPaid(input: unknown): Promise<ActionResult<{ ok:
     async ({ id, providerPayoutId }) => {
       await requireAdmin();
       const supabase = await getServerClient();
+      const { data: payout, error: getErr } = await supabase
+        .from("payouts")
+        .select("id,club_id,partner_id,net_cents,currency,period_start,period_end,status")
+        .eq("id", id)
+        .maybeSingle();
+      if (getErr || !payout) throw new MpError("PAYOUTS.NOT_FOUND", "Payout not found", 404);
       const { error } = await supabase
         .from("payouts")
         .update({
@@ -170,6 +178,37 @@ export async function markPayoutPaid(input: unknown): Promise<ActionResult<{ ok:
         } as never)
         .eq("id", id);
       if (error) throw new MpError("PAYOUTS.UPDATE_FAILED", error.message, 500);
+
+      const amountLabel = `${((payout.net_cents as number) / 100).toFixed(2)} ${(payout.currency as string) ?? "USD"}`;
+      const periodLabel = `${payout.period_start as string} → ${payout.period_end as string}`;
+      const payload = {
+        payout_id: id,
+        amount_cents: payout.net_cents,
+        currency: payout.currency,
+        amount_label: amountLabel,
+        period_label: periodLabel,
+      };
+      const clubId = payout.club_id as string | null;
+      const partnerId = payout.partner_id as string | null;
+      if (clubId) {
+        await notifyClubStaff({
+          clubId,
+          kind: "payout_paid",
+          title: "Pago de MATCHPOINT registrado",
+          body: `${amountLabel} · ${periodLabel}`,
+          payload,
+          roles: ["owner"],
+        });
+      } else if (partnerId) {
+        await notifyPartnerOrgStaff({
+          partnerId,
+          kind: "payout_paid",
+          title: "Pago de MATCHPOINT registrado",
+          body: `${amountLabel} · ${periodLabel}`,
+          payload,
+        });
+      }
+
       return { ok: true as const };
     },
   );

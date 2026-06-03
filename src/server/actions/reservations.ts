@@ -28,6 +28,7 @@ import {
 } from "@/lib/schemas/reservations";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
+import { notifyClubStaff } from "@/lib/notifications/helpers";
 import {
   loadUserUpcomingReservations,
   type UserUpcomingReservation,
@@ -247,6 +248,29 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
             payload: { reservationId: reservation.id, clubId: reservation.clubId, courtId: reservation.courtId },
           });
         }
+        const [{ data: clubRow }, { data: courtRow }, { data: orgProf }] = await Promise.all([
+          supabase.from("clubs").select("name").eq("id", data.clubId).maybeSingle(),
+          supabase.from("courts").select("name").eq("id", data.courtId).maybeSingle(),
+          supabase.from("profiles").select("display_name,username").eq("id", userId).maybeSingle(),
+        ]);
+        const organizerName =
+          ((orgProf?.display_name as string | null) ??
+            (orgProf?.username as string | null) ??
+            "Un jugador").trim();
+        await notifyClubStaff({
+          clubId: data.clubId,
+          kind: "club_reservation_new",
+          title: "Nueva reserva en tu club",
+          body: `${organizerName} · ${new Date(reservation.startsAt).toLocaleString("es-EC")}`,
+          payload: {
+            reservationId: reservation.id,
+            clubId: reservation.clubId,
+            club_name: (clubRow?.name as string | null) ?? null,
+            court_name: (courtRow?.name as string | null) ?? null,
+            organizer_name: organizerName,
+            starts_at: reservation.startsAt,
+          },
+        });
         // Invalidar el cache de las pantallas que dependen de reservations.
         // El realtime ya dispara router.refresh() en clientes conectados,
         // pero esto cubre re-navegaciones server-side y entradas frescas.
@@ -257,6 +281,9 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         revalidatePath("/dashboard/manager/club-canchas");
         revalidatePath("/dashboard/user");
         revalidatePath("/dashboard/user/mis-reservas");
+        void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
+          syncActiveGiveawayMechanicsForClubUser(userId, data.clubId),
+        );
         return reservation;
       },
     );

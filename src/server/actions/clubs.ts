@@ -6,6 +6,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -31,6 +32,7 @@ import {
   type ClubSocialView,
 } from "@/lib/schemas/clubs";
 import { isClubMembershipActive } from "@/lib/clubs/membership";
+import { loadCourtOccupancy } from "@/server/queries/court-occupancy";
 import type { PageMeta } from "@/lib/api/response";
 import { UuidSchema } from "@/lib/schemas/common";
 
@@ -283,7 +285,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
     const { data: clubRaw, error } = await supabase
       .from("clubs")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("id,slug,name,city,country,sports,cover_url,description,address,latitude,longitude" as any)
+      .select("id,slug,name,city,country,sports,cover_url,description,address,latitude,longitude,phone,email,approved_at,featured_until" as any)
       .eq("slug", slug)
       .maybeSingle();
     if (error || !clubRaw) throw new MpError("CLUBS.NOT_FOUND", "Club not found", 404);
@@ -299,6 +301,10 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       address: string | null;
       latitude: number | string | null;
       longitude: number | string | null;
+      phone: string | null;
+      email: string | null;
+      approved_at: string | null;
+      featured_until: string | null;
     };
 
     const clubId = club.id;
@@ -339,6 +345,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       { count: matchesLast30dCount },
       { data: membershipTierRows },
       { data: myMembership },
+      { data: amenitiesRaw },
     ] = await Promise.all([
       supabase.from("courts").select("id", { count: "exact", head: false }).eq("club_id", clubId),
       supabase.from("club_settings").select("open_hours").eq("club_id", clubId).maybeSingle(),
@@ -436,6 +443,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
         .eq("club_id", clubId)
         .eq("user_id", meId)
         .maybeSingle(),
+      supabase.from("club_amenities").select("amenity").eq("club_id", clubId),
     ]);
 
     // Set de amigos del user actual.
@@ -675,6 +683,29 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       }
     }
 
+    const { data: clubConvs } = await supabase
+      .from("conversations")
+      .select("id,kind")
+      .eq("club_id", clubId)
+      .in("kind", ["club_channel", "club_announcements"]);
+    let announcementsConversationId: string | null = null;
+    let communityConversationId: string | null = null;
+    for (const row of clubConvs ?? []) {
+      if (row.kind === "club_announcements") announcementsConversationId = row.id as string;
+      if (row.kind === "club_channel") communityConversationId = row.id as string;
+    }
+    const isFollowing = (myFollowCount ?? 0) > 0;
+    const isStaff = viewerRole === "owner" || viewerRole === "manager" || viewerRole === "admin";
+    const canAccessAnnouncements = isFollowing || membershipStatus === "active" || isStaff;
+    const canAccessCommunityChat = membershipStatus === "active" || isStaff;
+
+    const admin = getAdminClient();
+    const occupancy = await loadCourtOccupancy(admin, clubId);
+    const amenities = (amenitiesRaw ?? []).map((a) => a.amenity as string);
+    const verified = Boolean(club.approved_at);
+    const featuredUntil = club.featured_until ? new Date(club.featured_until).getTime() : 0;
+    const isPartner = featuredUntil > Date.now();
+
     return ClubSocialViewSchema.parse({
       club: {
         id: clubId,
@@ -693,6 +724,8 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
           club.latitude != null ? Number(club.latitude as unknown as string) : null,
         longitude:
           club.longitude != null ? Number(club.longitude as unknown as string) : null,
+        phone: (club.phone as string | null) ?? null,
+        email: (club.email as string | null) ?? null,
       },
       stats: {
         rating: avgRating,
@@ -700,18 +733,26 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
         followersCount: followersCount ?? 0,
         matchesLast30d: matchesLast30dCount ?? 0,
       },
-      isFollowing: (myFollowCount ?? 0) > 0,
+      isFollowing,
       viewerRole,
       membershipStatus,
       hasMembershipTiers,
       cheapestTierId,
       pendingMembershipTxId,
+      announcementsConversationId,
+      communityConversationId,
+      canAccessAnnouncements,
+      canAccessCommunityChat,
       upcomingTournaments,
       frequentMembers,
       friendsHere,
       activity: top,
       photos,
       reviews: reviewItems,
+      courtOccupancy: occupancy.courts,
+      amenities,
+      verified,
+      isPartner,
     });
   });
 }
@@ -799,7 +840,14 @@ export async function toggleFollowClub(
       .select("*", { count: "exact", head: true })
       .eq("club_id", clubId);
 
-    return { isFollowing: !existing, followersCount: count ?? 0 };
+    const isFollowing = !existing;
+    if (isFollowing) {
+      void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
+        syncActiveGiveawayMechanicsForClubUser(user.id, clubId),
+      );
+    }
+
+    return { isFollowing, followersCount: count ?? 0 };
   });
 }
 

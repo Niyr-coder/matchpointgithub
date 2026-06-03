@@ -41,6 +41,16 @@ export type ReservasData = {
 // Grid alineado a la convención de booking (09:00–22:00, cada hora).
 const HOURS = ["09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"];
 
+/** Índice 0–6 de hoy dentro de la semana del grid, o null si hoy no está en esa semana. */
+function todayIndexInWeek(weekStartIso: string, nowMs: number): number | null {
+  const weekStart = new Date(weekStartIso);
+  weekStart.setHours(0, 0, 0, 0);
+  const today = new Date(nowMs);
+  today.setHours(0, 0, 0, 0);
+  const dayIdx = Math.round((today.getTime() - weekStart.getTime()) / 86_400_000);
+  return dayIdx >= 0 && dayIdx <= 6 ? dayIdx : null;
+}
+
 const LEGEND: { c: string; l: string }[] = [
   { c: "#d1fae5", l: "Libre · clickea para reservar" },
   { c: "var(--primary)", l: "Reservada" },
@@ -160,6 +170,7 @@ export function ClubReservasScreenView({
   // verdes/clickeables y al clickear saltaba el toast "Ese horario ya pasó".
   const isPastSlot = (dayIdx: number, hourIdx: number) =>
     slotStartMs(dayIdx, hourIdx) < nowMs - 60_000;
+  const todayDayIdx = todayIndexInWeek(data.weekStartIso, nowMs);
 
   // Click en celda libre (state=0) → abre modal con prefill de court+slot.
   // dayIdx 0=Lunes ... 6=Domingo. hourIdx → HOURS[hi] (string "09".."22").
@@ -435,7 +446,7 @@ export function ClubReservasScreenView({
                   textAlign: "center",
                   letterSpacing: "0.06em",
                   padding: 6,
-                  color: i === 1 ? "var(--primary)" : "var(--muted-fg)",
+                  color: i === todayDayIdx ? "var(--primary)" : "var(--muted-fg)",
                   minWidth: 0,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
