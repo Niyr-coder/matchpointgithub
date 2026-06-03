@@ -9,7 +9,7 @@ import {
   type QuedadaProfileStats,
 } from "@/lib/quedadas/profile-stats";
 
-type DbClient = ReturnType<typeof getServerClient>;
+type DbClient = Awaited<ReturnType<typeof getServerClient>>;
 
 /**
  * Stats agregadas de quedadas para perfil (podios, rachas, partidos).
@@ -20,7 +20,7 @@ export async function loadQuedadaProfileStats(
   userId: string,
   opts?: { useAdmin?: boolean },
 ): Promise<QuedadaProfileStats | null> {
-  const db: DbClient = opts?.useAdmin ? (getAdminClient() as DbClient) : await getServerClient();
+  const db: DbClient = opts?.useAdmin ? getAdminClient() : await getServerClient();
 
   const { data: partsRaw, error: pErr } = await db
     .from("quedada_participants")
