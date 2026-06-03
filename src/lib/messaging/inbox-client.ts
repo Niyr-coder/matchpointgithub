@@ -16,6 +16,46 @@ type LastMsgRow = {
   created_at: string;
 };
 
+type InboxConversationRow = {
+  id: string;
+  kind: string;
+  title: string | null;
+  last_message_at: string | null;
+  match_id: string | null;
+  quedada_id: string | null;
+};
+
+async function fetchInboxConversations(
+  supabase: ReturnType<typeof getBrowserClient>,
+  convIds: string[],
+): Promise<{ data: InboxConversationRow[] | null; error: { message: string } | null }> {
+  const full = await supabase
+    .from("conversations")
+    .select("id,kind,title,last_message_at,match_id,quedada_id")
+    .in("id", convIds)
+    .order("last_message_at", { ascending: false, nullsFirst: false });
+
+  if (!full.error) {
+    return { data: (full.data ?? []) as InboxConversationRow[], error: null };
+  }
+
+  // DB sin migración quedada_chat_channel: inbox sigue cargando sin resumen de quedada.
+  if (full.error.message.includes("quedada_id")) {
+    const basic = await supabase
+      .from("conversations")
+      .select("id,kind,title,last_message_at,match_id")
+      .in("id", convIds)
+      .order("last_message_at", { ascending: false, nullsFirst: false });
+    if (basic.error) return { data: null, error: basic.error };
+    return {
+      data: (basic.data ?? []).map((c) => ({ ...c, quedada_id: null })),
+      error: null,
+    };
+  }
+
+  return { data: null, error: full.error };
+}
+
 /** Inbox completo desde el browser (paralelo). Alternativa rápida al server action inicial. */
 export async function fetchConversationListClient(
   userId: string,
@@ -34,19 +74,15 @@ export async function fetchConversationListClient(
   const convIds = (members ?? []).map((m) => m.conversation_id as string);
   if (convIds.length === 0) return { ok: true, convos: [] };
 
+  const convFetch = await fetchInboxConversations(supabase, convIds);
+
   const [
-    { data: conversations, error: convErr },
     { data: allMembers, error: membersErr },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     unreadRes,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     lastRes,
   ] = await Promise.all([
-    supabase
-      .from("conversations")
-      .select("id,kind,title,last_message_at,match_id,quedada_id")
-      .in("id", convIds)
-      .order("last_message_at", { ascending: false, nullsFirst: false }),
     supabase
       .from("conversation_members")
       .select("conversation_id,user_id")
@@ -56,7 +92,8 @@ export async function fetchConversationListClient(
     (supabase as any).rpc("fn_last_messages_by_conversations", { p_conv_ids: convIds }),
   ]);
 
-  if (convErr) return { ok: false, message: convErr.message };
+  if (convFetch.error) return { ok: false, message: convFetch.error.message };
+  const conversations = convFetch.data ?? [];
   if (membersErr) return { ok: false, message: membersErr.message };
 
   const membersByConv = new Map<string, string[]>();
