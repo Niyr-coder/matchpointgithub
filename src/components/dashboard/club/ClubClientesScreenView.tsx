@@ -1,7 +1,8 @@
 // Client view de ClubClientesScreen — layout del mock 1:1, valores reales.
 // Sin socios → 6 filas placeholder neutras (dashed, "—") para preservar el mock.
 "use client";
-import { createPortal, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
