@@ -220,6 +220,7 @@ function BuscarMatchScreen({
     vacante1: allMatches.filter((m) => m.slotsTotal - m.players.length === 1).length,
     ranked: allMatches.filter((m) => m.ranked).length,
   };
+  const hoyCount = allMatches.filter((m) => m.date === "Hoy").length;
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -404,7 +405,7 @@ function BuscarMatchScreen({
           <p style={{ color: "var(--muted-fg)", fontSize: 13.5, margin: "8px 0 0", lineHeight: 1.45 }}>
             <b style={{ color: "#0a0a0a" }}>{allMatches.length} avisos abiertos</b>
             <span className="hidden md:inline">
-              {" "}· <span style={{ color: "var(--primary)" }}>{counts.nivel} con nivel definido</span> · {counts.hoy} hoy
+              {" "}· <span style={{ color: "var(--primary)" }}>{counts.nivel} con nivel definido</span> · {hoyCount} hoy
               {myPlanTier === "premium" ? " · MATCHPOINT+" : ""}
             </span>
           </p>
