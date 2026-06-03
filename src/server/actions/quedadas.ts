@@ -664,7 +664,7 @@ export async function setQuedadaStatus(
     }
 
     if (
-      (status === "registration_closed" || status === "live" || status === "finished") &&
+      (status === "registration_closed" || status === "live") &&
       status !== (q.status as string)
     ) {
       await ensureQuedadaConversationId(quedadaId, status, true);

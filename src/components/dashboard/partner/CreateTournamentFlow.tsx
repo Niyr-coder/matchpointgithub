@@ -49,7 +49,7 @@ type ScoringConfig = {
   type: "side_out" | "rally";
   points: number;
   winBy: number;
-  bestOf: number;
+  bestOf: 1 | 3 | 5;
 };
 
 const MODALITIES: Array<{

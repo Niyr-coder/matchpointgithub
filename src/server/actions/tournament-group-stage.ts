@@ -40,9 +40,7 @@ const MatchScoreSchema = z.object({
   sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })).min(1),
 });
 
-/** Tablas nuevas — types se regeneran tras aplicar migración 20260603180000. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function groupDb(admin: ReturnType<typeof getAdminClient>): any {
+function groupDb(admin: ReturnType<typeof getAdminClient>) {
   return admin;
 }
 
@@ -123,7 +121,7 @@ async function acceptedRegistrationIds(
     .eq("tournament_id", tournamentId)
     .eq("category_id", categoryId)
     .eq("status", "accepted");
-  return (regs ?? []).map((r) => r.id as string);
+  return (regs ?? []).map((r) => r.id);
 }
 
 function mapGroupMatch(row: Record<string, unknown>): GroupMatchResult {

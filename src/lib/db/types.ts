@@ -2833,6 +2833,7 @@ export type Database = {
           kind: string
           last_message_at: string | null
           match_id: string | null
+          quedada_id: string | null
           team_id: string | null
           title: string | null
         }
@@ -2844,6 +2845,7 @@ export type Database = {
           kind: string
           last_message_at?: string | null
           match_id?: string | null
+          quedada_id?: string | null
           team_id?: string | null
           title?: string | null
         }
@@ -2855,6 +2857,7 @@ export type Database = {
           kind?: string
           last_message_at?: string | null
           match_id?: string | null
+          quedada_id?: string | null
           team_id?: string | null
           title?: string | null
         }
@@ -2892,6 +2895,13 @@ export type Database = {
             columns: ["match_id"]
             isOneToOne: false
             referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_quedada_id_fkey"
+            columns: ["quedada_id"]
+            isOneToOne: false
+            referencedRelation: "quedadas"
             referencedColumns: ["id"]
           },
           {
@@ -5915,6 +5925,7 @@ export type Database = {
         Row: {
           court_label: string | null
           created_at: string
+          finished_at: string | null
           id: string
           level_label: string | null
           max_slots: number | null
@@ -5922,11 +5933,13 @@ export type Database = {
           quedada_id: string
           sort_order: number
           starts_at: string | null
+          status: string
           target_points: number | null
         }
         Insert: {
           court_label?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -5934,11 +5947,13 @@ export type Database = {
           quedada_id: string
           sort_order?: number
           starts_at?: string | null
+          status?: string
           target_points?: number | null
         }
         Update: {
           court_label?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -5946,6 +5961,7 @@ export type Database = {
           quedada_id?: string
           sort_order?: number
           starts_at?: string | null
+          status?: string
           target_points?: number | null
         }
         Relationships: [
@@ -10195,6 +10211,12 @@ export type Database = {
           broken_id: number
           checked: number
           ok: boolean
+        }[]
+      }
+      fn_rebackfill_audit_chain: {
+        Args: never
+        Returns: {
+          rebuilt: number
         }[]
       }
       gen_quedada_invite_code: { Args: never; Returns: string }

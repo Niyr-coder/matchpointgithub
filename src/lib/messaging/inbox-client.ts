@@ -77,7 +77,7 @@ export async function fetchConversationListClient(
     .filter((id): id is string => !!id);
 
   const quedadaIds = (conversations ?? [])
-    .map((c) => (c as { quedada_id?: string | null }).quedada_id ?? null)
+    .map((c) => c.quedada_id)
     .filter((id): id is string => !!id);
 
   const [{ data: profileRows }, matchRowsRes, quedadaRowsRes] = await Promise.all([
@@ -206,7 +206,7 @@ export async function fetchConversationListClient(
     const otherProfile = otherIds[0] ? profileMap.get(otherIds[0]) : undefined;
     const matchId = (c.match_id as string | null) ?? null;
     const matchRow = matchId ? matchById.get(matchId) : undefined;
-    const quedadaId = (c as { quedada_id?: string | null }).quedada_id ?? null;
+    const quedadaId = c.quedada_id ?? null;
     const quedadaRow = quedadaId ? quedadaById.get(quedadaId) : undefined;
 
     return {

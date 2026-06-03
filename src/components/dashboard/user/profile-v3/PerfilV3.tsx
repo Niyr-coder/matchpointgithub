@@ -138,7 +138,9 @@ export function V3SocialBand({ sub, view }: { sub: "free" | "plus"; view: "mine"
   );
 }
 
-function V3Partners({ isPlus, isMine }) {
+type V3PlusBandProps = { isPlus: boolean; isMine: boolean };
+
+function V3Partners({ isPlus, isMine }: V3PlusBandProps) {
   const partners = usePerfilV3Data().partners;
   const hasData = partners.length > 0;
   return (
@@ -187,7 +189,7 @@ function V3Partners({ isPlus, isMine }) {
   );
 }
 
-function V3Rivals({ isPlus, isMine }) {
+function V3Rivals({ isPlus, isMine }: V3PlusBandProps) {
   const rivals = usePerfilV3Data().rivals;
   const hasData = rivals.length > 0;
   return (
@@ -242,7 +244,7 @@ function V3Rivals({ isPlus, isMine }) {
   );
 }
 
-function V3ShotBreakdown({ isPlus, isMine }) {
+function V3ShotBreakdown({ isPlus, isMine }: V3PlusBandProps) {
   const insights = usePerfilV3Data().coachShotInsights;
   const hasData = insights.length > 0;
   return (

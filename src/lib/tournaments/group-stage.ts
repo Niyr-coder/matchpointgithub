@@ -3,15 +3,12 @@
  * Sin I/O — testeable y reutilizable desde server actions.
  */
 
+import type { ScoringConfig } from "@/lib/schemas/tournaments";
+
 export type GroupPlayoffConfig = {
   groupsCount: number;
   advancePerGroup: number;
-  finalScoringOverride?: {
-    type: "side_out" | "rally";
-    points: number;
-    winBy: number;
-    bestOf: number;
-  } | null;
+  finalScoringOverride?: ScoringConfig | null;
 };
 
 export type MatchScore = {
