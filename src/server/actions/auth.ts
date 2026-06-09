@@ -194,6 +194,7 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     await assertRateLimit({
       key: `auth:signup:${await clientIp()}`,
       ...RATE_LIMITS.authSensitive,
+      failClosed: true,
     });
 
     // Feature flag global: signups_open. Lectura con service-role porque el
@@ -263,6 +264,7 @@ export async function signIn(input: unknown): Promise<ActionResult<SessionRespon
     await assertRateLimit({
       key: `auth:signin:${await clientIp()}`,
       ...RATE_LIMITS.authSensitive,
+      failClosed: true,
     });
     const supabase = await getServerClient();
     const { data: signInData, error } = await supabase.auth.signInWithPassword({
@@ -325,6 +327,7 @@ export async function requestPasswordReset(
     await assertRateLimit({
       key: `auth:reset:${await clientIp()}`,
       ...RATE_LIMITS.authSensitive,
+      failClosed: true,
     });
 
     const supabase = await getServerClient();

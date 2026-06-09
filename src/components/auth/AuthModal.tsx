@@ -16,6 +16,9 @@ import { Icon } from "@/components/Icon";
 import { signInFromForm, signUpFromForm } from "@/server/actions/auth";
 import type { ActionResult } from "@/lib/api/action";
 import type { SessionResponse } from "@/lib/schemas/identity";
+import { BetaPhaseAuthNotice } from "@/components/legal/BetaPhaseAuthNotice";
+import { LegalDocLinks } from "@/components/legal/LegalDocLinks";
+import { isBetaPhaseDisclosureEnabled } from "@/lib/legal/compliance";
 
 export type AuthMode = "signin" | "signup";
 
@@ -161,6 +164,7 @@ export function AuthModal({
         <Hero mode={mode} onClose={onClose} />
         <div style={{ padding: 24 }}>
           {notice && <NoticeBanner message={notice} />}
+          {isBetaPhaseDisclosureEnabled() && <BetaPhaseAuthNotice />}
           {mode === "signup" ? (
             <SignUpForm next={next} onSwitch={() => setMode("signin")} />
           ) : (
@@ -481,6 +485,8 @@ function SignInForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
         {pending ? "Ingresando..." : "Ingresar"}
       </button>
 
+      <SignInLegalConsent />
+
       <div
         style={{
           textAlign: "center",
@@ -719,13 +725,11 @@ function NoticeBanner({ message }: { message: string }) {
   );
 }
 
-// LOPDP exige consentimiento informado y explícito antes de procesar datos
-// personales. Esta línea se renderiza inmediatamente debajo del CTA "Crear
-// cuenta gratis" para que el usuario que se registra con email vea los
-// términos sin tener que scrollear o cerrar el modal.
+// LOPDP: consentimiento informado antes de procesar datos personales.
 function SignupLegalConsent() {
   return (
-    <div
+    <LegalDocLinks
+      prefix="Al crear tu cuenta aceptas nuestros"
       style={{
         fontSize: 10.5,
         lineHeight: 1.5,
@@ -733,27 +737,22 @@ function SignupLegalConsent() {
         textAlign: "center",
         marginTop: 2,
       }}
-    >
-      Al crear tu cuenta aceptas nuestros{" "}
-      <a
-        href="/legal/terminos"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: "#0a0a0a", textDecoration: "underline", fontWeight: 700 }}
-      >
-        Términos
-      </a>{" "}
-      y{" "}
-      <a
-        href="/legal/privacidad"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: "#0a0a0a", textDecoration: "underline", fontWeight: 700 }}
-      >
-        Política de Privacidad
-      </a>
-      .
-    </div>
+    />
+  );
+}
+
+function SignInLegalConsent() {
+  return (
+    <LegalDocLinks
+      prefix="Al iniciar sesión aceptas nuestros"
+      style={{
+        fontSize: 10.5,
+        lineHeight: 1.5,
+        color: "var(--muted-fg)",
+        textAlign: "center",
+        marginTop: 2,
+      }}
+    />
   );
 }
 
