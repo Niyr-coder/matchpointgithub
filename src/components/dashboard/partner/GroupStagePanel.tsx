@@ -328,7 +328,7 @@ export function GroupStagePanel({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="label-mp">Reportar resultado (sets ganados)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+            <div className="mp-tournament-form-grid-2" style={{ marginTop: 12 }}>
               <label style={{ fontSize: 12 }}>
                 Lado A
                 <input

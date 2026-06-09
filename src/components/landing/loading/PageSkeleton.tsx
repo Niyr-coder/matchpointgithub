@@ -23,17 +23,20 @@ export function PageSkeleton({ variant = "grid", cols = 3 }: Props) {
   return (
     <PublicChromeClient auth={null}>
       <style>{`@keyframes mpSkeleton { 0%, 100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px" }}>
+      <main className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15">
         <div style={{ ...BAR, width: 220, height: 12, marginBottom: 16 }} />
         <div style={{ ...BAR, width: "50%", height: 64, marginBottom: 24 }} />
         <div style={{ ...BAR, width: "70%", maxWidth: 540, height: 14, marginBottom: 28 }} />
-        <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 28, flexWrap: "wrap" }}>
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} style={{ ...BAR, width: 90, height: 36, borderRadius: 9999 }} />
           ))}
         </div>
         {variant === "grid" ? (
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14 }}>
+          <div
+            className="mp-page-skeleton-grid"
+            style={{ "--mp-cols": cols } as React.CSSProperties}
+          >
             {Array.from({ length: cols * 2 }).map((_, i) => (
               <div
                 key={i}
@@ -49,14 +52,14 @@ export function PageSkeleton({ variant = "grid", cols = 3 }: Props) {
             ))}
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 32 }}>
+          <div className="mp-landing-split" style={{ gap: 32 }}>
             <div>
               <div style={{ ...BAR, width: 140, height: 12, marginBottom: 16 }} />
               <div style={{ ...BAR, width: "60%", height: 36, marginBottom: 20 }} />
               <div style={{ ...BAR, height: 14, marginBottom: 8 }} />
               <div style={{ ...BAR, height: 14, marginBottom: 8 }} />
               <div style={{ ...BAR, width: "70%", height: 14, marginBottom: 32 }} />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+              <div className="mp-page-skeleton-detail-kpis">
                 {Array.from({ length: 10 }).map((_, i) => (
                   <div key={i} style={{ ...BAR, height: 44, borderRadius: 8 }} />
                 ))}

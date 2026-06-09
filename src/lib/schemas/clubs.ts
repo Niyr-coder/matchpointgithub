@@ -186,6 +186,7 @@ const ClubSocialTournamentSchema = z.object({
   status: z.string(),
   maxParticipants: z.number().int().nullable(),
   entryFeeCents: z.number().int().nullable(),
+  participantCount: z.number().int().nullable(),
 });
 
 const ClubSocialActivitySchema = z.object({
@@ -223,6 +224,7 @@ export const ClubSocialViewSchema = z.object({
     city: z.string(),
     country: z.string(),
     sports: z.array(z.string()),
+    logoUrl: z.string().url().nullable(),
     coverUrl: z.string().url().nullable(),
     description: z.string().nullable(),
     address: z.string().nullable(),
@@ -272,6 +274,14 @@ export const ClubSocialViewSchema = z.object({
   amenities: z.array(z.string()),
   verified: z.boolean(),
   isPartner: z.boolean(),
+  profileStats: z.object({
+    eventsThisMonth: z.number().int(),
+    tournamentsThisMonth: z.number().int(),
+    quedadasThisMonth: z.number().int(),
+    activeGiveaways: z.number().int(),
+    giveawaysClosingThisWeek: z.number().int(),
+    weeklyOpenHoursLabel: z.string().nullable(),
+  }),
 });
 
 export type ClubSocialMember = z.infer<typeof ClubSocialMemberSchema>;

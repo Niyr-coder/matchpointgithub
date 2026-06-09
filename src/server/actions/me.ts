@@ -38,6 +38,12 @@ export async function completeOnboarding(
       .update(payload as never)
       .eq("id", userId);
     if (error) throw new MpError("PROFILE.UPDATE_FAILED", error.message, 500);
+    try {
+      const { claimPendingReferralFromCookie } = await import("@/server/referrals/claim-referral");
+      await claimPendingReferralFromCookie(userId);
+    } catch (e) {
+      console.error("[completeOnboarding] referral claim failed", e);
+    }
     return { ok: true as const };
   });
 }

@@ -306,11 +306,8 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
           ? data.revenueByTournament.map((t) => (
               <div
                 key={t.id}
+                className="mp-partner-fin-rev-row"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "180px 1fr 100px",
-                  gap: 14,
-                  alignItems: "center",
                   padding: "10px 0",
                   borderTop: "1px dashed var(--border)",
                 }}
@@ -350,11 +347,8 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
           : Array.from({ length: REV_PLACEHOLDER_COUNT }).map((_, k) => (
               <div
                 key={k}
+                className="mp-partner-fin-rev-row"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "180px 1fr 100px",
-                  gap: 14,
-                  alignItems: "center",
                   padding: "10px 0",
                   borderTop: "1px dashed var(--border)",
                   opacity: 0.6,

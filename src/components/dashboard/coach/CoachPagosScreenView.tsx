@@ -113,7 +113,7 @@ export function CoachPagosScreenView({ data }: { data: PagosData }) {
           </button>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+      <div className="mp-tournament-form-grid-3">
         {KPIS.map(([l, v, c]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{l}</div>

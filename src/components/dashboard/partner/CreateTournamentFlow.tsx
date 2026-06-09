@@ -337,7 +337,7 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
 
   return (
     <div
-      className="mp-modal-backdrop"
+      className="mp-modal-backdrop mp-tournament-create-modal"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -542,16 +542,7 @@ function Footer({
           ? "Creando…"
           : "Crear torneo";
   return (
-    <div
-      style={{
-        padding: "14px 22px",
-        borderTop: "1px solid var(--border)",
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        justifyContent: "space-between",
-      }}
-    >
+    <div className="mp-tournament-modal-footer">
       <button
         onClick={onCancel}
         disabled={saving}
@@ -563,7 +554,7 @@ function Footer({
       >
         Cancelar
       </button>
-      <div style={{ display: "flex", gap: 10 }}>
+      <div className="mp-tournament-modal-footer-actions">
         {step !== "terms" && (
           <button
             onClick={onBack}
@@ -811,7 +802,7 @@ function StepForm(props: {
           }}
         >
           <div className="label-mp">Fase de grupos</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-tournament-form-grid-2">
             <Field label="Número de grupos">
               <input
                 type="number"
@@ -857,7 +848,7 @@ function StepForm(props: {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-tournament-form-grid-2">
         <Field label="Inicio">
           <input
             type="datetime-local"
@@ -904,7 +895,7 @@ function StepForm(props: {
         Es de un solo día (sin fecha de fin)
       </label>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+      <div className="mp-tournament-form-grid-3">
         <Field label="Cupos">
           <input
             type="number"
@@ -1028,14 +1019,7 @@ function StepPreview(props: {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-          marginBottom: 14,
-        }}
-      >
+      <div className="mp-tournament-preview-kpis">
         <PreviewKV
           label="Cupos"
           value={props.maxParticipants === "" ? "Sin límite" : props.maxParticipants}

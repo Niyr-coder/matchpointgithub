@@ -312,7 +312,7 @@ export function ClubesPageView({
                     </span>
                   )}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
+                <div className="mp-landing-tier-grid-2" style={{ marginBottom: 14 }}>
                   <div style={{ padding: 12, background: "var(--muted)", borderRadius: 10 }}>
                     <div style={{ fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>
                       Canchas

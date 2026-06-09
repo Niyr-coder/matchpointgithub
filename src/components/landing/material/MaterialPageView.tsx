@@ -52,7 +52,7 @@ export function MaterialPageView() {
       }
       lead="Plantillas, fotos y guías listas para que armes tu marca personal y consigas más alumnos. Gratis para coaches con perfil activo en MATCHPOINT."
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 36 }}>
+      <div className="mp-landing-tier-grid-3" style={{ marginBottom: 36 }}>
         {ASSETS.map((a) => (
           <div
             key={a.title}
@@ -106,13 +106,12 @@ export function MaterialPageView() {
       </div>
 
       <div
+        className="mp-landing-split"
         style={{
           padding: 32,
           background: "#0a0a0a",
           color: "#fff",
           borderRadius: 16,
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
           gap: 28,
           alignItems: "center",
         }}

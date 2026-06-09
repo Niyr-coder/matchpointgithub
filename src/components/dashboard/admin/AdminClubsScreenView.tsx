@@ -330,13 +330,8 @@ function PendingAppRow({
       }}
     >
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr auto auto",
-          gap: 12,
-          alignItems: "center",
-          padding: "12px 14px",
-        }}
+        className="mp-admin-club-pending-row"
+        style={{ padding: "12px 14px" }}
       >
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 900 }}>{app.name}</div>
@@ -893,7 +888,7 @@ function GrantClubPlanDialog({
       </p>
 
       <ClubPlanFieldLabel>Duración</ClubPlanFieldLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 14 }}>
+      <div className="mp-admin-duration-pick-5" style={{ marginBottom: 14 }}>
         {[1, 3, 6, 12].map((m) => (
           <button
             key={m}

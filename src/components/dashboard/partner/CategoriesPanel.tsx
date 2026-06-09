@@ -195,16 +195,7 @@ export function CategoriesPanel({
           {initialCategories.map((c) => (
             <div
               key={c.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 100px 110px 90px 110px 90px",
-                gap: 10,
-                alignItems: "center",
-                padding: "10px 12px",
-                background: "var(--muted)",
-                borderRadius: 8,
-                fontSize: 12,
-              }}
+              className="mp-tournament-cat-row"
             >
               <div>
                 <b style={{ color: "#0a0a0a" }}>{c.name}</b>
@@ -383,7 +374,7 @@ export function CategoriesPanel({
                 </div>
               </Field>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <div className="mp-tournament-form-grid-3">
                 <Field label="Edad mín.">
                   <input
                     type="number"

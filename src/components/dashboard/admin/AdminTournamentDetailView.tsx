@@ -52,21 +52,17 @@ export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetai
       </Link>
 
       <div className="card" style={{ padding: 28, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div className="mp-admin-event-header">
           <TournamentHeaderCard data={data} currency={currency} />
           <TournamentActionsBar data={data} />
         </div>
       </div>
 
       <div
-        className="card"
+        className="card mp-admin-event-mgmt-banner"
         style={{
           marginTop: 16,
           padding: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 14,
           border: "1px dashed #7c3aed",
           background: "rgba(124,58,237,0.04)",
         }}
@@ -116,7 +112,7 @@ export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetai
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: 16 }}>
+      <div className="mp-partner-torneo-kpis" style={{ marginTop: 16 }}>
         <Kpi
           label="Inscripciones"
           value={

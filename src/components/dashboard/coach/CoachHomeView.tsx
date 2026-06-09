@@ -171,7 +171,7 @@ export function CoachHomeView({ data }: { data: CoachHomeData }) {
   return (
     <>
       <RHWelcome role="coach" userName={data.userName} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="mp-partner-torneo-kpis">
         <RHKpi
           label="Clases hoy"
           value={String(kpis.classesToday)}
@@ -201,7 +201,7 @@ export function CoachHomeView({ data }: { data: CoachHomeData }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 16 }}>
+      <div className="mp-role-home-panels">
         <RHPanel
           title="Próxima clase"
           action={
@@ -373,7 +373,7 @@ export function CoachHomeView({ data }: { data: CoachHomeData }) {
           </button>
         }
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        <div className="mp-coach-students-grid">
           {hasStudents
             ? data.topStudents.map((a, i) => (
                 <div

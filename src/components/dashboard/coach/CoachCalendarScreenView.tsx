@@ -65,6 +65,8 @@ export function CoachCalendarScreenView({ data }: { data: CalendarData }) {
         }
       />
       <div className="card" style={{ padding: 18 }}>
+        <div className="mp-coach-calendar-scroll">
+        <div className="mp-coach-calendar-inner">
         <div
           style={{
             display: "grid",
@@ -135,6 +137,8 @@ export function CoachCalendarScreenView({ data }: { data: CalendarData }) {
             ))}
           </div>
         ))}
+        </div>
+        </div>
       </div>
     </>
   );

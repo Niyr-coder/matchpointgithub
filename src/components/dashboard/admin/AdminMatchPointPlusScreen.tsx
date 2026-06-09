@@ -1972,11 +1972,8 @@ function PlanesTab({
               />
             </label>
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-              }}
+              className="mp-tournament-form-grid-2"
+              style={{ marginTop: 12 }}
             >
               <label
                 style={{ display: "flex", flexDirection: "column", gap: 5 }}
@@ -2256,9 +2253,8 @@ function PlanEditCard({
         </div>
       </label>
       <div
+        className="mp-tournament-form-grid-2"
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
           gap: 8,
           paddingTop: 10,
           borderTop: "1px dashed var(--border)",

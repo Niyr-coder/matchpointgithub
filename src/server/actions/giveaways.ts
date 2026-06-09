@@ -10,6 +10,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { notify } from "@/server/notifications/dispatch";
+import { isClubGiveawaysEnabledForUser, requireClubGiveawaysEnabled } from "@/server/flags/club-giveaways-flag";
 import { isClubMembershipActive } from "@/lib/clubs/membership";
 import { isGiveawayEligible } from "@/lib/clubs/comms-eligibility";
 import { resolveMechanicWeightApplied, MAX_PAY_TICKETS } from "@/lib/giveaways/mechanic-weight";
@@ -62,13 +63,13 @@ async function requireUserId(): Promise<string> {
 async function assertGiveawayStaff(clubId: string): Promise<string> {
   const userId = await requireUserId();
   const supabase = await getServerClient();
-  const { data, error } = await (supabase as any).rpc("fn_is_club_announcements_publisher", {
-    p_club_id: clubId,
-    p_user_id: userId,
-  });
+  const { data, error } = await (supabase as any).rpc("mp_club_staff", { p_club_id: clubId });
   if (error) throw new MpError("GIVEAWAY.AUTH_FAILED", error.message, 500);
   if (!data) {
-    throw new AuthError("AUTH.ROLE_REQUIRED", "Solo owner o manager pueden gestionar sorteos");
+    throw new AuthError(
+      "AUTH.ROLE_REQUIRED",
+      "No tienes permiso para gestionar sorteos de este club. Revisa que el club activo sea el correcto.",
+    );
   }
   return userId;
 }
@@ -217,6 +218,7 @@ export async function createClubFeedPost(
 export async function listClubFeedPosts(input: unknown): Promise<ActionResult<ClubFeedPostView[]>> {
   return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
     await requireUserId();
+    const giveawaysOn = await isClubGiveawaysEnabledForUser();
     const admin = getAdminClient();
     const { data, error } = await admin
       .from("club_feed_posts")
@@ -227,22 +229,24 @@ export async function listClubFeedPosts(input: unknown): Promise<ActionResult<Cl
       .order("published_at", { ascending: false })
       .limit(50);
     if (error) throw new MpError("GIVEAWAY.FEED_FAILED", error.message, 500);
-    return (data ?? []).map((row) =>
-      ClubFeedPostViewSchema.parse({
-        id: row.id,
-        clubId: row.club_id,
-        kind: row.kind,
-        refId: row.ref_id ?? null,
-        title: row.title,
-        body: row.body ?? null,
-        mediaUrl: row.media_url ?? null,
-        badge: row.badge ?? null,
-        ctaLabel: row.cta_label ?? null,
-        ctaHref: row.cta_href ?? null,
-        publishedAt: row.published_at,
-        payload: (row.payload as Record<string, unknown>) ?? {},
-      }),
-    );
+    return (data ?? [])
+      .filter((row) => giveawaysOn || (row.kind as string) !== "giveaway")
+      .map((row) =>
+        ClubFeedPostViewSchema.parse({
+          id: row.id,
+          clubId: row.club_id,
+          kind: row.kind,
+          refId: row.ref_id ?? null,
+          title: row.title,
+          body: row.body ?? null,
+          mediaUrl: row.media_url ?? null,
+          badge: row.badge ?? null,
+          ctaLabel: row.cta_label ?? null,
+          ctaHref: row.cta_href ?? null,
+          publishedAt: row.published_at,
+          payload: (row.payload as Record<string, unknown>) ?? {},
+        }),
+      );
   });
 }
 
@@ -251,6 +255,7 @@ export async function listActiveClubGiveaways(
 ): Promise<ActionResult<{ id: string; title: string; subtitle: string | null; closesAt: string | null; entries: number }[]>> {
   return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
     await requireUserId();
+    if (!(await isClubGiveawaysEnabledForUser())) return [];
     const admin = getAdminClient();
     const { data, error } = await (admin as any)
       .from("club_giveaways")
@@ -274,6 +279,7 @@ export async function saveGiveawayPremio(
   input: unknown,
 ): Promise<ActionResult<{ giveawayId: string }>> {
   return runAction(SaveGiveawayPremioSchema, input, async (data) => {
+    await requireClubGiveawaysEnabled();
     const userId = await assertGiveawayStaff(data.clubId);
     const admin = getAdminClient();
     const convId = await ensureAnnouncementConversation(data.clubId);
@@ -326,6 +332,7 @@ export async function saveGiveawayMechanics(
   input: unknown,
 ): Promise<ActionResult<{ giveawayId: string; maxEntriesPerUser: number }>> {
   return runAction(SaveGiveawayMechanicsSchema, input, async (data) => {
+    await requireClubGiveawaysEnabled();
     const g = await loadGiveawayRow(data.giveawayId);
     await assertGiveawayStaff(g.club_id as string);
     const maxEntries =
@@ -346,6 +353,7 @@ export async function saveGiveawayRules(
   input: unknown,
 ): Promise<ActionResult<{ giveawayId: string }>> {
   return runAction(SaveGiveawayRulesSchema, input, async (data) => {
+    await requireClubGiveawaysEnabled();
     const g = await loadGiveawayRow(data.giveawayId);
     await assertGiveawayStaff(g.club_id as string);
     const admin = getAdminClient();
@@ -369,6 +377,7 @@ export async function publishGiveawayV2(
   input: unknown,
 ): Promise<ActionResult<{ giveawayId: string; feedPostId: string }>> {
   return runAction(PublishGiveawaySchema, input, async ({ giveawayId }) => {
+    await requireClubGiveawaysEnabled();
     const g = await loadGiveawayRow(giveawayId);
     const userId = await assertGiveawayStaff(g.club_id as string);
     const admin = getAdminClient();
@@ -387,7 +396,7 @@ export async function publishGiveawayV2(
         media_url: (g.prize_image_url as string | null) ?? null,
         badge: "GIVEAWAY",
         cta_label: "Participar",
-        cta_href: `/dashboard/user/giveaways/${giveawayId}`,
+        cta_href: `/dashboard/clubes/giveaways/${giveawayId}`,
         payload: {
           prize_label: g.prize_label,
           subtitle: g.subtitle,
@@ -463,6 +472,7 @@ export async function publishGiveawayV2(
 
 export async function getGiveawayDetail(input: unknown): Promise<ActionResult<GiveawayDetailView>> {
   return runAction(GiveawayIdSchema, input, async ({ giveawayId }) => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const g = await loadGiveawayRow(giveawayId);
     const admin = getAdminClient();
@@ -565,6 +575,7 @@ export async function enterGiveawayWithPrereqs(
   input: unknown,
 ): Promise<ActionResult<{ myEntries: number; maxEntries: number }>> {
   return runAction(EnterGiveawayPrereqSchema, input, async (data) => {
+    await requireClubGiveawaysEnabled();
     if (!data.acceptRules) {
       throw new MpError("GIVEAWAY.RULES_REQUIRED", "Debes aceptar las reglas del sorteo", 400);
     }
@@ -675,8 +686,27 @@ async function applyMechanicSyncForUser(giveawayId: string, userId: string): Pro
   return myEntries;
 }
 
+/** Tras un referido nuevo — sincroniza mecánica invite en sorteos activos del referidor. */
+export async function syncActiveGiveawayMechanicsForReferrer(referrerUserId: string): Promise<void> {
+  try {
+    const admin = getAdminClient();
+    const { data: rows } = await admin
+      .from("club_giveaway_entries")
+      .select("giveaway_id, club_giveaways!inner(id, status)")
+      .eq("user_id", referrerUserId)
+      .in("club_giveaways.status", ["open", "closing"]);
+    const ids = [...new Set((rows ?? []).map((r) => r.giveaway_id as string))];
+    for (const giveawayId of ids) {
+      await applyMechanicSyncForUser(giveawayId, referrerUserId);
+    }
+  } catch (err) {
+    console.error("[syncActiveGiveawayMechanicsForReferrer]", err);
+  }
+}
+
 /** Tras reservar, seguir, comprar, etc. — sincroniza mecánicas en sorteos activos del club. */
 export async function syncActiveGiveawayMechanicsForClubUser(userId: string, clubId: string): Promise<void> {
+  if (!(await isClubGiveawaysEnabledForUser())) return;
   try {
     const admin = getAdminClient();
     const { data: rows } = await admin
@@ -698,6 +728,7 @@ export async function syncGiveawayMechanicsForUser(
   input: unknown,
 ): Promise<ActionResult<{ myEntries: number }>> {
   return runAction(GiveawayIdSchema, input, async ({ giveawayId }) => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const myEntries = await applyMechanicSyncForUser(giveawayId, userId);
     return { myEntries };
@@ -708,6 +739,7 @@ export async function submitGiveawayShareClaim(
   input: unknown,
 ): Promise<ActionResult<{ status: "pending" }>> {
   return runAction(SubmitGiveawayShareSchema, input, async ({ giveawayId, evidenceUrl }) => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const g = await loadGiveawayRow(giveawayId);
     const status = g.status as string;
@@ -747,6 +779,7 @@ export async function createGiveawayPayEntry(
   input: unknown,
 ): Promise<ActionResult<{ transactionId: string; checkoutUrl: string }>> {
   return runAction(GiveawayIdSchema, input, async ({ giveawayId }) => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const g = await loadGiveawayRow(giveawayId);
     const status = g.status as string;
@@ -808,6 +841,7 @@ export async function reviewGiveawayManualSubmission(
   input: unknown,
 ): Promise<ActionResult<{ ok: true }>> {
   return runAction(ReviewGiveawayManualSchema, input, async ({ submissionId, decision }) => {
+    await requireClubGiveawaysEnabled();
     const staffId = await requireUserId();
     const admin = getAdminClient();
     const { data: sub, error: readErr } = await admin
@@ -861,6 +895,7 @@ export async function startGiveawayDraw(
   input: unknown,
 ): Promise<ActionResult<{ winnerIds: string[]; winnerNames: string[] }>> {
   return runAction(GiveawayIdSchema, input, async ({ giveawayId }) => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const g = await loadGiveawayRow(giveawayId);
     await assertGiveawayStaff(g.club_id as string);
@@ -875,6 +910,7 @@ export async function startGiveawayDraw(
 
 export async function listMyGiveaways(input: unknown): Promise<ActionResult<MyGiveawayRow[]>> {
   return runAction(z.object({}).optional(), input ?? {}, async () => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const admin = getAdminClient();
     const { data: entries, error } = await admin
@@ -937,6 +973,7 @@ export async function getMyGiveawaysDashboard(
   input: unknown,
 ): Promise<ActionResult<MyGiveawaysDashboard>> {
   return runAction(z.object({}).optional(), input ?? {}, async () => {
+    await requireClubGiveawaysEnabled();
     const userId = await requireUserId();
     const admin = getAdminClient();
 
@@ -1085,6 +1122,7 @@ export async function getMyGiveawaysDashboard(
 
 export async function listOrgGiveaways(input: unknown): Promise<ActionResult<GiveawayDetailView[]>> {
   return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
+    await requireClubGiveawaysEnabled();
     await assertGiveawayStaff(clubId);
     const admin = getAdminClient();
     const { data, error } = await (admin as any)
@@ -1100,6 +1138,32 @@ export async function listOrgGiveaways(input: unknown): Promise<ActionResult<Giv
       if (res.ok) out.push(res.data);
     }
     return out;
+  });
+}
+
+export type ClubGiveawaysOrgOverview = {
+  clubId: string;
+  clubName: string;
+  followerCount: number;
+};
+
+/** Datos mínimos para la consola org de sorteos (no reutiliza anuncios). */
+export async function getClubGiveawaysOrgOverview(
+  input: unknown,
+): Promise<ActionResult<ClubGiveawaysOrgOverview>> {
+  return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
+    await requireClubGiveawaysEnabled();
+    await assertGiveawayStaff(clubId);
+    const admin = getAdminClient();
+    const [{ data: club }, { count: followerCount }] = await Promise.all([
+      admin.from("clubs").select("name").eq("id", clubId).maybeSingle(),
+      admin.from("club_followers").select("*", { count: "exact", head: true }).eq("club_id", clubId),
+    ]);
+    return {
+      clubId,
+      clubName: (club?.name as string | null) ?? "Tu club",
+      followerCount: followerCount ?? 0,
+    };
   });
 }
 

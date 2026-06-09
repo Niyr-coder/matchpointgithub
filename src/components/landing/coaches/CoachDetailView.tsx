@@ -298,7 +298,7 @@ export function CoachDetailView({ detail }: { detail: CoachDetail }) {
               Enviar mensaje
             </button>
             <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px dashed var(--border)" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div className="mp-tournament-form-grid-2" style={{ gap: 14 }}>
                 <div>
                   <div className="label-mp">Reseñas</div>
                   <div className="font-heading" style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>

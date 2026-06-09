@@ -247,7 +247,7 @@ export function PagosSection({
 
         {showAdd && (
           <div style={{ marginBottom: 16, padding: 16, border: "1px solid var(--border)", borderRadius: 12, background: "#fafafa" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="mp-tournament-form-grid-2">
               <Input label="Código banco (ej. BP)" value={form.bankCode} onChange={(v) => setForm((f) => ({ ...f, bankCode: v.toUpperCase().slice(0, 4) }))} />
               <Input label="Nombre del banco" value={form.bankName} onChange={(v) => setForm((f) => ({ ...f, bankName: v }))} />
               <Input label="Últimos 4 dígitos" value={form.accountLast4} onChange={(v) => setForm((f) => ({ ...f, accountLast4: v.replace(/\D/g, "").slice(0, 4) }))} />
@@ -359,7 +359,7 @@ export function PagosSection({
         <button className="btn" style={{ width: "100%", background: "#fff", border: "1px solid var(--border)", fontSize: 11 }} onClick={() => onAction("Subir a Plan Pro · próximamente")}><Icon name="trending-up" size={12} />Subir a Plan Pro · 7%</button>
 
         <div className="label-mp" style={{ marginTop: 20, marginBottom: 10 }}>Métodos de pago aceptados</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="mp-tournament-form-grid-2" style={{ gap: 8 }}>
           {METHODS_META.map((m) => {
             const on = methods[m.k];
             return (

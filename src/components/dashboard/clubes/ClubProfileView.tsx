@@ -13,20 +13,23 @@ import { toggleFollowClub } from "@/server/actions/clubs";
 import { requestClubMembership } from "@/server/actions/club-memberships";
 import { ClubMap } from "./ClubMap";
 import { ClubCourtTile } from "./ClubCourtTile";
-import type { ClubFeedPostView } from "@/lib/schemas/giveaways";
+import {
+  activeGiveawayCount,
+  formatEventsMonth,
+  formatGiveawaysStat,
+  formatHoursStat,
+  formatRating,
+  mapRailEvents,
+  mapRailGiveaways,
+} from "./club-profile-handoff";
+import { useEnabledSports } from "@/components/SportsProvider";
+import { PRIMARY_SPORT, sportLabel, type Sport } from "@/lib/sports";
 import type { ClubSocialView as ClubSocialViewData, ClubSocialTournament } from "@/lib/schemas/clubs";
+import type { ClubFeedPostView } from "@/lib/schemas/giveaways";
 
-const SPORT_LABEL: Record<string, string> = {
-  pickleball: "Pickleball",
-  padel: "Pádel",
-  tennis: "Tenis",
-  football: "Fútbol",
-  squash: "Squash",
-};
 const MONTHS_SHORT = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 
-type Tab = "feed" | "eventos" | "reservas" | "sobre";
-type MobileTab = "feed" | "eventos" | "reservar" | "sobre";
+type ProfileTab = "feed" | "eventos" | "reservas" | "sobre";
 
 type ActiveGiveaway = {
   id: string;
@@ -40,11 +43,8 @@ type Props = {
   social: ClubSocialViewData;
   feedPosts: ClubFeedPostView[];
   activeGiveaways: ActiveGiveaway[];
+  giveawaysEnabled: boolean;
 };
-
-function fmtSport(s: string): string {
-  return SPORT_LABEL[s] ?? s;
-}
 
 function fmtRelTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -58,13 +58,6 @@ function fmtRelTime(iso: string): string {
   return new Date(iso).toLocaleDateString("es-EC", { day: "numeric", month: "short" });
 }
 
-function closesInFromIso(iso: string | null): { days: number; hours: number } | undefined {
-  if (!iso) return undefined;
-  const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return { days: 0, hours: 0 };
-  const hours = Math.floor(ms / 3_600_000);
-  return { days: Math.floor(hours / 24), hours: hours % 24 };
-}
 
 function feedBadge(kind: string, badge: string | null) {
   if (badge) {
@@ -85,20 +78,25 @@ function feedBadge(kind: string, badge: string | null) {
 
 function tournamentRow(ev: ClubSocialTournament) {
   const d = new Date(ev.startsAt);
+  const cap = ev.maxParticipants ?? 0;
   return {
     day: String(d.getDate()),
     month: MONTHS_SHORT[d.getMonth()],
     name: ev.name,
-    meta: ev.entryFeeCents ? `$${(ev.entryFeeCents / 100).toFixed(0)}/inscripción` : "Consultar cupos",
+    meta: ev.entryFeeCents
+      ? `$${(ev.entryFeeCents / 100).toFixed(0)}/inscripción`
+      : cap > 0
+        ? `${cap} cupos`
+        : "Consultar cupos",
     kind: "torneo" as const,
-    taken: ev.maxParticipants ? Math.min(ev.maxParticipants, Math.floor(ev.maxParticipants * 0.6)) : undefined,
-    capacity: ev.maxParticipants ?? undefined,
+    taken: ev.participantCount ?? 0,
+    capacity: cap > 0 ? cap : undefined,
   };
 }
 
-const FEED_FILTERS = ["Todo", "Sorteos", "Torneos", "Quedadas", "Resultados", "Avisos"];
+const FEED_FILTERS_ALL = ["Todo", "Sorteos", "Torneos", "Quedadas", "Resultados", "Avisos"] as const;
 
-export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
+export function ClubProfileView({ social, feedPosts, activeGiveaways, giveawaysEnabled }: Props) {
   const {
     club,
     stats,
@@ -112,12 +110,14 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
     amenities,
     verified,
     isPartner,
+    photos,
+    profileStats,
   } = social;
 
   const router = useRouter();
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>("feed");
-  const [mobileTab, setMobileTab] = useState<MobileTab>("feed");
+  const { multisport, sports: platformSports } = useEnabledSports();
+  const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [feedFilter, setFeedFilter] = useState("Todo");
   const [isFollowing, setIsFollowing] = useState(social.isFollowing);
   const [followersCount, setFollowersCount] = useState(stats.followersCount);
@@ -126,9 +126,23 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
 
   const isStaff = viewerRole === "owner" || viewerRole === "manager" || viewerRole === "admin";
   const handle = `@${club.slug}`;
+  const primaryGiveawayId = activeGiveaways[0]?.id;
+  const ratingLabel = formatRating(stats.rating);
+  const reviewsCount = stats.reviewsCount;
+  const hasReviews = reviewsCount > 0 && ratingLabel != null;
+
+  const feedFilters = useMemo(
+    () => (giveawaysEnabled ? [...FEED_FILTERS_ALL] : FEED_FILTERS_ALL.filter((f) => f !== "Sorteos")),
+    [giveawaysEnabled],
+  );
+
+  const displayPosts = useMemo(() => {
+    if (giveawaysEnabled) return feedPosts;
+    return feedPosts.filter((p) => p.kind !== "giveaway");
+  }, [feedPosts, giveawaysEnabled]);
 
   const filteredPosts = useMemo(() => {
-    if (feedFilter === "Todo") return feedPosts;
+    if (feedFilter === "Todo") return displayPosts;
     const map: Record<string, string[]> = {
       Sorteos: ["giveaway"],
       Torneos: ["event"],
@@ -137,12 +151,83 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
       Avisos: ["notice", "announcement"],
     };
     const kinds = map[feedFilter] ?? [];
-    return feedPosts.filter((p) => kinds.includes(p.kind));
-  }, [feedFilter, feedPosts]);
+    return displayPosts.filter((p) => kinds.includes(p.kind));
+  }, [feedFilter, displayPosts]);
+
+  const railGiveaways = useMemo(
+    () => (giveawaysEnabled ? mapRailGiveaways(activeGiveaways) : []),
+    [activeGiveaways, giveawaysEnabled],
+  );
+  const railEvents = useMemo(
+    () =>
+      mapRailEvents(
+        upcomingTournaments.map((t) => ({
+          id: t.id,
+          name: t.name,
+          startsAt: t.startsAt,
+          entryFeeCents: t.entryFeeCents,
+          maxParticipants: t.maxParticipants,
+          participantCount: t.participantCount,
+        })),
+      ),
+    [upcomingTournaments],
+  );
+
+  const eventsStat = formatEventsMonth(profileStats);
+  const giveawaysStat = giveawaysEnabled ? formatGiveawaysStat(profileStats, activeGiveaways.length) : null;
+  const hoursStat = formatHoursStat(club.openHoursToday, profileStats.weeklyOpenHoursLabel);
+  const giveawayBadgeCount = giveawaysEnabled ? activeGiveawayCount(profileStats, activeGiveaways.length) : 0;
+
+  const visibleClubSports = useMemo(() => {
+    const allowed = new Set(platformSports);
+    return club.sports.filter((s): s is Sport => allowed.has(s as Sport));
+  }, [club.sports, platformSports]);
+
+  const courtsSub = useMemo(() => {
+    if (visibleClubSports.length > 0) {
+      return visibleClubSports.map(sportLabel).join(" · ");
+    }
+    if (!multisport) return sportLabel(PRIMARY_SPORT);
+    if (club.courtsCount > 0) return `${club.courtsCount} en el club`;
+    return undefined;
+  }, [visibleClubSports, multisport, club.courtsCount]);
+
+  const primarySport = visibleClubSports[0] ?? PRIMARY_SPORT;
+
+  const clubImageUrl = club.logoUrl ?? photos[0]?.url ?? null;
 
   const openReservar = () => {
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mp-open-reservar"));
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("mp-open-reservar", {
+        detail: {
+          clubId: club.id,
+          clubSlug: club.slug,
+          name: club.name,
+          city: `${club.city} · ${club.courtsCount} cancha${club.courtsCount !== 1 ? "s" : ""}`,
+          sport: primarySport,
+        },
+      }),
+    );
   };
+
+  const onShareClub = () => {
+    if (typeof window === "undefined") return;
+    const url = window.location.href;
+    if (navigator.share) {
+      void navigator.share({ title: club.name, url }).catch(() => undefined);
+      return;
+    }
+    void navigator.clipboard.writeText(url).then(() => {
+      toast({ icon: "success", title: "Enlace copiado", sub: "Pégalo donde quieras compartir el club." });
+    });
+  };
+
+  const mobileHeroChip = (children: ReactNode) => (
+    <span className="chip" style={{ fontSize: 8.5, padding: "2px 6px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
+      {children}
+    </span>
+  );
 
   const onFollow = () => {
     startTransition(async () => {
@@ -155,6 +240,20 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
       setFollowersCount(res.data.followersCount);
     });
   };
+
+  const mobileHeroActions = (
+    <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+      <button type="button" className="btn btn-primary" style={{ flex: 1, padding: "8px 12px" }} disabled={pending} onClick={onFollow}>
+        <Icon name={isFollowing ? "heart" : "user-plus"} size={11} color="#fff" /> {isFollowing ? "Siguiendo" : "Seguir"}
+      </button>
+      <button type="button" className="btn" style={{ flex: 1, padding: "8px 12px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }} onClick={openReservar}>
+        <Icon name="calendar-plus" size={11} color="#fff" /> Reservar
+      </button>
+      <button type="button" className="btn" style={{ padding: "8px 10px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }} aria-label="Compartir club" onClick={onShareClub}>
+        <Icon name="share-2" size={11} color="#fff" />
+      </button>
+    </div>
+  );
 
   const onUnir = () => {
     if (membershipStatus === "active") return;
@@ -177,6 +276,27 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
   };
 
   const goGiveaway = (id: string) => router.push(`/dashboard/clubes/giveaways/${id}`);
+
+  const resolveFeedPostCta = (post: ClubFeedPostView): (() => void) | undefined => {
+    if (post.kind === "giveaway" && !giveawaysEnabled) return undefined;
+    if (post.refId && post.kind === "giveaway") return () => goGiveaway(post.refId!);
+    if (post.ctaHref) return () => router.push(post.ctaHref!);
+    if (post.kind === "giveaway" && primaryGiveawayId) return () => goGiveaway(primaryGiveawayId);
+    if (post.kind === "event" && upcomingTournaments[0]) {
+      return () => router.push(`/eventos/${upcomingTournaments[0].slug}`);
+    }
+    return undefined;
+  };
+
+  const resolveRailEventClick = (evId: string) => {
+    const t = upcomingTournaments.find((x) => x.id === evId);
+    if (t) return () => router.push(`/eventos/${t.slug}`);
+    return () => setActiveTab("eventos");
+  };
+
+  const feedInteractionSoon = (label: string) => {
+    toast({ icon: "info", title: "Próximamente", sub: `${label} llegará en una próxima versión del feed.` });
+  };
 
   const mapsUrl =
     club.latitude != null && club.longitude != null
@@ -208,15 +328,15 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
     </div>
   );
 
-  const clubAvatar = (size: number, radius: number, fontSize: number) => (
+  const clubAvatar = (size: number, radius: number, fontSize: number, letterOffset = -4) => (
     <div
       style={{
         width: size,
         height: size,
         borderRadius: radius,
         flexShrink: 0,
-        background: club.coverUrl ? `url(${club.coverUrl}) center/cover` : "#fff",
-        border: "3px solid rgba(255,255,255,0.18)",
+        background: "#fff",
+        border: `${size <= 64 ? 2 : 3}px solid rgba(255,255,255,${size <= 64 ? "0.2" : "0.18"})`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -225,19 +345,28 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
         fontWeight: 900,
         fontSize,
         letterSpacing: "-0.04em",
+        overflow: "hidden",
       }}
     >
-      {!club.coverUrl && (
+      {clubImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={clubImageUrl}
+          alt={`Logo de ${club.name}`}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
         <>
           <span style={{ color: "var(--primary)" }}>●</span>
-          <span style={{ marginLeft: -4 }}>{club.name.slice(0, 1).toUpperCase()}</span>
+          <span style={{ marginLeft: letterOffset }}>{club.name.slice(0, 1).toUpperCase()}</span>
         </>
       )}
     </div>
   );
 
-  const chipOnHero = (children: ReactNode) => (
+  const heroChip = (key: string, children: ReactNode) => (
     <span
+      key={key}
       className="chip"
       style={{
         background: "rgba(255,255,255,0.14)",
@@ -252,23 +381,25 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
   const heroBadges = (
     <>
       {verified &&
-        chipOnHero(
+        heroChip(
+          "verified",
           <>
             <Icon name="badge-check" size={10} /> Verificado
           </>,
         )}
       {isPartner &&
-        chipOnHero(
+        heroChip(
+          "partner",
           <>
             <Icon name="shield-check" size={10} /> Partner MATCHPOINT
           </>,
         )}
-      {club.sports.map((s) => chipOnHero(fmtSport(s)))}
-      {activeGiveaways.length > 0 &&
-        chipOnHero(
+      {giveawaysEnabled &&
+        giveawayBadgeCount > 0 &&
+        heroChip(
+          "giveaways",
           <>
-            <Icon name="gift" size={10} /> {activeGiveaways.length} sorteo{activeGiveaways.length !== 1 ? "s" : ""} activo
-            {activeGiveaways.length !== 1 ? "s" : ""}
+            <Icon name="gift" size={10} /> {giveawayBadgeCount} sorteo{giveawayBadgeCount !== 1 ? "s" : ""} activo
           </>,
         )}
     </>
@@ -330,41 +461,38 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
               }}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <Icon name="at-sign" size={11} /> {handle}
+                <Icon name="at-sign" size={11} /> {club.slug}
               </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                 <Icon name="map-pin" size={11} /> {club.city}
               </span>
-              {stats.rating != null && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <Icon name="star" size={11} /> {stats.rating.toFixed(1)} · {stats.reviewsCount} reseñas
-                </span>
-              )}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Icon name="star" size={11} />{" "}
+                {hasReviews ? `${ratingLabel} · ${reviewsCount} reseña${reviewsCount !== 1 ? "s" : ""}` : "Sin reseñas aún"}
+              </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                 <Icon name="users" size={11} /> {followersCount.toLocaleString("es-EC")} siguen
               </span>
             </div>
           </div>
-          {!isStaff && (
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <button type="button" className="btn btn-primary" disabled={pending} onClick={onFollow}>
-                <Icon name={isFollowing ? "heart" : "user-plus"} size={12} />
-                {isFollowing ? "Siguiendo" : "Seguir"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ background: "rgba(255,255,255,0.08)", color: "#fff", borderColor: "rgba(255,255,255,0.28)" }}
-                onClick={openReservar}
-              >
-                <Icon name="calendar-plus" size={12} /> Reservar
-              </button>
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <button type="button" className="btn btn-primary" disabled={pending} onClick={onFollow}>
+              <Icon name={isFollowing ? "heart" : "user-plus"} size={12} />
+              {isFollowing ? "Siguiendo" : "Seguir"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ background: "rgba(255,255,255,0.08)", color: "#fff", borderColor: "rgba(255,255,255,0.28)" }}
+              onClick={openReservar}
+            >
+              <Icon name="calendar-plus" size={12} /> Reservar
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Mobile hero — club-mobile.jsx ClubMobileHero */}
+      {/* Mobile hero — club-mobile.jsx ClubMobileHero (inline 1:1) */}
       <div className="club-profile-mobile-only hero-emerald" style={{ position: "relative", color: "#fff", padding: "16px 18px 18px", overflow: "hidden" }}>
         <div
           aria-hidden
@@ -380,6 +508,7 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
             lineHeight: 0.8,
             transform: "rotate(-6deg) translate(15%, -25%)",
             textTransform: "uppercase",
+            whiteSpace: "nowrap",
             pointerEvents: "none",
           }}
         >
@@ -387,24 +516,16 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
         </div>
         <div style={{ position: "relative" }}>
           <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
-            {clubAvatar(64, 14, 26)}
+            {clubAvatar(64, 14, 26, -2)}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
-                {verified && (
-                  <span className="chip" style={{ fontSize: 8.5, padding: "2px 6px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <Icon name="badge-check" size={9} /> Verificado
-                  </span>
-                )}
-                {isPartner && (
-                  <span className="chip" style={{ fontSize: 8.5, padding: "2px 6px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <Icon name="shield-check" size={9} /> Partner
-                  </span>
-                )}
-                <span className="chip" style={{ fontSize: 8.5, padding: "2px 6px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }}>
-                  {club.city}
-                </span>
+                {verified && mobileHeroChip(<><Icon name="badge-check" size={8} /> Verificado</>)}
+                {isPartner && mobileHeroChip(<><Icon name="shield-check" size={8} /> Partner</>)}
               </div>
-              <h1 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: 0, lineHeight: 1 }}>
+              <h1
+                className="font-heading"
+                style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: 0, lineHeight: 1 }}
+              >
                 {club.name}
                 <span style={{ color: "var(--gw-accent)" }}>.</span>
               </h1>
@@ -412,31 +533,29 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
           </div>
           <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap", fontSize: 11, color: "rgba(255,255,255,0.78)", fontWeight: 600 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <Icon name="star" size={10} /> {stats.rating?.toFixed(1) ?? "—"}
+              <Icon name="map-pin" size={10} /> {club.city}
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Icon name="star" size={10} /> {hasReviews ? ratingLabel : "—"}
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               <Icon name="users" size={10} /> {followersCount.toLocaleString("es-EC")}
             </span>
           </div>
-          {!isStaff && (
-            <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-              <button type="button" className="btn btn-primary" style={{ flex: 1, padding: "8px 12px" }} disabled={pending} onClick={onFollow}>
-                <Icon name={isFollowing ? "heart" : "user-plus"} size={11} color="#fff" /> {isFollowing ? "Siguiendo" : "Seguir"}
-              </button>
-              <button type="button" className="btn" style={{ flex: 1, padding: "8px 12px", background: "rgba(255,255,255,0.14)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }} onClick={openReservar}>
-                <Icon name="calendar-plus" size={11} color="#fff" /> Reservar
-              </button>
-            </div>
-          )}
+          {mobileHeroActions}
         </div>
       </div>
 
       {/* Quick stats — club-web StatTile row */}
-      <div className="club-profile-stats club-profile-desktop-only">
-        <StatTile label="Canchas" value={String(club.courtsCount)} sub="Indoor + outdoor" />
-        <StatTile label="Eventos próximos" value={String(upcomingTournaments.length)} sub="Torneos publicados" />
-        <StatTile label="Sorteos activos" value={String(activeGiveaways.length)} sub="En el feed del club" color="var(--primary-dark)" />
-        <StatTile label="Horario hoy" value={club.isOpenNow ? "Abierto" : "Cerrado"} sub={club.openHoursToday ?? "Consulta horarios"} />
+      <div
+        className={`club-profile-stats club-profile-desktop-only${giveawaysEnabled ? "" : " club-profile-stats--three-cols"}`}
+      >
+        <StatTile label="Canchas" value={String(club.courtsCount)} sub={courtsSub} />
+        <StatTile label="Eventos del mes" value={eventsStat.value} sub={eventsStat.sub} />
+        {giveawaysEnabled && giveawaysStat && (
+          <StatTile label="Sorteos activos" value={giveawaysStat.value} sub={giveawaysStat.sub} color="var(--primary-dark)" />
+        )}
+        <StatTile label="Horario hoy" value={hoursStat.value} sub={hoursStat.sub} />
       </div>
 
       {/* Desktop tabs */}
@@ -449,14 +568,14 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
             ["sobre", "Sobre el club", "info"],
           ] as const
         ).map(([k, l, icon]) => (
-          <button key={k} type="button" className="pv-tab" data-on={tab === k ? "true" : "false"} onClick={() => setTab(k)}>
+          <button key={k} type="button" className="pv-tab" data-on={activeTab === k ? "true" : "false"} onClick={() => setActiveTab(k)}>
             <Icon name={icon} size={11} /> {l}
           </button>
         ))}
       </div>
 
       {/* Mobile tab bar */}
-      <div className="club-profile-mobile-only" style={{ display: "flex", borderBottom: "1px solid var(--border)", background: "#fff", position: "sticky", top: 0, zIndex: 2 }}>
+      <div className="club-profile-mobile-only club-profile-mobile-tabs">
         {(
           [
             ["feed", "Feed", "rss"],
@@ -468,7 +587,7 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
           <button
             key={k}
             type="button"
-            onClick={() => setMobileTab(k)}
+            onClick={() => setActiveTab(k === "reservar" ? "reservas" : k)}
             style={{
               flex: 1,
               padding: "11px 0",
@@ -478,8 +597,8 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
               alignItems: "center",
               background: "transparent",
               border: 0,
-              borderBottom: `2px solid ${mobileTab === k ? "var(--primary)" : "transparent"}`,
-              color: mobileTab === k ? "var(--fg)" : "var(--muted-fg)",
+              borderBottom: `2px solid ${(k === "reservar" ? activeTab === "reservas" : activeTab === k) ? "var(--primary)" : "transparent"}`,
+              color: (k === "reservar" ? activeTab === "reservas" : activeTab === k) ? "var(--fg)" : "var(--muted-fg)",
               fontFamily: "inherit",
               cursor: "pointer",
             }}
@@ -491,15 +610,31 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
       </div>
 
       <div className="club-profile-main-grid">
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <div className="club-profile-main-column">
           {/* FEED — desktop + mobile */}
-          {(tab === "feed" || mobileTab === "feed") && (
+          {activeTab === "feed" && (
             <>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: mobileTab === "feed" ? "10px 0" : undefined, background: mobileTab === "feed" ? "#fff" : undefined }}>
+              <div className="club-profile-mobile-feed-filters club-profile-mobile-only">
+                <div className="label-mp" style={{ marginRight: 2, flexShrink: 0 }}>
+                  Mostrar
+                </div>
+                {feedFilters.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`chip ${feedFilter === f ? "chip-onyx" : ""}`}
+                    style={{ cursor: "pointer", border: "none", fontFamily: "inherit" }}
+                    onClick={() => setFeedFilter(f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <div className="club-profile-desktop-only" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <div className="label-mp" style={{ marginRight: 6 }}>
                   Mostrar
                 </div>
-                {FEED_FILTERS.map((f) => (
+                {feedFilters.map((f) => (
                   <button
                     key={f}
                     type="button"
@@ -518,7 +653,9 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
               ) : (
                 filteredPosts.map((post) => {
                   const badge = feedBadge(post.kind, post.badge) as "GIVEAWAY" | "TORNEO" | "RESULTADO" | "FOTO" | "AVISO" | "SPOTLIGHT";
-                  const onCta = post.refId && post.kind === "giveaway" ? () => goGiveaway(post.refId!) : post.ctaHref ? () => router.push(post.ctaHref!) : undefined;
+                  const onCta = resolveFeedPostCta(post);
+                  const ctaLabel =
+                    onCta && (post.ctaLabel ?? (post.kind === "giveaway" ? "Participar" : post.kind === "event" ? "Inscribirme" : undefined));
                   return (
                     <div key={post.id}>
                       <div className="club-profile-desktop-only">
@@ -531,8 +668,11 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
                           body={post.body ?? ""}
                           imageUrl={post.mediaUrl}
                           imageLabel={post.mediaUrl ? undefined : post.title.slice(0, 24).toUpperCase()}
-                          ctaLabel={post.ctaLabel ?? (post.kind === "giveaway" ? "Participar" : undefined)}
+                          ctaLabel={ctaLabel}
                           onCta={onCta}
+                          onLike={() => feedInteractionSoon("Los likes")}
+                          onComment={() => feedInteractionSoon("Los comentarios")}
+                          onShare={onShareClub}
                           likes={0}
                           comments={0}
                         />
@@ -546,7 +686,7 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
                           body={post.body ?? ""}
                           imageUrl={post.mediaUrl}
                           imageLabel={post.mediaUrl ? undefined : post.title.slice(0, 20).toUpperCase()}
-                          ctaLabel={post.ctaLabel ?? (post.kind === "giveaway" ? "Participar" : undefined)}
+                          ctaLabel={ctaLabel}
                           onCta={onCta}
                         />
                       </div>
@@ -557,8 +697,8 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
             </>
           )}
 
-          {(tab === "eventos" || mobileTab === "eventos") && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {activeTab === "eventos" && (
+            <div className="club-profile-mobile-tab-panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="label-mp">Próximos eventos del club</div>
               {upcomingTournaments.length === 0 ? (
                 <div className="card" style={{ padding: 24, color: "var(--muted-fg)", fontSize: 13 }}>No hay eventos próximos.</div>
@@ -601,8 +741,8 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
             </div>
           )}
 
-          {(tab === "reservas" || mobileTab === "reservar") && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {activeTab === "reservas" && (
+            <div className="club-profile-mobile-tab-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {courtOccupancy.length > 0 && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -611,7 +751,7 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
                       {new Date().toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                  <div className="club-profile-courts-grid">
                     {courtOccupancy.map((c) => (
                       <ClubCourtTile key={c.id} court={c} onReserve={openReservar} />
                     ))}
@@ -635,11 +775,13 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
             </div>
           )}
 
-          {(tab === "sobre" || mobileTab === "sobre") && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {activeTab === "sobre" && (
+            <div className="club-profile-mobile-tab-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div className="card" style={{ padding: 18 }}>
                 <div className="label-mp">Sobre el club</div>
-                <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "8px 0 0" }}>{club.description ?? "Sin descripción aún."}</p>
+                <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "8px 0 0", color: club.description?.trim() ? "inherit" : "var(--muted-fg)" }}>
+                  {club.description?.trim() ? club.description : "Este club aún no publicó una descripción."}
+                </p>
               </div>
               {amenities.length > 0 && (
                 <div className="card" style={{ padding: 18 }}>
@@ -680,62 +822,86 @@ export function ClubProfileView({ social, feedPosts, activeGiveaways }: Props) {
               )}
             </div>
           )}
+          <div className="club-profile-mobile-only" style={{ height: 24 }} aria-hidden />
         </div>
 
-        {/* Side rail — desktop only */}
+        {/* Side rail — desktop only (col. 2) */}
         <div className="club-profile-rail club-profile-desktop-only">
-          <RailCard title="Sorteos activos" cta="Ver todos">
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {activeGiveaways.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>No hay sorteos abiertos.</div>
+          {giveawaysEnabled && (
+            <RailCard
+              title="Sorteos activos"
+              cta="Ver todos"
+              onCta={() => {
+                setActiveTab("feed");
+                setFeedFilter("Sorteos");
+              }}
+            >
+              {railGiveaways.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--muted-fg)", fontWeight: 600 }}>No hay sorteos activos.</div>
               ) : (
-                activeGiveaways.slice(0, 2).map((gw) => (
-                  <GiveawayMiniCard
-                    key={gw.id}
-                    title={gw.title}
-                    entryCount={gw.entries}
-                    closesIn={closesInFromIso(gw.closesAt)}
-                    urgent={false}
-                    onParticipate={() => goGiveaway(gw.id)}
-                  />
-                ))
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {railGiveaways.map((gw) => (
+                    <GiveawayMiniCard
+                      key={gw.id}
+                      title={gw.title}
+                      imageLabel={gw.imageLabel}
+                      entryCount={gw.entryCount}
+                      myEntries={gw.myEntries}
+                      closesIn={gw.closesIn}
+                      urgent={gw.urgent}
+                      onParticipate={() => goGiveaway(gw.id)}
+                    />
+                  ))}
+                </div>
               )}
-            </div>
-          </RailCard>
+            </RailCard>
+          )}
 
-          <RailCard title="Próximos eventos" cta="Calendario">
-            {upcomingTournaments.slice(0, 3).map((ev) => {
-              const row = tournamentRow(ev);
-              return <UpcomingRow key={ev.id} {...row} />;
-            })}
-            {upcomingTournaments.length === 0 && <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>Sin eventos próximos.</div>}
+          <RailCard
+            title="Próximos eventos"
+            cta="Calendario"
+            onCta={() => setActiveTab("eventos")}
+          >
+            {railEvents.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted-fg)", fontWeight: 600 }}>No hay eventos próximos.</div>
+            ) : (
+              railEvents.map((ev) => (
+                <UpcomingRow
+                  key={ev.id}
+                  day={ev.day}
+                  month={ev.month}
+                  name={ev.name}
+                  meta={ev.meta}
+                  taken={ev.taken}
+                  capacity={ev.capacity}
+                  kind={ev.kind}
+                  onClick={resolveRailEventClick(ev.id)}
+                />
+              ))
+            )}
           </RailCard>
 
           {(club.phone || club.email) && (
-            <RailCard title="Contacto">
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
-                {club.phone && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <Icon name="phone" size={12} color="var(--muted-fg)" />
-                    <a href={`tel:${club.phone}`} style={{ color: "inherit", textDecoration: "none" }}>
-                      {club.phone}
-                    </a>
-                  </div>
-                )}
-                {club.email && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <Icon name="mail" size={12} color="var(--muted-fg)" />
-                    <a href={`mailto:${club.email}`} style={{ color: "inherit", textDecoration: "none" }}>
-                      {club.email}
-                    </a>
-                  </div>
-                )}
+          <RailCard title="Contacto">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
+              {club.phone && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <Icon name="at-sign" size={12} color="var(--muted-fg)" />
-                  {handle}
+                  <Icon name="phone" size={12} color="var(--muted-fg)" />
+                  <a href={`tel:${club.phone.replace(/\s/g, "")}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {club.phone}
+                  </a>
                 </div>
-              </div>
-            </RailCard>
+              )}
+              {club.email && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <Icon name="mail" size={12} color="var(--muted-fg)" />
+                  <a href={`mailto:${club.email}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {club.email}
+                  </a>
+                </div>
+              )}
+            </div>
+          </RailCard>
           )}
         </div>
       </div>

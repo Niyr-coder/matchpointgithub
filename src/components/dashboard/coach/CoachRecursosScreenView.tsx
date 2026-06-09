@@ -32,12 +32,10 @@ const PLACEHOLDER_COUNT = 6;
 function FeaturedPlaceholder() {
   return (
     <div
+      className="mp-coach-featured-split"
       style={{
         padding: 0,
         overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "1.2fr 1.4fr",
-        minHeight: 220,
         borderRadius: 14,
         background: "#fafafa",
         border: "1px dashed var(--border)",
@@ -369,13 +367,10 @@ export function CoachRecursosScreenView({ data }: { data: RecursosData }) {
 
       {hasFeatured && data.featured ? (
         <div
-          className="card"
+          className="card mp-coach-featured-split"
           style={{
             padding: 0,
             overflow: "hidden",
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1.4fr",
-            minHeight: 220,
           }}
         >
           <div
@@ -503,7 +498,7 @@ export function CoachRecursosScreenView({ data }: { data: RecursosData }) {
             {totalResources} recurso{totalResources === 1 ? "" : "s"} · {data.totalUses} usos totales
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div className="mp-tournament-form-grid-3">
           {hasItems
             ? data.items.map((r) => <ResourceCard key={r.id} r={r} />)
             : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => (

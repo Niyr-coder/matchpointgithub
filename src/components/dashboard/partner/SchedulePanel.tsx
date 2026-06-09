@@ -220,18 +220,7 @@ export function SchedulePanel({
                   const cat = categories.find((c) => c.id === b.categoryId);
                   const { time } = fmt(b.startsAt);
                   return (
-                    <div
-                      key={b.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "70px 1fr auto",
-                        gap: 12,
-                        alignItems: "center",
-                        padding: "10px 12px",
-                        background: "var(--muted)",
-                        borderRadius: 8,
-                      }}
-                    >
+                    <div key={b.id} className="mp-tournament-schedule-row">
                       <div
                         className="font-heading tabular"
                         style={{

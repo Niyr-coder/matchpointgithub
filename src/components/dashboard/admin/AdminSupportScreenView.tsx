@@ -428,7 +428,7 @@ export function AdminSupportScreenView({
       </div>
 
       {isOpenView ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        <div className="mp-partner-torneo-kpis">
           {KPIS.map(([l, v, c]) => (
             <div key={l} className="card" style={{ padding: 14 }}>
               <div className="label-mp">{l}</div>

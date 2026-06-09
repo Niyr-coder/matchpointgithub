@@ -249,7 +249,7 @@ function Step1({
       {enabledSportSet.size > 1 && (
         <div>
           <label style={labelStyle}>¿Cuál es tu deporte principal?</label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <div className="mp-onboarding-sport-grid">
             {SPORTS.filter((s) => enabledSportSet.has(s.value)).map((s) => {
               const on = sport === s.value;
               return (

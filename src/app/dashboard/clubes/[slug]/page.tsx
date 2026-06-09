@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getClubSocial } from "@/server/actions/clubs";
 import { listClubFeedPosts, listActiveClubGiveaways } from "@/server/actions/giveaways";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
+import { isClubGiveawaysEnabled } from "@/lib/flags/club-giveaways";
 import { ClubProfileView } from "@/components/dashboard/clubes/ClubProfileView";
 import { ClubMembershipBuySection } from "@/components/dashboard/clubes/ClubMembershipBuySection";
 
@@ -17,9 +19,14 @@ export default async function DashboardClubSocialPage({
   }
 
   const clubId = socialRes.data.club.id;
+  const flagsRes = await getMyEffectiveFlags();
+  const giveawaysEnabled = flagsRes.ok ? isClubGiveawaysEnabled(flagsRes.data) : true;
+
   const [feedRes, gwRes] = await Promise.all([
     listClubFeedPosts({ clubId }),
-    listActiveClubGiveaways({ clubId }),
+    giveawaysEnabled
+      ? listActiveClubGiveaways({ clubId })
+      : Promise.resolve({ ok: true as const, data: [] as { id: string; title: string; subtitle: string | null; closesAt: string | null; entries: number }[] }),
   ]);
 
   return (
@@ -28,6 +35,7 @@ export default async function DashboardClubSocialPage({
         social={socialRes.data}
         feedPosts={feedRes.ok ? feedRes.data : []}
         activeGiveaways={gwRes.ok ? gwRes.data : []}
+        giveawaysEnabled={giveawaysEnabled}
       />
       <ClubMembershipBuySection clubId={clubId} />
     </div>

@@ -81,6 +81,20 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: true,
   },
   {
+    key: "club_giveaways_enabled",
+    label: "Sorteos del club",
+    description:
+      "Habilita sorteos v2: feed del club con giveaways, Mis sorteos (jugador), panel Sorteos (owner/manager) y flujos de participación. Apagado = kill switch global.",
+    surfaces: [
+      "ClubProfileView",
+      "mis-sorteos / club-sorteos (sidebar)",
+      "/dashboard/clubes/giveaways/*",
+      "src/server/actions/giveaways.ts",
+    ],
+    impact: "med",
+    wired: true,
+  },
+  {
     key: "signups_open",
     label: "Registro abierto",
     description: "Permite el registro de usuarios nuevos. Apagar = cerrar registros temporalmente (mantenimiento, lanzamiento por olas).",

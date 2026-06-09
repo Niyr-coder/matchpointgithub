@@ -316,7 +316,7 @@ function RuleModal({
           <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
             Icono
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+          <div className="mp-ccfg-icon-pick">
             {ICON_PRESETS.map((p) => {
               const selected = icon === p.name;
               return (

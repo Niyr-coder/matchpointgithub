@@ -637,7 +637,7 @@ function TeamCreate({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => 
               maxLength={32}
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 12 }}>
+          <div className="mp-team-form-row">
             <Field label="Tag (3 letras)" required hint="Aparece en partidos y rankings">
               <input
                 style={{
@@ -1611,7 +1611,7 @@ function TeamSettings({ team, onBack, onLeave, meUserId }: { team: TeamLite; onB
             </Field>
           );
         })()}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 12 }}>
+        <div className="mp-team-form-row">
           <Field label="Tag" hint="Elegido al crear el team">
             <input
               style={{ ...inp, textTransform: "uppercase", fontWeight: 900, opacity: 0.6 }}
@@ -1985,10 +1985,10 @@ function TeamInvite({
   // Silenciar unused warning: pendingUserIds reservado para futura mejora.
   void pendingUserIds;
   const code = team.inviteCode ?? "—";
-  const link = team.inviteCode
-    ? `matchpoint.app/team/join/${team.inviteCode}`
-    : `matchpoint.app/team/${team.tag.toLowerCase()}`;
-  const fullLink = `https://${link}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://matchpoint.top";
+  const fullLink = team.inviteCode
+    ? `${origin}/team/join/${team.inviteCode}`
+    : `${origin}/dashboard/user/team`;
   const inviteMessage = `Te invito a unirte a "${team.name}" en MATCHPOINT. Código: ${code} · ${fullLink}`;
   const visiblePending = team.pendingInvites.filter((p) => !hidden.has(p.id));
 
@@ -2150,10 +2150,10 @@ function TeamInvite({
                   textOverflow: "ellipsis",
                 }}
               >
-                {link}
+                {fullLink}
               </div>
               <button
-                onClick={() => handleCopy(link, "Link de invitación")}
+                onClick={() => handleCopy(fullLink, "Link de invitación")}
                 className="btn"
                 style={{
                   background: "rgba(255,255,255,0.15)",

@@ -350,7 +350,7 @@ export function SoyCoachPageView() {
                 >
                   Hola, Sofía<span style={{ color: "#fbbf24" }}>.</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 6, marginTop: 10 }}>
+                <div className="mp-landing-tier-grid-2" style={{ gap: 6, marginTop: 10 }}>
                   {([
                     ["Hoy", "4 clases", "var(--primary)"],
                     ["Mes", "$1,840", "#0a0a0a"],

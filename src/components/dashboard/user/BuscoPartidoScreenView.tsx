@@ -1307,24 +1307,26 @@ function ApplicationsPanel({
   }
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1.4fr 120px 130px 180px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+      <div className="mp-busco-app-head">
         <div>Aviso</div>
         <div>Cuándo</div>
         <div>Estado</div>
         <div />
       </div>
       {items.map((app) => (
-        <div key={app.applicationId} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1.4fr 120px 130px 180px", gap: 14, alignItems: "center" }}>
-          <div>
+        <div key={app.applicationId} className="mp-busco-app-row">
+          <div className="mp-busco-app-primary">
             <div style={{ fontSize: 13, fontWeight: 900 }}>{sportLabel(app.sport)} · {modeLabel(app.mode)}</div>
             <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>Autor: {app.authorName ?? "Jugador"}</div>
           </div>
-          <div>
+          <div className="mp-busco-app-cell" data-label="Cuándo">
             <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{formatDateLabel(app.windowStart)}</div>
             <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{formatTime(app.windowStart)}</div>
           </div>
-          <ApplicationPill status={app.status} />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div className="mp-busco-app-cell" data-label="Estado">
+            <ApplicationPill status={app.status} />
+          </div>
+          <div className="mp-busco-app-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             {app.status === "accepted" && app.conversationId && (
               <button className="btn btn-primary" style={{ padding: "8px 12px", fontSize: 10.5 }} onClick={() => router.push(`/dashboard/user/chat?conv=${app.conversationId}`)}>
                 Ir al chat

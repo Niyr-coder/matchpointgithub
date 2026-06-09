@@ -679,7 +679,7 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
         <ClubFeaturingPanel clubId={data.clubId} clubName={data.clubName} />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-partner-torneo-kpis">
         {KPIS.map((k) => (
           <div
             key={k.l}
@@ -755,7 +755,7 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
             {liveCount} en vivo · {pausedCount} pausada{pausedCount === 1 ? "" : "s"}
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div className="mp-tournament-form-grid-3">
           {data.campaigns.map((p) => (
             <PromoCard
               key={p.id}
@@ -810,7 +810,7 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
           >
             De dónde vienen<span style={{ color: "#fbbf24" }}>.</span>
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div className="mp-partner-torneo-kpis" style={{ gap: 12 }}>
             {hasChannels
               ? data.channels.map((ch) => <ChannelTile key={ch.code} ch={ch} />)
               : Array.from({ length: PLACEHOLDER_CHANNEL_COUNT }).map((_, k) => (

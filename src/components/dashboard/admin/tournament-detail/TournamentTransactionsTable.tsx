@@ -31,10 +31,12 @@ export function TournamentTransactionsTable({
   return (
     <div style={{ marginTop: 16 }}>
       <SectionTitle>Transacciones</SectionTitle>
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="card mp-table-scroll" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="mp-admin-event-txn-scroll">
         {transactions.map((t, i) => (
           <div
             key={t.id}
+            className="mp-admin-event-txn-row"
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 100px 80px 110px 140px 150px",
@@ -97,6 +99,7 @@ export function TournamentTransactionsTable({
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       {openTx && <RefundDialog tx={openTx} onClose={() => setOpenTx(null)} />}

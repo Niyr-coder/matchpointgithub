@@ -52,18 +52,16 @@ export function AdminAuditScreenView({ data }: { data: AuditData }) {
         }
       />
       <div
-        className="card"
+        className="card mp-audit-stream-scroll"
         style={{
           padding: 12,
           background: "#0a0a0a",
           color: "#fff",
           fontSize: 11,
           fontFamily: "ui-monospace, monospace",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
         }}
       >
+        <div className="mp-admin-audit-log-inner" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {rows.map((l, i) => (
           <div
             key={l.id}
@@ -84,6 +82,7 @@ export function AdminAuditScreenView({ data }: { data: AuditData }) {
             <span style={{ color: "rgba(255,255,255,0.45)" }}>{l.ip}</span>
           </div>
         ))}
+        </div>
       </div>
     </>
   );

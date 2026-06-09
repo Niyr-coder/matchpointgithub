@@ -186,7 +186,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-partner-torneo-kpis">
         {KPIS.map(([l, v, c]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{l}</div>
@@ -206,7 +206,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+      <div className="mp-admin-kpis-2">
         {hasRows
           ? data.rows.map((p) => (
               <div key={p.id} className="card" style={{ padding: 18 }}>
@@ -262,9 +262,7 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
                     </div>
                   </div>
                 </div>
-                <div
-                  style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}
-                >
+                <div className="mp-tournament-form-grid-2" style={{ marginTop: 14 }}>
                   <div style={{ padding: 10, background: "var(--muted)", borderRadius: 8 }}>
                     <div className="label-mp">Carga · semana</div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 4 }}>

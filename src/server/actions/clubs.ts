@@ -11,6 +11,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { runOptimisticUpdate } from "@/lib/api/optimisticLock";
+import { summarizeWeeklyOpenHours } from "@/server/clubs/club-profile-hours";
 import {
   ClubDetailSchema,
   ClubFeaturedSchema,
@@ -285,7 +286,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
     const { data: clubRaw, error } = await supabase
       .from("clubs")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("id,slug,name,city,country,sports,cover_url,description,address,latitude,longitude,phone,email,approved_at,featured_until" as any)
+      .select("id,slug,name,city,country,sports,logo_url,cover_url,description,address,latitude,longitude,phone,email,approved_at,featured_until" as any)
       .eq("slug", slug)
       .maybeSingle();
     if (error || !clubRaw) throw new MpError("CLUBS.NOT_FOUND", "Club not found", 404);
@@ -296,6 +297,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       city: string;
       country: string;
       sports: string[] | null;
+      logo_url: string | null;
       cover_url: string | null;
       description: string | null;
       address: string | null;
@@ -536,6 +538,20 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       .sort((a, b) => b.matchesAtClub - a.matchesAtClub);
 
     // Próximos torneos.
+    const tournamentIds = (tournamentsRaw ?? []).map((t) => t.id as string);
+    const registrationCounts = new Map<string, number>();
+    if (tournamentIds.length > 0) {
+      const { data: regs } = await supabase
+        .from("registrations")
+        .select("tournament_id")
+        .in("tournament_id", tournamentIds)
+        .in("status", ["pending", "accepted", "waitlist"]);
+      for (const r of regs ?? []) {
+        const tid = r.tournament_id as string;
+        registrationCounts.set(tid, (registrationCounts.get(tid) ?? 0) + 1);
+      }
+    }
+
     const upcomingTournaments: ClubSocialTournament[] = (tournamentsRaw ?? []).map((t) => ({
       id: t.id as string,
       slug: t.slug as string,
@@ -545,6 +561,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       status: t.status as string,
       maxParticipants: (t.max_participants as number | null) ?? null,
       entryFeeCents: (t.entry_fee_cents as number | null) ?? null,
+      participantCount: registrationCounts.get(t.id as string) ?? 0,
     }));
 
     // Feed de actividad unificado — mezcla cronológica de torneos
@@ -706,6 +723,62 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
     const featuredUntil = club.featured_until ? new Date(club.featured_until).getTime() : 0;
     const isPartner = featuredUntil > Date.now();
 
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999);
+    const weekEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const nowIso = new Date().toISOString();
+
+    const [
+      { count: tournamentsThisMonth },
+      { count: quedadasThisMonth },
+      { count: activeGiveawaysCount },
+      { count: giveawaysClosingThisWeek },
+    ] = await Promise.all([
+      supabase
+        .from("tournaments")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .is("partner_id", null)
+        .not("status", "in", "(cancelled,draft)")
+        .gte("starts_at", monthStart.toISOString())
+        .lte("starts_at", monthEnd.toISOString()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (admin as any)
+        .from("quedadas")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .not("status", "eq", "cancelled")
+        .gte("starts_at", monthStart.toISOString())
+        .lte("starts_at", monthEnd.toISOString()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (admin as any)
+        .from("club_giveaways")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .in("status", ["open", "closing"]),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (admin as any)
+        .from("club_giveaways")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .in("status", ["open", "closing"])
+        .gte("closes_at", nowIso)
+        .lte("closes_at", weekEnd.toISOString()),
+    ]);
+
+    const tournamentsMonth = tournamentsThisMonth ?? 0;
+    const quedadasMonth = quedadasThisMonth ?? 0;
+    const profileStats = {
+      eventsThisMonth: tournamentsMonth + quedadasMonth,
+      tournamentsThisMonth: tournamentsMonth,
+      quedadasThisMonth: quedadasMonth,
+      activeGiveaways: activeGiveawaysCount ?? 0,
+      giveawaysClosingThisWeek: giveawaysClosingThisWeek ?? 0,
+      weeklyOpenHoursLabel: summarizeWeeklyOpenHours(settings?.open_hours as unknown),
+    };
+
     return ClubSocialViewSchema.parse({
       club: {
         id: clubId,
@@ -714,6 +787,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
         city: club.city,
         country: club.country,
         sports: (club.sports as string[] | null) ?? [],
+        logoUrl: safeUrl(club.logo_url as string | null),
         coverUrl: safeUrl(club.cover_url as string | null),
         description: (club.description as string | null) ?? null,
         address: (club.address as string | null) ?? null,
@@ -753,6 +827,7 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
       amenities,
       verified,
       isPartner,
+      profileStats,
     });
   });
 }

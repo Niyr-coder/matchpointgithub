@@ -79,14 +79,7 @@ function StaffCard({
           </div>
         </div>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 6,
-          marginTop: 12,
-        }}
-      >
+      <div className="mp-tournament-form-grid-2" style={{ gap: 6, marginTop: 12 }}>
         <div style={{ padding: 8, background: "var(--muted)", borderRadius: 6 }}>
           <div className="label-mp">Horario</div>
           <div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, color: "var(--muted-fg)" }}>
@@ -195,14 +188,7 @@ function StaffPlaceholder() {
           </div>
         </div>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 6,
-          marginTop: 12,
-        }}
-      >
+      <div className="mp-tournament-form-grid-2" style={{ gap: 6, marginTop: 12 }}>
         <div style={{ padding: 8, background: "var(--muted)", borderRadius: 6 }}>
           <div className="label-mp">Horario</div>
           <div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, color: "var(--muted-fg)" }}>
@@ -286,7 +272,7 @@ export function ClubStaffScreenView({ data }: { data: StaffData }) {
           </button>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+      <div className="mp-tournament-form-grid-3">
         {hasReal
           ? data.staff.map((s) => (
               <StaffCard

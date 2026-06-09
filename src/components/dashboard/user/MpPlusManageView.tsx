@@ -277,7 +277,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
       </div>
 
       {/* ── KPIs 2x2 con iconos top-right ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="mp-partner-torneo-kpis">
         <KpiCard label="Días restantes" value={String(data.daysRemaining)} sub={`de ${data.cycleDays} del ciclo`} icon="calendar-clock" accent="var(--primary)" />
         <KpiCard label="Cobrado total" value={fmtMoney(data.totalPaidCents)} sub={`${data.cyclesCompleted} ${data.cyclesCompleted === 1 ? "ciclo completado" : "ciclos completados"}`} icon="wallet" />
         <KpiCard label="Renovación sugerida" value={fmtMoney(data.nextChargeCents)} sub="sin cobro automático" icon="receipt" />
@@ -285,7 +285,7 @@ export function MpPlusManageView({ data }: { data: MpPlusManageData }) {
       </div>
 
       {/* ── Split: beneficios (lista vertical) + historial ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16 }}>
+      <div className="mp-partner-torneo-bottom">
         {/* Columna izquierda: lista de beneficios */}
         <div className="card" style={{ padding: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>

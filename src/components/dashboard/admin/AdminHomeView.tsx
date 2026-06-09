@@ -153,7 +153,7 @@ export function AdminHomeView({ data }: { data: AdminHomeData }) {
   return (
     <>
       <RHWelcome role="admin" />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="mp-partner-torneo-kpis">
         <RHKpi
           label="Usuarios totales"
           value={fmtCompact(data.kpis.mau)}
@@ -185,7 +185,7 @@ export function AdminHomeView({ data }: { data: AdminHomeData }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+      <div className="mp-admin-split-panels">
         <RHPanel
           title="Actividad en vivo"
           action={

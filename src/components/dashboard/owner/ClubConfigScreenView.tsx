@@ -226,15 +226,8 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
         }
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "240px 1fr",
-          gap: 16,
-          alignItems: "flex-start",
-        }}
-      >
-        <div className="card" style={{ padding: 8 }}>
+      <div className="mp-ccfg-grid">
+        <div className="card mp-ccfg-rail" style={{ padding: 8 }}>
           {SECTION_KEYS.map((k) => {
             const s = SECTIONS[k];
             const on = active === k;

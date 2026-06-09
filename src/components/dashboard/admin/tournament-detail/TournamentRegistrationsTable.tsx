@@ -62,6 +62,7 @@ export function TournamentRegistrationsTable({
             return (
               <div
                 key={r.id}
+                className="mp-admin-event-reg-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 110px 110px 90px 40px",
@@ -73,7 +74,7 @@ export function TournamentRegistrationsTable({
                   position: "relative",
                 }}
               >
-                <div>
+                <div className="mp-admin-event-reg-primary">
                   <div style={{ fontWeight: 800 }}>
                     {r.teamId ? `Team` : r.playerNames.join(" + ") || "Inscripción"}
                   </div>
@@ -81,10 +82,12 @@ export function TournamentRegistrationsTable({
                     {fmtDate(r.createdAt)}
                   </div>
                 </div>
-                <span style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+                <span className="mp-admin-event-reg-cell" data-label="Jugadores" style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
                   {r.playerIds.length} jugador{r.playerIds.length === 1 ? "" : "es"}
                 </span>
                 <span
+                  className="mp-admin-event-reg-cell"
+                  data-label="Estado"
                   style={{
                     fontSize: 10,
                     fontWeight: 800,
@@ -100,10 +103,10 @@ export function TournamentRegistrationsTable({
                 >
                   {r.status}
                 </span>
-                <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                <span className="mp-admin-event-reg-cell" data-label="Pago" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
                   {r.paidTransactionId ? "Pagada" : "—"}
                 </span>
-                <div style={{ position: "relative", justifySelf: "end" }}>
+                <div className="mp-admin-event-reg-actions" style={{ position: "relative", justifySelf: "end" }}>
                   <button
                     type="button"
                     aria-label="Acciones"

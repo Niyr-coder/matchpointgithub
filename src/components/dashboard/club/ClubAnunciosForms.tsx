@@ -75,7 +75,7 @@ export function ClubFeedPostForm({ clubId }: { clubId: string }) {
         type="url"
         style={inputStyle}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-tournament-form-grid-2">
         <input value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="CTA (opcional)" style={inputStyle} />
         <input value={ctaHref} onChange={(e) => setCtaHref(e.target.value)} placeholder="Link del CTA" style={inputStyle} />
       </div>

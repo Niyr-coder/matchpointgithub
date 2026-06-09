@@ -443,7 +443,7 @@ export function AdminPlansScreenView({
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-partner-torneo-kpis">
         {KPIS.map(([l, v, c, sub, tip]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>

@@ -246,7 +246,7 @@ export function ClubMembresiasScreenView({ data }: { data: ClubMembresiasData })
       </div>
 
       {/* KPI strip */}
-      <div className="mp-spon-kpis" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 14 }}>
+      <div className="mp-spon-kpis">
         <div style={{ position: "relative", overflow: "hidden", borderRadius: 14.4, background: "linear-gradient(135deg, #0a0a0a 0%, #064e3b 90%)", color: "#fff", padding: 18, display: "flex", flexDirection: "column", gap: 6 }}>
           <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 90% 20%, rgba(16,185,129,0.22), transparent 55%)", pointerEvents: "none" }} />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>

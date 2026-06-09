@@ -1,6 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { getGiveawayDetail, getGiveawayOrgManage, getGiveawayOrgWinner } from "@/server/actions/giveaways";
-import { getClubCommsStaffOverview } from "@/server/actions/club-comms";
+import { getGiveawayDetail, getGiveawayOrgManage, getGiveawayOrgWinner, getClubGiveawaysOrgOverview } from "@/server/actions/giveaways";
 import { resolveActiveClubId } from "@/lib/auth/resolveClubId";
 import { OrgGiveawayManageView } from "./giveaways/OrgGiveawayManageView";
 import { OrgGiveawayPublishedView } from "./giveaways/OrgGiveawayPublishedView";
@@ -22,7 +21,7 @@ export async function ClubGiveawayOrgScreen({
   if (subview === "publicado") {
     const [detailRes, overviewRes] = await Promise.all([
       getGiveawayDetail({ giveawayId }),
-      getClubCommsStaffOverview({ clubId }),
+      getClubGiveawaysOrgOverview({ clubId }),
     ]);
     if (!detailRes.ok || detailRes.data.clubId !== clubId) notFound();
     return (

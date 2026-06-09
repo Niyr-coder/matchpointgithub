@@ -256,4 +256,14 @@ export function buildMyGiveawaysDashboard(input: {
   };
 }
 
+export function formatGiveawayHeroUser(displayName: string, username: string | null): string {
+  const display = displayName.trim();
+  const user = username?.trim();
+  if (!user) return display || "Tu perfil";
+  if (!display) return `@${user}`;
+  const norm = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
+  if (norm(display) === norm(user)) return `@${user}`;
+  return `${display} · @${user}`;
+}
+
 export type { GiveawayBundle };

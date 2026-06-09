@@ -166,7 +166,7 @@ export function CancelacionSection({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 8, paddingTop: 18, borderTop: "1px solid var(--border)" }}>
+        <div className="mp-tournament-form-grid-3" style={{ marginTop: 8, paddingTop: 18, borderTop: "1px solid var(--border)" }}>
           {[
             { l: "Reservas /mes", v: String(stats.reservationsMonth), sub: "reservas pagas" },
             { l: "Cancelaciones", v: cancRate, sub: `${stats.cancellationsMonth} cancelaciones` },

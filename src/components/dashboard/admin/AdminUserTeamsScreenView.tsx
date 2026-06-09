@@ -370,13 +370,7 @@ export function AdminUserTeamsScreenView({
       </div>
 
       {/* ── Hero KPIs: 5-col fijo siguiendo el kit (1.5fr + 4×1fr) ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr",
-          gap: 14,
-        }}
-      >
+      <div className="mp-spon-kpis">
         <div
           style={{
             position: "relative",
@@ -806,6 +800,8 @@ export function AdminUserTeamsScreenView({
         )}
 
         {/* Table header */}
+        <div className="mp-table-scroll">
+        <div className="mp-admin-user-teams-table">
         <div
           style={{
             display: "grid",
@@ -1085,6 +1081,8 @@ export function AdminUserTeamsScreenView({
             </div>
           );
         })}
+        </div>
+        </div>
       </div>
 
       {/* ── Breakdowns: sport + privacy ── */}

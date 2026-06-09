@@ -386,9 +386,11 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
                 </div>
                 <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", fontFamily: "ui-monospace, monospace" }}>{entries.length} eventos</span>
               </div>
+              <div className="mp-audit-stream-scroll">
               {entries.map((e) => (
                 <EventRow key={e.reqId} e={e} live={liveTail && e.reqId === shown[0]?.reqId} onOpen={() => setOpenId(e.reqId)} />
               ))}
+              </div>
             </div>
           ))}
 

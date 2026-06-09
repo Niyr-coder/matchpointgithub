@@ -211,17 +211,7 @@ export function DemoPageView() {
             </div>
 
             <div className="label-mp" style={{ marginBottom: 10 }}>3. Confirma tus datos</div>
-            <div
-              style={{
-                padding: 14,
-                background: "var(--muted)",
-                borderRadius: 10,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                marginBottom: 22,
-              }}
-            >
+            <div className="mp-tournament-form-grid-2" style={{ gap: 8, marginBottom: 22, padding: 14, background: "var(--muted)", borderRadius: 10 }}>
               {PREFILL.map(([k, v]) => (
                 <div key={k}>
                   <div className="label-mp">{k}</div>

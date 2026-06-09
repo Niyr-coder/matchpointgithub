@@ -28,16 +28,7 @@ const PLACEHOLDER_COUNT = 4;
 
 function EventRowCard({ e }: { e: EventRow }) {
   return (
-    <div
-      className="card"
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "70px 1fr 100px 100px 110px 110px",
-        alignItems: "stretch",
-      }}
-    >
+    <div className="card mp-club-event-row">
       <div
         style={{
           background: "var(--muted)",
@@ -120,19 +111,7 @@ function EventRowCard({ e }: { e: EventRow }) {
 
 function EventPlaceholderCard({ k }: { k: number }) {
   return (
-    <div
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: "70px 1fr 100px 100px 110px 110px",
-        alignItems: "stretch",
-        background: "#fafafa",
-        border: "1px dashed var(--border)",
-        borderRadius: 12,
-        opacity: 0.6,
-      }}
-    >
+    <div className="mp-club-event-row" style={{ background: "#fafafa", border: "1px dashed var(--border)", borderRadius: 12, opacity: 0.6 }}>
       <div
         style={{
           background: "var(--muted)",
@@ -253,12 +232,14 @@ export function ClubEventosScreenView({ data }: { data: EventosData }) {
           </button>
         }
       />
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="mp-table-scroll">
+        <div style={{ minWidth: 620, display: "flex", flexDirection: "column", gap: 8 }}>
         {hasReal
           ? data.events.map((e) => <EventRowCard key={e.id} e={e} />)
           : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => (
               <EventPlaceholderCard key={k} k={k} />
             ))}
+        </div>
       </div>
     </>
   );

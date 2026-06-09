@@ -275,7 +275,7 @@ function TournamentEditDialog({
             style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
           />
         </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <Field label="Inicio">
             <input
               type="datetime-local"
@@ -293,7 +293,7 @@ function TournamentEditDialog({
             />
           </Field>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <Field label="Apertura inscripciones (opcional)">
             <input
               type="datetime-local"
@@ -311,7 +311,7 @@ function TournamentEditDialog({
             />
           </Field>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <Field label="Máx. participantes (vacío = sin tope)">
             <input
               type="number"

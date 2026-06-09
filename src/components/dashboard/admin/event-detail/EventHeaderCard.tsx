@@ -239,7 +239,7 @@ function EventEditDialog({
             style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
           />
         </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <Field label="Inicio">
             <input
               type="datetime-local"
@@ -257,7 +257,7 @@ function EventEditDialog({
             />
           </Field>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <Field label="Cupo (vacío = ilimitado)">
             <input
               type="number"

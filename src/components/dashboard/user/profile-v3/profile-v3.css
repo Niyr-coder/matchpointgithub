@@ -329,10 +329,38 @@
     flex-wrap: wrap;
     max-width: calc(100% - 24px);
   }
+
+  .mp-profile-v3 .pv3-scout-radar-row {
+    grid-template-columns: 1fr !important;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .mp-profile-v3 .pv3-scout-radar-row > div:last-child {
+    width: 100%;
+    text-align: left;
+  }
+
+  .mp-profile-v3 .pv3-scout-rival-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  .mp-profile-v3 .pv3-inner-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .mp-profile-v3 .pv3-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
 @media (max-width: 420px) {
   .mp-profile-v3 .profile-v3-shot-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .mp-profile-v3 .pv3-kpi-strip {
     grid-template-columns: 1fr !important;
   }
 }
