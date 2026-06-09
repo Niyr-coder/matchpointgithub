@@ -202,7 +202,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
       />
 
       {/* 2. Hero net payout + 2×2 KPIs */}
-      <div className="mp-fin-hero" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+      <div className="mp-fin-hero mp-grid-split-wide gap-4">
         <div className="card" style={{ padding: 26, background: "linear-gradient(135deg, #0a0a0a 0%, #052e24 70%, #10b981 220%)", color: "#fff", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", top: -10, right: -10, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle at 30% 30%, rgba(16,185,129,0.35), transparent 70%)", filter: "blur(20px)", pointerEvents: "none" }} />
           <div style={{ position: "relative" }}>
@@ -242,7 +242,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
           </div>
         </div>
 
-        <div className="mp-fin-kpis" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, gridTemplateRows: "1fr 1fr" }}>
+        <div className="mp-fin-kpis mp-grid-form-2 gap-3" style={{ gridTemplateRows: "1fr 1fr" }}>
           {kpis.map((k) => (
             <div key={k.l} className="card" style={{ padding: 16, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: 8, background: k.color === "var(--primary)" ? "rgba(16,185,129,0.1)" : "var(--muted)", color: k.color, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
@@ -298,7 +298,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
           <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: 0 }}>De dónde sale la plata<span className="dot">.</span></h2>
           <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>4 fuentes · este mes</span>
         </div>
-        <div className="mp-fin-sources" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        <div className="mp-fin-sources mp-grid-form-4 gap-3.5">
           {sources.map((s) => (
             <div key={s.k} className="card" style={{ padding: 18, position: "relative", overflow: "hidden" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -320,7 +320,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
       </div>
 
       {/* 5+6. Por cancha + Heatmap */}
-      <div className="mp-fin-split" style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 16 }}>
+      <div className="mp-fin-split mp-grid-split gap-4">
         <div className="card" style={{ padding: 22 }}>
           <div className="label-mp">Ranking · revenue por cancha</div>
           <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "4px 0 16px" }}>Tus 5 canchas<span className="dot">.</span></h2>
@@ -378,7 +378,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
       </div>
 
       {/* 7+8. Transacciones + Payouts */}
-      <div className="mp-fin-split" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+      <div className="mp-fin-split mp-grid-split gap-4">
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div>
@@ -387,7 +387,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
             </div>
             <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10 }} onClick={() => soon("Ver todas las transacciones · próximamente")}>Ver todo<Icon name="arrow-right" size={11} /></button>
           </div>
-          <div style={{ overflowX: "auto" }}>
+          <div className="mp-table-scroll">
             <div style={{ minWidth: 560 }}>
               {data.txns.length === 0 && (
                 <div style={{ padding: "22px", fontSize: 11.5, color: "var(--muted-fg)", textAlign: "center" }}>

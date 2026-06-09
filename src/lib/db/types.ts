@@ -5861,6 +5861,44 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_webhook_events: {
+        Row: {
+          event_type: string
+          id: string
+          payload: Json
+          provider: string
+          provider_event_id: string
+          received_at: string
+          transaction_id: string | null
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          payload?: Json
+          provider: string
+          provider_event_id: string
+          received_at?: string
+          transaction_id?: string | null
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          payload?: Json
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_webhook_events_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_config: {
         Row: {
           description: string | null

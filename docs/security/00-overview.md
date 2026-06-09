@@ -180,6 +180,32 @@ Dos puertas para mutar:
 - [ ] PostGIS manual: `scripts/ops/apply-postgis-rls.sql`
 - [ ] CSP enforce (quitar report-only)
 - [ ] Subresource Integrity en scripts CDN (Scalar de /docs)
-- [ ] 2FA opcional (TOTP) — Supabase lo soporta nativo, falta UI
+- [x] 2FA staff (TOTP) — infra lista (`staff_mfa_required` off; ver §10)
+- [ ] 2FA staff — UI enroll/verify + encender flag en staging
 - [ ] Audit log de logins (hoy solo loguea mutaciones)
 - [ ] Penetration test profesional pre-launch público
+
+## 10. 2FA staff (TOTP) — infraestructura
+
+Política acordada: **todos los roles excepto jugador** (`user`) exigen TOTP cuando
+el flag `staff_mfa_required` está encendido. Jugadores siguen con Google /
+email sin segundo factor.
+
+| Pieza | Ubicación | Estado |
+|---|---|---|
+| Política / constantes | `src/lib/auth/mfa-policy.ts` | ✅ |
+| Gate dashboard | `src/app/dashboard/[role]/layout.tsx` | ✅ (solo si flag on) |
+| Lectura AAL + factores | `src/lib/auth/mfa.ts` | ✅ |
+| Flag reader | `src/server/flags/staff-mfa.ts` | ✅ |
+| Server actions | `src/server/actions/mfa.ts` | ✅ |
+| Rutas stub | `/auth/mfa/enroll`, `/auth/mfa/verify` | ✅ placeholder |
+| UI QR + código | `MfaEnrollPlaceholder`, `MfaVerifyPlaceholder` | ⏳ conectar |
+
+**Activación (cuando la UI esté lista):**
+
+1. Supabase Dashboard → Authentication → Multi-Factor → **App Authenticator ON**
+2. Admin panel → flag `staff_mfa_required` → ON (o migración / SQL)
+3. Smoke: staff sin factor → `/auth/mfa/enroll`; con factor → `/auth/mfa/verify` → `aal2`
+
+**Server actions sensibles:** importar `requireStaffMfaAal2({ activeRole, supabase })`
+después de validar sesión.

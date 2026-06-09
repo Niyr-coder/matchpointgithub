@@ -68,6 +68,8 @@ type SportFilter = "all" | string;
 
 // Mock del kit: política global (la mayoría aún no tiene backend; algunas
 // leen de constantes / platform_config). Mostrar values reales donde se puede.
+const TEAMS_TABLE_COLS = "34px 32px 1.8fr 110px 110px 90px 90px 100px 90px 40px";
+
 const POLICY_DISPLAY = {
   maxMembers: 12, // Free roster cap (premium=24) — desde getTeamCaps()
   teamsPerUser: 1, // Hardcoded en createTeam ("solo puedes ser capitán de uno")
@@ -327,14 +329,12 @@ export function AdminUserTeamsScreenView({
       >
         <div>
           <h1
-            className="font-heading"
+            className="font-heading mp-admin-page-title"
             style={{
               margin: 0,
-              fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
               textTransform: "uppercase",
-              lineHeight: 0.95,
             }}
           >
             Teams<span style={{ color: "var(--primary)" }}>.</span>
@@ -414,9 +414,8 @@ export function AdminUserTeamsScreenView({
               </span>
             </div>
             <div
-              className="font-heading tabular"
+              className="font-heading tabular mp-admin-hero-value"
               style={{
-                fontSize: 42,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
                 lineHeight: 1,
@@ -805,7 +804,7 @@ export function AdminUserTeamsScreenView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "34px 32px 1.8fr 110px 110px 90px 90px 100px 90px 40px",
+            gridTemplateColumns: TEAMS_TABLE_COLS,
             gap: 12,
             padding: "10px 18px",
             background: "var(--muted)",
@@ -861,7 +860,7 @@ export function AdminUserTeamsScreenView({
               key={t.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "34px 32px 1.8fr 110px 110px 90px 90px 100px 90px 40px",
+                gridTemplateColumns: TEAMS_TABLE_COLS,
                 gap: 12,
                 padding: "14px 18px",
                 alignItems: "center",

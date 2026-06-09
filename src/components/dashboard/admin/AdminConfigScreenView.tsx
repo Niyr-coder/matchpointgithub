@@ -128,14 +128,7 @@ export function AdminConfigScreenView({ data }: { data: ConfigData }) {
         }
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "260px 1fr",
-          gap: 16,
-          alignItems: "flex-start",
-        }}
-      >
+      <div className="mp-config-grid" style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "flex-start" }}>
         <div className="card" style={{ padding: 8 }}>
           {SECTION_KEYS.map((k) => {
             const s = SECTIONS[k];

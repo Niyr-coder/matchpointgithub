@@ -9,6 +9,7 @@ export type LogEntry = { id: string; t: string; who: string; action: string; tar
 export type AuditData = { rows: LogEntry[] };
 
 const PLACEHOLDER_COUNT = 6;
+const AUDIT_LOG_COLS = "90px 220px 200px 1fr 110px";
 
 export function AdminAuditScreenView({ data }: { data: AuditData }) {
   useRealtimeRefresh([{ table: "audit_log", event: "INSERT" }], { debounceMs: 5000 });
@@ -67,7 +68,7 @@ export function AdminAuditScreenView({ data }: { data: AuditData }) {
             key={l.id}
             style={{
               display: "grid",
-              gridTemplateColumns: "90px 220px 200px 1fr 110px",
+              gridTemplateColumns: AUDIT_LOG_COLS,
               gap: 12,
               padding: "6px 8px",
               borderRadius: 4,

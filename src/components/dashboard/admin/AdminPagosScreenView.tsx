@@ -84,13 +84,14 @@ function fmtPct(value: number): string {
 }
 
 const PLACEHOLDER_COUNT = 4;
+const TX_PLACEHOLDER_COLS = "120px 1fr 110px 120px 100px 50px";
 
 function TxPlaceholderRow() {
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "120px 1fr 110px 120px 100px 50px",
+        gridTemplateColumns: TX_PLACEHOLDER_COLS,
         alignItems: "center",
         padding: "14px 16px",
         background: "#fafafa",

@@ -28,7 +28,7 @@ export function GiveawayJoinConfirmation({
 
   return (
     <div className="gw-join-confirmation" style={{ background: "#fafafa", minHeight: "100%" }}>
-      <div className="hero-emerald" style={{ position: "relative", color: "#fff", padding: "40px 20px 32px", textAlign: "center" }}>
+      <div className="hero-emerald relative px-5 pt-10 pb-8 text-center text-white md:px-8">
         <div
           style={{
             width: 64,

@@ -780,16 +780,7 @@ function RTHero({
       >
         <Icon name="x" size={13} color="#fff" />
       </button>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
-          alignItems: "start",
-          marginTop: 8,
-          gap: 12,
-          position: "relative",
-        }}
-      >
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3 mt-2 relative">
         <AvatarBlock who={you} side="you" />
         <div style={{ textAlign: "center", padding: "8px 4px 0", justifySelf: "center", alignSelf: "center" }}>
           <div
@@ -1011,7 +1002,7 @@ function RTStep1({
       )}
 
       <div className="label-mp">Modalidad</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div className="mp-grid-form-2 gap-2">
         {[
           { k: "singles" as const, l: "Singles", s: "1v1 · tú vs " + rival.name.split(" ")[0], i: "user" },
           { k: "dobles" as const, l: "Dobles", s: "2v2 · eliges tu partner", i: "users" },
@@ -1065,13 +1056,11 @@ function RTStep1({
 
       {form.mode === "dobles" && (
         <div
+          className="mp-grid-form-2 gap-2.5"
           style={{
             padding: 12,
             background: "var(--muted)",
             borderRadius: 10,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
           }}
         >
           <div>
@@ -1314,7 +1303,7 @@ function RTStep2({
           <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700 }}>Actualizando…</span>
         ) : null}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 5 }}>
+      <div className="mp-grid-form-6 gap-[5px]">
         {timeSlots.map((t) => {
           const on = form.time === t;
           const busy = takenSlots.has(t);

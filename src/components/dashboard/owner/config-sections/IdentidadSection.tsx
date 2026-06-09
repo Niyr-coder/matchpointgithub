@@ -128,7 +128,7 @@ export function IdentidadSection({
   };
 
   return (
-    <div className="mp-ccfg-ident" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18, alignItems: "flex-start" }}>
+    <div className="mp-ccfg-ident mp-grid-split-wide gap-4" style={{ alignItems: "flex-start" }}>
       <div className="card mp-ccfg-ident-card" style={{ padding: 24 }}>
         <div className="mp-ccfg-cover-block" style={{ marginBottom: 24 }}>
           <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
@@ -291,7 +291,7 @@ export function IdentidadSection({
         </div>
 
         <Field l="Descripción corta" v={form.description} onChange={update("description")} hint={`Máx. 280 caracteres · ${form.description.length} / 280`} />
-        <div className="mp-ccfg-ident-contact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="mp-ccfg-ident-contact mp-grid-form-2 gap-3">
           <Field l="Teléfono" v={form.phone} onChange={update("phone")} icon="phone" />
           <Field l="WhatsApp" v={form.whatsapp} disabled icon="message-circle" hint="Próximamente — aún no editable" />
           <Field l="Email" v={form.email} onChange={update("email")} icon="mail" />
@@ -305,7 +305,7 @@ export function IdentidadSection({
             <Icon name="map-pin" size={14} color="var(--primary)" />
             <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>Ubicación física</span>
           </div>
-          <div className="mp-ccfg-ident-contact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-ccfg-ident-contact mp-grid-form-2 gap-3">
             <Field l="Ciudad" v={form.city} onChange={update("city")} />
             <Field l="País" v={form.country} onChange={update("country")} />
             <Field l="Dirección" v={form.address} onChange={update("address")} />

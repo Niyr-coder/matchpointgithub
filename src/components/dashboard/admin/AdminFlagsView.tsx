@@ -112,7 +112,7 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div className="label-mp" style={{ color: "#7c3aed" }}>● Plataforma · control de features</div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+            <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 0" }}>
               Feature flags<span className="dot">.</span>
             </h1>
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
@@ -126,7 +126,7 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
       </div>
 
       {/* KPIs */}
-      <div className="mp-flags-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-flags-kpis mp-grid-form-4 gap-3.5">
         <FFKpi icon="zap" label="Activos" value={String(data.kpis.activeCount)} sub="encendidos" emerald tip="Flags encendidos al 100%: la función está disponible para todos los usuarios." />
         <FFKpi icon="git-branch" label="En rollout" value={String(data.kpis.rolloutCount)} sub="liberación gradual" warn tip="Liberación gradual: el flag está encendido solo para una parte de los usuarios (ej. 25%), no para todos." />
         <FFKpi icon="moon" label="Apagados" value={String(data.kpis.offCount)} sub="no afectan prod" tip="Flags apagados: nadie ve la función. No afectan a la app." />
@@ -150,9 +150,9 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
       </div>
 
       {/* MAIN GRID */}
-      <div className="mp-flags-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
+      <div className="mp-flags-grid mp-grid-split-wide gap-4" style={{ alignItems: "start" }}>
         <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0 }}>
-          <div style={{ overflowX: "auto", width: "100%" }}>
+          <div className="mp-table-scroll" style={{ width: "100%" }}>
             <div style={{ minWidth: FLAGS_TABLE_MIN_WIDTH, width: "100%" }}>
               <div style={{ display: "grid", gridTemplateColumns: ROW_COLS, gap: 14, padding: "11px 20px", background: "#fafafa", borderBottom: "1px solid var(--border)", fontSize: 9, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                 <span>Flag</span>
@@ -491,7 +491,7 @@ function FlagDrawer({ f, clubs, pending, onClose, onSetRollout, onToggle, onDele
               <Seg key={im} on={f.impact === im} onClick={() => f.impact !== im && onPatchMeta({ impact: im })}>{IMPACT_LABEL[im]}</Seg>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="mp-grid-form-2 gap-2.5">
             <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Owner</span>
               <input value={owner} onChange={(e) => setOwner(e.target.value)} onBlur={() => owner !== (f.owner ?? "") && onPatchMeta({ owner: owner.trim() || null })} placeholder="nombre o email" style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12.5, outline: "none" }} />
@@ -773,7 +773,7 @@ function CreateFlagModal({ existingKeys, onClose, onCreated }: { existingKeys: s
           </>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-grid-form-2 gap-2.5">
           <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-fg)" }}>Entorno</span>
             <select value={env} onChange={(e) => setEnv(e.target.value as FlagEnv)} style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, background: "#fff", outline: "none" }}>

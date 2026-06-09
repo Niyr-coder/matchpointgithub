@@ -14,6 +14,7 @@ import { MpError } from "@/lib/api/errors";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { AuthError, ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import { ROLE_LOGIN_PRIORITY } from "@/lib/auth/role-route-guard";
+import { areSignupsClosed, buildPostAuthRedirect, safeOAuthNext } from "@/lib/auth/oauth";
 import type { RoleKey } from "@/lib/roles";
 
 async function clientIp(): Promise<string> {
@@ -549,20 +550,6 @@ function mapProfile(row: Record<string, unknown>): Profile {
 
 // ── Form helpers (used by /login and /signup pages) ─────────────────────
 //
-// Post-auth redirect:
-//   · Signup: SIEMPRE pasa por /onboarding (es flow obligatorio para users
-//     nuevos). El `next` original viaja como query param y el wizard
-//     redirige ahí al terminar.
-//   · Signin: si profiles.onboarded_at IS NULL → /onboarding?next=... (user
-//     viejo que nunca completó). Si ya está onboardeado → next directo.
-//   · Fallback de next: /dashboard/user.
-function buildPostAuthRedirect(next: string, needsOnboarding: boolean): string {
-  if (needsOnboarding) {
-    return `/onboarding?next=${encodeURIComponent(next)}`;
-  }
-  return next;
-}
-
 export async function signUpFromForm(prevState: unknown, formData: FormData) {
   const result = await signUp({
     email: formData.get("email"),
@@ -607,9 +594,58 @@ export async function signInFromForm(prevState: unknown, formData: FormData) {
 export async function signOutAndRedirect() {
   await signOut();
   // Redirige al landing con flag que dispara el toast "Cerraste sesión".
-  // Histórico: redirigía a /login, pero hoy /login depende de OAuth — dejaba
-  // al usuario en un dead-end si OAuth estaba roto (ver MAT-52 F3).
   redirect("/?logout=ok");
+}
+
+// ── beginGoogleOAuth ────────────────────────────────────────────────────
+//
+// Inicia el flujo PKCE con Google. Redirige al consent screen; el retorno
+// lo maneja /auth/callback. Requiere Google habilitado en Supabase Dashboard
+// y redirect URLs allowlisted (Site URL + /auth/callback).
+export async function beginGoogleOAuthFromForm(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ ok: true }> | null> {
+  const intent = formData.get("intent") === "signup" ? "signup" : "signin";
+  const next = safeOAuthNext((formData.get("next") as string | null) ?? null);
+
+  await assertRateLimit({
+    key: `auth:oauth:google:${await clientIp()}`,
+    ...RATE_LIMITS.authSensitive,
+    failClosed: true,
+  });
+
+  if (intent === "signup" && (await areSignupsClosed())) {
+    return fail(
+      "AUTH.SIGNUPS_CLOSED",
+      "Los registros están cerrados temporalmente. Vuelve a intentarlo más tarde.",
+    );
+  }
+
+  const supabase = await getServerClient();
+  const origin = await requestOrigin();
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      queryParams: {
+        access_type: "online",
+        prompt: "select_account",
+      },
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("[auth.beginGoogleOAuth] supabase error", error?.message);
+    return fail(
+      "AUTH.OAUTH_START_FAILED",
+      "No pudimos conectar con Google. Inténtalo de nuevo en un momento.",
+    );
+  }
+
+  redirect(data.url);
 }
 
 export async function requestPasswordResetFromForm(

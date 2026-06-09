@@ -466,14 +466,7 @@ function CEStep1({ form, set }: { form: Form; set: Setter }) {
         Cada tipo trae plantilla de cronograma, formato y reglas. Puedes ajustar todo en el paso 2.
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4,1fr)",
-          gap: 10,
-          marginBottom: 22,
-        }}
-      >
+      <div className="mp-grid-form-4 gap-2.5" style={{ marginBottom: 22 }}>
         {TYPES.map((t) => {
           const active = form.type === t.k;
           return (
@@ -660,7 +653,7 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
     <input value={val} onChange={(e) => set(k, e.target.value as never)} style={ceInputStyle} />
   );
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 22 }}>
+    <div className="mp-grid-split gap-5.5">
       <div>
         <div className="label-mp">Paso 2 de 4</div>
         <h2
@@ -680,7 +673,7 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
           <CEField label="Nombre del evento" hint="Aparece en la card destacada">
             {inp(form.name, "name")}
           </CEField>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="mp-grid-form-2 gap-2.5">
             <CEField label="Desde">
               <input
                 type="datetime-local"
@@ -737,7 +730,7 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
               </div>
             </div>
           </CEField>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="mp-grid-form-2 gap-2.5">
             <CEField label="Formato">
               <select
                 value={form.format}
@@ -988,7 +981,7 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
         Cupos & premios<span style={{ color: "var(--primary)" }}>.</span>
       </h2>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="mp-grid-form-2 gap-4">
         <div className="card" style={{ padding: 16 }}>
           <div className="label-mp" style={{ marginBottom: 12 }}>
             Inscripción
@@ -1047,7 +1040,7 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
               marginBottom: 14,
             }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="mp-grid-form-2 gap-2.5">
               <div>
                 <div className="label-mp" style={{ marginBottom: 5 }}>
                   Precio inscripción
@@ -1305,7 +1298,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
     { l: "Imagen de portada", ok: false, w: "Usaremos la plantilla por defecto" },
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 22 }}>
+    <div className="mp-grid-split gap-5.5">
       <div>
         <div className="label-mp">Paso 4 de 4</div>
         <h2
@@ -1429,7 +1422,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
         <div className="label-mp" style={{ marginTop: 16, marginBottom: 8 }}>
           Visibilidad
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <div className="mp-grid-form-3 gap-2">
           {VISIBILITY_OPTS.map((v) => {
             const on = form.visibility === v.k;
             return (
@@ -1671,7 +1664,7 @@ function CEDone({
       <div className="label-mp" style={{ marginBottom: 8 }}>
         Próximos pasos
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+      <div className="mp-grid-form-4 gap-2">
         {[
           { i: "message-circle", l: "Avisar a socios", sub: "Push a 142 socios del club", primary: true },
           { i: "instagram", l: "Compartir IG", sub: "Story con plantilla MP" },

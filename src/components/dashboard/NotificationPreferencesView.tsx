@@ -28,6 +28,7 @@ type ApiResult<T> =
   | { ok: false; error: { message: string } };
 
 const KEY_SEP = "\u0001";
+const NOTIF_PREFS_COLS = "minmax(220px, 1fr) repeat(3, minmax(128px, 150px))";
 
 const CHANNELS: Array<{
   key: NotificationChannel;
@@ -354,7 +355,7 @@ export function NotificationPreferencesView({
             padding: "14px 16px",
             borderBottom: "1px solid var(--border)",
             display: "grid",
-            gridTemplateColumns: "minmax(220px, 1fr) repeat(3, minmax(128px, 150px))",
+            gridTemplateColumns: NOTIF_PREFS_COLS,
             gap: 10,
             color: "var(--muted-fg)",
             fontSize: 10,
@@ -399,7 +400,7 @@ export function NotificationPreferencesView({
                     padding: "14px 16px",
                     borderBottom: "1px solid var(--border)",
                     display: "grid",
-                    gridTemplateColumns: "minmax(220px, 1fr) repeat(3, minmax(128px, 150px))",
+                    gridTemplateColumns: NOTIF_PREFS_COLS,
                     gap: 10,
                     alignItems: "center",
                   }}

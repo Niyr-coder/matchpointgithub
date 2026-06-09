@@ -52,13 +52,11 @@ export async function AdminPaywallFunnelScreen() {
       <div>
         <div className="label-mp" style={{ color: "#7c3aed" }}>● Monetización · Funnel</div>
         <h1
-          className="font-heading"
+          className="font-heading mp-admin-page-title"
           style={{
-            fontSize: 40,
             fontWeight: 900,
             letterSpacing: "-0.03em",
             textTransform: "uppercase",
-            lineHeight: 1,
             margin: "8px 0 0",
           }}
         >

@@ -32,7 +32,6 @@ export function RSHeader({
           className="font-heading mp-rs-header-title"
           style={{
             margin: "6px 0 0",
-            fontSize: 36,
             fontWeight: 900,
             letterSpacing: "-0.03em",
             textTransform: "uppercase",
@@ -43,7 +42,7 @@ export function RSHeader({
           <span className="dot">.</span>
         </h1>
       </div>
-      {action && <div className="mp-rs-header-action">{action}</div>}
+      {action && <div className="mp-rs-header-action mp-admin-toolbar">{action}</div>}
     </div>
   );
 }

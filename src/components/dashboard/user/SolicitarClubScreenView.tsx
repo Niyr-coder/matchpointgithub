@@ -625,11 +625,9 @@ function Frame({
 }) {
   return (
     <div
+      className="mp-grid-split gap-5"
       style={{
         background: "#fafafa",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) 300px",
-        gap: 20,
         alignItems: "start",
       }}
     >
@@ -1013,7 +1011,7 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="mp-grid-form-2 gap-6">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <h2
             className="font-heading"
@@ -1379,7 +1377,7 @@ function LocationPicker({
           background: "#f4f4f5",
         }}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+      <div className="mp-grid-form-3 gap-2">
         <input
           type="number"
           step="0.000001"
@@ -1439,14 +1437,7 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1.2fr",
-          gap: 32,
-          alignItems: "flex-start",
-        }}
-      >
+      <div className="mp-grid-split-wide gap-8" style={{ alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <h2
             className="font-heading"
@@ -1479,7 +1470,7 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               placeholder="Av. Interoceánica km 12, Local 4"
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
+          <div className="mp-grid-split gap-3">
             <Field label="Parroquia / sector" required hint="Aparece como pill izquierda en el card">
               <select
                 style={inp}
@@ -1634,13 +1625,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
           </button>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: 12,
-          }}
-        >
+        <div className="mp-grid-form-2 gap-3">
           {courts.map((c) => (
             <div key={c.id} className="card" style={{ padding: 16, position: "relative" }}>
               <div
@@ -1762,18 +1747,12 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
           ))}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.4fr 1fr",
-            gap: 24,
-            marginTop: 8,
-          }}
-        >
+        <div className="mp-grid-split gap-6" style={{ marginTop: 8 }}>
           <div>
             <div className="label-mp" style={{ marginBottom: 10 }}>
               Horario semanal por defecto
             </div>
+            <div className="mp-table-scroll">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {(
                 [
@@ -1796,6 +1775,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 return (
                   <div
                     key={d.k}
+                    className="mp-table-row"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr auto auto auto",
@@ -1858,6 +1838,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                   </div>
                 );
               })}
+            </div>
             </div>
           </div>
           <div>
@@ -2073,7 +2054,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="mp-grid-form-2 gap-6">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <h2
             className="font-heading"
@@ -2107,7 +2088,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               onChange={(e) => set("legalName", e.target.value)}
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-grid-form-2 gap-3">
             <Field label="RUC" required>
               <input
                 style={inp}
@@ -2133,7 +2114,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               onChange={(e) => set("contactPerson", e.target.value)}
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-grid-form-2 gap-3">
             <Field label="Email" required>
               <input
                 style={inp}
@@ -2283,7 +2264,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             <span>Galería del club</span>
             <span style={{ color: "var(--muted-fg)" }}>{photoCount} / 6</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          <div className="mp-grid-form-3 gap-2">
             {Array.from({ length: 6 }).map((_, i) => {
               const photo = uploaded.photos[i];
               return (
@@ -2518,7 +2499,7 @@ function Step5({ onBack, onSubmit }: { onBack?: () => void; onSubmit?: () => voi
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="mp-grid-form-2 gap-3">
           {blocks.map((b) => (
             <div key={b.l} className="card" style={{ padding: 16 }}>
               <div
@@ -3136,12 +3117,8 @@ function ApprovedView({ club }: { club: ApprovedClubSummary | null }) {
         <ApprovedChecklist club={club} />
 
         <div
-          style={{
-            padding: "0 24px 24px",
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 12,
-          }}
+          className="mp-grid-form-3 gap-3"
+          style={{ padding: "0 24px 24px" }}
         >
           {[
             {

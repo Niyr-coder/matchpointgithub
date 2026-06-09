@@ -97,7 +97,7 @@ export function BankAccountFields({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <div>
           <label style={lbl}>Banco</label>
           <select
@@ -174,7 +174,7 @@ export function BankAccountFields({
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <div>
           <label style={lbl}>Titular</label>
           <input value={value.holderName} onChange={(e) => set({ holderName: e.target.value })} placeholder="Nombre Apellido" maxLength={80} style={inp} />

@@ -46,6 +46,7 @@ const METHOD_BG: Record<Method, string> = {
 };
 
 const PLACEHOLDER_TX = 4;
+const CAJA_TX_COLS = "80px 1fr 1fr 110px 100px 50px";
 
 function dollars(c: number): string {
   return `$${Math.round(c / 100)}`;
@@ -56,7 +57,7 @@ function TxPlaceholderRow() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "80px 1fr 1fr 110px 100px 50px",
+        gridTemplateColumns: CAJA_TX_COLS,
         alignItems: "center",
         padding: "14px 16px",
         background: "#fafafa",
@@ -287,7 +288,7 @@ export function EmployeeCajaScreenView({ data }: { data: CajaData }) {
           </div>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div className="mp-grid-form-4 gap-3.5">
         {KPIS.map(([l, v, sub, c, ic]) => (
           <div key={l} className="card" style={{ padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

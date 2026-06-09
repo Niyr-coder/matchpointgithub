@@ -547,7 +547,7 @@ export function ClubesPageView({
       </div>
       {/* CTA flotante: si no hay clubes en la ciudad seleccionada, empuja onboarding */}
       {filtered.length === 0 && (
-        <div style={{ textAlign: "center", padding: "60px 0" }}>
+        <div className="py-10 text-center md:py-15">
           <p style={{ fontSize: 14, color: "var(--muted-fg)", marginBottom: 18 }}>
             No encontramos clubes que matchen ese filtro.
           </p>

@@ -191,7 +191,7 @@ export function SoporteScreenView({
         />
       </div>
 
-      <div className="mp-soporte-body-grid" style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-soporte-body-grid mp-grid-split gap-4" style={{ alignItems: "start" }}>
         <div id="nuevo-caso" className="card" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14, scrollMarginTop: 16 }}>
           <div>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Nuevo caso</div>
@@ -204,7 +204,7 @@ export function SoporteScreenView({
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Asunto</span>
             <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej: No puedo cancelar mi reserva" disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, outline: "none" }} />
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="mp-grid-form-2 gap-2.5">
             <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Categoría</span>
               <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "#fff", outline: "none" }}>
@@ -290,7 +290,7 @@ export function SoporteScreenView({
         </div>
       </div>
 
-      <div className="mp-soporte-status-grid" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-soporte-status-grid mp-grid-split-wide gap-4" style={{ alignItems: "start" }}>
         <div className="card" style={{ padding: 22 }}>
           <div style={{ marginBottom: 14 }}>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Status</div>

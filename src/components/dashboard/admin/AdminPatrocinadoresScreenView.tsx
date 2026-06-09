@@ -374,7 +374,7 @@ export function AdminPatrocinadoresScreenView({ data }: { data: AdminSponsorsDat
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
         <div>
-          <h1 className="font-heading" style={{ margin: 0, fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 0.95, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <h1 className="font-heading mp-admin-page-title" style={{ margin: 0, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             Patrocinadores<span className="dot">.</span>
             <InfoTip maxWidth={280} text="Publicidad nativa en MATCHPOINT: marcas en el catálogo, slots donde pueden aparecer y placements con ventana y monto. Sin AdMob ni redes externas; impresiones y clics salen de eventos reales en la app." />
           </h1>
@@ -395,7 +395,7 @@ export function AdminPatrocinadoresScreenView({ data }: { data: AdminSponsorsDat
         </div>
       </div>
 
-      <div style={{ overflowX: "auto", paddingBottom: 2 }}>
+      <div className="mp-table-scroll" style={{ paddingBottom: 2 }}>
         <div className="mp-admin-sponsors-kpis">
           <Kpi label="Marcas" value={String(data.totals.sponsors)} hint={`${data.totals.activeSponsors} activas`} icon="handshake" tip="Anunciantes o partners en el catálogo. Solo las activas pueden tener placements publicados." />
           <Kpi label="Slots" value={String(data.totals.slots)} hint="inventario configurado" icon="layout-grid" tip="Superficies publicitarias nativas: pantalla + posición fija donde puede renderizarse un creative." />
@@ -449,8 +449,8 @@ export function AdminPatrocinadoresScreenView({ data }: { data: AdminSponsorsDat
             {data.placements.length === 0 ? (
               <EmptyState icon="radio-tower" title="Sin placements" hint="Crea una marca y un slot para vender el primer placement." />
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <div className="mp-table-scroll">
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
                   <thead><tr style={{ background: "var(--muted)" }}><Th tip="Titular del creative y marca dueña del contrato.">Placement</Th><Th tip="Superficie nativa donde se publica (key técnico entre paréntesis).">Slot</Th><Th tip="Borrador, activo, pausado o archivado. Solo activo dentro de fechas se muestra.">Estado</Th><Th align="right" tip="Impresiones y clics de los últimos 30 días para este placement.">30d</Th><Th align="right" tip="Monto acordado en centavos, moneda del contrato.">Contrato</Th></tr></thead>
                   <tbody>
                     {data.placements.map((placement) => (

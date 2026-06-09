@@ -27,6 +27,8 @@ export type ScheduleException = {
   icon: string;
   color: string;
 };
+const HORARIOS_EXCEPTION_COLS = "36px 100px 1fr 120px 90px";
+
 export type HorariosData = {
   week: DayHours[];
   exceptions: ScheduleException[];
@@ -191,7 +193,7 @@ export function HorariosSection({
             <div style={{ display: "grid", gridTemplateColumns: "90px 80px 1fr 160px", gap: 12, alignItems: "center", marginBottom: 6, fontSize: 9, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               <span>Día</span>
               <span style={{ textAlign: "center" }}>Abierto</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 1 }}>
+              <div className="mp-grid-hours-24" style={{ gap: 1 }}>
                 {hours.map((h) => (
                   <div key={h} style={{ textAlign: "center", fontSize: 8 }}>{h % 4 === 0 ? h : ""}</div>
                 ))}
@@ -256,7 +258,7 @@ export function HorariosSection({
           <div style={{ padding: "16px 0", fontSize: 11, color: "var(--muted-fg)" }}>Aún no añades feriados ni cierres especiales.</div>
         )}
         {exceptions.map((f, i) => (
-          <div key={f.id} style={{ display: "grid", gridTemplateColumns: "36px 100px 1fr 120px 90px", gap: 12, alignItems: "center", padding: "11px 0", borderTop: i === 0 ? 0 : "1px dashed var(--border)" }}>
+          <div key={f.id} style={{ display: "grid", gridTemplateColumns: HORARIOS_EXCEPTION_COLS, gap: 12, alignItems: "center", padding: "11px 0", borderTop: i === 0 ? 0 : "1px dashed var(--border)" }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: f.color === "#dc2626" ? "rgba(220,38,38,0.1)" : "rgba(251,191,36,0.15)", color: f.color, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
               <Icon name={f.icon} size={14} color={f.color} />
             </div>

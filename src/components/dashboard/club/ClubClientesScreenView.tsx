@@ -441,7 +441,7 @@ function ClienteDetailDrawer({
             <Icon name="x" size={14} />
           </button>
         </div>
-        <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="mp-grid-form-2 gap-3" style={{ padding: "16px 20px" }}>
           <DetailStat label="Tier" value={client.tier} />
           <DetailStat label="Deporte fav." value={client.favSport} />
           <DetailStat label="Visitas · mes" value={String(client.visits)} />

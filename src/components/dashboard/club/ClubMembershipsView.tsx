@@ -260,7 +260,7 @@ function TierEditor({ clubId, tier, onClose, onSaved }: { clubId: string; tier: 
 
         <Lbl t="Nombre"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} style={inp} /></Lbl>
         <Lbl t="Descripción (opcional)"><input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={280} style={inp} /></Lbl>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        <div className="mp-grid-form-3 gap-2">
           <Lbl t="Precio ($)"><input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} style={inp} /></Lbl>
           <Lbl t="Meses"><input type="number" min={1} max={60} value={months} onChange={(e) => setMonths(e.target.value)} style={inp} /></Lbl>
           <Lbl t="Desc. %"><input type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(e.target.value)} style={inp} /></Lbl>

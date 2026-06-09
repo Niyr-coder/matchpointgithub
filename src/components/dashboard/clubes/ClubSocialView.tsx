@@ -993,7 +993,7 @@ function PhotoGalleryMini({ photos }: { photos: ClubSocialPhoto[] }) {
       >
         Galería · {photos.length}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+      <div className="mp-grid-form-3 gap-1.5">
         {photos.slice(0, 6).map((p) => (
           <div
             key={p.id}

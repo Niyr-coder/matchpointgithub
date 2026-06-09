@@ -142,7 +142,7 @@ export function EmployeeSoporteScreenView({ data }: { data: SoporteData }) {
         >
           Nuevo reporte rápido<span className="dot">.</span>
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+        <div className="mp-grid-form-2 gap-2.5">
           <div>
             <div className="label-mp" style={{ marginBottom: 5 }}>
               Tipo

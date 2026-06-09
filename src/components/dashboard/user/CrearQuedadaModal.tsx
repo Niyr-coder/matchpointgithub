@@ -561,7 +561,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   })}
                 </div>
               </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="mp-grid-form-2 gap-3">
                 <Field
                   label="Modo"
                   tip="Dobles = parejas fijas por cupo. Singles = un jugador por cupo y el rival rota según el formato."
@@ -590,7 +590,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   </div>
                 </Field>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="mp-grid-form-2 gap-3">
                 <Field
                   label="Fecha y hora"
                   tip="Recomendamos poner la hora unos 30 minutos antes del inicio real del juego. Así el check-in y el aviso a inscritos encajan mejor con cuando la gente llega."
@@ -652,7 +652,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                           )}
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div className="mp-grid-form-2 gap-2">
                           <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCat({ hour: e.target.value })} />
                           <input type="number" min={1} required value={c.slots} placeholder="Cupos *" style={inputStyle} onChange={(e) => setCat({ slots: e.target.value })} />
                         </div>
@@ -684,7 +684,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                 <input type="number" min={0} step="0.5" value={feeUsd} onChange={(e) => setFeeUsd(e.target.value)} placeholder="0" style={inputStyle} />
                 <Hint>0 = gratis. Si cobras, el jugador sube comprobante (transferencia).</Hint>
               </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div className="mp-grid-form-3 gap-2.5">
                 <Field label="Canchas" tip="Opcional. Con horas y precio/hora estimamos el costo de cancha repartido entre los jugadores (según cupos del paso 1).">
                   <input type="number" min={1} max={64} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="Ej. 2" style={inputStyle} />
                 </Field>

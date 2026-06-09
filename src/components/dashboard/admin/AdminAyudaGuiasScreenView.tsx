@@ -155,7 +155,7 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
         <div>
-          <h1 className="font-heading" style={{ margin: 0, fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 0.95 }}>
+          <h1 className="font-heading mp-admin-page-title" style={{ margin: 0, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase" }}>
             Ayuda y guías<span className="dot">.</span>
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted-fg)" }}>
@@ -167,8 +167,8 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
         </button>
       </div>
 
-      <div style={{ overflowX: "auto", paddingBottom: 2 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, minWidth: 960 }}>
+      <div className="mp-table-scroll" style={{ paddingBottom: 2 }}>
+        <div className="mp-grid-form-6 gap-3" style={{ minWidth: 960 }}>
           <Kpi label="Artículos" value={String(data.totals.articles)} hint={`${data.totals.published} publicados`} icon="file-text" />
           <Kpi label="Borradores" value={String(data.totals.drafts)} hint="pendientes de publicar" icon="pencil" />
           <Kpi label="Archivados" value={String(data.totals.archived)} hint="fuera del centro" icon="archive" />
