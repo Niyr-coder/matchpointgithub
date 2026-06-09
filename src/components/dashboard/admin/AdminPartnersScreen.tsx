@@ -11,14 +11,12 @@ export async function AdminPartnersScreen() {
         <div>
           <div className="label-mp">Plataforma · Partners</div>
           <h1
-            className="font-heading"
+            className="font-heading mp-admin-page-title"
             style={{
               margin: "6px 0 0",
-              fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
               textTransform: "uppercase",
-              lineHeight: 0.95,
             }}
           >
             Partners<span className="dot">.</span>

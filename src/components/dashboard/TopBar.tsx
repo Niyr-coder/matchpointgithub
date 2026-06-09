@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
@@ -178,9 +179,12 @@ const NOTIFICATION_RING_MS = 560;
 export function TopBar({
   role,
   contextLabel,
+  homeHref,
 }: {
   role: RoleKey;
   contextLabel?: string | null;
+  /** Inicio según rol activo (cookie). Default: /dashboard/[role] del segmento URL. */
+  homeHref?: string;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   // Notifs viven en TopBar para que el panel se renderice instantáneamente
@@ -193,6 +197,7 @@ export function TopBar({
   const cta = CTA_BY_ROLE[role];
   const toast = useToast();
   const [, startTransition] = useTransition();
+  const roleHomeHref = homeHref ?? `/dashboard/${role}`;
 
   const unreadN = useMemo(() => items.filter((n) => !n.readAt).length, [items]);
 
@@ -334,10 +339,12 @@ export function TopBar({
         zIndex: 10,
       }}
     >
-      {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky). */}
-      <div
+      {/* Logo mobile → inicio del rol activo (cookie), no landing. */}
+      <Link
+        href={roleHomeHref}
         className="md:hidden flex items-center gap-1.5"
-        aria-label="MATCHPOINT"
+        aria-label="Ir al inicio de tu panel"
+        style={{ color: "inherit", textDecoration: "none" }}
       >
         <span className="dot" style={{ fontSize: 16 }}>●</span>
         <span
@@ -346,7 +353,7 @@ export function TopBar({
         >
           MATCHPOINT
         </span>
-      </div>
+      </Link>
       {/* Search + admin context: solo desktop. */}
       <div className="hidden md:flex items-center" style={{ gap: 12, flex: 1, maxWidth: 640 }}>
         <TopBarSearch role={role} />

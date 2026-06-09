@@ -37,7 +37,7 @@ export function GiveawayResultOverlay({ data, variant, onClose }: Props) {
             />
           ))}
         </div>
-        <div style={{ position: "relative", minHeight: "100%", padding: "50px 22px 22px", display: "flex", flexDirection: "column" }}>
+        <div className="relative flex min-h-full flex-col pt-12 px-5 pb-5 md:px-6 md:pb-6">
           <button type="button" className="btn btn-ghost" style={{ alignSelf: "flex-end", color: "#fff" }} onClick={onClose}>
             <Icon name="x" size={14} />
           </button>

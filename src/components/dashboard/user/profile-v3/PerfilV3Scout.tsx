@@ -140,12 +140,9 @@ function V3ScoutBrief({ ownerSub = "plus" }: { ownerSub?: "free" | "plus" }) {
       </div>
 
       <div
-        className="pv3-stack-sm"
+        className="pv3-stack-sm mp-grid-form-3 gap-3.5"
         style={{
           position: "relative",
-          display: "grid",
-          gridTemplateColumns: "1.1fr 1fr 1fr",
-          gap: 14,
           alignItems: "stretch",
         }}
       >
@@ -467,7 +464,7 @@ function V3ScoutInsights({ ownerSub = "plus" }: { ownerSub?: "free" | "plus" }) 
           TU MP+
         </span>
       </div>
-      <div className="pv3-stack-sm" style={{ display: "grid", gridTemplateColumns: "1.05fr 1.1fr 1.05fr", gap: 12 }}>
+      <div className="pv3-stack-sm mp-grid-form-3 gap-3">
         {ownerIsPlus ? <ScoutStylePanel /> : <ScoutStyleRadarLocked />}
         <ScoutCommonRivals />
         <ScoutNotesWatchlist />
@@ -648,11 +645,8 @@ function ScoutStyleRadar() {
         </div>
       </div>
       <div
-        className="pv3-scout-radar-row"
+        className="pv3-scout-radar-row mp-grid-split gap-3.5"
         style={{
-          display: "grid",
-          gridTemplateColumns: "220px 1fr",
-          gap: 14,
           alignItems: "center",
           marginTop: 10,
         }}
@@ -793,11 +787,9 @@ function ScoutCommonRivals() {
       ) : (
         <>
           <div
+            className="mp-grid-form-2 gap-1.5"
             style={{
               marginTop: 14,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 6,
               fontFamily: "var(--font-sans)",
               fontWeight: 900,
               fontSize: 9,

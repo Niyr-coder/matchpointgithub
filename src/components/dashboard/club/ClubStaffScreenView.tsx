@@ -453,7 +453,7 @@ function StaffShiftsOverlay({
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 800 }}>Crear turno</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 8 }}>
+          <div className="mp-grid-form-3 gap-2">
             <input
               type="date"
               value={date}
@@ -889,7 +889,7 @@ function HireStaffModal({ clubId, onClose }: { clubId: string; onClose: () => vo
           <div className="label-mp" style={{ marginTop: 16, marginBottom: 6 }}>
             2. Rol
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+          <div className="mp-grid-form-3 gap-1.5">
             {ROLE_OPTIONS.map((opt) => {
               const on = role === opt.k;
               return (

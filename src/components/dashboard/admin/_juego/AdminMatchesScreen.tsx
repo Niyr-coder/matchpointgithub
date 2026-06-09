@@ -32,6 +32,8 @@ import {
   type MatchStatus,
 } from "./constants";
 
+const MATCHES_TABLE_COLS = "70px minmax(220px,1.4fr) minmax(160px,1.2fr) 120px 90px 110px auto";
+
 type AdminMatch = {
   id: string;
   source: "match" | "seek" | "no_show";
@@ -328,9 +330,9 @@ export function AdminMatchesScreen() {
             </div>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: "auto" }}>
-            <div style={{ minWidth: 1010 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "70px minmax(220px,1.4fr) minmax(160px,1.2fr) 120px 90px 110px auto", gap: 12, padding: "10px 16px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)", background: "var(--muted)", alignItems: "center" }}>
+          <div className="card mp-table-scroll" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="mp-admin-matches-inner">
+              <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: MATCHES_TABLE_COLS, gap: 12, padding: "10px 16px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)", background: "var(--muted)", alignItems: "center" }}>
                 <span>Tipo</span>
                 <span>Match</span>
                 <span>Marcadores</span>
@@ -350,7 +352,7 @@ export function AdminMatchesScreen() {
                   m.status === "scheduled" ||
                   m.status === "live";
                 return (
-                  <div key={`${m.source}-${m.id}`} style={{ display: "grid", gridTemplateColumns: "70px minmax(220px,1.4fr) minmax(160px,1.2fr) 120px 90px 110px auto", gap: 12, padding: "12px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : 0, background: m.status === "cancelled" ? "#fafafa" : "#fff", opacity: m.status === "cancelled" ? 0.7 : 1 }}>
+                  <div key={`${m.source}-${m.id}`} className="mp-table-row" style={{ display: "grid", gridTemplateColumns: MATCHES_TABLE_COLS, gap: 12, padding: "12px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : 0, background: m.status === "cancelled" ? "#fafafa" : "#fff", opacity: m.status === "cancelled" ? 0.7 : 1 }}>
                     <AJStatusChip {...km} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.playerA}</div>

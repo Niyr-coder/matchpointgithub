@@ -266,15 +266,8 @@ export function AdminRolesScreenView({ data }: { data: RolesData }) {
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "300px 1fr",
-          gap: 16,
-          alignItems: "flex-start",
-        }}
-      >
-        <div className="card" style={{ padding: 12 }}>
+      <div className="mp-roles-grid" style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, alignItems: "flex-start" }}>
+        <div className="card mp-roles-list" style={{ padding: 12 }}>
           <div className="label-mp" style={{ padding: "6px 8px 8px" }}>
             {ROLES.length} roles · {totalUsers} usuarios
           </div>

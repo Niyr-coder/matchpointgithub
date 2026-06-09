@@ -159,11 +159,9 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
 
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div
+          className="mp-grid-form-3 gap-5"
           style={{
             padding: 22,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 20,
             alignItems: "center",
           }}
         >
@@ -257,7 +255,7 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+      <div className="mp-grid-split gap-4">
         <RHPanel
           title="Próximos check-ins"
           action={
@@ -361,10 +359,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
                 {data.courts.answerLine}
               </p>
               <div
+                className="mp-grid-form-2 gap-1.5"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 6,
                   maxHeight: 200,
                   overflowY: "auto",
                 }}
@@ -404,14 +400,7 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
             </RHPanel>
           ) : null}
           <RHPanel title="Caja · ahora">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 6,
-                marginBottom: 10,
-              }}
-            >
+            <div className="mp-grid-form-2 gap-1.5" style={{ marginBottom: 10 }}>
               {data.cash.map((b, i) => (
                 <div
                   key={i}

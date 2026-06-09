@@ -1007,10 +1007,7 @@ function MyBadgesSection({
   };
 
   return (
-    <div
-      className="card"
-      style={{ padding: 20, display: "flex", flexDirection: "column" }}
-    >
+    <div className="card flex flex-col p-4 md:p-5">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="label-mp">Insignias</div>
         <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
@@ -1044,18 +1041,8 @@ function MyBadgesSection({
       {/* Tira de insignias ya ganadas: conserva la sensación de colección sin la
           pared de bloqueados. Solo aparece si hay al menos una. */}
       {unlocked > 0 && (
-        <div
-          style={{
-            marginTop: 14,
-            paddingTop: 14,
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ganadas</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-3 md:mt-3.5 md:gap-2 md:pt-3.5">
+          <span className="hidden text-[11px] text-[var(--muted-fg)] sm:inline">Ganadas</span>
           {unlockedBadges.map((b) => (
             <span
               key={b.kind}
@@ -1096,82 +1083,122 @@ function NextBadgeBlock({
   const hasBar = current != null && target > 0;
   const pct = hasBar ? Math.min(100, Math.round((current / target) * 100)) : 0;
   const cta = badgeCta(badge.criteriaKind);
-  // El requisito sale de la descripción del catálogo; si falta, fallback al label.
   const requirement = badge.description ?? badge.label;
 
+  const runCta = () => onCta(cta.action);
+
   return (
-    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <div className="mt-3.5 flex flex-col gap-3 md:gap-3">
+      {/* Mobile: fila compacta — tap = misma acción que el CTA desktop. */}
+      <button
+        type="button"
+        onClick={runCta}
+        className="md:hidden flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-white p-3 text-left"
+        style={{ fontFamily: "inherit", cursor: "pointer" }}
+      >
         <span
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
           style={{
-            width: 44,
-            height: 44,
-            flexShrink: 0,
-            borderRadius: 12,
             background: "var(--surface-2, #f5f5f5)",
             border: "1px dashed var(--border)",
             color: "var(--muted-fg)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
           }}
         >
-          <Icon name={badge.icon} size={20} />
+          <Icon name={badge.icon} size={16} />
         </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted-fg)" }}>
-            Próxima insignia
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.2 }}>{badge.label}</div>
-        </div>
-      </div>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-extrabold leading-tight">{badge.label}</span>
+          {hasBar ? (
+            <span className="tabular mt-0.5 block text-[11px] text-[var(--muted-fg)]">
+              {Math.min(current!, target)} / {target}
+            </span>
+          ) : null}
+        </span>
+        <Icon name="chevron-right" size={16} color="var(--muted-fg)" />
+      </button>
 
-      <div style={{ fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>{requirement}</div>
-
-      {hasBar && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div
+      {/* Desktop: bloque completo con progreso y CTA explícito. */}
+      <div className="hidden md:flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <span
             style={{
-              height: 6,
-              borderRadius: 9999,
-              background: "var(--surface-2, #f0f0f0)",
-              overflow: "hidden",
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              borderRadius: 12,
+              background: "var(--surface-2, #f5f5f5)",
+              border: "1px dashed var(--border)",
+              color: "var(--muted-fg)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
+            <Icon name={badge.icon} size={20} />
+          </span>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
-                width: `${pct}%`,
-                height: "100%",
-                borderRadius: 9999,
-                background: "var(--primary)",
-                transition: "width 600ms var(--ease-out, ease-out)",
+                fontSize: 10,
+                fontWeight: 900,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--muted-fg)",
               }}
-            />
+            >
+              Próxima insignia
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.2 }}>{badge.label}</div>
           </div>
-          <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-            {Math.min(current!, target)} / {target}
-          </span>
         </div>
-      )}
 
-      <button
-        type="button"
-        className="mp-press"
-        onClick={() => onCta(cta.action)}
-        style={{
-          alignSelf: "flex-start",
-          padding: "8px 14px",
-          borderRadius: 9999,
-          border: "1px solid var(--border)",
-          background: "#fff",
-          fontFamily: "inherit",
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: "pointer",
-        }}
-      >
-        {cta.label}
-      </button>
+        <div style={{ fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>{requirement}</div>
+
+        {hasBar && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                height: 6,
+                borderRadius: 9999,
+                background: "var(--surface-2, #f0f0f0)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${pct}%`,
+                  height: "100%",
+                  borderRadius: 9999,
+                  background: "var(--primary)",
+                  transition: "width 600ms var(--ease-out, ease-out)",
+                }}
+              />
+            </div>
+            <span className="tabular" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+              {Math.min(current!, target)} / {target}
+            </span>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="mp-press"
+          onClick={runCta}
+          style={{
+            alignSelf: "flex-start",
+            padding: "8px 14px",
+            borderRadius: 9999,
+            border: "1px solid var(--border)",
+            background: "#fff",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {cta.label}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1213,7 +1240,7 @@ function QuickActionsPanel({
     <>
       <div className="card" style={{ padding: 20 }}>
         <div className="label-mp">Acciones rápidas</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+        <div className="grid grid-cols-2 gap-2" style={{ marginTop: 14 }}>
           {ACTIONS.map((a) => (
             <button
               key={a.label}

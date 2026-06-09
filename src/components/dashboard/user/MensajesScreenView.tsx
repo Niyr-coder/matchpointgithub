@@ -2699,7 +2699,7 @@ function MatchChatDetailsPanel({
             borderTop: "1px solid rgba(16,185,129,0.15)",
           }}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+          <div className="mp-grid-form-2 gap-2">
             {[
               { label: "Cuándo", value: when },
               { label: "Lugar", value: venue },

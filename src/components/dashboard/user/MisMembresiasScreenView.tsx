@@ -314,7 +314,7 @@ export function MisMembresiasScreenView({
             >
               {ini}
             </div>
-            <div style={{ width: 84, height: 84, padding: 6, borderRadius: 9, background: "#fff", display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(8, 1fr)", gap: 1 }} aria-hidden>
+            <div className="mp-qr-cells" style={{ width: 84, height: 84, padding: 6, borderRadius: 9, background: "#fff", gap: 1 }} aria-hidden>
               {cells.map((on, i) => (
                 <span key={i} style={{ background: on ? "#0a0a0a" : "#fff" }} />
               ))}

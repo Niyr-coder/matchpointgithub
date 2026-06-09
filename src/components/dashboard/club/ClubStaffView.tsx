@@ -1,4 +1,6 @@
 "use client";
+
+const STAFF_SCHEDULE_COLS = "170px 1fr 100px";
 // Club Owner · Personal v2 — HR command center. Migrado del prototipo
 // (ui_kits/dashboard/ClubOwnerStaffScreen.jsx): PolHero + KPIs + timeline de
 // turnos en vivo + filtro por departamento + cards de staff + distribución +
@@ -128,9 +130,9 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
 
         <div className="mp-stf-schedule-scroll">
           <div className="mp-stf-schedule-inner">
-            <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 100px", gap: 12, alignItems: "center", marginBottom: 4 }}>
+            <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: STAFF_SCHEDULE_COLS, gap: 12, alignItems: "center", marginBottom: 4 }}>
               <div />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(17, 1fr)", gap: 1, fontSize: 8.5, color: "var(--muted-fg)", textAlign: "center", fontWeight: 700, letterSpacing: "0.05em" }}>
+              <div className="mp-grid-hours-17" style={{ gap: 1, fontSize: 8.5, color: "var(--muted-fg)", textAlign: "center", fontWeight: 700, letterSpacing: "0.05em" }}>
                 {Array.from({ length: 17 }, (_, i) => 5 + i).map((h) => (
                   <div key={h}>{h % 2 === 0 ? h : ""}</div>
                 ))}
@@ -144,7 +146,7 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
               const done = CURRENT_HOUR >= s.to;
               const upcoming = CURRENT_HOUR < s.from;
               return (
-                <div key={s.id} style={{ display: "grid", gridTemplateColumns: "170px 1fr 100px", gap: 12, alignItems: "center", padding: "6px 0", borderTop: "1px dashed var(--border)" }}>
+                <div key={s.id} className="mp-table-row" style={{ display: "grid", gridTemplateColumns: STAFF_SCHEDULE_COLS, gap: 12, alignItems: "center", padding: "6px 0", borderTop: "1px dashed var(--border)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <div style={{ width: 26, height: 26, borderRadius: "50%", background: s.avBg, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>{s.av}</div>
                     <div style={{ minWidth: 0 }}>

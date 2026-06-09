@@ -223,7 +223,7 @@ export function PagosSection({
   }
 
   return (
-    <div className="mp-ccfg-pagos" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+    <div className="mp-ccfg-pagos mp-grid-form-2 gap-3.5">
       <div className="card" style={{ padding: 22, gridColumn: "span 2" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, gap: 10, flexWrap: "wrap" }}>
           <div>
@@ -272,7 +272,7 @@ export function PagosSection({
           </div>
         )}
 
-        <div className="mp-ccfg-banks" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="mp-ccfg-banks mp-grid-form-2 gap-3.5">
           {accounts.length === 0 && (
             <div style={{ gridColumn: "span 2", padding: 22, borderRadius: 14, background: "#fafafa", border: "1.5px dashed var(--border)", textAlign: "center", color: "var(--muted-fg)", fontSize: 12 }}>
               Sin cuentas registradas todavía. Agrega una para empezar a recibir payouts.

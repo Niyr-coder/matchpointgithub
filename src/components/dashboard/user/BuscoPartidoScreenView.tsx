@@ -1397,7 +1397,7 @@ function PublishSeekModal({
 
   return (
     <ModalShell title="Publicar aviso" onClose={onClose}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         <Field label="Deporte">
           <select value={sport} onChange={(e) => setSport(e.target.value as MatchSeek["sport"])} style={inputStyle}>
             <option value="pickleball">Pickleball</option>
@@ -1565,7 +1565,7 @@ function EditSeekModal({
       {needsPartner && (
         <PlayerPicker label="Tu partner" max={1} selected={partner} onChange={setPartner} excludeIds={meUserId ? [meUserId] : []} />
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         <Field label="Fecha">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
         </Field>
@@ -1886,7 +1886,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function PanelEmpty({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: 260 }}>
+      <div className="mp-grid-form-2" style={{ minHeight: 260 }}>
         <div style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div className="chip-green" style={{ width: "fit-content", marginBottom: 12 }}><span className="chip-dot" />Estado vacío</div>
           <h3 className="font-heading" style={{ margin: 0, fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em" }}>{title}<span className="dot">.</span></h3>

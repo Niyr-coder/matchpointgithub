@@ -25,6 +25,8 @@ function closesInLabel(iso: string | null): string {
   return `${days}d ${hours % 24}h`;
 }
 
+const GIVEAWAY_ENTRIES_COLS = "36px 1fr 90px 130px 100px";
+
 function canDrawNow(drawAt: string | null, status: string): boolean {
   if (status === "drawn" || status === "closed" || status === "cancelled") return false;
   if (!drawAt) return true;
@@ -123,7 +125,7 @@ export function OrgGiveawayManageView({ role, data }: Props) {
               Top participantes<span style={{ color: "var(--primary)" }}>.</span>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 90px 130px 100px", padding: "10px 18px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: GIVEAWAY_ENTRIES_COLS, padding: "10px 18px", borderBottom: "1px solid var(--border)" }}>
             {["#", "Jugador", "Entradas", "Mecánicas", "Sigue"].map((h) => (
               <div key={h} className="label-mp">
                 {h}
@@ -138,7 +140,7 @@ export function OrgGiveawayManageView({ role, data }: Props) {
                 key={p.userId}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "36px 1fr 90px 130px 100px",
+                  gridTemplateColumns: GIVEAWAY_ENTRIES_COLS,
                   padding: "11px 18px",
                   borderTop: i > 0 ? "1px solid var(--border)" : "none",
                   alignItems: "center",

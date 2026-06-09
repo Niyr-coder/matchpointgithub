@@ -118,6 +118,35 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     impact: "high",
     wired: true,
   },
+  {
+    key: "staff_mfa_required",
+    label: "2FA staff (TOTP)",
+    description:
+      "Encendido = roles staff (admin, owner, manager, partner, coach, employee) exigen aal2 antes del dashboard. Jugador sin 2FA. Requiere TOTP ON en Supabase Auth + UI enroll/verify.",
+    surfaces: [
+      "dashboard/[role]/layout (gate)",
+      "/auth/mfa/enroll",
+      "/auth/mfa/verify",
+      "src/server/actions/mfa.ts",
+      "requireStaffMfaAal2 (server actions)",
+    ],
+    impact: "high",
+    wired: true,
+  },
+  {
+    key: "psp_checkout_enabled",
+    label: "Checkout PSP (piloto)",
+    description:
+      "Encendido = checkout con tarjeta (Stripe/Mercado Pago) para kinds piloto. Off = solo comprobante manual (beta actual).",
+    surfaces: [
+      "src/lib/payments/checkout.ts",
+      "src/server/actions/psp-checkout.ts",
+      "/api/webhooks/stripe",
+      "/api/webhooks/mercadopago",
+    ],
+    impact: "high",
+    wired: true,
+  },
 
   // ── Juego social / matchmaking ─────────────────────────────────────────
   // Sembrados en false. Cuando un caller los cablea con requirePlanWithFlag,

@@ -280,7 +280,7 @@ export function TarifasSection({
             </button>
           </div>
         </div>
-        <div className="mp-ccfg-tiers" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div className="mp-ccfg-tiers mp-grid-form-3 gap-3.5">
           {tiers.map((m) => (
             <div key={m.id} className="card" style={{ padding: 18, position: "relative", borderColor: m.popular ? "var(--primary)" : "var(--border)", borderWidth: m.popular ? 2 : 1 }}>
               {m.popular && <span style={{ position: "absolute", top: -10, right: 14, padding: "3px 10px", borderRadius: 9999, background: "var(--primary)", color: "#fff", fontSize: 9, fontWeight: 900, letterSpacing: "0.12em" }}>● MÁS POPULAR</span>}

@@ -12,6 +12,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { summarizeAuditEvent } from "@/lib/audit/labels";
 
 // ── Shape público ──────────────────────────────────────────────────────
 export type AuditEntry = {
@@ -36,43 +37,6 @@ async function requireUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
   return user.id;
-}
-
-// Mapping entity+action → label en español ecuatoriano.
-// `audit_log.action` proviene de trigger SQL (INSERT/UPDATE/DELETE).
-function summarize(entity: string, action: string): string {
-  const a = action.toUpperCase();
-  const byEntity: Record<string, Partial<Record<"INSERT" | "UPDATE" | "DELETE", string>>> = {
-    events: {
-      INSERT: "Creó el evento",
-      UPDATE: "Editó el evento",
-      DELETE: "Eliminó el evento",
-    },
-    event_registrations: {
-      INSERT: "Nueva inscripción al evento",
-      UPDATE: "Actualizó inscripción",
-      DELETE: "Cancelación de inscripción",
-    },
-    tournaments: {
-      INSERT: "Creó el torneo",
-      UPDATE: "Editó el torneo",
-      DELETE: "Eliminó el torneo",
-    },
-    registrations: {
-      INSERT: "Nueva inscripción al torneo",
-      UPDATE: "Actualizó inscripción",
-      DELETE: "Cancelación de inscripción",
-    },
-    transactions: {
-      INSERT: "Nueva transacción",
-      UPDATE: "Actualización de transacción",
-      DELETE: "Transacción eliminada",
-    },
-  };
-  return (
-    byEntity[entity]?.[a as "INSERT" | "UPDATE" | "DELETE"] ??
-    `${entity}.${a.toLowerCase()}`
-  );
 }
 
 type AuditRow = {
@@ -129,7 +93,7 @@ function toEntries(rows: AuditRow[], actorNames: Map<string, string>): AuditEntr
           ? "Sistema"
           : "—",
       createdAt: r.created_at,
-      summary: summarize(r.entity, r.action),
+      summary: summarizeAuditEvent(r.entity, r.action),
       rawDiff: r.diff,
     }));
 }
