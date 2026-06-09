@@ -113,10 +113,10 @@ export const KNOWN_FLAGS: KnownFlag[] = [
   {
     key: "read_only_mode",
     label: "Modo solo lectura",
-    description: "Kill switch global: bloquea mutaciones sensibles (inscripciones, pagos, scoring) pero deja navegación. Más fuerte que el banner de mantenimiento.",
-    surfaces: ["pending: middleware o guard en server actions críticas"],
+    description: "Kill switch global: bloquea mutaciones de jugadores y staff. Los admins pueden seguir operando desde el panel.",
+    surfaces: ["runMutation / requireWritable en server actions críticas"],
     impact: "high",
-    wired: false,
+    wired: true,
   },
 
   // ── Juego social / matchmaking ─────────────────────────────────────────

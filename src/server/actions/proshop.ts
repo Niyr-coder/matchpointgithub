@@ -10,7 +10,7 @@ import "server-only";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
@@ -128,7 +128,7 @@ export async function getProduct(input: unknown): Promise<ActionResult<Product>>
 
 // ── createProshopProduct (staff/employee) ──────────────────────────────
 export async function createProshopProduct(input: unknown): Promise<ActionResult<Product>> {
-  return runAction(ProductCreateSchema, input, async (data) => {
+  return runMutation(ProductCreateSchema, input, async (data) => {
     await requireClubStaff(data.clubId);
     const supabase = await getServerClient();
 
@@ -161,7 +161,7 @@ export async function createProshopProduct(input: unknown): Promise<ActionResult
 
 // ── updateProshopProduct (staff/employee) ──────────────────────────────
 export async function updateProshopProduct(input: unknown): Promise<ActionResult<Product>> {
-  return runAction(ProductUpdateSchema, input, async ({ productId, patch }) => {
+  return runMutation(ProductUpdateSchema, input, async ({ productId, patch }) => {
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("products")
@@ -203,7 +203,7 @@ export async function updateProshopProduct(input: unknown): Promise<ActionResult
 // Stock change para reposición / ajuste manual / merma. Las ventas usan la
 // RPC `fn_create_sale` con reason='sale' y no pasan por aquí.
 export async function adjustProshopStock(input: unknown): Promise<ActionResult<Product>> {
-  return runAction(ProductStockAdjustSchema, input, async ({ productId, delta, reason }) => {
+  return runMutation(ProductStockAdjustSchema, input, async ({ productId, delta, reason }) => {
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("products")
@@ -249,7 +249,7 @@ export async function adjustProshopStock(input: unknown): Promise<ActionResult<P
 // dentro de una transacción Postgres con `SELECT ... FOR UPDATE` sobre
 // products. Evita race conditions y deja todo consistente o nada.
 export async function createSale(input: unknown): Promise<ActionResult<Sale>> {
-  return runAction(SaleCreateSchema, input, async (data) => {
+  return runMutation(SaleCreateSchema, input, async (data) => {
     const userId = await requireClubStaff(data.clubId);
     await assertRateLimit({ key: `proshop:sale:${userId}`, ...RATE_LIMITS.mutationsAuthn });
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;

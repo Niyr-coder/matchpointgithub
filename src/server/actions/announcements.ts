@@ -9,24 +9,7 @@ import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
-
-async function requireAdminId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return user.id;
-}
+import { requireAdminUserId } from "@/lib/auth/session";
 
 export async function setAnnouncementBanner(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(
@@ -40,7 +23,7 @@ export async function setAnnouncementBanner(input: unknown): Promise<ActionResul
     }),
     input,
     async ({ message, level, ctaLabel, ctaHref, startsAt, endsAt }) => {
-      const adminId = await requireAdminId();
+      const adminId = await requireAdminUserId();
       const supabase = await getServerClient();
       // Uno a la vez: desactiva los activos antes de publicar el nuevo.
       await supabase.from("announcements").update({ active: false } as never).eq("active", true);
@@ -67,7 +50,7 @@ export async function setAnnouncementBanner(input: unknown): Promise<ActionResul
 
 export async function clearAnnouncementBanner(): Promise<ActionResult<{ ok: true }>> {
   return runAction(z.undefined(), undefined, async () => {
-    await requireAdminId();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { error } = await supabase.from("announcements").update({ active: false } as never).eq("active", true);
     if (error) throw new MpError("ANNOUNCEMENTS.CLEAR_FAILED", error.message, 500);

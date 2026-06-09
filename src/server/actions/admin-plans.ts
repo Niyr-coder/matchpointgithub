@@ -10,28 +10,13 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
 
 const SIGNED_URL_TTL = 60 * 10; // 10 min
 
-async function requireAdminUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
-  return user.id;
-}
+
 
 // ── tipos compartidos ───────────────────────────────────────────────────
 export type PendingPlanSubscriptionRow = {

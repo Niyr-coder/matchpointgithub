@@ -1,9 +1,8 @@
 // Server: pagos & payouts globales para admin.
-import { AuthError } from "@/lib/auth/session";
 import { getAdminClient } from "@/lib/db/client.admin";
-import { getServerClient } from "@/lib/db/client.server";
 import { getTakeRatePct } from "@/server/queries/platform-config";
 import { listPendingProofsAdmin } from "@/server/actions/payment-proofs";
+import { requireAdminUserId } from "@/lib/auth/session";
 import {
   AdminPagosScreenView,
   type PagosData,
@@ -34,24 +33,6 @@ function mapStatus(dbStatus: string): "completed" | "pending" | "failed" {
   if (dbStatus === "captured") return "completed";
   if (dbStatus === "pending" || dbStatus === "authorized") return "pending";
   return "failed";
-}
-
-async function requireAdminUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
-
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
-  return user.id;
 }
 
 async function loadData(): Promise<PagosData> {

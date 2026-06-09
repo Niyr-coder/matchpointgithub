@@ -117,7 +117,7 @@ export function GiveawayDetailMobile({
                 preview={!participating}
                 actionLabel={mechanicActionLabel(m.kind)}
                 onAction={
-                  participating && !m.done && !m.pending && (m.autoVerify || m.kind === "share" || m.kind === "pay")
+                  participating && !m.done && !m.pending && (m.autoVerify || m.kind === "share" || m.kind === "pay" || m.kind === "invite")
                     ? () => onMechanicAction(m.kind)
                     : undefined
                 }

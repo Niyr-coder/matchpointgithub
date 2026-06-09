@@ -12,9 +12,9 @@ import "server-only";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
 import { notify } from "@/server/notifications/dispatch";
@@ -47,32 +47,6 @@ async function notifyPremiumActivated(args: {
   });
 }
 
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-  return user.id;
-}
-
-async function requireAdminUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
-  return user.id;
-}
-
 // ── requestPlanUpgrade ─────────────────────────────────────────────────
 const RequestUpgradeSchema = z.object({
   tier: z.enum(["premium"]),
@@ -88,7 +62,7 @@ export type PlanUpgradeResult = {
 export async function requestPlanUpgrade(
   input: unknown,
 ): Promise<ActionResult<PlanUpgradeResult>> {
-  return runAction(RequestUpgradeSchema, input, async ({ tier, durationMonths }) => {
+  return runMutation(RequestUpgradeSchema, input, async ({ tier, durationMonths }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
@@ -314,7 +288,7 @@ const CancelMyPlanSchema = z.object({
 export async function cancelMyPlan(
   input: unknown,
 ): Promise<ActionResult<{ subscriptionId: string }>> {
-  return runAction(CancelMyPlanSchema, input, async ({ subscriptionId, reason }) => {
+  return runMutation(CancelMyPlanSchema, input, async ({ subscriptionId, reason }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
