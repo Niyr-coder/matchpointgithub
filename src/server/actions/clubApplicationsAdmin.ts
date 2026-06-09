@@ -11,7 +11,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import {
   ClubApplicationSchema,
@@ -75,22 +75,7 @@ const STATUS_LABEL_ES: Partial<Record<ClubApplication["status"], string>> = {
 };
 
 async function requireAdmin(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .is("revoked_at", null);
-
-  if (!roles?.some((r) => r.role === "admin")) {
-    throw new AuthError("AUTH.ROLE_REQUIRED", "Admin role required");
-  }
-  return user.id;
+  return requireAdminUserId();
 }
 
 async function transitionStatus({

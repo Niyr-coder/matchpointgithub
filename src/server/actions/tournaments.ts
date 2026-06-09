@@ -9,9 +9,10 @@ import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { getActiveClubDiscountPct, applyDiscount } from "@/server/queries/club-membership";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
+import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
@@ -314,6 +315,7 @@ export async function getTournament(input: unknown): Promise<ActionResult<Tourna
 export async function createTournament(input: unknown): Promise<ActionResult<Tournament>> {
   return runAction(TournamentCreateSchema, input, async (data) => {
     const userId = await requirePartnerAdmin(data.partnerId);
+    await assertRateLimit({ key: `tournament:create:${userId}`, ...RATE_LIMITS.tournamentCreate });
     const supabase = await getServerClient();
     const resolvedPolicy =
       data.entryFeeCents === 0
@@ -398,8 +400,9 @@ const RegisterInputSchema = z.object({
 export async function registerToTournament(
   input: unknown,
 ): Promise<ActionResult<Registration>> {
-  return runAction(RegisterInputSchema, input, async ({ tournamentId, body, paymentMode }) => {
+  return runMutation(RegisterInputSchema, input, async ({ tournamentId, body, paymentMode }) => {
     const userId = await requireUserId();
+    await assertRateLimit({ key: `tournament:register:${userId}`, ...RATE_LIMITS.tournamentRegister });
     if (!body.playerIds.includes(userId)) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "You must be in the registered playerIds");
     }
@@ -782,7 +785,7 @@ const CancelMyRegSchema = z.object({ registrationId: UuidSchema });
 export async function cancelMyRegistration(
   input: unknown,
 ): Promise<ActionResult<{ id: string; status: string }>> {
-  return runAction(CancelMyRegSchema, input, async ({ registrationId }) => {
+  return runMutation(CancelMyRegSchema, input, async ({ registrationId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
     const { data: reg } = await supabase
@@ -1030,19 +1033,6 @@ export async function getBracket(input: unknown): Promise<ActionResult<Bracket>>
 }
 
 // ── Admin-only: cancelar torneo + leer detalle ─────────────────────────
-async function requireAdminUserId(): Promise<string> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return userId;
-}
 
 // ── setTournamentFeatured (admin) ──────────────────────────────────────
 // Marca / desmarca un torneo como "evento estelar" para portada.

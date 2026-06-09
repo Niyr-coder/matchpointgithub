@@ -11,7 +11,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
@@ -162,7 +162,7 @@ export async function getReservation(
 
 // ── createReservation (organizer = current user) ───────────────────────
 export async function createReservation(input: unknown): Promise<ActionResult<Reservation>> {
-  return runAction(ReservationCreateSchema, input, async (data) => {
+  return runMutation(ReservationCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     await assertRateLimit({ key: `rsv:create:${userId}`, ...RATE_LIMITS.mutationsAuthn });
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;
@@ -297,7 +297,7 @@ const CancelInputSchema = z.object({
 });
 
 export async function cancelReservation(input: unknown): Promise<ActionResult<Reservation>> {
-  return runAction(CancelInputSchema, input, async ({ id, body }) => {
+  return runMutation(CancelInputSchema, input, async ({ id, body }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
@@ -375,7 +375,7 @@ const MarkNoShowSchema = z.object({
 export async function markReservationNoShow(
   input: unknown,
 ): Promise<ActionResult<Reservation>> {
-  return runAction(MarkNoShowSchema, input, async ({ id, clubId, reason }) => {
+  return runMutation(MarkNoShowSchema, input, async ({ id, clubId, reason }) => {
     const userId = await requireUserId();
     if (!(await isClubStaff(userId, clubId))) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
@@ -436,7 +436,7 @@ export async function markReservationNoShow(
 
 // ── createWalkin (employee/manager) ────────────────────────────────────
 export async function createWalkin(input: unknown): Promise<ActionResult<Reservation>> {
-  return runAction(WalkinCreateSchema, input, async (data) => {
+  return runMutation(WalkinCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     if (!(await isClubStaff(userId, data.clubId))) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");

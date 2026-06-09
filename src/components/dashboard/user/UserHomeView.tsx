@@ -14,6 +14,7 @@ import { OnboardingWizard } from "./OnboardingWizard";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
 import { MP_PLUS_PLAN } from "@/lib/marketing/mp-plus";
 import { MpPlusUpsell } from "./MpPlusUpsell";
+import { ReferralInviteSheet } from "@/components/referrals/ReferralInviteSheet";
 
 type ReservationLite = {
   id: string;
@@ -151,7 +152,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
           historiesByMode={data.historiesByMode}
         />
         <MyBadgesSection badges={data.badges} matchesTotal={data.matchesTotal} />
-        <QuickActionsPanel referralSlug={data.username} />
+        <QuickActionsPanel referralSlug={data.username} referrerDisplayName={data.name} />
       </div>
       {showWizard && (
         <OnboardingWizard
@@ -1182,9 +1183,16 @@ const ACTIONS = [
   { icon: "user-plus", label: "Invitar amigo", action: "invitar" },
 ] as const;
 
-function QuickActionsPanel({ referralSlug }: { referralSlug: string | null }) {
+function QuickActionsPanel({
+  referralSlug,
+  referrerDisplayName,
+}: {
+  referralSlug: string | null;
+  referrerDisplayName: string;
+}) {
   const toast = useToast();
   const router = useRouter();
+  const [inviteOpen, setInviteOpen] = useState(false);
   const handle = (a: (typeof ACTIONS)[number]["action"]) => {
     if (a === "crear-match") window.dispatchEvent(new CustomEvent("mp-open-crear-match"));
     else if (a === "reservar") window.dispatchEvent(new CustomEvent("mp-open-reservar"));
@@ -1198,49 +1206,50 @@ function QuickActionsPanel({ referralSlug }: { referralSlug: string | null }) {
         });
         return;
       }
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/?ref=${encodeURIComponent(referralSlug)}`;
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        navigator.clipboard.writeText(url).catch(() => {});
-      }
-      toast({
-        icon: "copy",
-        title: "Link de invitación copiado",
-        sub: "Compártelo para que se unan a MATCHPOINT",
-      });
+      setInviteOpen(true);
     }
   };
   return (
-    <div className="card" style={{ padding: 20 }}>
-      <div className="label-mp">Acciones rápidas</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
-        {ACTIONS.map((a) => (
-          <button
-            key={a.label}
-            className="mp-quick-action"
-            onClick={() => handle(a.action)}
-            style={{
-              padding: 12,
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              background: "#fff",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              gap: 8,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              textAlign: "left",
-            }}
-          >
-            <span className="mp-quick-action-icon">
-              <Icon name={a.icon} size={16} color="var(--primary)" />
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 700 }}>{a.label}</span>
-          </button>
-        ))}
+    <>
+      <div className="card" style={{ padding: 20 }}>
+        <div className="label-mp">Acciones rápidas</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+          {ACTIONS.map((a) => (
+            <button
+              key={a.label}
+              className="mp-quick-action"
+              onClick={() => handle(a.action)}
+              style={{
+                padding: 12,
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "#fff",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: 8,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span className="mp-quick-action-icon">
+                <Icon name={a.icon} size={16} color="var(--primary)" />
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{a.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+      {inviteOpen && referralSlug ? (
+        <ReferralInviteSheet
+          referralSlug={referralSlug}
+          referrerDisplayName={referrerDisplayName}
+          context={{ surface: "home" }}
+          onClose={() => setInviteOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -115,8 +115,11 @@ export function GiveawayJoinConfirmation({
             pending={m.pending}
             actionLabel={mechanicActionLabel(m.kind)}
             onAction={
-              !m.done && !m.pending && (m.autoVerify || m.kind === "share" || m.kind === "pay")
-                ? () => (m.autoVerify && m.kind !== "share" && m.kind !== "pay" ? onRefreshMechanics() : onMechanicAction(m.kind))
+              !m.done && !m.pending && (m.autoVerify || m.kind === "share" || m.kind === "pay" || m.kind === "invite")
+                ? () =>
+                    m.autoVerify && m.kind !== "share" && m.kind !== "pay" && m.kind !== "invite"
+                      ? onRefreshMechanics()
+                      : onMechanicAction(m.kind)
                 : undefined
             }
           />
