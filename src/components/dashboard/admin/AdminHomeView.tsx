@@ -2,6 +2,7 @@
 "use client";
 import { RHKpi, RHPanel, RHWelcome } from "../widgets/RH";
 import { Icon } from "@/components/Icon";
+import { REALTIME_DEBOUNCE } from "@/lib/realtime/debounce";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 export type ActivityItem = {
@@ -131,15 +132,11 @@ function QueuePlaceholder() {
 export function AdminHomeView({ data }: { data: AdminHomeData }) {
   // audit_log se escribe en CADA server action de la plataforma; suscribirlo
   // aquí re-renderiza Home por cada acción de cualquier usuario. Home no
-  // muestra log, así que lo quitamos. Las demás van con debounce alto.
-  useRealtimeRefresh(
-    [
-      { table: "reports" },
-      { table: "clubs" },
-      { table: "transactions" },
-    ],
-    { debounceMs: 5000 },
-  );
+  // muestra log, así que lo quitamos. transactions tampoco: el GMV del KPI es
+  // mensual y no necesita refresh en vivo por cada pago.
+  useRealtimeRefresh([{ table: "reports" }, { table: "clubs" }], {
+    debounceMs: REALTIME_DEBOUNCE.ADMIN_LIST,
+  });
 
   const hasActivity = data.activity.length > 0;
   const hasQueue = data.queue.length > 0;
