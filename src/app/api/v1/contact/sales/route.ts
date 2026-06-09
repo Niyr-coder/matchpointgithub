@@ -13,7 +13,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { getAdminClient } from "@/lib/db/client.admin";
+import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
+import { clientIpFromRequest } from "@/lib/api/client-ip";
 import { httpFail, httpOk } from "@/lib/api/response";
+import { MpError } from "@/lib/api/errors";
 import {
   SALES_LEAD_TYPE_LABELS,
   SalesLeadCreateSchema,
@@ -27,15 +30,6 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const DEFAULT_FROM = "MATCHPOINT <notif@matchpoint.top>";
 const DEFAULT_TO = "ventas@matchpoint.top";
 const MAX_BODY_BYTES = 16 * 1024;
-
-function clientIp(req: NextRequest): string | null {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip") ?? null;
-}
 
 function escapeHtml(input: string): string {
   return input
@@ -116,6 +110,23 @@ async function sendLeadEmail(opts: {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    const ip = clientIpFromRequest(req) ?? "unknown";
+    await assertRateLimit({
+      key: `sales:lead:${ip}`,
+      ...RATE_LIMITS.salesLead,
+      failClosed: true,
+    });
+  } catch (err) {
+    if (err instanceof MpError && err.code === "RATE_LIMIT.EXCEEDED") {
+      return httpFail(429, err.code, err.message);
+    }
+    if (err instanceof MpError && err.code === "RATE_LIMIT.UNAVAILABLE") {
+      return httpFail(503, err.code, err.message);
+    }
+    throw err;
+  }
+
   let body: unknown;
   try {
     const text = await req.text();
@@ -145,7 +156,7 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = getAdminClient();
-  const ip = clientIp(req);
+  const ip = clientIpFromRequest(req);
   const userAgent = req.headers.get("user-agent")?.slice(0, 500) ?? null;
 
   const { data: inserted, error: insErr } = await admin

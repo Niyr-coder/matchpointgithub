@@ -36,7 +36,11 @@ async function checkHealth(): Promise<void> {
     return;
   }
   try {
-    const res = await fetch(`${appUrl.replace(/\/$/, "")}/api/health`);
+    const healthSecret = process.env.HEALTH_SECRET;
+    const headers: HeadersInit = healthSecret
+      ? { Authorization: `Bearer ${healthSecret}` }
+      : {};
+    const res = await fetch(`${appUrl.replace(/\/$/, "")}/api/health`, { headers });
     const body = await res.json();
     const ok = res.ok && body.ok;
     console.log(`\n— /api/health: ${ok ? "OK" : "FALLO"} (${res.status})`);

@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/db/client.admin";
+import { authorizeCron } from "@/lib/api/cron-auth";
 import { hasEmailTemplate, renderEmail } from "@/lib/notifications/email-templates";
 
 export const dynamic = "force-dynamic";
@@ -41,19 +42,6 @@ type JobRow = {
   payload: Record<string, unknown> | null;
   attempts: number;
 };
-
-function authorize(req: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) {
-    // Sin secret configurado: bloqueamos por defecto (fail-closed).
-    return false;
-  }
-  const header = req.headers.get("authorization") ?? "";
-  if (header === `Bearer ${expected}`) return true;
-  const token = req.nextUrl.searchParams.get("token");
-  if (token && token === expected) return true;
-  return false;
-}
 
 async function markJob(
   jobId: string,
@@ -148,7 +136,7 @@ async function sendViaResend(opts: {
 }
 
 async function handle(req: NextRequest): Promise<NextResponse> {
-  if (!authorize(req)) {
+  if (!authorizeCron(req)) {
     return NextResponse.json(
       { ok: false, error: { code: "AUTH.UNAUTHORIZED", message: "Token inválido o ausente." } },
       { status: 401 },
