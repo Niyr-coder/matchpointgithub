@@ -30,6 +30,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserClient } from "@/lib/db/client.browser";
+import { REALTIME_DEBOUNCE } from "@/lib/realtime/debounce";
 
 export type RealtimeWatch = {
   table: string;
@@ -57,7 +58,7 @@ type Opts = {
 export function useRealtimeRefresh(watches: RealtimeWatch[], opts: Opts = {}) {
   const router = useRouter();
   const enabled = opts.enabled !== false;
-  const debounceMs = opts.debounceMs ?? 300;
+  const debounceMs = opts.debounceMs ?? REALTIME_DEBOUNCE.DEFAULT;
   // Ref para que cambios de onChange no fuercen re-suscripción al canal.
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;

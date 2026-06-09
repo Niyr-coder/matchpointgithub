@@ -10,7 +10,8 @@
 // deportes, heatmap, cohortes), transactions captured (GMV, top clubes),
 // clubs (nombre/ciudad), platform_config (take rate). Admin RLS permite leer
 // cross-tenant (el section solo se monta para admin). Ver docs/product/02-payments.md.
-import { getServerClient } from "@/lib/db/client.server";
+import { unstable_cache } from "next/cache";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { getTakeRatePct } from "@/server/queries/platform-config";
 import { AdminMetricsScreenView, type MetricsData, type PeriodKey } from "./AdminMetricsScreenView";
 
@@ -144,8 +145,12 @@ function pctDelta(cur: number, prev: number): { delta: number | null; up: boolea
   return { delta: d, up: d >= 0 };
 }
 
-async function loadData(): Promise<MetricsData> {
-  const supabase = await getServerClient();
+// Admin client + unstable_cache: loadData escanea 1 año de txns/reservas y
+// todos los profiles/clubs en memoria. Sin cache, cada router.refresh() (p.ej.
+// desde realtime en otras pantallas) re-ejecuta el barrido. El section solo
+// monta para admin; el userId ya se validó antes en el layout de dashboard.
+async function loadDataUncached(): Promise<MetricsData> {
+  const supabase = getAdminClient();
   const now = new Date();
   const yearAgo = new Date(now);
   yearAgo.setDate(yearAgo.getDate() - 365);
@@ -386,7 +391,12 @@ async function loadData(): Promise<MetricsData> {
   };
 }
 
+const loadDataCached = unstable_cache(loadDataUncached, ["admin:platform-metrics"], {
+  tags: ["admin:metrics"],
+  revalidate: 600,
+});
+
 export async function AdminMetricsScreen() {
-  const data = await loadData();
+  const data = await loadDataCached();
   return <AdminMetricsScreenView data={data} />;
 }

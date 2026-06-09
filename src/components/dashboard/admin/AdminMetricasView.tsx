@@ -14,7 +14,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
-import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 import type { MetricsData, PeriodKey } from "./AdminMetricsScreenView";
 
 const W = 800;
@@ -53,12 +52,9 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
   const [period, setPeriod] = useState<PeriodKey>("30d");
   const [comparing, setComparing] = useState(true);
 
-  // transactions/reservations/profiles son las tablas más calientes de la
-  // plataforma. Debounce alto para no refrescar por cada acción ajena.
-  useRealtimeRefresh(
-    [{ table: "transactions" }, { table: "reservations" }, { table: "profiles" }],
-    { debounceMs: 5000 },
-  );
+  // Sin realtime: el server cachea métricas ~10 min (AdminMetricsScreen).
+  // Escuchar transactions/reservations/profiles aquí re-ejecutaba el barrido
+  // completo en cada evento de la plataforma.
 
   const pd = data.periods[period];
   // "Última sincronización" se calcula en cliente (Date.now no es puro en
