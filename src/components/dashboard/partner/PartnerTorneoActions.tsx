@@ -131,14 +131,7 @@ export function PartnerTorneoActions({
   return (
     <div className="card" style={{ padding: 18 }}>
       <div className="label-mp">Acciones del torneo</div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 10,
-          marginTop: 12,
-        }}
-      >
+      <div className="mp-partner-torneo-actions-grid">
         {isDraft && (
           <ActionBtn
             icon="rocket"

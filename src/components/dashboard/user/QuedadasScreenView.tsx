@@ -1701,13 +1701,14 @@ function QuedadaDetailsModal({
       ref={overlayRef}
       onClick={close}
       style={{ position: "fixed", inset: 0, background: "rgba(10,10,10,0.7)", backdropFilter: "blur(6px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "inherit", opacity: 0 }}
+      className="mp-quedada-detail-overlay"
     >
       <div
         ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        className="card"
+        className="card mp-quedada-detail-modal"
         style={{ width: "100%", maxWidth: 720, maxHeight: "92vh", overflow: "auto", padding: 22, borderRadius: 18, background: "#fff", boxShadow: "0 32px 64px rgba(0,0,0,0.5)", opacity: 0, willChange: "transform, opacity" }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>

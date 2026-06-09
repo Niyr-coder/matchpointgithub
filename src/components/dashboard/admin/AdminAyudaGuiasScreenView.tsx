@@ -178,7 +178,7 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)", gap: 16, alignItems: "start" }}>
+      <div className="mp-admin-split-panels">
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -261,12 +261,12 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
             )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10 }}>
+          <div className="mp-tournament-form-grid-2">
             <Field label="Título"><Input value={form.title} onChange={(value) => setForm({ ...form, title: value })} placeholder="Ej. Cómo cancelo una reserva" /></Field>
             <Field label="Slug"><Input value={form.slug} onChange={(value) => setForm({ ...form, slug: value })} placeholder="auto si está vacío" /></Field>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 140px", gap: 10, marginTop: 10 }}>
+          <div className="mp-tournament-form-grid-3" style={{ marginTop: 10 }}>
             <Field label="Categoría">
               <Select value={form.categoryKey} onChange={(value) => setForm({ ...form, categoryKey: value })}>
                 {data.categories.map((category) => (
@@ -288,12 +288,12 @@ export function AdminAyudaGuiasScreenView({ data }: { data: AdminHelpOverview })
             <Input value={form.excerpt} onChange={(value) => setForm({ ...form, excerpt: value })} placeholder="Texto corto para listados y búsqueda" />
           </Field>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 150px", gap: 10, marginTop: 10 }}>
+          <div className="mp-tournament-form-grid-2" style={{ marginTop: 10 }}>
             <Field label="Tags"><Input value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="reservas, pago, no-show" /></Field>
             <Field label="Ícono"><Input value={form.icon} onChange={(value) => setForm({ ...form, icon: value })} placeholder="file-text" /></Field>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 1fr", gap: 10, marginTop: 10 }}>
+          <div className="mp-tournament-form-grid-3" style={{ marginTop: 10 }}>
             <Field label="URL de video"><Input value={form.videoUrl} onChange={(value) => setForm({ ...form, videoUrl: value })} placeholder="solo tipo video" /></Field>
             <Field label="Duración"><Input value={form.videoDurationLabel} onChange={(value) => setForm({ ...form, videoDurationLabel: value })} placeholder="1:20" /></Field>
             <Field label="Término glosario"><Input value={form.glossaryTerm} onChange={(value) => setForm({ ...form, glossaryTerm: value })} placeholder="solo glosario" /></Field>

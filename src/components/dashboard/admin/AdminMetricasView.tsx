@@ -308,7 +308,8 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
               <span>Alto</span>
             </div>
           </div>
-          <div>
+          <div className="mp-metrics-heatmap-scroll">
+          <div className="mp-metrics-heatmap-inner">
             <div style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 4 }}>
               <div />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 2 }}>
@@ -330,6 +331,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
                 </div>
               ))}
             </div>
+          </div>
           </div>
           <div style={{ marginTop: 14, padding: 11, background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: 9, fontSize: 11.5, color: "#065f46", display: "flex", alignItems: "center", gap: 9 }}>
             <Icon name="lightbulb" size={13} color="#065f46" />

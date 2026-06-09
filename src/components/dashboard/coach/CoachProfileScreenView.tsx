@@ -446,7 +446,7 @@ export function CoachProfileScreenView({ data }: { data: CoachProfileData }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-partner-torneo-kpis">
         {stats.map((k) => (
           <div key={k.l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{k.l}</div>
@@ -467,7 +467,7 @@ export function CoachProfileScreenView({ data }: { data: CoachProfileData }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="mp-coach-profile-split">
         <div className="card" style={{ padding: 22 }}>
           <h2
             className="font-heading"
@@ -569,7 +569,7 @@ export function CoachProfileScreenView({ data }: { data: CoachProfileData }) {
             {data.rating != null ? `promedio ${data.rating.toFixed(1)}` : "promedio —"}
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div className="mp-tournament-form-grid-3" style={{ gap: 12 }}>
           {hasReviews
             ? data.reviews.slice(0, 3).map((r) => (
                 <div

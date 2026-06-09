@@ -18,6 +18,7 @@ import { Nav, type NavAuth } from "./Nav";
 import { Footer } from "./Footer";
 import { Paywall, type PaywallTrigger } from "./Paywall";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
+import { ReferralFromQuery } from "@/components/referrals/ReferralFromQuery";
 import { Icon } from "@/components/Icon";
 
 type PaywallFn = (t: PaywallTrigger) => void;
@@ -182,6 +183,9 @@ export function PublicChromeClient({
         {children}
         <Footer />
         {paywall && <Paywall trigger={paywall} onClose={() => setPaywall(null)} />}
+        <Suspense fallback={null}>
+          <ReferralFromQuery skipWhenAuthenticated={!!auth} />
+        </Suspense>
         <Suspense fallback={null}>
           <AuthFromQuery />
         </Suspense>

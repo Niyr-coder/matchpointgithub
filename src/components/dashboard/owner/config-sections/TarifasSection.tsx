@@ -204,7 +204,7 @@ export function TarifasSection({
             No hay canchas activas en este club todavía. Crea una cancha desde <b>Canchas</b> para configurar tarifas.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="mp-table-scroll">
             <div style={{ minWidth: 620, display: "grid", gridTemplateColumns: "200px repeat(4, 1fr)", gap: 6 }}>
               <div />
               {COLS.map((c) => (
@@ -396,7 +396,7 @@ function TierModal({
             />
           </label>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div className="mp-tournament-form-grid-3">
             <label>
               <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase" }}>Precio /mes (¢)</span>
               <input

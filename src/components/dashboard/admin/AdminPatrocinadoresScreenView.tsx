@@ -396,7 +396,7 @@ export function AdminPatrocinadoresScreenView({ data }: { data: AdminSponsorsDat
       </div>
 
       <div style={{ overflowX: "auto", paddingBottom: 2 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, minWidth: 0 }}>
+        <div className="mp-admin-sponsors-kpis">
           <Kpi label="Marcas" value={String(data.totals.sponsors)} hint={`${data.totals.activeSponsors} activas`} icon="handshake" tip="Anunciantes o partners en el catálogo. Solo las activas pueden tener placements publicados." />
           <Kpi label="Slots" value={String(data.totals.slots)} hint="inventario configurado" icon="layout-grid" tip="Superficies publicitarias nativas: pantalla + posición fija donde puede renderizarse un creative." />
           <Kpi label="Placements live" value={String(data.totals.activePlacements)} hint="activos ahora" icon="radio-tower" tip="Campañas en estado activo cuya fecha de inicio/fin incluye hoy. Es lo que ven los usuarios en este momento." />

@@ -869,7 +869,7 @@ function GalleryView({
   onToggleActive: (c: CourtCard) => void;
 }) {
   return (
-    <div className="mp-canchas-gallery" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+    <div className="mp-canchas-gallery">
       {courts.map((c, index) => (
         <GalleryCard
           key={c.id}
@@ -967,16 +967,7 @@ function GalleryCard({
       onClick={onClick}
     >
       {/* ── TOP (V2 NYT-Mag): número gigante 110px + info al lado ── */}
-      <div
-        className="mp-canchas-gallery-head"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "110px 1fr",
-          gap: 10,
-          padding: "22px 22px 14px",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
+      <div className="mp-canchas-gallery-head">
         <div
           className="font-heading mp-canchas-gallery-num"
           style={{
@@ -1378,7 +1369,8 @@ function ScheduleView({ courts }: { courts: CourtCard[] }) {
         </div>
       </div>
 
-      <div style={{ padding: 22, overflowX: "auto" }}>
+      <div className="mp-canchas-timeline-scroll">
+      <div className="mp-canchas-timeline-inner">
         {/* Hours header */}
         <div
           style={{
@@ -1510,6 +1502,7 @@ function ScheduleView({ courts }: { courts: CourtCard[] }) {
             </div>
           </div>
         ))}
+      </div>
       </div>
 
       <div
@@ -1688,9 +1681,6 @@ function FloorplanView({
           background: "linear-gradient(180deg, #f5f5f5, #e7e5e4)",
           borderRadius: 14,
           border: "2px solid #0a0a0a",
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 16,
         }}
       >
         {courts.map((c) => {
@@ -1921,9 +1911,6 @@ function CourtDrawer({
           style={{
             padding: 18,
             borderBottom: "1px solid var(--border)",
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 12,
           }}
         >
           <DStat
@@ -2194,7 +2181,7 @@ function EditTab({
           style={inputStyle}
         />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-tournament-form-grid-2">
         <div>
           <div className="label-mp" style={{ marginBottom: 6 }}>
             Deporte
@@ -2246,7 +2233,7 @@ function EditTab({
         <div className="label-mp" style={{ marginBottom: 10 }}>
           Apariencia del SVG
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="mp-tournament-form-grid-2">
           <div>
             <div style={{ fontSize: 11, color: "var(--muted-fg)", marginBottom: 4 }}>
               Color de líneas
@@ -2346,7 +2333,7 @@ function BlockerTab({
         como reserva tipo {kind === "event" ? "Evento" : "Clase"} y bloquea el espacio para
         que nadie pueda reservarlo.
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-tournament-form-grid-2">
         <div>
           <div className="label-mp" style={{ marginBottom: 6 }}>
             Inicio
@@ -2538,7 +2525,7 @@ function HistoryTab({
             </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="mp-tournament-form-grid-2" style={{ gap: 8 }}>
             <button
               onClick={() => onToggleActive(c)}
               disabled={pending}
@@ -2794,7 +2781,7 @@ function AddCourtModal({
               style={inputStyle}
             />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="mp-tournament-form-grid-2">
             <div>
               <div className="label-mp" style={{ marginBottom: 6 }}>
                 Deporte
@@ -2870,13 +2857,7 @@ function AddCourtModal({
             </label>
             {seedPricing && (
               <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 10,
-                  }}
-                >
+                <div className="mp-tournament-form-grid-3">
                   <div>
                     <div className="label-mp" style={{ marginBottom: 6 }}>
                       Moneda
@@ -2915,7 +2896,7 @@ function AddCourtModal({
                     />
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="mp-tournament-form-grid-2">
                   <div>
                     <div className="label-mp" style={{ marginBottom: 6 }}>
                       Tarifa diurna ($/h)
@@ -3259,9 +3240,6 @@ function ManagementCard({
       className="card mp-canchas-mgmt-card"
       style={{
         padding: 14,
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 12,
         alignItems: "center",
         opacity: c.active ? 1 : 0.6,
       }}

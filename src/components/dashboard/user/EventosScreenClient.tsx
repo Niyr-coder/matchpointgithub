@@ -753,7 +753,7 @@ function EventDetail({
             <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "#1f2937", margin: 0 }}>
               {`${tag} de ${sportLabel(ev.sport).toLowerCase()} organizado en ${club}. ${formatLabel(ev.format)}. ${feeLabel(ev.entryFeeCents) === "Gratis" ? "Inscripción gratuita." : `Inscripción ${feeLabel(ev.entryFeeCents)} por jugador.`} Premios para top 3 y kit oficial MATCHPOINT para todos los inscritos.`}
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 16, paddingTop: 16, borderTop: "1px dashed var(--border)" }}>
+            <div className="mp-event-detail-kv-grid" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px dashed var(--border)" }}>
               <DetailKV label="Formato" value={formatLabel(ev.format)} />
               <DetailKV label="Estado" value={ev.status === "live" ? "En curso" : ev.status === "finished" ? "Finalizado" : "Inscripción abierta"} />
               <DetailKV label="Categoría" value={`${tag} · ${sportLabel(ev.sport)}`} />

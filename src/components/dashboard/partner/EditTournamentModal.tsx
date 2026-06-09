@@ -173,7 +173,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
 
   return (
     <div
-      className="mp-modal-backdrop"
+      className="mp-modal-backdrop mp-tournament-create-modal"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -253,7 +253,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
             />
           </Field>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-tournament-form-grid-2">
             <Field label="Inicio">
               <input
                 type="datetime-local"
@@ -272,7 +272,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
             </Field>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div className="mp-tournament-form-grid-3">
             <Field label="Cupos">
               <input
                 type="number"

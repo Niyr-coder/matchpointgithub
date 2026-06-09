@@ -324,15 +324,7 @@ export default async function PartnerTorneoPage({
       <DashboardSidebar role={role} userName={userName} contextLabel={cfg.badge} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar role={role} contextLabel={null} />
-        <main
-          style={{
-            padding: 28,
-            display: "flex",
-            flexDirection: "column",
-            gap: 18,
-            flex: 1,
-          }}
-        >
+        <main className="mp-partner-torneo-main">
           <TournamentGestionRealtime tournamentId={t.id as string} />
           {isDraft && (
             <div
@@ -438,7 +430,7 @@ export default async function PartnerTorneoPage({
               }}
             >
               <h1
-                className="font-heading"
+                className="font-heading mp-partner-torneo-title"
                 style={{
                   fontSize: 32,
                   fontWeight: 900,
@@ -518,7 +510,7 @@ export default async function PartnerTorneoPage({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          <div className="mp-partner-torneo-kpis">
             <KPI
               label="Inscritos"
               value={`${totalCount}${cap > 0 ? ` / ${cap}` : ""}`}
@@ -675,20 +667,7 @@ export default async function PartnerTorneoPage({
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 100px 100px 150px 90px",
-                    gap: 8,
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    color: "var(--muted-fg)",
-                    padding: "6px 10px",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
+                <div className="mp-partner-torneo-regs-head">
                   <div>Jugador</div>
                   <div style={{ textAlign: "center" }}>Estado</div>
                   <div style={{ textAlign: "center" }}>Modo</div>
@@ -699,19 +678,7 @@ export default async function PartnerTorneoPage({
                   const name = r.label;
                   const dt = new Date(r.createdAt);
                   return (
-                    <div
-                      key={r.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 100px 100px 150px 90px",
-                        gap: 8,
-                        alignItems: "center",
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        background: "var(--muted)",
-                        fontSize: 12,
-                      }}
-                    >
+                    <div key={r.id} className="mp-partner-torneo-regs-row">
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div
                           style={{
@@ -794,13 +761,7 @@ export default async function PartnerTorneoPage({
             )}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 14,
-            }}
-          >
+          <div className="mp-partner-torneo-bottom">
             <PublicPreviewModal
               preview={{
                 name: t.name as string,

@@ -242,6 +242,13 @@ export async function saveOnboardingStep(
     if (error) throw new MpError("ONBOARDING.UPDATE_FAILED", error.message, 500);
     updateTag(`onboarding:${userId}`);
 
+    try {
+      const { claimPendingReferralFromCookie } = await import("@/server/referrals/claim-referral");
+      await claimPendingReferralFromCookie(userId);
+    } catch (e) {
+      console.error("[onboarding.finish] referral claim failed", e);
+    }
+
     // Welcome DM post-onboarding. Fire-and-forget.
     try {
       const [{ getProfileSummary }, { sendSystemMessage, renderTemplate }] = await Promise.all([
@@ -279,6 +286,12 @@ export async function skipOnboarding(): Promise<ActionResult<{ ok: true }>> {
       .eq("id", userId);
     if (error) throw new MpError("ONBOARDING.UPDATE_FAILED", error.message, 500);
     updateTag(`onboarding:${userId}`);
+    try {
+      const { claimPendingReferralFromCookie } = await import("@/server/referrals/claim-referral");
+      await claimPendingReferralFromCookie(userId);
+    } catch (e) {
+      console.error("[skipOnboarding] referral claim failed", e);
+    }
     return { ok: true as const };
   });
 }

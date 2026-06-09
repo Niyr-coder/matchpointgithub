@@ -524,7 +524,7 @@ function GrantPlusDialog({
       </p>
 
       <FieldLabel>Duración</FieldLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 14 }}>
+      <div className="mp-admin-duration-pick" style={{ marginBottom: 14 }}>
         {[1, 3, 6, 12].map((m) => (
           <button
             key={m}

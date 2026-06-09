@@ -48,13 +48,13 @@ export function AdminEventDetailView({ data }: { data: AdminEventDetail }) {
       </Link>
 
       <div className="card" style={{ padding: 28, position: "relative", overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div className="mp-admin-event-header">
           <EventHeaderCard data={data} />
           <EventActionsBar data={data} />
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: 16 }}>
+      <div className="mp-partner-torneo-kpis" style={{ marginTop: 16 }}>
         <Kpi
           label="Capacidad"
           value={data.event.capacity != null ? `${activeRegs.length}/${data.event.capacity}` : `${activeRegs.length}`}

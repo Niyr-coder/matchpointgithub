@@ -223,15 +223,8 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
         </div>
       )}
 
-      <div className="card" style={{ padding: 24, overflow: "auto" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr 1fr",
-            gap: 24,
-            minWidth: 720,
-          }}
-        >
+      <div className="card mp-partner-bracket-scroll" style={{ padding: 24, overflow: "auto" }}>
+        <div className="mp-partner-bracket-grid">
           <div
             style={{
               display: "flex",
@@ -351,7 +344,7 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="label-mp">Reportar resultado (sets ganados)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+              <div className="mp-tournament-form-grid-2" style={{ marginTop: 12 }}>
               <label style={{ fontSize: 12 }}>
                 Lado A
                 <input

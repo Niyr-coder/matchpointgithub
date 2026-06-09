@@ -223,7 +223,7 @@ export function AdminFlagsScreenView({ data }: { data: FlagsData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-flags-kpis">
         {KPIS.map(([l, v, c]) => (
           <div key={l} className="card" style={{ padding: 14 }}>
             <div className="label-mp">{l}</div>
@@ -493,7 +493,7 @@ function CreateFlagModal({ onClose }: { onClose: () => void }) {
         }}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+      <div className="mp-tournament-form-grid-2" style={{ gap: 12, marginBottom: 16 }}>
         <div>
           <div className="label-mp" style={{ marginBottom: 6 }}>
             Por defecto

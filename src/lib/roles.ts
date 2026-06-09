@@ -69,7 +69,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Comunidad",
         items: [
           { k: "chat", label: "Mensajes", icon: "message-square" },
-          { k: "mis-sorteos", label: "Mis sorteos", icon: "gift" },
+          { k: "mis-sorteos", label: "Mis sorteos", icon: "gift", flag: "club_giveaways_enabled" },
           { k: "amigos", label: "Amigos", icon: "users" },
           { k: "team", label: "Mi Team", icon: "users-round" },
         ],
@@ -187,7 +187,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "club-membresias", label: "Membresías", icon: "star", flag: "club_memberships_v2" },
           { k: "club-marketing", label: "Marketing", icon: "megaphone", flag: "club_marketing_enabled" },
           { k: "club-anuncios", label: "Anuncios", icon: "megaphone" },
-          { k: "club-sorteos", label: "Sorteos", icon: "gift" },
+          { k: "club-sorteos", label: "Sorteos", icon: "gift", flag: "club_giveaways_enabled" },
         ],
       },
       {
@@ -231,7 +231,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "club-clientes", label: "Clientes", icon: "users" },
           { k: "club-membresias", label: "Membresías", icon: "star", flag: "club_memberships_v2" },
           { k: "club-anuncios", label: "Anuncios", icon: "megaphone" },
-          { k: "club-sorteos", label: "Sorteos", icon: "gift" },
+          { k: "club-sorteos", label: "Sorteos", icon: "gift", flag: "club_giveaways_enabled" },
           { k: "club-staff", label: "Personal", icon: "user-cog" },
         ],
       },

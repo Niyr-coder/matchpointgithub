@@ -78,7 +78,7 @@ export function SandboxPageView() {
         </Link>
       </div>
 
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px" }}>
+      <main className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15">
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Sandbox · owner view</div>
         <h1
           className="font-heading"
@@ -105,7 +105,7 @@ export function SandboxPageView() {
           Vista rápida de Club Norte Pickleball. Para experimentar TODO el dashboard (manager, empleado, partner, coach, admin) abre la versión completa.
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+        <div className="mp-partner-torneo-kpis" style={{ marginBottom: 28 }}>
           {KPIS.map((k) => (
             <div key={k.l} className="card" style={{ padding: 20 }}>
               <div className="label-mp">{k.l}</div>
@@ -120,7 +120,7 @@ export function SandboxPageView() {
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+        <div className="mp-landing-split">
           <div className="card" style={{ padding: 22 }}>
             <h2
               className="font-heading"
@@ -134,6 +134,8 @@ export function SandboxPageView() {
             >
               Calendario · hoy<span className="dot">.</span>
             </h2>
+            <div className="mp-sandbox-grid-scroll">
+            <div className="mp-sandbox-grid-inner">
             <div style={{ display: "grid", gridTemplateColumns: "60px repeat(4, 1fr)", gap: 4 }}>
               <div />
               {COURTS.map((c) => (
@@ -190,6 +192,8 @@ export function SandboxPageView() {
                   })}
                 </Fragment>
               ))}
+            </div>
+            </div>
             </div>
             <div style={{ display: "flex", gap: 12, marginTop: 14, fontSize: 11, color: "var(--muted-fg)" }}>
               <span>● <b style={{ color: "#0a0a0a" }}>24 reservas</b></span>

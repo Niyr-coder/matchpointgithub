@@ -92,7 +92,7 @@ export function PublicPreviewModal({
       {open && (
         <div
           onClick={() => setOpen(false)}
-          className="mp-modal-backdrop"
+          className="mp-modal-backdrop mp-public-preview-backdrop"
           style={{
             position: "fixed",
             inset: 0,
@@ -101,16 +101,12 @@ export function PublicPreviewModal({
             alignItems: "center",
             justifyContent: "center",
             zIndex: 100,
-            padding: 16,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="mp-modal-panel"
+            className="mp-modal-panel mp-public-preview-panel"
             style={{
-              width: "100%",
-              maxWidth: 880,
-              maxHeight: "92vh",
               background: "#fff",
               borderRadius: 14,
               display: "flex",
@@ -120,6 +116,7 @@ export function PublicPreviewModal({
             }}
           >
             <div
+              className="mp-public-preview-header"
               style={{
                 padding: "12px 18px",
                 borderBottom: "1px solid var(--border)",
@@ -140,7 +137,7 @@ export function PublicPreviewModal({
               >
                 Preview público · sin salir del panel
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div className="mp-public-preview-header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <Link
                   href={`/eventos/${preview.slug}`}
                   target="_blank"
@@ -181,6 +178,7 @@ export function PublicPreviewModal({
             <div style={{ overflow: "auto", flex: 1 }}>
               {/* Hero negro */}
               <div
+                className="mp-public-preview-hero"
                 style={{
                   padding: "36px 28px 28px",
                   background:
@@ -208,7 +206,7 @@ export function PublicPreviewModal({
                   )}
                 </div>
                 <h2
-                  className="font-heading"
+                  className="font-heading mp-public-preview-hero-title"
                   style={{
                     fontSize: 36,
                     fontWeight: 900,
@@ -259,14 +257,7 @@ export function PublicPreviewModal({
               </div>
 
               {/* Sección scoring + pago */}
-              <div
-                style={{
-                  padding: 24,
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 14,
-                }}
-              >
+              <div className="mp-public-preview-kv">
                 <div
                   style={{
                     padding: 14,
@@ -343,19 +334,7 @@ export function PublicPreviewModal({
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {prizes.map((p) => (
-                      <div
-                        key={p.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "90px 1fr 90px",
-                          gap: 12,
-                          alignItems: "center",
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          background: "var(--muted)",
-                          fontSize: 12,
-                        }}
-                      >
+                      <div key={p.id} className="mp-public-preview-prize-row">
                         <div
                           className="font-heading"
                           style={{
@@ -412,19 +391,7 @@ export function PublicPreviewModal({
                     {blocks.slice(0, 12).map((b) => {
                       const cat = categories.find((c) => c.id === b.categoryId);
                       return (
-                        <div
-                          key={b.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "120px 1fr",
-                            gap: 12,
-                            alignItems: "center",
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            background: "var(--muted)",
-                            fontSize: 12,
-                          }}
-                        >
+                        <div key={b.id} className="mp-public-preview-schedule-row">
                           <div className="font-heading tabular" style={{ fontWeight: 800 }}>
                             {fmtDateTime(b.startsAt)}
                           </div>

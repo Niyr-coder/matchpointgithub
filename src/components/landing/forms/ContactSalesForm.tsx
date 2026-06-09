@@ -191,10 +191,8 @@ export function ContactSalesForm({
   return (
     <form
       onSubmit={onSubmit}
+      className="mp-landing-form-grid"
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 12,
         padding: 22,
         background: dark ? "rgba(255,255,255,0.04)" : "#fff",
         border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--border)",

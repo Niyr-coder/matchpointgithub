@@ -6,7 +6,7 @@ import { useState, type CSSProperties } from "react";
 import { Icon } from "@/components/Icon";
 import { Countdown, OwnerBadge } from "@/components/giveaways";
 import { StripedImg } from "@/components/giveaways/handoff";
-import { formatGiveawayDrawAt, isGiveawayUrgent } from "@/lib/giveaways/build-my-dashboard";
+import { formatGiveawayDrawAt, formatGiveawayHeroUser, isGiveawayUrgent } from "@/lib/giveaways/build-my-dashboard";
 import type {
   MyGiveawayAdentro,
   MyGiveawayPending,
@@ -72,17 +72,17 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
     0,
   );
 
-  const heroUser = dashboard.username
-    ? `${dashboard.displayName} · @${dashboard.username}`
-    : dashboard.displayName;
+  const heroUser = formatGiveawayHeroUser(dashboard.displayName, dashboard.username);
+  const winRateValue = drawnTotal > 0 ? `${dashboard.stats.winRatePct}%` : "—";
+  const winRateHint =
+    drawnTotal > 0
+      ? `${dashboard.stats.ganados} ganados de ${drawnTotal}`
+      : "Sin sorteos cerrados";
 
   return (
-    <div className="ms-root" style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div className="ms-root">
       {/* Web breadcrumb */}
-      <div
-        className="hidden md:flex"
-        style={{ alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted-fg)", fontWeight: 700, padding: "14px 0 0" }}
-      >
+      <div className="ms-breadcrumb">
         <Link href="/dashboard/user/perfil" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "inherit", textDecoration: "none" }}>
           <Icon name="arrow-left" size={11} /> Mi perfil
         </Link>
@@ -90,105 +90,40 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
         <span style={{ color: "var(--fg)" }}>Mis sorteos</span>
       </div>
 
-      {/* Hero — web full / mobile compact */}
-      <div
-        className="hero-emerald"
-        style={{
-          position: "relative",
-          borderRadius: 14.4,
-          overflow: "hidden",
-          color: "#fff",
-          padding: "14px 18px 16px",
-          marginTop: 12,
-        }}
-      >
-        <div
-          aria-hidden
-          className="hidden md:block"
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            fontFamily: "var(--font-heading)",
-            fontWeight: 900,
-            fontSize: 220,
-            color: "rgba(255,255,255,0.04)",
-            letterSpacing: "-0.06em",
-            lineHeight: 0.8,
-            transform: "rotate(-6deg) translate(8%, -28%)",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-            pointerEvents: "none",
-          }}
-        >
+      {/* Hero */}
+      <div className="ms-hero hero-emerald">
+        <div aria-hidden className="ms-hero-watermark">
           SORTEOS
         </div>
 
-        <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-8">
-          <div>
-            <div className="label-mp" style={{ color: "var(--gw-accent-soft)" }}>
-              {heroUser}
-            </div>
-            <h1
-              className="font-heading"
-              style={{
-                fontSize: "clamp(26px, 4vw, 40px)",
-                fontWeight: 900,
-                letterSpacing: "-0.03em",
-                textTransform: "uppercase",
-                margin: "4px 0 0",
-                lineHeight: 1,
-              }}
-            >
+        <div className="ms-hero-body">
+          <div className="ms-hero-copy">
+            <div className="label-mp ms-hero-user">{heroUser}</div>
+            <h1 className="font-heading ms-hero-title">
               Mis sorteos<span style={{ color: "var(--gw-accent)" }}>.</span>
             </h1>
-            <p className="hidden md:block" style={{ fontSize: 12.5, color: "rgba(255,255,255,0.72)", marginTop: 8, maxWidth: 460, lineHeight: 1.5 }}>
+            <p className="ms-hero-desc">
               1 entrada por jugador. Calificas → entras al pool. Mismas probabilidades para todos los que cumplen los requisitos.
             </p>
           </div>
 
-          {/* Mobile stats row */}
-          <div className="grid grid-cols-3 gap-2.5 md:hidden">
-            <MobileStat label="Adentro" value={dashboard.stats.adentro} color="var(--gw-accent)" />
-            <MobileStat label="Por calificar" value={dashboard.stats.pendientes} />
-            <MobileStat label="Ganados" value={dashboard.stats.ganados} />
+          <div className="ms-hero-stats-row ms-hero-stats-row--mobile">
+            <HeroStat label="Adentro" value={String(dashboard.stats.adentro)} hint="Entradas confirmadas" accent variant="glass" />
+            <HeroStat label="Por calificar" value={String(dashboard.stats.pendientes)} hint="Te falta cumplir algo" variant="glass" />
+            <HeroStat label="Ganados" value={String(dashboard.stats.ganados)} hint={pendingClaims > 0 ? `${pendingClaims} por reclamar` : "Premios ganados"} variant="glass" />
           </div>
 
-          {/* Web stats row */}
-          <div className="hidden md:flex" style={{ gap: 14, flexWrap: "wrap" }}>
-            {[
-              ["Adentro", dashboard.stats.adentro, "var(--gw-accent)", "Entradas confirmadas"],
-              ["Por calificar", dashboard.stats.pendientes, "#fff", "Te falta cumplir algo"],
-              ["Ganados", dashboard.stats.ganados, "#fff", pendingClaims > 0 ? `${pendingClaims} por reclamar` : "Premios ganados"],
-              ["Tasa de éxito", `${dashboard.stats.winRatePct}%`, "#fff", `${dashboard.stats.ganados} ganados de ${drawnTotal || 0}`],
-            ].map(([l, v, c, hint]) => (
-              <div key={l as string} style={{ minWidth: 120 }}>
-                <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>
-                  {l}
-                </div>
-                <div className="font-heading tabular" style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", color: c as string, lineHeight: 1, marginTop: 6 }}>
-                  {v}
-                </div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>{hint}</div>
-              </div>
-            ))}
+          <div className="ms-hero-stats-row ms-hero-stats-row--desktop">
+            <HeroStat label="Adentro" value={String(dashboard.stats.adentro)} hint="Entradas confirmadas" accent variant="solid" />
+            <HeroStat label="Por calificar" value={String(dashboard.stats.pendientes)} hint="Te falta cumplir algo" variant="solid" />
+            <HeroStat label="Ganados" value={String(dashboard.stats.ganados)} hint={pendingClaims > 0 ? `${pendingClaims} por reclamar` : "Premios ganados"} variant="solid" />
+            <HeroStat label="Tasa de éxito" value={winRateValue} hint={winRateHint} variant="solid" />
           </div>
         </div>
       </div>
 
-      {/* Tabs — web 4 / mobile 3 sticky */}
-      <div
-        className="md:hidden"
-        style={{
-          display: "flex",
-          background: "#fff",
-          borderBottom: "1px solid var(--border)",
-          position: "sticky",
-          top: 0,
-          zIndex: 2,
-          marginTop: 12,
-        }}
-      >
+      {/* Tabs — mobile 3 sticky */}
+      <div className="ms-mobile-tabs">
         {(
           [
             { k: "adentro" as TabKey, l: "Adentro", c: dashboard.stats.adentro },
@@ -233,10 +168,7 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
         ))}
       </div>
 
-      <div
-        className="hidden md:flex"
-        style={{ gap: 22, padding: "16px 2px 0", borderBottom: "1px solid var(--border)", marginTop: 12 }}
-      >
+      <div className="ms-desktop-tabs">
         {(
           [
             { k: "adentro" as TabKey, l: "Adentro", icon: "ticket", count: dashboard.stats.adentro },
@@ -274,15 +206,24 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
   );
 }
 
-function MobileStat({ label, value, color }: { label: string; value: number; color?: string }) {
+function HeroStat({
+  label,
+  value,
+  hint,
+  accent,
+  variant,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  accent?: boolean;
+  variant: "glass" | "solid";
+}) {
   return (
-    <div>
-      <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)", fontSize: 8.5 }}>
-        {label}
-      </div>
-      <div className="font-heading tabular" style={{ fontSize: 22, fontWeight: 900, color: color ?? "#fff", letterSpacing: "-0.02em", marginTop: 2, lineHeight: 1 }}>
-        {value}
-      </div>
+    <div className={`card ms-hero-stat-tile ms-hero-stat-tile--${variant}`}>
+      <div className="label-mp ms-hero-stat-label">{label}</div>
+      <div className={`font-heading tabular ms-hero-stat-value${accent ? " ms-hero-stat-value--accent" : ""}`}>{value}</div>
+      <div className="ms-hero-stat-hint">{hint}</div>
     </div>
   );
 }

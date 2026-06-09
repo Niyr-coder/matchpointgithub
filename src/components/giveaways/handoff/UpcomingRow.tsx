@@ -8,18 +8,33 @@ type Props = {
   taken?: number;
   capacity?: number;
   kind: "torneo" | "quedada";
+  onClick?: () => void;
 };
 
-export function UpcomingRow({ day, month, name, meta, taken, capacity, kind }: Props) {
+export function UpcomingRow({ day, month, name, meta, taken, capacity, kind, onClick }: Props) {
   const cap = capacity ?? 20;
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       style={{
         display: "grid",
         gridTemplateColumns: "44px 1fr auto",
         gap: 10,
         padding: "10px 0",
         borderTop: "1px dashed var(--border)",
+        cursor: onClick ? "pointer" : undefined,
       }}
     >
       <div

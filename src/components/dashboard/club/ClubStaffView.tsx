@@ -94,7 +94,7 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
       />
 
       {/* KPIs */}
-      <div className="mp-stf-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div className="mp-stf-kpis">
         {[
           { l: "Empleados activos", v: String(STAFF.length), sub: "4 en turno ahora", icon: "users", color: "var(--primary)" },
           { l: "Nómina del mes", v: "$5,540", sub: "4 fijos + 4 comisión", icon: "banknote", color: "#0a0a0a" },
@@ -126,8 +126,8 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 640 }}>
+        <div className="mp-stf-schedule-scroll">
+          <div className="mp-stf-schedule-inner">
             <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 100px", gap: 12, alignItems: "center", marginBottom: 4 }}>
               <div />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(17, 1fr)", gap: 1, fontSize: 8.5, color: "var(--muted-fg)", textAlign: "center", fontWeight: 700, letterSpacing: "0.05em" }}>
@@ -193,7 +193,7 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
       </div>
 
       {/* Staff cards */}
-      <div className="mp-stf-cards" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+      <div className="mp-stf-cards">
         {filtered.map((s) => {
           const perfPct = (s.perfValue / s.perfMax) * 100;
           return (
@@ -220,7 +220,7 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
                 </div>
               </div>
 
-              <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 12 }}>
+              <div className="mp-stf-card-body" style={{ padding: 16 }}>
                 <div>
                   <div className="label-mp" style={{ marginBottom: 6 }}>Semana</div>
                   <div style={{ display: "flex", gap: 3 }}>
@@ -269,7 +269,7 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
       </div>
 
       {/* Bottom: distribution + payroll */}
-      <div className="mp-stf-bottom" style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 14 }}>
+      <div className="mp-stf-bottom">
         <div className="card" style={{ padding: 20 }}>
           <div className="label-mp">Distribución del equipo</div>
           <h3 className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "4px 0 14px" }}>Por departamento<span className="dot">.</span></h3>

@@ -1224,6 +1224,7 @@ export function MensajesScreenView({
                     <QuickActionsBar onAction={handleQuickAction} />
                   </div>
                   <form
+                    className="mp-messages-composer"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void handleSend();
@@ -1993,10 +1994,9 @@ function MessageInlineCard({ message, mine }: { message: MessageLite; mine: bool
               : pickString(payload, ["clubName", "club", "venue"], "Reserva confirmada")}
           </div>
           <div
+            className="mp-messages-card-kv"
             style={{
               marginTop: isMatch ? 8 : 10,
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: gridGap,
             }}
           >

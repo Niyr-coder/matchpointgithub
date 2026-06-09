@@ -108,8 +108,10 @@ export function AdminReservasScreenView({ rows }: { rows: AdminReservationRow[] 
         </div>
       </header>
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="card mp-table-scroll" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ minWidth: 720 }}>
         <div
+          className="mp-admin-reservas-list-head"
           style={{
             display: "grid",
             gridTemplateColumns: "1.2fr 1.1fr 1.2fr 1fr 110px 120px",
@@ -178,6 +180,7 @@ export function AdminReservasScreenView({ rows }: { rows: AdminReservationRow[] 
             );
           })
         )}
+        </div>
       </div>
     </div>
   );

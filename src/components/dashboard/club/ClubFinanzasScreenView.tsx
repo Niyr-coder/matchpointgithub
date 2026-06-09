@@ -103,7 +103,7 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div className="mp-partner-torneo-kpis">
         {KPIS.map(([l, v, sub, c]) => (
           <div key={l} className="card" style={{ padding: 16 }}>
             <div className="label-mp">{l}</div>
@@ -126,7 +126,7 @@ export function ClubFinanzasScreenView({ data }: { data: FinanzasData }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14 }}>
+      <div className="mp-fin-split">
         <div className="card" style={{ padding: 18 }}>
           <div
             style={{

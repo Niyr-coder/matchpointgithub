@@ -72,14 +72,7 @@ export async function AdminPaywallFunnelScreen() {
         </p>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-          gap: 12,
-          minWidth: 0,
-        }}
-      >
+      <div className="mp-admin-kpis-5">
         <KPI label="Eventos totales" value={totalEvents.toLocaleString("en-US")} icon="activity" />
         <KPI label="Usuarios logueados" value={uniqueUsers.toLocaleString("en-US")} icon="users" />
         <KPI label="Sesiones únicas" value={uniqueSessions.toLocaleString("en-US")} icon="mouse-pointer-click" />

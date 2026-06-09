@@ -148,7 +148,7 @@ export function PaymentProofView({ initial }: { initial: UserPaymentProofView })
         <div className="card" style={{ padding: 20 }}>
           <div className="label-mp">Pago</div>
           <h1
-            className="font-heading"
+            className="font-heading mp-payment-proof-title"
             style={{
               margin: "6px 0 0",
               fontSize: 28,
@@ -160,7 +160,7 @@ export function PaymentProofView({ initial }: { initial: UserPaymentProofView })
             {tx.refLabel ? <> · {tx.refLabel}</> : null}
           </h1>
           <div
-            className="font-heading tabular"
+            className="font-heading tabular mp-payment-proof-amount"
             style={{
               fontSize: 36,
               fontWeight: 900,
@@ -344,7 +344,7 @@ function StatusBlock({
         </div>
 
         <button
-          className="btn btn-primary"
+          className="btn btn-primary mp-payment-proof-upload"
           onClick={onChooseFile}
           disabled={busy}
           style={{ alignSelf: "flex-start" }}

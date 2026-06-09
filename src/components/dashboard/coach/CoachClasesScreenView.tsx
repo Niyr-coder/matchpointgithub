@@ -79,7 +79,7 @@ function ClassCard({ c }: { c: ClassRow }) {
           </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+      <div className="mp-tournament-form-grid-2" style={{ gap: 8, marginTop: 10 }}>
         <div style={{ padding: 8, background: "var(--muted)", borderRadius: 6 }}>
           <div className="label-mp">Días</div>
           <div style={{ fontSize: 11, fontWeight: 800, marginTop: 3 }}>{c.day}</div>
@@ -192,7 +192,7 @@ function ClassPlaceholder() {
           </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+      <div className="mp-tournament-form-grid-2" style={{ gap: 8, marginTop: 10 }}>
         <div style={{ padding: 8, background: "var(--muted)", borderRadius: 6 }}>
           <div className="label-mp">Días</div>
           <div style={{ fontSize: 11, fontWeight: 800, marginTop: 3, color: "var(--muted-fg)" }}>—</div>
@@ -323,7 +323,7 @@ export function CoachClasesScreenView({ data }: { data: ClasesData }) {
           </button>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+      <div className="mp-tournament-form-grid-2">
         {hasReal
           ? data.classes.map((c) => <ClassCard key={c.id} c={c} />)
           : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => <ClassPlaceholder key={k} />)}

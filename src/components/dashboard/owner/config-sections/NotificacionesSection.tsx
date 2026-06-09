@@ -129,7 +129,7 @@ export function NotificacionesSection({
         </div>
       </div>
 
-      <div style={{ overflowX: "auto" }}>
+      <div className="mp-table-scroll">
         <div style={{ minWidth: 620 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr) 80px", gap: 6, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
             <div className="label-mp">Evento</div>

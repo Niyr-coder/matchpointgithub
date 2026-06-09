@@ -210,7 +210,7 @@ export function RankingPageView({
       )}
 
       {/* Top 3 podium */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3.5 mb-10 items-end" style={{ gridTemplateColumns: "1fr 1.1fr 1fr" }}>
+      <div className="mp-ranking-podium gap-2 sm:gap-3.5">
         {podiumOrder.map((p) => {
           const isFirst = p.rank === 1;
           const c = PODIUM_COLORS[p.rank - 1] ?? "#0a0a0a";

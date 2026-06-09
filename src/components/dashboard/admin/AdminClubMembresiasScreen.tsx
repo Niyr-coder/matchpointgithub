@@ -131,7 +131,7 @@ export async function AdminClubMembresiasScreen() {
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr", gap: 14 }}>
+      <div className="mp-admin-club-memb-kpis">
         <div
           style={{
             position: "relative",
@@ -180,7 +180,7 @@ export async function AdminClubMembresiasScreen() {
                 Clubes por mensual activo<span className="dot">.</span>
               </h3>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div className="mp-table-scroll">
               <div style={{ minWidth: 760 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "44px 1.8fr 110px 100px 110px 130px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                   <span>#</span>
@@ -213,7 +213,7 @@ export async function AdminClubMembresiasScreen() {
                 Lista cross-club<span className="dot">.</span>
               </h3>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div className="mp-table-scroll">
               <div style={{ minWidth: 860 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "86px 1.4fr 1.3fr 1fr 100px 110px 100px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                   <span>Nº socio</span>

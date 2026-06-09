@@ -255,6 +255,8 @@ const SECTION_FLAGS: Record<string, string> = {
   quedadas: "quedadas_enabled",
   "club-membresias": "club_memberships_v2",
   "club-marketing": "club_marketing_enabled",
+  "mis-sorteos": "club_giveaways_enabled",
+  "club-sorteos": "club_giveaways_enabled",
 };
 
 export default async function RoleSectionPage({

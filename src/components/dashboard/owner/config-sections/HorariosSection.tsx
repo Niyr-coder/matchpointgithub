@@ -186,8 +186,8 @@ export function HorariosSection({
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 560 }}>
+            <div className="mp-table-scroll">
+              <div style={{ minWidth: 560 }}>
             <div style={{ display: "grid", gridTemplateColumns: "90px 80px 1fr 160px", gap: 12, alignItems: "center", marginBottom: 6, fontSize: 9, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               <span>Día</span>
               <span style={{ textAlign: "center" }}>Abierto</span>
@@ -300,7 +300,7 @@ export function HorariosSection({
             </div>
 
             {!draft.closed && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div className="mp-tournament-form-grid-2" style={{ marginBottom: 10 }}>
                 <div>
                   <label style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Abre</label>
                   <input

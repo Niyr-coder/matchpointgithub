@@ -299,7 +299,7 @@ export function PreciosPageView() {
             Solicitas MATCHPOINT+ con un comprobante de transferencia o DeUna.
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="mp-landing-tier-grid-2">
           {PLAYER_TIERS.map((t) => (
             <TierCard key={t.name} t={t} onContact={handleContact} />
           ))}
@@ -333,7 +333,7 @@ export function PreciosPageView() {
             Starter USD 49.99/mes, Pro USD 149.99/mes y Club Fundador por piloto.
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div className="mp-landing-tier-grid-3">
           {CLUB_TIERS.map((t) => (
             <TierCard key={t.name} t={t} onContact={handleContact} />
           ))}

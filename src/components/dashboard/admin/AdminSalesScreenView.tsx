@@ -183,7 +183,7 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
         <Kpi label="Valor estimado" value={money(data.totals.expectedValueCents)} icon="wallet" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.25fr) minmax(360px, 0.75fr)", gap: 16, alignItems: "start" }}>
+      <div className="mp-admin-sales-split">
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: 16, borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
@@ -295,7 +295,7 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
                 </select>
               </Field>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="mp-tournament-form-grid-2">
                 <Field label="Prioridad">
                   <select
                     value={selected.priority}

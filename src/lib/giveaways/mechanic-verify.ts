@@ -88,22 +88,14 @@ export async function verifyGiveawayMechanic(
     }
 
     case "invite": {
-      const { data: sentAccepted } = await admin
-        .from("friend_requests")
-        .select("id")
-        .eq("from_user_id", ctx.userId)
-        .eq("status", "accepted")
-        .gte("responded_at", since)
-        .limit(1);
-      if ((sentAccepted?.length ?? 0) > 0) return true;
-
-      const { data: friendships } = await admin
-        .from("friendships")
-        .select("created_at")
-        .or(`user_a.eq.${ctx.userId},user_b.eq.${ctx.userId}`)
-        .gte("created_at", since)
-        .limit(1);
-      return (friendships?.length ?? 0) > 0;
+      let q = admin
+        .from("profile_referrals")
+        .select("referred_user_id", { count: "exact", head: true })
+        .eq("referrer_user_id", ctx.userId)
+        .gte("created_at", since);
+      if (until) q = q.lte("created_at", until);
+      const { count } = await q;
+      return (count ?? 0) > 0;
     }
 
     case "buy": {

@@ -16,19 +16,20 @@ import {
   saveGiveawayRules,
   publishGiveawayV2,
 } from "@/server/actions/giveaways";
-import type { ClubAnunciosOverview } from "./ClubAnunciosScreenView";
+import type { ClubGiveawaysOrgOverview } from "@/server/actions/giveaways";
 import { orgGiveawayPath } from "./giveaways/org-path";
 
 type Props = {
   roleSegment: "owner" | "manager";
   clubId: string;
-  overview: ClubAnunciosOverview;
+  overview: ClubGiveawaysOrgOverview;
   giveaways: GiveawayDetailView[];
+  loadError?: string | null;
 };
 
 type WizardStep = 1 | 2 | 3 | 4;
 
-export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways }: Props) {
+export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways, loadError }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [mode, setMode] = useState<"dashboard" | "wizard">("dashboard");
@@ -134,7 +135,7 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
         onSaveDraft={() => toast({ icon: "info", title: "Borrador guardado", sub: "Puedes continuar cuando quieras." })}
       >
         {step === 1 && (
-          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 28 }}>
+          <div className="mp-club-sorteos-wizard">
             <div>
               <span className="label-mp">Foto del premio</span>
               <div
@@ -158,27 +159,52 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <label>
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Título del sorteo</span>
-                <input className="mp-input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
+                <input
+                  className="mp-input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Ej. Sorteo de raquetas Pro"
+                  style={{ marginTop: 6 }}
+                />
               </label>
-              <label>
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Subtítulo / valor</span>
-                <input className="mp-input" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
+                <input
+                  className="mp-input"
+                  value={subtitle}
+                  onChange={(e) => setSubtitle(e.target.value)}
+                  placeholder="Ej. Valor $120 · patrocinado por Wilson"
+                  style={{ marginTop: 6 }}
+                />
               </label>
-              <label>
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Descripción larga</span>
-                <textarea className="mp-input" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} style={{ width: "100%", marginTop: 6 }} />
+                <textarea
+                  className="mp-input"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Cuenta qué incluye el premio, condiciones y detalles para los jugadores."
+                  rows={4}
+                  style={{ marginTop: 6 }}
+                />
               </label>
-              <label>
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Premio (etiqueta)</span>
-                <input className="mp-input" value={prizeLabel} onChange={(e) => setPrizeLabel(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
+                <input
+                  className="mp-input"
+                  value={prizeLabel}
+                  onChange={(e) => setPrizeLabel(e.target.value)}
+                  placeholder="Ej. Raqueta Pro · talla M"
+                  style={{ marginTop: 6 }}
+                />
               </label>
             </div>
           </div>
         )}
         {step === 2 && (
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28 }}>
+          <div className="mp-landing-split" style={{ gap: 28 }}>
             <div>
               <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.55, marginBottom: 14 }}>
                 <b>Decide qué acciones suman entradas y cuánto pesan.</b> Cada acción es una vía para participar. El jugador puede combinarlas para maximizar sus entradas.
@@ -191,13 +217,9 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
                   return (
                     <div
                       key={cat.kind}
-                      className="card"
+                      className="card mp-club-sorteos-mechanic-row"
                       style={{
                         padding: 14,
-                        display: "grid",
-                        gridTemplateColumns: "36px 1fr 140px 60px",
-                        gap: 12,
-                        alignItems: "center",
                         borderColor: on ? "var(--primary)" : "var(--border)",
                         background: on ? "#fff" : "var(--muted)",
                       }}
@@ -328,24 +350,42 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
                 ))}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-              <label>
+            <div className="mp-tournament-form-grid-3">
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Cierre de entradas</span>
-                <input type="datetime-local" className="mp-input" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
+                <input
+                  type="datetime-local"
+                  className="mp-input"
+                  value={closesAt}
+                  onChange={(e) => setClosesAt(e.target.value)}
+                  style={{ marginTop: 6 }}
+                />
               </label>
-              <label>
+              <label style={{ display: "block" }}>
                 <span className="label-mp">Sorteo en vivo</span>
-                <input type="datetime-local" className="mp-input" value={drawAt} onChange={(e) => setDrawAt(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
+                <input
+                  type="datetime-local"
+                  className="mp-input"
+                  value={drawAt}
+                  onChange={(e) => setDrawAt(e.target.value)}
+                  style={{ marginTop: 6 }}
+                />
               </label>
             </div>
-            <label>
+            <label style={{ display: "block" }}>
               <span className="label-mp">Reglas y términos</span>
-              <textarea className="mp-input" value={rulesText} onChange={(e) => setRulesText(e.target.value)} rows={5} style={{ width: "100%", marginTop: 6, minHeight: 130 }} />
+              <textarea
+                className="mp-input"
+                value={rulesText}
+                onChange={(e) => setRulesText(e.target.value)}
+                rows={5}
+                style={{ marginTop: 6, minHeight: 130 }}
+              />
             </label>
           </div>
         )}
         {step === 4 && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28 }}>
+          <div className="mp-tournament-form-grid-2" style={{ gap: 28 }}>
             <div>
               <div className="label-mp">Así verán tu sorteo</div>
               <div style={{ marginTop: 10, border: "8px solid #0a0a0a", borderRadius: 22, overflow: "hidden", background: "#fff" }}>
@@ -409,6 +449,20 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
 
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+      {loadError && (
+        <div
+          className="card"
+          style={{
+            padding: 14,
+            borderColor: "#fecaca",
+            background: "#fef2f2",
+            fontSize: 13,
+            color: "#991b1b",
+          }}
+        >
+          No pudimos cargar la lista de sorteos: {loadError}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <SectionHead
           kicker={`Organizador · ${overview.clubName}`}
@@ -432,8 +486,9 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
         ))}
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: "auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) 100px 90px 140px 120px 120px", padding: "10px 16px", borderBottom: "1px solid var(--border)", minWidth: 720 }}>
+      <div className="card mp-club-sorteos-table-scroll" style={{ padding: 0 }}>
+        <div className="mp-club-sorteos-table-inner">
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) 100px 90px 140px 120px 120px", padding: "10px 16px", borderBottom: "1px solid var(--border)" }}>
           {["Sorteo", "Estado", "Entradas", "Cierre / Sorteo", "Mecánica", ""].map((h) => (
             <div key={h} className="label-mp">
               {h}
@@ -459,7 +514,6 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
                   padding: "14px 16px",
                   borderTop: i > 0 ? "1px solid var(--border)" : "none",
                   alignItems: "center",
-                  minWidth: 720,
                 }}
               >
                 <div>
@@ -514,6 +568,7 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
             );
           })
         )}
+        </div>
       </div>
     </div>
   );

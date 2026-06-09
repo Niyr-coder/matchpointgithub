@@ -41,3 +41,15 @@ export const E2E_CLUB_SLUG = process.env.E2E_CLUB_SLUG ?? "e2e-pickleball";
 export const E2E_USER_EMAIL =
   process.env.E2E_USER_EMAIL ?? "qa-player@matchpoint.test";
 export const E2E_USER_PASSWORD = process.env.E2E_USER_PASSWORD ?? "QaTest1234!";
+
+// Cuentas del seed demo (`npm run seed`) — password compartido.
+export const E2E_DEMO_PASSWORD =
+  process.env.E2E_DEMO_PASSWORD ?? "MatchPoint-demo-2026";
+export const E2E_ADMIN_EMAIL =
+  process.env.E2E_ADMIN_EMAIL ?? "e2e-mobile-admin@matchpoint.demo";
+export const E2E_PARTNER_EMAIL =
+  process.env.E2E_PARTNER_EMAIL ?? "e2e-mobile-partner@matchpoint.demo";
+export const E2E_COACH_EMAIL =
+  process.env.E2E_COACH_EMAIL ?? "e2e-mobile-coach@matchpoint.demo";
+export const E2E_MANAGER_EMAIL =
+  process.env.E2E_MANAGER_EMAIL ?? "e2e-mobile-manager@matchpoint.demo";

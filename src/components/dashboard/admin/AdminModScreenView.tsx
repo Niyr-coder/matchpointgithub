@@ -167,7 +167,7 @@ export function AdminModScreenView({ data }: { data: ModData }) {
           </button>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+      <div className="mp-admin-split-panels">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {hasCases
             ? data.cases.map((c) => (

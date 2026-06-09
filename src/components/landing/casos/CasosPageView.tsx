@@ -77,11 +77,9 @@ export function CasosPageView() {
         {CASES.map((c) => (
           <div
             key={c.club}
-            className="card"
+            className="card mp-landing-split"
             style={{
               padding: 28,
-              display: "grid",
-              gridTemplateColumns: "1.4fr 1fr",
               gap: 28,
               alignItems: "stretch",
             }}

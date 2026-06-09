@@ -21,6 +21,7 @@ async function loadData(): Promise<UserHomeData> {
     return {
       meUserId: null,
       name: "Invitado",
+      username: null,
       onboardedAt: null,
       currentRating: STARTING_RATING,
       rank: null,
@@ -186,6 +187,7 @@ async function loadData(): Promise<UserHomeData> {
   return {
     meUserId: userId,
     name: profile.displayName ?? "Jugador",
+    username: profile.username,
     onboardedAt: profile.onboardedAt,
     currentRating: (legacyStats?.current_rating as number | undefined) ?? STARTING_RATING,
     rank: legacyRank?.rank ?? null,

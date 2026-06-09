@@ -39,6 +39,7 @@ type BadgeLite = {
 export type UserHomeData = {
   meUserId: string | null;
   name: string;
+  username: string | null;
   onboardedAt: string | null;
   currentRating: number;
   rank: number | null;
@@ -150,7 +151,7 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
           historiesByMode={data.historiesByMode}
         />
         <MyBadgesSection badges={data.badges} matchesTotal={data.matchesTotal} />
-        <QuickActionsPanel inviteSlug={data.name.toLowerCase().split(" ")[0]} />
+        <QuickActionsPanel referralSlug={data.username} />
       </div>
       {showWizard && (
         <OnboardingWizard
@@ -1181,7 +1182,7 @@ const ACTIONS = [
   { icon: "user-plus", label: "Invitar amigo", action: "invitar" },
 ] as const;
 
-function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
+function QuickActionsPanel({ referralSlug }: { referralSlug: string | null }) {
   const toast = useToast();
   const router = useRouter();
   const handle = (a: (typeof ACTIONS)[number]["action"]) => {
@@ -1189,9 +1190,16 @@ function QuickActionsPanel({ inviteSlug }: { inviteSlug: string }) {
     else if (a === "reservar") window.dispatchEvent(new CustomEvent("mp-open-reservar"));
     else if (a === "buscar-partido") router.push("/dashboard/user/busco-partido");
     else if (a === "invitar") {
-      // Link real al app (origin actual) con ref del invitador, no un dominio inventado.
+      if (!referralSlug) {
+        toast({
+          icon: "alert-circle",
+          title: "Configura tu username",
+          sub: "Necesitas un username en tu perfil para generar tu link de invitación",
+        });
+        return;
+      }
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/?ref=${inviteSlug}`;
+      const url = `${origin}/?ref=${encodeURIComponent(referralSlug)}`;
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         navigator.clipboard.writeText(url).catch(() => {});
       }

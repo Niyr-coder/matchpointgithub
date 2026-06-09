@@ -193,7 +193,7 @@ export function AmigosScreenView({
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }} data-screen-label="Amigos">
       <TopBar query={query} onQuery={setQuery} onDiscover={() => setDiscoverOpen(true)} />
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi accent label="Amigos" value={friends.length} sub="en tu red" icon="users" />
         <Kpi label="Actividad real" value={recent} sub="con cruce reciente" icon="activity" />
         <Kpi label="Misma ciudad" value={sameCity} sub={myCity ?? "configura tu ciudad"} icon="map-pin" />
@@ -236,7 +236,7 @@ export function AmigosScreenView({
                 text={`Nadie coincide con “${query.trim()}”. Prueba otro nombre o @username.`}
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                 {discoverResults.map((player, index) => (
                   <DiscoverCard
                     key={player.userId}
@@ -255,7 +255,7 @@ export function AmigosScreenView({
               text={friends.length === 0 ? "Acepta solicitudes o descubre jugadores para armar tu red." : "Prueba otro filtro o escribe al menos 2 letras para buscar en la app."}
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
               {visibleFriends.map((friend, index) => (
                 <FriendCardRedesign key={friend.id} friend={friend} staggerIndex={index} />
               ))}
@@ -263,7 +263,7 @@ export function AmigosScreenView({
           )}
         </main>
 
-        <aside className="order-1 lg:order-none grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3 min-w-0">
+        <aside className="order-1 lg:order-none grid grid-cols-1 lg:grid-cols-1 gap-3 min-w-0">
           <RequestsPanel requests={requests} />
           <SuggestionsPanel suggestions={suggestions} onDiscover={() => setDiscoverOpen(true)} />
           <NetworkPanel friends={friends} withCrosses={withCrosses} />
@@ -976,7 +976,7 @@ function DiscoverPanel() {
         </div>
       </div>
       {results.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
           {results.map((player, index) => <DiscoverCard key={player.userId} player={player} avatarBg={REQ_AVATARS[index % REQ_AVATARS.length]} busy={pending} onSend={() => send(player)} />)}
         </div>
       )}

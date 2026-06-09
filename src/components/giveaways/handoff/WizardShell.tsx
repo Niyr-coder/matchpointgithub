@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { GiveawayWizardSteps } from "../GiveawayWizardSteps";
-import { SectionHead } from "./SectionHead";
 
 type Props = {
   step: number;
@@ -33,11 +32,6 @@ export function WizardShell({
         <Icon name="chevron-right" size={10} />
         <span style={{ color: "var(--fg)" }}>Nuevo sorteo</span>
       </div>
-      <SectionHead
-        kicker={`Paso ${step} de 4 · Crear sorteo`}
-        title={WIZARD_ITEMS[step - 1] ?? "Sorteo"}
-        sub="El sorteo se publica solo cuando completes los 4 pasos. Puedes guardar como borrador en cualquier momento."
-      />
       <div className="card" style={{ padding: 18 }}>
         <GiveawayWizardSteps step={step} items={[...WIZARD_ITEMS]} />
       </div>

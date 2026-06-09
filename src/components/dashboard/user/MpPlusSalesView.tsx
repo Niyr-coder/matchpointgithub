@@ -72,9 +72,9 @@ export function MpPlusSalesView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       {/* HERO */}
-      <div style={{ position: "relative", overflow: "hidden", borderRadius: 14.4, background: "linear-gradient(135deg, #0a0a0a 0%, #022c22 60%, #064e3b 100%)", color: "#fff", padding: "44px 36px" }}>
+      <div className="mp-mpplus-hero" style={{ position: "relative", overflow: "hidden", borderRadius: 14.4, background: "linear-gradient(135deg, #0a0a0a 0%, #022c22 60%, #064e3b 100%)", color: "#fff" }}>
         <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 88% 30%, rgba(16,185,129,0.30), transparent 55%), radial-gradient(circle at 10% 80%, rgba(16,185,129,0.10), transparent 50%)", pointerEvents: "none" }} />
-        <div aria-hidden style={{ position: "absolute", top: -40, right: -40, fontFamily: "var(--font-heading)", fontWeight: 900, fontSize: 420, color: "rgba(16,185,129,0.06)", letterSpacing: "-0.08em", lineHeight: 0.78, pointerEvents: "none", userSelect: "none" }}>+</div>
+        <div aria-hidden className="mp-mpplus-hero-watermark" style={{ position: "absolute", top: -40, right: -40, fontFamily: "var(--font-heading)", fontWeight: 900, fontSize: 420, color: "rgba(16,185,129,0.06)", letterSpacing: "-0.08em", lineHeight: 0.78, pointerEvents: "none", userSelect: "none" }}>+</div>
 
         <div style={{ position: "relative", maxWidth: 720 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 9999, background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)" }}>
@@ -142,8 +142,8 @@ export function MpPlusSalesView() {
             <span className="dot">.</span>
           </h2>
         </div>
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr", borderBottom: "1px solid var(--border)" }}>
+      <div className="card mp-mpplus-compare" style={{ overflow: "hidden" }}>
+          <div className="mp-mpplus-compare-head">
             <div style={{ padding: "16px 18px" }}>
               <span className="label-mp">Característica</span>
             </div>
@@ -160,10 +160,10 @@ export function MpPlusSalesView() {
             </div>
           </div>
           {COMPARE.map((c, i) => (
-            <div key={c.l} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr", borderBottom: i < COMPARE.length - 1 ? "1px solid var(--border)" : 0, alignItems: "center" }}>
+            <div key={c.l} className="mp-mpplus-compare-row" style={{ borderBottom: i < COMPARE.length - 1 ? "1px solid var(--border)" : 0 }}>
               <div style={{ padding: "14px 18px", fontSize: 13, fontWeight: 600 }}>{c.l}</div>
-              <div style={{ padding: "14px 18px", borderLeft: "1px solid var(--border)", textAlign: "center", fontSize: 12.5, color: c.free === "—" ? "var(--muted-fg)" : "#0a0a0a" }}>{c.free}</div>
-              <div style={{ padding: "14px 18px", borderLeft: "1px solid var(--border)", textAlign: "center", background: "rgba(16,185,129,0.03)", fontSize: 12.5, fontWeight: 800, color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <div className="mp-mpplus-compare-free" style={{ padding: "14px 18px", borderLeft: "1px solid var(--border)", textAlign: "center", fontSize: 12.5, color: c.free === "—" ? "var(--muted-fg)" : "#0a0a0a" }}>{c.free}</div>
+              <div className="mp-mpplus-compare-plus" style={{ padding: "14px 18px", borderLeft: "1px solid var(--border)", textAlign: "center", background: "rgba(16,185,129,0.03)", fontSize: 12.5, fontWeight: 800, color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 <Icon name="check" size={13} color="var(--primary)" />
                 {c.plus}
               </div>

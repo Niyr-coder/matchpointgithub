@@ -75,6 +75,7 @@ export function EventRegistrationsTable({
             return (
               <div
                 key={r.id}
+                className="mp-admin-event-reg-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 110px 100px 110px 40px",
@@ -85,7 +86,7 @@ export function EventRegistrationsTable({
                   position: "relative",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="mp-admin-event-reg-primary mp-admin-event-reg-cell" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div
                     style={{
                       width: 32,
@@ -117,6 +118,8 @@ export function EventRegistrationsTable({
                   </div>
                 </div>
                 <span
+                  className="mp-admin-event-reg-cell"
+                  data-label="Estado"
                   style={{
                     fontSize: 10,
                     fontWeight: 800,
@@ -131,10 +134,12 @@ export function EventRegistrationsTable({
                 >
                   {r.status}
                 </span>
-                <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                <span className="mp-admin-event-reg-cell" data-label="Pago" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
                   {r.paidTransactionId ? "Pagado" : "—"}
                 </span>
                 <Link
+                  className="mp-admin-event-reg-cell"
+                  data-label="Perfil"
                   href={`/dashboard/admin/admin-users?focus=${r.userId}`}
                   style={{
                     fontSize: 11,
@@ -146,7 +151,7 @@ export function EventRegistrationsTable({
                 >
                   Ver usuario →
                 </Link>
-                <div style={{ position: "relative", justifySelf: "end" }}>
+                <div className="mp-admin-event-reg-actions" style={{ position: "relative", justifySelf: "end" }}>
                   <button
                     type="button"
                     aria-label="Acciones"

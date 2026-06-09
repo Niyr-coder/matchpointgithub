@@ -223,7 +223,7 @@ export function AdminMatchesScreen() {
         </p>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+      <div className="mp-partner-torneo-kpis" style={{ marginBottom: 16 }}>
         {kpis.map(([label, value]) => (
           <div key={label} className="card" style={{ padding: 14 }}>
             <div className="label-mp">{label}</div>
@@ -237,7 +237,7 @@ export function AdminMatchesScreen() {
       {data === null ? (
         <SkeletonRows rows={6} />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 16, alignItems: "start" }}>
+        <div className="mp-admin-split-panels" style={{ alignItems: "start" }}>
           <section className="card" style={{ padding: 16 }}>
             <SectionTitle label="Matches recientes" count={rows.matches.length} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

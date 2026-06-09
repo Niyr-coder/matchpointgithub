@@ -181,18 +181,7 @@ export function PrizesPanel({
           {[...initialPrizes]
             .sort((a, b) => a.position - b.position || a.placeLabel.localeCompare(b.placeLabel))
             .map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "90px 1fr 100px 70px",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "12px 14px",
-                  background: "var(--muted)",
-                  borderRadius: 8,
-                }}
-              >
+              <div key={p.id} className="mp-tournament-prize-row">
                 <div
                   className="font-heading"
                   style={{
@@ -352,7 +341,7 @@ export function PrizesPanel({
                 />
               </Field>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="mp-tournament-form-grid-2">
                 <Field label="Valor monetario (USD, opcional)">
                   <input
                     type="number"

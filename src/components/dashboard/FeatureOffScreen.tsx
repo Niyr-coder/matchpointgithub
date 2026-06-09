@@ -6,6 +6,8 @@ const LABELS: Record<string, string> = {
   "coach-ai": "Coach AI",
   quedadas: "Quedadas",
   "club-membresias": "Membresías",
+  "mis-sorteos": "Mis sorteos",
+  "club-sorteos": "Sorteos del club",
 };
 
 export function FeatureOffScreen({ section }: { section: string }) {

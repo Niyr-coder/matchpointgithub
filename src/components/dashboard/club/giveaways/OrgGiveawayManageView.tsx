@@ -115,14 +115,15 @@ export function OrgGiveawayManageView({ role, data }: Props) {
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 18 }}>
-        <div className="card" style={{ padding: 0, overflow: "auto" }}>
+      <div className="mp-landing-split" style={{ gap: 18 }}>
+        <div className="card mp-table-scroll" style={{ padding: 0 }}>
+          <div style={{ minWidth: 480 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
             <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase" }}>
               Top participantes<span style={{ color: "var(--primary)" }}>.</span>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 90px 130px 100px", padding: "10px 18px", borderBottom: "1px solid var(--border)", minWidth: 480 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 90px 130px 100px", padding: "10px 18px", borderBottom: "1px solid var(--border)" }}>
             {["#", "Jugador", "Entradas", "Mecánicas", "Sigue"].map((h) => (
               <div key={h} className="label-mp">
                 {h}
@@ -141,7 +142,6 @@ export function OrgGiveawayManageView({ role, data }: Props) {
                   padding: "11px 18px",
                   borderTop: i > 0 ? "1px solid var(--border)" : "none",
                   alignItems: "center",
-                  minWidth: 480,
                 }}
               >
                 <div className="font-heading tabular" style={{ fontSize: 13, fontWeight: 900, color: i < 3 ? "var(--primary-dark)" : "var(--muted-fg)" }}>
@@ -156,6 +156,7 @@ export function OrgGiveawayManageView({ role, data }: Props) {
               </div>
             ))
           )}
+          </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

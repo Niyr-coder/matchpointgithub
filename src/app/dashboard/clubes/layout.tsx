@@ -10,6 +10,7 @@ import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 
 function isValidRole(r: string): r is RoleKey {
   return Object.prototype.hasOwnProperty.call(MP_ROLES, r);
@@ -45,6 +46,9 @@ export default async function DashboardClubesLayout({
   const contextLabel: string | null =
     role === "admin" ? "Plataforma · MATCHPOINT EC" : role === "user" ? null : null;
 
+  const flagsRes = await getMyEffectiveFlags();
+  const flags: Record<string, boolean> = flagsRes.ok ? { ...flagsRes.data } : {};
+
   return (
     <div
       style={{
@@ -54,7 +58,7 @@ export default async function DashboardClubesLayout({
         color: "var(--fg)",
       }}
     >
-      <DashboardSidebar role={role} userName={userName} contextLabel={contextLabel} />
+      <DashboardSidebar role={role} userName={userName} contextLabel={contextLabel} flags={flags} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar role={role} contextLabel={contextLabel} />
         <main

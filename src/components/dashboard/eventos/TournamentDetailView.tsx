@@ -318,32 +318,15 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
         </div>
       )}
       <section
+        className="mp-event-detail-hero"
         style={{
-          position: "relative",
-          minHeight: 480,
           background: "linear-gradient(135deg, #0a0a0a 0%, #1f2937 60%, #064e3b 100%)",
           color: "#fff",
-          overflow: "hidden",
           borderRadius: 16,
         }}
       >
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            fontFamily: "Plus Jakarta Sans",
-            fontWeight: 900,
-            fontSize: 340,
-            color: "rgba(16,185,129,0.07)",
-            letterSpacing: "-0.06em",
-            lineHeight: 0.8,
-            transform: "rotate(-6deg) translate(15%, -15%)",
-          }}
-        >
-          {accent}
-        </div>
-        <div style={{ position: "relative", padding: "48px 32px" }}>
+        <div className="mp-event-detail-hero-watermark">{accent}</div>
+        <div className="mp-event-detail-hero-inner">
           <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
             <span
               style={{
@@ -388,12 +371,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
             )}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 14 }}>
-            <span
-              className="font-heading"
-              style={{ fontSize: 96, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.9 }}
-            >
-              {date.d}
-            </span>
+            <span className="font-heading mp-event-detail-hero-day">{date.d}</span>
             <span
               style={{
                 fontSize: 18,
@@ -487,13 +465,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
         </div>
       </section>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr",
-          gap: 24,
-        }}
-      >
+      <div className="mp-event-detail-body">
         <div>
           <div className="label-mp">Sobre el evento</div>
           <h2
@@ -585,7 +557,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           ))}
         </div>
         <div>
-          <div className="card" style={{ padding: 22, position: "sticky", top: 100 }}>
+          <div className="card mp-event-detail-rail" style={{ padding: 22 }}>
             <div className="label-mp">Premios</div>
             <h3
               className="font-heading"
@@ -934,7 +906,7 @@ function InscritosList({
           <div style={{ marginTop: 10 }}>Sé el primero en inscribirte.</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 0 }}>
+        <div className="mp-event-inscritos-grid">
           {items.map((p, i) => (
             <div
               key={p.userId + "-" + i}
