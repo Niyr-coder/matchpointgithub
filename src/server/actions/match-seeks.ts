@@ -28,6 +28,7 @@ import {
   ListMatchSeeksParamsSchema,
   UpdateMatchSeekSchema,
   WithdrawApplicationSchema,
+  RespondMatchSeekPartnerSchema,
   type MatchSeek,
   type MatchSeekApplication,
 } from "@/lib/schemas/match-seeks";
@@ -83,6 +84,7 @@ type DbSeek = {
   sport: MatchSeek["sport"];
   mode: MatchSeek["mode"];
   partner_id: string | null;
+  partner_status: MatchSeek["partnerStatus"];
   city: string | null;
   club_id: string | null;
   skill_min: number | string | null;
@@ -109,6 +111,7 @@ function toSeek(
     sport: row.sport,
     mode: row.mode,
     partnerId: row.partner_id,
+    partnerStatus: row.partner_status ?? null,
     city: row.city,
     clubId: row.club_id,
     skillMin: row.skill_min == null ? null : Number(row.skill_min),
@@ -125,6 +128,31 @@ function toSeek(
     applicantsCount,
     myApplicationStatus,
   };
+}
+
+async function notifyPartnerInvite(
+  authorId: string,
+  authorName: string | null,
+  partnerId: string,
+  seekId: string,
+): Promise<void> {
+  await notify({
+    userId: partnerId,
+    role: "user",
+    kind: "match_seek_partner_invited",
+    title: "Invitación de dupla",
+    body: `${authorName ?? "Un jugador"} te eligió como partner para un aviso "Busco partido". Acepta para publicarlo.`,
+    payload: {
+      seek_id: seekId,
+      author_id: authorId,
+      author_name: authorName ?? "Un jugador",
+    },
+  });
+}
+
+function isSeekVisibleInFeed(seek: DbSeek): boolean {
+  if (seek.mode === "singles") return true;
+  return seek.partner_status === "accepted";
 }
 
 // ── createMatchSeek ─────────────────────────────────────────────────────────
@@ -160,6 +188,7 @@ export async function createMatchSeek(input: unknown): Promise<ActionResult<Matc
         sport: data.sport,
         mode: data.mode,
         partner_id: data.partnerId ?? null,
+        partner_status: data.mode === "doubles" ? "pending" : null,
         city: profile.city,
         club_id: data.clubId ?? null,
         skill_min: data.skillMin ?? null,
@@ -176,6 +205,11 @@ export async function createMatchSeek(input: unknown): Promise<ActionResult<Matc
     if (error || !row) {
       throw new MpError("MATCH_SEEK.CREATE_FAILED", error?.message ?? "No se pudo publicar el aviso", 500);
     }
+
+    if (data.mode === "doubles" && data.partnerId) {
+      await notifyPartnerInvite(userId, profile.displayName, data.partnerId, (row as DbSeek).id);
+    }
+
     return toSeek(row as DbSeek, profile.displayName, 0);
   });
 }
@@ -265,18 +299,29 @@ export async function updateMatchSeek(input: unknown): Promise<ActionResult<Matc
       throw new MpError("MATCH_SEEK.PARTNER_REQUIRED", "En dobles debes elegir tu partner", 400);
     }
 
+    const partnerChanged =
+      data.partnerId !== undefined && data.partnerId !== (current.partner_id as string | null);
+    const modeToDoubles = nextMode === "doubles" && (current.mode as string) === "singles";
+
+    const updatePayload: Record<string, unknown> = {
+      mode: nextMode,
+      partner_id: nextPartnerId,
+      skill_min: data.skillMin ?? null,
+      skill_max: data.skillMax ?? null,
+      ranked: data.ranked,
+      window_start: data.windowStart,
+      window_end: data.windowEnd ?? null,
+      notes: data.notes ?? null,
+    };
+    if (nextMode === "singles") {
+      updatePayload.partner_status = null;
+    } else if (partnerChanged || modeToDoubles) {
+      updatePayload.partner_status = "pending";
+    }
+
     const { data: row, error: updErr } = await supabase
       .from("match_seeks")
-      .update({
-        mode: nextMode,
-        partner_id: nextPartnerId,
-        skill_min: data.skillMin ?? null,
-        skill_max: data.skillMax ?? null,
-        ranked: data.ranked,
-        window_start: data.windowStart,
-        window_end: data.windowEnd ?? null,
-        notes: data.notes ?? null,
-      })
+      .update(updatePayload)
       .eq("id", data.seekId)
       .select("*")
       .single();
@@ -285,11 +330,15 @@ export async function updateMatchSeek(input: unknown): Promise<ActionResult<Matc
     }
 
     const profile = await getProfileSummary(userId);
-    return toSeek(row as DbSeek, profile.displayName, 0);
+    const seekRow = row as DbSeek;
+    if (nextMode === "doubles" && nextPartnerId && (partnerChanged || modeToDoubles)) {
+      await notifyPartnerInvite(userId, profile.displayName, nextPartnerId, seekRow.id);
+    }
+    return toSeek(seekRow, profile.displayName, 0);
   });
 }
 
-// ── listMatchSeeks (feed por ciudad) ────────────────────────────────────────
+// ── listMatchSeeks (feed — todas las ciudades por defecto) ──────────────────
 export async function listMatchSeeks(input: unknown): Promise<ActionResult<MatchSeek[]>> {
   return runAction(ListMatchSeeksParamsSchema, input, async ({ sport, mode, allCities, limit }) => {
     await assertFeatureEnabled();
@@ -303,16 +352,14 @@ export async function listMatchSeeks(input: unknown): Promise<ActionResult<Match
       .eq("status", "open")
       .gt("expires_at", new Date().toISOString())
       .order("window_start", { ascending: true })
-      .limit(limit);
+      .limit(Math.min(limit * 2, 100));
     if (sport) query = query.eq("sport", sport);
     if (mode) query = query.eq("mode", mode);
-    // Por defecto solo la ciudad del usuario. Si no tiene ciudad seteada,
-    // mostramos todo (no dejamos el feed vacío por un perfil incompleto).
     if (!allCities && profile.city) query = query.eq("city", profile.city);
 
     const { data, error } = await query;
     if (error) throw new MpError("MATCH_SEEK.LIST_FAILED", error.message, 500);
-    const rows = (data ?? []) as DbSeek[];
+    const rows = ((data ?? []) as DbSeek[]).filter(isSeekVisibleInFeed).slice(0, limit);
     if (rows.length === 0) return [];
 
     // Nombres de autor + conteo de postulantes en 2 queries agregadas.
@@ -522,13 +569,20 @@ export async function applyToMatchSeek(input: unknown): Promise<ActionResult<{ o
 
     const { data: seek, error: selErr } = await supabase
       .from("match_seeks")
-      .select("id,created_by,mode,status")
+      .select("id,created_by,mode,status,partner_status")
       .eq("id", seekId)
       .maybeSingle();
     if (selErr) throw new MpError("MATCH_SEEK.DB_ERROR", selErr.message, 500);
     if (!seek) throw new MpError("MATCH_SEEK.NOT_FOUND", "Aviso no encontrado", 404);
     if (seek.status !== "open") {
       throw new MpError("MATCH_SEEK.NOT_OPEN", "Este aviso ya no recibe postulaciones", 409);
+    }
+    if (seek.mode === "doubles" && seek.partner_status !== "accepted") {
+      throw new MpError(
+        "MATCH_SEEK.PARTNER_PENDING",
+        "Este aviso espera que el partner del autor confirme la dupla.",
+        409,
+      );
     }
     if (seek.created_by === userId) {
       throw new MpError("MATCH_SEEK.OWN_SEEK", "No puedes postularte a tu propio aviso", 422);
@@ -617,6 +671,13 @@ export async function acceptApplicant(
     const s = seek as DbSeek;
     if (s.created_by !== userId) throw new AuthError("AUTH.ROLE_REQUIRED", "Este aviso no es tuyo");
     if (s.status !== "open") throw new MpError("MATCH_SEEK.NOT_OPEN", "El aviso ya no está abierto", 409);
+    if (s.mode === "doubles" && s.partner_status !== "accepted") {
+      throw new MpError(
+        "MATCH_SEEK.PARTNER_PENDING",
+        "Tu partner aún no ha confirmado la dupla. Espera su aceptación antes de elegir rival.",
+        409,
+      );
+    }
 
     const { data: app, error: appErr } = await supabase
       .from("match_seek_applications")
@@ -695,5 +756,78 @@ export async function acceptApplicant(
     });
 
     return { matchId, conversationId };
+  });
+}
+
+// ── listPartnerInvitations (avisos doubles donde me invitaron como partner) ─
+export async function listPartnerInvitations(): Promise<ActionResult<MatchSeek[]>> {
+  return runAction(z.undefined(), undefined, async () => {
+    await assertFeatureEnabled();
+    const userId = await requireUserId();
+    const supabase = (await getServerClient()) as unknown as LooseClient;
+
+    const { data, error } = await supabase
+      .from("match_seeks")
+      .select("*")
+      .eq("partner_id", userId)
+      .eq("partner_status", "pending")
+      .eq("status", "open")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
+    if (error) throw new MpError("MATCH_SEEK.LIST_FAILED", error.message, 500);
+    const rows = (data ?? []) as DbSeek[];
+    if (rows.length === 0) return [];
+
+    const authorIds = Array.from(new Set(rows.map((r) => r.created_by)));
+    const { data: authors } = await supabase
+      .from("profiles")
+      .select("id,display_name")
+      .in("id", authorIds);
+    const nameById = new Map<string, string | null>(
+      ((authors ?? []) as { id: string; display_name: string | null }[]).map((a) => [a.id, a.display_name]),
+    );
+
+    return rows.map((r) => toSeek(r, nameById.get(r.created_by) ?? null, 0));
+  });
+}
+
+// ── respondMatchSeekPartner (aceptar / rechazar invitación de dupla) ────────
+export async function respondMatchSeekPartner(
+  input: unknown,
+): Promise<ActionResult<{ ok: true; status: "accepted" | "rejected" }>> {
+  return runAction(RespondMatchSeekPartnerSchema, input, async ({ seekId, accept }) => {
+    await assertFeatureEnabled();
+    const userId = await requireUserId();
+    const supabase = (await getServerClient()) as unknown as LooseClient;
+
+    const { data: seek, error: selErr } = await supabase
+      .from("match_seeks")
+      .select("id,partner_id,partner_status,status,mode")
+      .eq("id", seekId)
+      .maybeSingle();
+    if (selErr) throw new MpError("MATCH_SEEK.DB_ERROR", selErr.message, 500);
+    if (!seek) throw new MpError("MATCH_SEEK.NOT_FOUND", "Aviso no encontrado", 404);
+    if (seek.partner_id !== userId) {
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Esta invitación no es para ti");
+    }
+    if (seek.mode !== "doubles") {
+      throw new MpError("MATCH_SEEK.INVALID_MODE", "Este aviso no requiere confirmación de partner", 422);
+    }
+    if (seek.partner_status !== "pending") {
+      throw new MpError("MATCH_SEEK.PARTNER_ALREADY_RESPONDED", "Ya respondiste esta invitación", 409);
+    }
+    if (seek.status !== "open") {
+      throw new MpError("MATCH_SEEK.NOT_OPEN", "Este aviso ya no está activo", 409);
+    }
+
+    const admin = getAdminClient() as unknown as LooseClient;
+    const nextStatus = accept ? "accepted" : "rejected";
+    const updatePayload: Record<string, unknown> = { partner_status: nextStatus };
+    if (!accept) updatePayload.status = "cancelled";
+
+    const { error: updErr } = await admin.from("match_seeks").update(updatePayload).eq("id", seekId);
+    if (updErr) throw new MpError("MATCH_SEEK.PARTNER_RESPONSE_FAILED", updErr.message, 500);
+
+    return { ok: true as const, status: nextStatus };
   });
 }

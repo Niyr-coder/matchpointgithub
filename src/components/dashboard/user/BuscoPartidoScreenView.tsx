@@ -10,7 +10,7 @@ import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
-import { acceptApplicant, applyToMatchSeek, cancelMatchSeek, createMatchSeek, updateMatchSeek, withdrawApplication } from "@/server/actions/match-seeks";
+import { acceptApplicant, applyToMatchSeek, cancelMatchSeek, createMatchSeek, respondMatchSeekPartner, updateMatchSeek, withdrawApplication } from "@/server/actions/match-seeks";
 import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
 import type { MatchSeek, MatchSeekApplication } from "@/lib/schemas/match-seeks";
 import {
@@ -81,6 +81,7 @@ type Props = {
   feed?: MatchSeek[];
   mine?: MineItem[];
   myApplications?: MyApplicationItem[];
+  partnerInvites?: MatchSeek[];
   focusSeekId?: string | null;
 };
 
@@ -131,6 +132,7 @@ function BuscarMatchScreen({
   feed = [],
   mine = [],
   myApplications = [],
+  partnerInvites = [],
   focusSeekId,
   unavailableReason,
 }: Props & { unavailableReason?: "flag" | "auth" }) {
@@ -138,7 +140,7 @@ function BuscarMatchScreen({
   const toast = useToast();
   const { confirm, ask } = usePromptModal();
   const [scope, setScope] = useState<Scope>("para-ti");
-  const [tab, setTab] = useState<Tab>(focusSeekId ? "mine" : "feed");
+  const [tab, setTab] = useState<Tab>("feed");
   const [view, setView] = useState<View>(normalizeFeedView(tweaks.view));
   const [sortBy, setSortBy] = useState<SortBy>(tweaks.sortBy || "relevancia");
   const [levelMode, setLevelMode] = useState<LevelMode>(tweaks.levelMode || "flex");
@@ -147,6 +149,7 @@ function BuscarMatchScreen({
   const [day, setDay] = useState("cualquier");
   const [publishOpen, setPublishOpen] = useState(false);
   const [applyTarget, setApplyTarget] = useState<MatchSeek | null>(null);
+  const [partnerInviteTarget, setPartnerInviteTarget] = useState<MatchSeek | null>(null);
   const [editTarget, setEditTarget] = useState<{ seek: MatchSeek; pendingApplications: number } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -156,8 +159,21 @@ function BuscarMatchScreen({
       item?.applications.filter((a) => a.status === "pending" || a.status === "accepted").length ?? 0;
     setEditTarget({ seek, pendingApplications });
   };
-  const [managedSeekId, setManagedSeekId] = useState<string | null>(focusSeekId ?? null);
+  const [managedSeekId, setManagedSeekId] = useState<string | null>(null);
   const [actionPending, startAction] = useTransition();
+
+  useEffect(() => {
+    if (!focusSeekId) return;
+    const partnerInvite = partnerInvites.find((s) => s.id === focusSeekId);
+    if (partnerInvite) {
+      setPartnerInviteTarget(partnerInvite);
+      return;
+    }
+    if (mine.some((m) => m.seek.id === focusSeekId)) {
+      setTab("mine");
+      setManagedSeekId(focusSeekId);
+    }
+  }, [focusSeekId, partnerInvites, mine]);
 
   useRealtimeRefresh(
     [
@@ -202,6 +218,9 @@ function BuscarMatchScreen({
       return new Date(a.seek.windowStart).getTime() - new Date(b.seek.windowStart).getTime();
     }
     if (sortBy === "ciudad") return a.dist.localeCompare(b.dist);
+    const aNear = myCity && a.seek.city === myCity ? 0 : 1;
+    const bNear = myCity && b.seek.city === myCity ? 0 : 1;
+    if (aNear !== bNear) return aNear - bNear;
     return new Date(a.seek.windowStart).getTime() - new Date(b.seek.windowStart).getTime();
   });
 
@@ -301,6 +320,24 @@ function BuscarMatchScreen({
         router.refresh();
       } else {
         toast({ icon: "alert-triangle", title: "No se pudo retirar", sub: res.error.message });
+      }
+    });
+  };
+  const respondPartnerInvite = (seek: MatchSeek, accept: boolean) => {
+    startAction(async () => {
+      const res = await respondMatchSeekPartner({ seekId: seek.id, accept });
+      if (res.ok) {
+        toast({
+          icon: accept ? "check-circle-2" : "info",
+          title: accept ? "Dupla confirmada" : "Invitación rechazada",
+          sub: accept
+            ? "El aviso ya aparece en el lobby para otros jugadores."
+            : "El aviso quedó cancelado.",
+        });
+        setPartnerInviteTarget(null);
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo responder", sub: res.error.message });
       }
     });
   };
@@ -502,6 +539,27 @@ function BuscarMatchScreen({
       </div>
       )}
 
+      {tab === "feed" && partnerInvites.length > 0 && (
+        <div className="card" style={{ padding: 14, borderColor: "rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.06)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <div className="label-mp" style={{ color: "var(--primary)" }}>Invitaciones de dupla</div>
+              <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.45 }}>
+                Tienes {partnerInvites.length} invitación{partnerInvites.length === 1 ? "" : "es"} para jugar como partner en un aviso de dobles.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: 11 }}
+              onClick={() => setPartnerInviteTarget(partnerInvites[0] ?? null)}
+            >
+              Revisar
+            </button>
+          </div>
+        </div>
+      )}
+
       {tab === "feed" && feedBody}
       {tab === "mine" && (
         <MinePanel
@@ -539,6 +597,15 @@ function BuscarMatchScreen({
             setApplyTarget(null);
             router.refresh();
           }}
+        />
+      )}
+      {partnerInviteTarget && (
+        <PartnerInviteModal
+          seek={partnerInviteTarget}
+          busy={actionPending}
+          onClose={() => setPartnerInviteTarget(null)}
+          onAccept={() => respondPartnerInvite(partnerInviteTarget, true)}
+          onReject={() => respondPartnerInvite(partnerInviteTarget, false)}
         />
       )}
       {editTarget && (
@@ -1237,7 +1304,16 @@ function MinePanel({
                 <InfoChip icon="users" label={`${pendingApps.length} pendientes`} />
                 <InfoChip icon="zap" label={levelText(seek)} />
                 {seek.ranked && <InfoChip icon="trophy" label="MPR competitivo" accent />}
+                {seek.mode === "doubles" && seek.partnerStatus === "pending" && (
+                  <InfoChip icon="clock" label="Esperando partner" accent />
+                )}
               </div>
+              {seek.mode === "doubles" && seek.partnerStatus === "pending" && (
+                <div style={softBoxStyle}>
+                  <strong>Tu partner aún no confirma la dupla.</strong>
+                  <span>El aviso no aparecerá en el lobby hasta que acepte la invitación.</span>
+                </div>
+              )}
               {applications.length === 0 ? (
                 <div style={softBoxStyle}>
                   <strong>No hay postulantes todavía.</strong>
@@ -1390,7 +1466,7 @@ function PublishSeekModal({
         toast({ icon: "alert-triangle", title: "No se pudo publicar", sub: res.error.message });
         return;
       }
-      toast({ icon: "check-circle-2", title: "Aviso publicado" });
+      toast({ icon: "check-circle-2", title: mode === "doubles" ? "Invitación enviada" : "Aviso publicado", sub: mode === "doubles" ? "Tu partner debe aceptar para que el aviso aparezca en el lobby." : undefined });
       onDone();
     });
   };
@@ -1480,6 +1556,53 @@ function ApplyModal({ seek, meUserId, onClose, onDone }: { seek: MatchSeek; meUs
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
         <button className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Enviar postulación</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function PartnerInviteModal({
+  seek,
+  busy,
+  onClose,
+  onAccept,
+  onReject,
+}: {
+  seek: MatchSeek;
+  busy?: boolean;
+  onClose: () => void;
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <ModalShell title="Invitación de dupla" onClose={onClose}>
+      <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
+        <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Te invitaron como partner</div>
+        <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
+          {seek.authorName ?? "Un jugador"}<span style={{ color: "var(--primary)" }}>.</span>
+        </h3>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+          <span>{sportLabel(seek.sport)} · {modeLabel(seek.mode)}</span>
+          <span>{formatDateLabel(seek.windowStart)} · {formatTime(seek.windowStart)}</span>
+          <span>{seek.city ?? "Ciudad por definir"}</span>
+        </div>
+      </div>
+      {seek.notes && (
+        <p style={{ margin: 0, fontSize: 13, color: "#0a0a0a", lineHeight: 1.5 }}>{seek.notes}</p>
+      )}
+      <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+        Si aceptas, el aviso se publicará en el lobby y podrán recibir postulaciones de rivales.
+      </p>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-outline" onClick={onClose} disabled={busy}>
+          Después
+        </button>
+        <button type="button" className="btn btn-outline" onClick={onReject} disabled={busy}>
+          Rechazar
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onAccept} disabled={busy}>
+          Aceptar dupla
+        </button>
       </div>
     </ModalShell>
   );

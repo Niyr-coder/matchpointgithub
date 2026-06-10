@@ -15,6 +15,10 @@ export const MatchSeekApplicationStatusSchema = z
   .enum(["pending", "accepted", "rejected", "withdrawn"])
   .openapi("MatchSeekApplicationStatus");
 
+export const MatchSeekPartnerStatusSchema = z
+  .enum(["pending", "accepted", "rejected"])
+  .openapi("MatchSeekPartnerStatus");
+
 // Nivel en escala display (ej. 3.8). 1.0–7.0 cubre el rango real de niveles.
 const SkillLevelSchema = z.coerce.number().min(1).max(7);
 
@@ -26,6 +30,7 @@ export const MatchSeekSchema = z
     sport: MpSportSchema,
     mode: MpMatchModeSchema,
     partnerId: UuidSchema.nullable(),
+    partnerStatus: MatchSeekPartnerStatusSchema.nullable(),
     city: z.string().nullable(),
     clubId: UuidSchema.nullable(),
     skillMin: z.number().nullable(),
@@ -149,12 +154,19 @@ export const WithdrawApplicationSchema = z
   .object({ applicationId: UuidSchema })
   .openapi("WithdrawApplication");
 
+export const RespondMatchSeekPartnerSchema = z
+  .object({
+    seekId: UuidSchema,
+    accept: z.boolean(),
+  })
+  .openapi("RespondMatchSeekPartner");
+
 export const ListMatchSeeksParamsSchema = z
   .object({
     sport: MpSportSchema.optional(),
     mode: MpMatchModeSchema.optional(),
-    // Por defecto el feed filtra por la ciudad del usuario; este flag lo abre.
-    allCities: z.coerce.boolean().default(false),
+    // Por defecto el feed muestra avisos de todas las ciudades (cercanos primero en UI).
+    allCities: z.coerce.boolean().default(true),
     limit: z.coerce.number().int().min(1).max(100).default(30),
   })
   .openapi("ListMatchSeeksParams");

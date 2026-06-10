@@ -4,7 +4,7 @@
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
-import { listMatchSeeks, listMyApplications, listMyMatchSeeks } from "@/server/actions/match-seeks";
+import { listMatchSeeks, listMyApplications, listMyMatchSeeks, listPartnerInvitations } from "@/server/actions/match-seeks";
 import { BuscoPartidoScreenView } from "./BuscoPartidoScreenView";
 import { BuscoPartidoComingSoon } from "./BuscoPartidoScreenView";
 
@@ -28,11 +28,12 @@ export async function BuscoPartidoScreen({
   const focusRaw = sp.focus;
   const focusSeekId = typeof focusRaw === "string" ? focusRaw : null;
 
-  const [profile, feedRes, mineRes, appsRes] = await Promise.all([
+  const [profile, feedRes, mineRes, appsRes, partnerInvitesRes] = await Promise.all([
     getProfileSummary(session.session.userId),
-    listMatchSeeks({}),
+    listMatchSeeks({ allCities: true }),
     listMyMatchSeeks(),
     listMyApplications(),
+    listPartnerInvitations(),
   ]);
 
   return (
@@ -43,6 +44,7 @@ export async function BuscoPartidoScreen({
       feed={feedRes.ok ? feedRes.data : []}
       mine={mineRes.ok ? mineRes.data : []}
       myApplications={appsRes.ok ? appsRes.data : []}
+      partnerInvites={partnerInvitesRes.ok ? partnerInvitesRes.data : []}
       focusSeekId={focusSeekId}
     />
   );

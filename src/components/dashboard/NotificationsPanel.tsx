@@ -183,6 +183,12 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
       ? `/dashboard/user/busco-partido?focus=${seekId}`
       : "/dashboard/user/busco-partido";
   }
+  if (kind === "match_seek_partner_invited") {
+    const seekId = typeof payload.seek_id === "string" ? payload.seek_id : null;
+    return seekId
+      ? `/dashboard/user/busco-partido?focus=${seekId}`
+      : "/dashboard/user/busco-partido";
+  }
   if (kind === "match_seek_accepted" || kind === "match_cancelled" || kind === "match_rescheduled") {
     const convId = typeof payload.conversation_id === "string" ? payload.conversation_id : null;
     return convId
