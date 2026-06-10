@@ -973,10 +973,8 @@ export function PerfilV3BoardScout({ ownerSub = "free" }: { ownerSub?: "free" | 
         width: "100%",
         minHeight: "100%",
         background: v2tk.bg,
-        padding: 24,
         display: "flex",
         flexDirection: "column",
-        gap: 20,
       }}
     >
       <V2Hero sub={ownerSub} view="public" />

@@ -556,8 +556,7 @@ export function PerfilV3Board({ sub = 'plus', view = 'mine' }: { sub?: 'free' | 
   return (
     <div className="pv3-board" style={{
       width: '100%', minHeight: '100%', background: v2tk.bg,
-      padding: 24,
-      display: 'flex', flexDirection: 'column', gap: 20,
+      display: 'flex', flexDirection: 'column',
     }}>
       {/* HERO */}
       <V2Hero sub={sub} view={view} />
