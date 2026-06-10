@@ -32,7 +32,7 @@ export function V2Hero({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' | 'pu
   const avatarInitials = `${me.first[0] ?? ""}${me.last[0] ?? ""}`.toUpperCase() || "?";
 
   return (
-    <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 16, overflow: 'hidden' }}>
+    <div className="pv3-hero-shell" style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 16, overflow: 'hidden' }}>
       {/* Cover */}
       <div style={{ position: 'relative', height: 220, background: cover.grad, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at 78% 30%, ${cover.glow}, transparent 60%)` }} />

@@ -7,6 +7,17 @@
   font-family: var(--font-sans);
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Perfil jugador: ocupa todo el ancho del main (márgenes negativos eran frágiles con overflow-x-hidden). */
+main:has(.mp-profile-v3) {
+  padding: 0 !important;
+  gap: 0 !important;
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 .mp-profile-v3 .font-heading,
@@ -282,8 +293,19 @@
   }
 
   .mp-profile-v3 .pv3-board {
-    padding: 16px !important;
+    padding: 0 0 16px !important;
     gap: 16px !important;
+  }
+
+  .mp-profile-v3 .pv3-hero-shell {
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+  }
+
+  .mp-profile-v3 .pv3-board > *:not(.pv3-hero-shell) {
+    margin-left: 16px;
+    margin-right: 16px;
   }
 
   .mp-profile-v3 .pv3-stack-sm {

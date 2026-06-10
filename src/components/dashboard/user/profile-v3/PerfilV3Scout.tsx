@@ -968,6 +968,7 @@ export function PerfilV3BoardScout({ ownerSub = "free" }: { ownerSub?: "free" | 
 
   return (
     <div
+      className="pv3-board"
       style={{
         width: "100%",
         minHeight: "100%",

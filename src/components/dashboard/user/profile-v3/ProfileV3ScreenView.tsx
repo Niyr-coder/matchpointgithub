@@ -144,7 +144,7 @@ export function ProfileV3ScreenView({
       <PerfilV3DataProvider value={perfilMe}>
         <ProfileV3ActionsProvider value={actions}>
           <div
-            className="mp-profile-v3 -mt-4 -mx-4 -mb-4 md:-mt-7 md:-mx-7 md:-mb-7"
+            className="mp-profile-v3 w-full min-w-0 max-w-full"
             data-screen-label={isMine ? "Mi perfil" : `Perfil de ${data.name.trim().split(/\s+/)[0] ?? data.name}`}
           >
             {useScout ? (
