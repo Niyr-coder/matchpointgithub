@@ -1,5 +1,11 @@
 // Server: home del admin con KPIs globales reales + actividad reciente desde audit_log.
 import { getServerClient } from "@/lib/db/client.server";
+import {
+  AUDIT_HOME_NOISE_ENTITIES,
+  auditActivitySubtitle,
+  auditEntityMeta,
+  summarizeAuditEvent,
+} from "@/lib/audit/labels";
 import { AdminHomeView, type AdminHomeData, type ActivityItem, type ModQueueItem } from "./AdminHomeView";
 
 function relativeTime(iso: string, now: Date): string {
@@ -11,17 +17,6 @@ function relativeTime(iso: string, now: Date): string {
   if (hours < 24) return `hace ${hours} h`;
   return "hoy";
 }
-
-const ENTITY_META: Record<string, { tag: string; color: string; icon: string }> = {
-  clubs: { tag: "CLUB", color: "#0ea5e9", icon: "building-2" },
-  events: { tag: "EVENTO", color: "#fbbf24", icon: "trophy" },
-  tournaments: { tag: "TORNEO", color: "#fbbf24", icon: "trophy" },
-  transactions: { tag: "PAGO", color: "#10b981", icon: "wallet" },
-  reports: { tag: "MOD", color: "#dc2626", icon: "alert-triangle" },
-  profiles: { tag: "USERS", color: "#7c3aed", icon: "user-plus" },
-  reservations: { tag: "RESERVA", color: "var(--primary)", icon: "calendar-check" },
-  tickets: { tag: "SOPORTE", color: "#0ea5e9", icon: "life-buoy" },
-};
 
 function severityFor(entity: string): "alta" | "media" | "baja" {
   if (entity === "chat_message" || entity === "match_result" || entity === "user") return "alta";
@@ -74,7 +69,7 @@ async function loadData(): Promise<AdminHomeData> {
       .from("audit_log")
       .select("id,entity,entity_id,action,actor_id,created_at")
       .order("created_at", { ascending: false })
-      .limit(5),
+      .limit(40),
     supabase
       .from("reports")
       .select("id,entity,reason,status,created_at")
@@ -87,19 +82,47 @@ async function loadData(): Promise<AdminHomeData> {
   const gmvPrevCents = (txnsPrev ?? []).reduce((s, t) => s + ((t.amount_cents as number) ?? 0), 0);
   const gmvDeltaCents = gmvMonthCents - gmvPrevCents;
 
-  const activity: ActivityItem[] = (auditRows ?? []).map((r) => {
-    const entity = (r.entity as string) ?? "—";
-    const meta = ENTITY_META[entity] ?? { tag: entity.toUpperCase(), color: "var(--muted-fg)", icon: "circle" };
-    return {
-      id: String(r.id),
-      i: meta.icon,
-      t: `${entity}.${(r.action as string).toLowerCase()}`,
-      s: (r.entity_id as string | null) ? `id: ${(r.entity_id as string).slice(0, 8)}` : "—",
-      when: relativeTime(r.created_at as string, now),
-      tag: meta.tag,
-      color: meta.color,
-    };
-  });
+  const actorIds = Array.from(
+    new Set(
+      (auditRows ?? [])
+        .map((r) => r.actor_id as string | null)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const actorNames = new Map<string, string>();
+  if (actorIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id,username,display_name")
+      .in("id", actorIds);
+    for (const p of profs ?? []) {
+      const label =
+        (p.display_name as string | null)?.trim() ||
+        ((p.username as string | null) ? `@${p.username as string}` : null) ||
+        "Usuario";
+      actorNames.set(p.id as string, label);
+    }
+  }
+
+  const activity: ActivityItem[] = (auditRows ?? [])
+    .filter((r) => !AUDIT_HOME_NOISE_ENTITIES.has((r.entity as string) ?? ""))
+    .slice(0, 5)
+    .map((r) => {
+      const entity = (r.entity as string) ?? "—";
+      const action = (r.action as string) ?? "—";
+      const meta = auditEntityMeta(entity);
+      const actorId = r.actor_id as string | null;
+      const actorLabel = actorId ? (actorNames.get(actorId) ?? null) : null;
+      return {
+        id: String(r.id),
+        i: meta.icon,
+        t: summarizeAuditEvent(entity, action),
+        s: auditActivitySubtitle(actorLabel),
+        when: relativeTime(r.created_at as string, now),
+        tag: meta.tag,
+        color: meta.color,
+      };
+    });
 
   const queue: ModQueueItem[] = (openReports ?? []).map((r) => ({
     id: r.id as string,
