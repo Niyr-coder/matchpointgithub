@@ -11,7 +11,6 @@ import {
   ticketCategoryLabel,
   ticketStatusPalette,
   UI_CATEGORY_LABELS,
-  UI_TO_SEVERITY,
   UI_TO_TICKET_CATEGORY,
   type PlayerTicketRow,
 } from "@/lib/support/ticket-display";
@@ -40,7 +39,6 @@ export function SoporteScreenView({
   const [tickets, setTickets] = useState(initialTickets);
   const [topic, setTopic] = useState("");
   const [category, setCategory] = useState("reservas");
-  const [priority, setPriority] = useState("normal");
   const [detail, setDetail] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<TicketDetail | null>(null);
@@ -67,7 +65,7 @@ export function SoporteScreenView({
       if (cancelled) return;
       setDetailLoading(false);
       if (!res.ok) {
-        toast({ icon: "alert-triangle", title: "No se pudo cargar el ticket", sub: res.error.message });
+        toast({ icon: "alert-triangle", title: "No se pudo cargar la solicitud", sub: res.error.message });
         setSelectedId(null);
         return;
       }
@@ -84,7 +82,7 @@ export function SoporteScreenView({
 
   const send = () => {
     if (!userId) {
-      toast({ icon: "alert-triangle", title: "Inicia sesión", sub: "Necesitas una cuenta para abrir un ticket" });
+      toast({ icon: "alert-triangle", title: "Inicia sesión", sub: "Necesitas una cuenta para reportar un problema" });
       return;
     }
     if (topic.trim().length < 5) {
@@ -101,7 +99,7 @@ export function SoporteScreenView({
         subject: topic.trim(),
         body: `[${catLabel}]\n\n${detail.trim()}`,
         category: UI_TO_TICKET_CATEGORY[category] ?? "other",
-        severity: UI_TO_SEVERITY[priority] ?? "medium",
+        severity: "medium",
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo enviar", sub: res.error.message });
@@ -109,7 +107,7 @@ export function SoporteScreenView({
       }
       toast({
         icon: "check-circle-2",
-        title: "Ticket enviado",
+        title: "Solicitud enviada",
         sub: `Recibimos tu caso ${res.data.code}. Te respondemos por aquí y al mail registrado.`,
       });
       setTopic("");
@@ -157,9 +155,6 @@ export function SoporteScreenView({
             <h1 className="font-heading" style={{ margin: "6px 0 0", fontSize: 36, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 0.95 }}>
               ¿En qué te ayudamos?<span style={{ color: "#34d399" }}>.</span>
             </h1>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
-              Lun a vie · 8:00–20:00 · Sáb 9:00–14:00 · SLA respuesta &lt;24h
-            </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 9999, background: servicesOk ? "rgba(16,185,129,0.14)" : "rgba(251,191,36,0.14)", border: `1px solid ${servicesOk ? "rgba(16,185,129,0.35)" : "rgba(251,191,36,0.35)"}` }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: servicesOk ? "#10b981" : "#fbbf24", boxShadow: servicesOk ? "0 0 8px #10b981" : "0 0 8px #fbbf24" }} />
@@ -170,10 +165,10 @@ export function SoporteScreenView({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <ChannelCard icon="message-square" bg="#0a0a0a" l="Chat en vivo" sub="Abre un ticket y conversa aquí" hint="Tu hilo con el equipo MATCHPOINT" cta="Abrir caso" onClick={scrollToForm} />
+      <div className="mp-soporte-channels-grid" style={{ display: "grid", gap: 12 }}>
+        <ChannelCard icon="message-square" bg="#0a0a0a" l="Chat en vivo" sub="Reporta un problema y conversa aquí" hint="Tu hilo con el equipo MATCHPOINT" cta="Reportar" onClick={scrollToForm} />
         <ChannelCard icon="mail" bg="#0ea5e9" l="Email" sub={SUPPORT_EMAIL} hint="Para temas complejos" cta="Escribirnos" href={`mailto:${SUPPORT_EMAIL}?subject=Soporte%20MATCHPOINT`} external />
-        <ChannelCard icon="message-circle" bg="#25d366" l="WhatsApp" sub="Pronto disponible" hint="Estamos habilitando este canal" cta="Avísame" onClick={() => toast({ icon: "message-circle", title: "WhatsApp · próximamente", sub: "Por ahora usa un ticket o el email" })} />
+        <ChannelCard icon="message-circle" bg="#25d366" l="WhatsApp" sub="Pronto disponible" hint="Estamos habilitando este canal" cta="Avísame" onClick={() => toast({ icon: "message-circle", title: "WhatsApp · próximamente", sub: "Por ahora envía una solicitud o escríbenos al email" })} />
         <ChannelCard
           icon="phone"
           bg="#7c3aed"
@@ -184,7 +179,7 @@ export function SoporteScreenView({
           locked={!isPremium}
           onClick={() =>
             isPremium
-              ? toast({ icon: "phone", title: "Agendar llamada · próximamente", sub: "Por ahora abre un ticket y te contactamos" })
+              ? toast({ icon: "phone", title: "Agendar llamada · próximamente", sub: "Por ahora envía una solicitud y te contactamos" })
               : undefined
           }
           href={isPremium ? undefined : "/dashboard/user/mi-plan"}
@@ -194,49 +189,34 @@ export function SoporteScreenView({
       <div className="mp-soporte-body-grid" style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16, alignItems: "start" }}>
         <div id="nuevo-caso" className="card" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14, scrollMarginTop: 16 }}>
           <div>
-            <div className="label-mp" style={{ color: "var(--primary)" }}>● Nuevo caso</div>
+            <div className="label-mp" style={{ color: "var(--primary)" }}>● Nueva solicitud</div>
             <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-              Abrir un ticket<span className="dot">.</span>
+              Reportar un problema<span className="dot">.</span>
             </h3>
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Te respondemos aquí y al mail registrado{email ? ` (${email})` : ""}.</p>
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Cuéntanos qué pasó y te respondemos aquí y al mail registrado{email ? ` (${email})` : ""}.</p>
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Asunto</span>
             <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej: No puedo cancelar mi reserva" disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, outline: "none" }} />
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Categoría</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "#fff", outline: "none" }}>
-                {Object.entries(UI_CATEGORY_LABELS).map(([k, l]) => (
-                  <option key={k} value={k}>{l}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Prioridad</span>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[{ k: "low", l: "Baja" }, { k: "normal", l: "Normal" }, { k: "urgent", l: "Urgente" }].map((pr) => {
-                  const on = priority === pr.k;
-                  return (
-                    <button key={pr.k} type="button" disabled={pending} onClick={() => setPriority(pr.k)} style={{ flex: 1, padding: "9px 8px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "var(--muted-fg)", border: "1px solid " + (on ? "#0a0a0a" : "var(--border)") }}>
-                      {pr.l}
-                    </button>
-                  );
-                })}
-              </div>
-            </label>
-          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Categoría</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "#fff", outline: "none" }}>
+              {Object.entries(UI_CATEGORY_LABELS).map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </select>
+          </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Detalle</span>
             <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={4} disabled={pending} placeholder="Cuéntanos qué pasó. Si puedes, incluye fechas, club o torneo." style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, outline: "none", resize: "vertical", minHeight: 90 }} />
           </label>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div className="mp-soporte-form-actions">
             <button type="button" className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => toast({ icon: "paperclip", title: "Adjuntar archivo · próximamente", sub: "Por ahora describe el problema en el detalle" })}>
               <Icon name="paperclip" size={13} /> Adjuntar archivo
             </button>
             <button type="button" onClick={send} disabled={pending} className="btn btn-primary">
-              <Icon name="send" size={13} color="#fff" /> {pending ? "Enviando…" : "Enviar ticket"}
+              <Icon name="send" size={13} color="#fff" /> {pending ? "Enviando…" : "Enviar solicitud"}
             </button>
           </div>
         </div>
@@ -246,14 +226,14 @@ export function SoporteScreenView({
             <div>
               <div className="label-mp" style={{ color: "var(--primary)" }}>● Historial</div>
               <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-                Mis tickets<span className="dot">.</span>
+                Mis solicitudes<span className="dot">.</span>
               </h3>
             </div>
             <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{tickets.length} en total</span>
           </div>
           {tickets.length === 0 ? (
             <div style={{ padding: "24px 12px", textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
-              Aún no tienes tickets. Cuando envíes uno, aparece aquí con su estado.
+              Aún no has reportado problemas. Cuando envíes una solicitud, aparece aquí con su estado.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
@@ -316,12 +296,24 @@ export function SoporteScreenView({
         </div>
 
         <div className="card" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="label-mp" style={{ color: "var(--primary)" }}>● Identificación</div>
-            <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-              Datos para soporte<span className="dot">.</span>
-            </h3>
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Si te piden estos datos, ya los tienes a mano.</p>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="label-mp" style={{ color: "var(--primary)" }}>● Identificación</div>
+              <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+                Datos para soporte<span className="dot">.</span>
+              </h3>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Si te piden estos datos, ya los tienes a mano.</p>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              aria-label="Copiar datos para soporte"
+              title="Copiar datos"
+              onClick={copyAccount}
+              style={{ flexShrink: 0, background: "#fff", border: "1px solid var(--border)", padding: "8px 10px" }}
+            >
+              <Icon name="copy" size={15} />
+            </button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <DataRow label="Email" value={email ?? "—"} />
@@ -329,9 +321,6 @@ export function SoporteScreenView({
             <DataRow label="Plan" value={planLabel} />
             <DataRow label="App" value="MATCHPOINT · Web" mono />
           </div>
-          <button type="button" className="btn" style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid var(--border)" }} onClick={copyAccount}>
-            <Icon name="copy" size={13} /> Copiar todo
-          </button>
         </div>
       </div>
 
@@ -340,7 +329,7 @@ export function SoporteScreenView({
           <div className="card" style={{ width: "min(560px, 100%)", maxHeight: "min(80vh, 720px)", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
-                <div className="label-mp" style={{ color: "var(--primary)" }}>{detailData?.ticket.code ?? "Ticket"}</div>
+                <div className="label-mp" style={{ color: "var(--primary)" }}>{detailData?.ticket.code ?? "Solicitud"}</div>
                 <h3 className="font-heading" style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}>
                   {detailData?.ticket.subject ?? "Cargando…"}
                 </h3>
@@ -381,10 +370,49 @@ export function SoporteScreenView({
       ) : null}
 
       <style jsx global>{`
+        .mp-soporte-channels-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        @media (min-width: 960px) {
+          .mp-soporte-channels-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 959px) {
+          .mp-soporte-channel-card {
+            padding: 14px !important;
+            gap: 8px !important;
+          }
+          .mp-soporte-channel-card .font-heading {
+            font-size: 12px !important;
+          }
+          .mp-soporte-channel-card .btn {
+            font-size: 10px !important;
+            padding: 7px 10px !important;
+          }
+        }
         @media (max-width: 768px) {
           .mp-soporte-body-grid,
           .mp-soporte-status-grid {
             grid-template-columns: 1fr !important;
+          }
+        }
+        .mp-soporte-form-actions {
+          display: flex;
+          flex-direction: row;
+          flex-wrap: nowrap;
+          align-items: stretch;
+          gap: 10px;
+        }
+        .mp-soporte-form-actions .btn {
+          flex: 1 1 0;
+          min-width: 0;
+        }
+        @media (max-width: 480px) {
+          .mp-soporte-form-actions .btn {
+            font-size: 10px;
+            padding: 9px 10px;
+            gap: 5px;
           }
         }
       `}</style>
@@ -428,7 +456,7 @@ function ChannelCard({
     </>
   );
   return (
-    <div style={{ position: "relative", padding: 18, borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="mp-soporte-channel-card" style={{ position: "relative", padding: 18, borderRadius: 14.4, border: "1px solid var(--border)", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
       {locked ? (
         <span style={{ position: "absolute", top: 12, right: 12, padding: "3px 8px", borderRadius: 9999, background: "rgba(16,185,129,0.12)", color: "#047857", fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 4 }}>
           <Icon name="sparkles" size={9} color="#047857" /> MP+

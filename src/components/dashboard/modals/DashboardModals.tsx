@@ -23,9 +23,11 @@ import { InscribirClaseModal } from "./InscribirClaseModal";
 export function DashboardModals({
   currentUserId,
   initialRetarYou = null,
+  shopEnabled = false,
 }: {
   currentUserId: string | null;
   initialRetarYou?: RetarHeroWho | null;
+  shopEnabled?: boolean;
 }) {
   // Todos mounted siempre. Cada modal mantiene su propio state `open` interno
   // y solo renderiza UI al recibir el evento. Hacer esto es barato porque los
@@ -36,7 +38,7 @@ export function DashboardModals({
       <CrearMatchModal currentUserId={currentUserId} />
       <ReservarCanchaDrawer />
       <VerMapaOverlay />
-      <CarritoModal />
+      {shopEnabled && <CarritoModal />}
       <CrearEventoModal />
       <InscribirClaseModal />
     </>

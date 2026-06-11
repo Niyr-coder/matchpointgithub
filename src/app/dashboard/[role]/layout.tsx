@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
+import { SHOP_FLAG } from "@/lib/flags/shop";
 import { getActiveAnnouncement } from "@/server/queries/announcements";
 import { decideDashboardRoleAccess } from "@/lib/auth/role-route-guard";
 import { loadReceptionQueue } from "@/server/queries/reception-queue";
@@ -307,6 +308,7 @@ export default async function RoleLayout({
   const planActive = planTier === "premium" && (!planExpiresAt || new Date(planExpiresAt).getTime() > Date.now());
   flags["user_can_buy_mp_plus"] = !planActive;
   flags["user_has_mp_plus"] = planActive;
+  flags[SHOP_FLAG] = flags[SHOP_FLAG] === true;
   // Banner global: el anuncio activo (canal Banner de Comunicaciones) tiene
   // prioridad; si no hay, cae al flag maintenance_banner.
   const impactToLevel: Record<string, "info" | "warn" | "critical"> = { low: "info", med: "warn", high: "critical" };

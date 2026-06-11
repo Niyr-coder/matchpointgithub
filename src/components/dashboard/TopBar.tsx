@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
@@ -175,6 +176,181 @@ function TopBarSearch({ role }: { role: RoleKey }) {
 
 const NOTIFICATION_RING_MS = 560;
 
+const USER_QUICK_ACTIONS = [
+  {
+    icon: "calendar-plus",
+    label: "Reservar cancha",
+    hint: "Elige club, cancha y horario",
+    event: "mp-open-reservar",
+  },
+  {
+    icon: "users",
+    label: "Crear partido",
+    hint: "Arma un match con rivales",
+    event: "mp-open-crear-match",
+  },
+  {
+    icon: "swords",
+    label: "Buscar rival",
+    hint: "Publica o postúlate en el tablón",
+    href: "/dashboard/user/busco-partido",
+  },
+  {
+    icon: "user-plus",
+    label: "Invitar amigo",
+    hint: "Comparte tu link de invitación",
+    href: "/dashboard/user/amigos",
+  },
+] as const;
+
+function UserQuickActionSheet({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Acciones rápidas"
+      className="md:hidden"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "rgba(10,10,10,0.55)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "flex-end",
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          width: "100%",
+          borderRadius: "18px 18px 0 0",
+          padding: 0,
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: "16px 18px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <h3
+            className="font-heading"
+            style={{
+              margin: 0,
+              fontSize: 17,
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            ¿Qué quieres hacer?<span className="dot">.</span>
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 9999,
+              border: "1px solid var(--border)",
+              background: "#fff",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "inherit",
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ padding: "10px 12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {USER_QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => {
+                if ("event" in action && action.event) {
+                  window.dispatchEvent(new Event(action.event));
+                } else if ("href" in action && action.href) {
+                  router.push(action.href);
+                }
+                onClose();
+              }}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 14px",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                background: "#fff",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "rgba(16,185,129,0.1)",
+                  color: "var(--primary)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name={action.icon} size={16} />
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 800, color: "#0a0a0a" }}>
+                  {action.label}
+                </span>
+                <span style={{ display: "block", fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                  {action.hint}
+                </span>
+              </span>
+              <Icon name="chevron-right" size={14} color="var(--muted-fg)" style={{ marginLeft: "auto", flexShrink: 0 }} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TopBar({
   role,
   contextLabel,
@@ -183,6 +359,7 @@ export function TopBar({
   contextLabel?: string | null;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
+  const [quickActionOpen, setQuickActionOpen] = useState(false);
   // Notifs viven en TopBar para que el panel se renderice instantáneamente
   // (sin "Cargando…") al abrir. El listener realtime las refresca aquí.
   const [items, setItems] = useState<RealNotif[]>([]);
@@ -191,6 +368,7 @@ export function TopBar({
   const prevUnreadRef = useRef<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const cta = CTA_BY_ROLE[role];
+  const showUserQuickMenu = role === "user";
   const toast = useToast();
   const [, startTransition] = useTransition();
 
@@ -319,6 +497,11 @@ export function TopBar({
     else toast({ icon: cta.i, title: cta.l + " — próximamente" });
   };
 
+  const handleMobilePrimary = () => {
+    if (showUserQuickMenu) setQuickActionOpen(true);
+    else handleCta();
+  };
+
   return (
     <div
       className="px-4 md:px-7"
@@ -335,9 +518,11 @@ export function TopBar({
       }}
     >
       {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky). */}
-      <div
+      <Link
+        href={`/dashboard/${role}`}
         className="md:hidden flex items-center gap-1.5"
-        aria-label="MATCHPOINT"
+        aria-label="Ir al inicio de MATCHPOINT"
+        style={{ textDecoration: "none", color: "inherit" }}
       >
         <span className="dot" style={{ fontSize: 16 }}>●</span>
         <span
@@ -346,7 +531,7 @@ export function TopBar({
         >
           MATCHPOINT
         </span>
-      </div>
+      </Link>
       {/* Search + admin context: solo desktop. */}
       <div className="hidden md:flex items-center" style={{ gap: 12, flex: 1, maxWidth: 640 }}>
         <TopBarSearch role={role} />
@@ -395,11 +580,15 @@ export function TopBar({
             cursor: "pointer",
             fontFamily: "inherit",
           }}
-          onClick={handleCta}
-          aria-label={cta.l}
+          onClick={handleMobilePrimary}
+          aria-label={showUserQuickMenu ? "Acciones rápidas" : cta.l}
+          aria-expanded={showUserQuickMenu ? quickActionOpen : undefined}
         >
           <Icon name={cta.i} size={15} />
         </button>
+        {showUserQuickMenu && (
+          <UserQuickActionSheet open={quickActionOpen} onClose={() => setQuickActionOpen(false)} />
+        )}
         <div ref={ref} style={{ position: "relative" }}>
           <button
             className="mp-bell-btn"

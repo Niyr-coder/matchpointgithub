@@ -424,9 +424,9 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         toast({ icon: "alert-triangle", title: "No se pudo crear", sub: res.error.message });
         return;
       }
-      toast({ icon: "party-popper", title: "Quedada creada" });
+      toast({ icon: "party-popper", title: "Quedada creada", sub: "Configura inscripciones y pagos desde aquí." });
       onClose();
-      router.refresh();
+      router.push(`/dashboard/user/quedada/${res.data.id}`);
     });
   };
 

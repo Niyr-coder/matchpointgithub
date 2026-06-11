@@ -1,6 +1,6 @@
 // Server: pantalla "Busco partido". Gate por feature flag match_seeks_enabled.
 // Si está apagado, render honesto "Pronto". Si está prendido, fetchea el feed
-// de la ciudad + mis avisos y delega al client view.
+// global (todas las ciudades, cercanos primero) + mis avisos y delega al client view.
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";

@@ -14,7 +14,7 @@ import { ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import {
   decideDashboardRoleAccess,
   isDashboardRoleKey,
-  ROLE_LOGIN_PRIORITY,
+  resolveDashboardHomeRole,
 } from "@/lib/auth/role-route-guard";
 import type { RoleKey } from "@/lib/roles";
 const ACTIVE_COOKIE_OPTS = {
@@ -86,15 +86,17 @@ export async function proxy(request: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
-  if (isAuthRoute && user) {
+  if ((isAuthRoute || pathname === "/") && user) {
     const { data: assignments } = await supabase
       .from("role_assignments")
       .select("role")
       .eq("user_id", user.id)
       .is("revoked_at", null);
     const granted = new Set((assignments ?? []).map((r) => r.role as RoleKey));
-    const pick =
-      ROLE_LOGIN_PRIORITY.find((r) => granted.has(r)) ?? ("user" as RoleKey);
+    const pick = resolveDashboardHomeRole(
+      request.cookies.get(ACTIVE_ROLE_COOKIE)?.value,
+      granted,
+    );
     const url = request.nextUrl.clone();
     url.pathname = `/dashboard/${pick}`;
     return NextResponse.redirect(url);

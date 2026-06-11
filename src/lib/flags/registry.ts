@@ -217,10 +217,16 @@ export const KNOWN_FLAGS: KnownFlag[] = [
   {
     key: "shop_enabled",
     label: "Tienda / Pro shop",
-    description: "Habilita la tienda en dashboard jugador y flujos de compra del pro shop.",
-    surfaces: ["pending: ShopScreen, EmployeeProShopScreen"],
+    description:
+      "Habilita Shop (jugador) y POS pro shop (empleado). Apagado = oculto del sidebar, carrito desmontado y mutaciones bloqueadas.",
+    surfaces: [
+      "ShopScreen (user)",
+      "EmployeeProShopScreen (employee)",
+      "CarritoModal",
+      "src/server/actions/proshop.ts",
+    ],
     impact: "med",
-    wired: false,
+    wired: true,
   },
   {
     key: "payments_capture_enabled",

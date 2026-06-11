@@ -98,7 +98,7 @@ const SOCIAL: { key: string; href: string; label: string; render: () => ReactNod
 
 export function Footer() {
   return (
-    <footer className="pt-10 md:pt-15 pb-10 mt-20" style={{ background: "#0a0a0a", color: "#fff" }}>
+    <footer className="pt-10 md:pt-15 pb-10" style={{ background: "#0a0a0a", color: "#fff" }}>
       <div className="max-w-[1280px] mx-auto px-4 md:px-8">
         <div className="grid grid-cols-2 md:grid-cols-[2.4fr_1.1fr_1.1fr_1.1fr_0.9fr] gap-8 md:gap-10 mb-10">
           <div className="col-span-2 md:col-span-1">

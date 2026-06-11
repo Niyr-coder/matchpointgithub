@@ -27,6 +27,7 @@ import {
   type Sale,
 } from "@/lib/schemas/proshop";
 import { UuidSchema } from "@/lib/schemas/common";
+import { requireShopEnabled } from "@/server/flags/shop-flag";
 
 function mapProduct(row: Record<string, unknown>): Product {
   return ProductSchema.parse({
@@ -129,6 +130,7 @@ export async function getProduct(input: unknown): Promise<ActionResult<Product>>
 // ── createProshopProduct (staff/employee) ──────────────────────────────
 export async function createProshopProduct(input: unknown): Promise<ActionResult<Product>> {
   return runAction(ProductCreateSchema, input, async (data) => {
+    await requireShopEnabled();
     await requireClubStaff(data.clubId);
     const supabase = await getServerClient();
 
@@ -162,6 +164,7 @@ export async function createProshopProduct(input: unknown): Promise<ActionResult
 // ── updateProshopProduct (staff/employee) ──────────────────────────────
 export async function updateProshopProduct(input: unknown): Promise<ActionResult<Product>> {
   return runAction(ProductUpdateSchema, input, async ({ productId, patch }) => {
+    await requireShopEnabled();
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("products")
@@ -204,6 +207,7 @@ export async function updateProshopProduct(input: unknown): Promise<ActionResult
 // RPC `fn_create_sale` con reason='sale' y no pasan por aquí.
 export async function adjustProshopStock(input: unknown): Promise<ActionResult<Product>> {
   return runAction(ProductStockAdjustSchema, input, async ({ productId, delta, reason }) => {
+    await requireShopEnabled();
     const supabase = await getServerClient();
     const { data: existing } = await supabase
       .from("products")
@@ -250,6 +254,7 @@ export async function adjustProshopStock(input: unknown): Promise<ActionResult<P
 // products. Evita race conditions y deja todo consistente o nada.
 export async function createSale(input: unknown): Promise<ActionResult<Sale>> {
   return runAction(SaleCreateSchema, input, async (data) => {
+    await requireShopEnabled();
     const userId = await requireClubStaff(data.clubId);
     await assertRateLimit({ key: `proshop:sale:${userId}`, ...RATE_LIMITS.mutationsAuthn });
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;

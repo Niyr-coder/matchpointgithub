@@ -2,7 +2,8 @@
 
 // Busco partido — lobby funcional de avisos abiertos. Mantiene el lenguaje visual
 // del mock (scoreboard, slots, cards), pero usa match_seeks reales.
-import { useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -12,7 +13,9 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { PlayerPicker, type Player } from "../widgets/PlayerPicker";
 import { acceptApplicant, applyToMatchSeek, cancelMatchSeek, createMatchSeek, respondMatchSeekPartner, updateMatchSeek, withdrawApplication } from "@/server/actions/match-seeks";
 import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
-import type { MatchSeek, MatchSeekApplication } from "@/lib/schemas/match-seeks";
+import { useEnabledSports } from "@/components/SportsProvider";
+import { SPORT_META, sportLabel } from "@/lib/sports";
+import { fmtShortDateEc, fmtTimeEc } from "@/lib/api/format";
 import {
   SKILL_LEVEL_BANDS,
   SKILL_LEVEL_MAX,
@@ -86,7 +89,7 @@ type Props = {
 };
 
 const MAIN_TABS = [
-  { k: "feed" as const, l: "Cerca de ti", lShort: "Cerca", i: "radar" },
+  { k: "feed" as const, l: "Todos los avisos", lShort: "Todos", i: "globe" },
   { k: "mine" as const, l: "Mis avisos", lShort: "Avisos", i: "clipboard-list" },
   { k: "apps" as const, l: "Mis postulaciones", lShort: "Postulé", i: "send" },
 ];
@@ -139,6 +142,11 @@ function BuscarMatchScreen({
   const router = useRouter();
   const toast = useToast();
   const { confirm, ask } = usePromptModal();
+  const { sports: enabledSports, single: singleSport } = useEnabledSports();
+  const sportFilterOptions = useMemo(
+    () => [{ k: "all", l: "Todos" }, ...enabledSports.map((s) => ({ k: s, l: SPORT_META[s].label }))],
+    [enabledSports],
+  );
   const [scope, setScope] = useState<Scope>("para-ti");
   const [tab, setTab] = useState<Tab>("feed");
   const [view, setView] = useState<View>(normalizeFeedView(tweaks.view));
@@ -394,7 +402,7 @@ function BuscarMatchScreen({
     }
     return (
       <>
-        {featured && (
+        {featured && view !== "map" && (
           <FeaturedMatch
             m={featured}
             isMine={featured.seek.createdBy === meUserId}
@@ -447,9 +455,20 @@ function BuscarMatchScreen({
             </span>
           </p>
         </div>
-        <div className="w-full md:w-auto" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
+        <div className="flex w-full min-w-0 items-center gap-2 md:w-auto">
+          <button
+            type="button"
+            className="btn btn-primary shrink-0"
+            onClick={() => setPublishOpen(true)}
+            disabled={isUnavailable}
+            style={{ padding: "8px 12px", fontSize: 11, gap: 6 }}
+          >
+            <Lucide name="plus" style={{ width: 13, height: 13 }} />
+            <span className="md:hidden">Publicar</span>
+            <span className="hidden md:inline">Publicar aviso</span>
+          </button>
           {tab === "feed" && (
-            <>
+            <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-2">
               <SegBM options={[...FEED_VIEW_OPTIONS]} value={view} onChange={(v) => setView(v as View)} />
               <button
                 type="button"
@@ -468,16 +487,8 @@ function BuscarMatchScreen({
               <div className="hidden md:block">
                 <SortMenu value={sortBy} onChange={(v) => setSortBy(v as SortBy)} />
               </div>
-            </>
+            </div>
           )}
-          <button
-            className="btn btn-primary flex-1 md:flex-none"
-            onClick={() => setPublishOpen(true)}
-            disabled={isUnavailable}
-            style={{ maxWidth: "100%", justifyContent: "center" }}
-          >
-            <Lucide name="plus" style={{ width: 13, height: 13 }} />Publicar aviso
-          </button>
         </div>
       </div>
 
@@ -533,7 +544,9 @@ function BuscarMatchScreen({
             onClick={() => setScope(c.k)}
           />
         ))}
-        <FineFilter label="Deporte" value={sport} onChange={(v) => setSport(v as "all" | MatchSeek["sport"])} options={[{ k: "all", l: "Todos" }, { k: "pickleball", l: "Pickleball" }, { k: "padel", l: "Pádel" }, { k: "tennis", l: "Tenis" }]} />
+        {!singleSport && (
+          <FineFilter label="Deporte" value={sport} onChange={(v) => setSport(v as "all" | MatchSeek["sport"])} options={sportFilterOptions} />
+        )}
         <FineFilter label="Modalidad" value={mode} onChange={setMode} options={[{ k: "all", l: "Todas" }, { k: "singles", l: "Singles" }, { k: "doubles", l: "Dobles" }]} />
         <FineFilter label="Día" value={day} onChange={setDay} options={[{ k: "cualquier", l: "Cualquier día" }, { k: "hoy", l: "Hoy" }, { k: "mañana", l: "Mañana" }]} />
       </div>
@@ -628,6 +641,8 @@ function BuscarMatchScreen({
           scopeLabel={scopeLabel}
           sport={sport}
           setSport={setSport}
+          sportFilterOptions={sportFilterOptions}
+          showSportFilter={!singleSport}
           mode={mode}
           setMode={setMode}
           day={day}
@@ -657,54 +672,98 @@ function FeaturedMatch({
 }) {
   const empty = m.slotsTotal - m.players.length;
   const alreadyApplied = !!m.seek.myApplicationStatus;
+  const ctaLabel = isMine
+    ? "Gestionar aviso"
+    : alreadyApplied
+      ? applicationStatusLabel(m.seek.myApplicationStatus)
+      : "Postularme";
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", background: "#0a0a0a", color: "#fff", position: "relative", border: 0 }}>
+    <div className="card mp-featured-match" style={{ padding: 0, overflow: "hidden", background: "#0a0a0a", color: "#fff", position: "relative", border: 0 }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 30%, rgba(16,185,129,0.28), transparent 55%), radial-gradient(ellipse at 5% 90%, rgba(251,191,36,0.10), transparent 55%)" }} />
-      <div style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(8%, -18%)", textTransform: "uppercase", pointerEvents: "none" }}>AVISO</div>
+      <div
+        className="mp-featured-match-watermark hidden md:block"
+        style={{ position: "absolute", top: 0, right: 0, fontFamily: "Plus Jakarta Sans", fontWeight: 900, fontSize: 220, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.06em", lineHeight: 0.8, transform: "rotate(-6deg) translate(8%, -18%)", textTransform: "uppercase", pointerEvents: "none" }}
+      >
+        AVISO
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_auto_1fr] gap-4 md:gap-7 items-center relative p-4 md:px-7 md:py-6">
-        <div>
-          <div className="chip-green" style={{ marginBottom: 10 }}>
+      <div className="relative grid grid-cols-1 gap-3 p-3.5 md:grid-cols-[1.5fr_auto_1fr] md:gap-7 md:items-center md:p-6 md:px-7">
+        <div className="min-w-0">
+          <div className="chip-green" style={{ marginBottom: 8, fontSize: 9.5 }}>
             <span className="chip-dot" />Aviso destacado para ti
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-            <div className="font-heading" style={{ fontWeight: 900, fontSize: 30, textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1 }}>
-              {m.sport} · {m.mode}<span style={{ color: "var(--primary)" }}>.</span>
-            </div>
-            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 18, color: "#fbbf24", letterSpacing: "-0.02em" }}>{m.date} · {m.time}</div>
+          <div className="font-heading" style={{ fontWeight: 900, fontSize: "clamp(1.15rem, 4.8vw, 1.875rem)", textTransform: "uppercase", letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+            {m.sport} · {m.mode}<span style={{ color: "var(--primary)" }}>.</span>
           </div>
-          <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 12, color: "rgba(255,255,255,0.75)", flexWrap: "wrap" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="map-pin" style={{ width: 12, height: 12 }} />{m.club} · {m.dist}</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="zap" style={{ width: 12, height: 12, color: "#fbbf24" }} />{levelText(m.seek)}</span>
-            {m.ranked && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--primary)" }}><Lucide name="trophy" style={{ width: 12, height: 12 }} />Cuenta para MPR</span>}
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Lucide name="eye" style={{ width: 12, height: 12 }} />{m.viewing} mirando</span>
+          <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: "clamp(0.82rem, 3.2vw, 1.125rem)", color: "#fbbf24", letterSpacing: "-0.02em", marginTop: 6 }}>
+            {m.date} · {m.time}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] md:mt-3.5 md:text-xs" style={{ color: "rgba(255,255,255,0.75)" }}>
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <Lucide name="map-pin" style={{ width: 11, height: 11, flexShrink: 0 }} />
+              <span className="truncate">{m.club} · {m.dist}</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Lucide name="zap" style={{ width: 11, height: 11, color: "#fbbf24" }} />
+              {levelText(m.seek)}
+            </span>
+            {m.ranked && (
+              <span className="inline-flex items-center gap-1.5" style={{ color: "var(--primary)" }}>
+                <Lucide name="trophy" style={{ width: 11, height: 11 }} />
+                Cuenta para MPR
+              </span>
+            )}
+            <span className="hidden items-center gap-1.5 sm:inline-flex">
+              <Lucide name="eye" style={{ width: 11, height: 11 }} />
+              {m.viewing} mirando
+            </span>
           </div>
         </div>
 
-        <SlotsRow players={m.players} total={m.slotsTotal} large dark />
-
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
-          <div style={{ textAlign: "right" }}>
-            <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)" }}>Empieza en</div>
-            <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: "#fff", lineHeight: 1, marginTop: 4 }}>{m.startsIn}</div>
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-3 md:contents md:border-0 md:pt-0">
+          <div className="w-full min-w-0 md:hidden">
+            <div className="mp-featured-slots-scroll">
+              <SlotsRow players={m.players} total={m.slotsTotal} dark compact />
+            </div>
           </div>
-          <button
-            className={isMine ? "btn" : "btn btn-primary"}
-            style={{
-              padding: "12px 22px",
-              fontSize: 12.5,
-              background: isMine ? "rgba(255,255,255,0.1)" : undefined,
-              color: "#fff",
-              border: isMine ? "1px solid rgba(255,255,255,0.2)" : undefined,
-            }}
-            onClick={() => (isMine ? onManage() : onApply(m.seek))}
-            disabled={disabled || (!isMine && alreadyApplied)}
-          >
-            <Lucide name={isMine ? "clipboard-list" : "arrow-right"} style={{ width: 14, height: 14 }} />
-            {isMine ? "Gestionar aviso" : alreadyApplied ? applicationStatusLabel(m.seek.myApplicationStatus) : "Postularme"}
-          </button>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: empty === 1 ? "#fbbf24" : "rgba(255,255,255,0.5)" }}>
-            {empty === 1 ? "Último cupo" : empty + " cupos libres"}
+          <div className="hidden md:block">
+            <SlotsRow players={m.players} total={m.slotsTotal} large dark />
+          </div>
+
+          <div className="flex w-full flex-col gap-2 md:w-auto md:items-end md:gap-3">
+            <div className="hidden text-right md:block">
+              <div className="label-mp" style={{ color: "rgba(255,255,255,0.5)" }}>Empieza en</div>
+              <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: "#fff", lineHeight: 1, marginTop: 4 }}>
+                {m.startsIn}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 md:hidden">
+              <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>
+                Empieza {m.startsIn.toLowerCase()}
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: empty === 1 ? "#fbbf24" : "rgba(255,255,255,0.5)" }}>
+                {empty === 1 ? "Último cupo" : `${empty} cupos libres`}
+              </div>
+            </div>
+            <button
+              className={`${isMine ? "btn" : "btn btn-primary"} w-full md:w-auto`}
+              style={{
+                padding: "10px 16px",
+                fontSize: 11.5,
+                background: isMine ? "rgba(255,255,255,0.1)" : undefined,
+                color: "#fff",
+                border: isMine ? "1px solid rgba(255,255,255,0.2)" : undefined,
+                justifyContent: "center",
+              }}
+              onClick={() => (isMine ? onManage() : onApply(m.seek))}
+              disabled={disabled || (!isMine && alreadyApplied)}
+            >
+              <Lucide name={isMine ? "clipboard-list" : "arrow-right"} style={{ width: 13, height: 13 }} />
+              {ctaLabel}
+            </button>
+            <div className="hidden md:block" style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: empty === 1 ? "#fbbf24" : "rgba(255,255,255,0.5)" }}>
+              {empty === 1 ? "Último cupo" : `${empty} cupos libres`}
+            </div>
           </div>
         </div>
       </div>
@@ -776,43 +835,117 @@ function MatchCard({
   );
 }
 
-function SlotsRow({ players, total, large, dark }: { players: MatchPlayer[]; total: number; large?: boolean; dark?: boolean }) {
-  const size = large ? 52 : 38;
-  const fs = large ? 14 : 11;
+function SlotsRow({
+  players,
+  total,
+  large,
+  dark,
+  compact,
+}: {
+  players: MatchPlayer[];
+  total: number;
+  large?: boolean;
+  dark?: boolean;
+  compact?: boolean;
+}) {
+  const size = large ? 52 : compact ? 34 : 38;
+  const fs = large ? 14 : compact ? 10 : 11;
+  const gap = large ? 10 : compact ? 6 : 8;
   const empty = total - players.length;
   return (
-    <div style={{ display: "flex", gap: large ? 10 : 8, alignItems: "center" }}>
+    <div className="mp-slots-row" style={{ display: "flex", gap, alignItems: "center" }}>
       {players.map((p, i) => (
-        <div key={i} style={{ position: "relative" }}>
-          <div style={{ width: size, height: size, borderRadius: "50%", background: p.b, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", border: dark ? "2.5px solid #1f1f1f" : "2px solid #fff", boxShadow: large ? "0 4px 10px rgba(0,0,0,0.25)" : "0 1px 4px rgba(0,0,0,0.08)" }}>
+        <div key={i} style={{ position: "relative", flexShrink: 0 }}>
+          <div
+            title={p.title}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: "50%",
+              background: p.b,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              border: dark ? "2.5px solid #1f1f1f" : "2px solid #fff",
+              boxShadow: large ? "0 4px 10px rgba(0,0,0,0.25)" : "0 1px 4px rgba(0,0,0,0.08)",
+            }}
+          >
             <span className="font-heading" style={{ fontSize: fs, fontWeight: 900, letterSpacing: "-0.01em" }}>{p.a}</span>
           </div>
-          <span style={{ position: "absolute", bottom: -2, right: -2, width: large ? 16 : 12, height: large ? 16 : 12, borderRadius: "50%", background: "var(--primary)", border: dark ? "2px solid #0a0a0a" : "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Lucide name="check" style={{ width: large ? 8 : 6, height: large ? 8 : 6, color: "#fff" }} />
+          <span
+            style={{
+              position: "absolute",
+              bottom: -2,
+              right: -2,
+              width: large ? 16 : compact ? 11 : 12,
+              height: large ? 16 : compact ? 11 : 12,
+              borderRadius: "50%",
+              background: "var(--primary)",
+              border: dark ? "2px solid #0a0a0a" : "2px solid #fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Lucide name="check" style={{ width: large ? 8 : compact ? 5 : 6, height: large ? 8 : compact ? 5 : 6, color: "#fff" }} />
           </span>
         </div>
       ))}
       {Array.from({ length: empty }).map((_, i) => (
-        <div key={"e" + i} style={{
-          width: size, height: size, borderRadius: "50%",
-          border: "2px dashed " + (dark ? "rgba(16,185,129,0.6)" : "var(--primary)"),
-          background: dark ? "rgba(16,185,129,0.06)" : "rgba(16,185,129,0.04)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "var(--primary)", position: "relative",
-          animation: i === 0 ? "mp-pulse 2.4s infinite" : "none",
-        }}>
-          <Lucide name="plus" style={{ width: large ? 22 : 16, height: large ? 22 : 16 }} />
-          {i === 0 && !large && (
+        <div
+          key={"e" + i}
+          style={{
+            width: size,
+            height: size,
+            borderRadius: "50%",
+            border: "2px dashed " + (dark ? "rgba(16,185,129,0.6)" : "var(--primary)"),
+            background: dark ? "rgba(16,185,129,0.06)" : "rgba(16,185,129,0.04)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--primary)",
+            position: "relative",
+            flexShrink: 0,
+            animation: i === 0 ? "mp-pulse 2.4s infinite" : "none",
+          }}
+        >
+          <Lucide name="plus" style={{ width: large ? 22 : compact ? 14 : 16, height: large ? 22 : compact ? 14 : 16 }} />
+          {i === 0 && !large && !compact && (
             <span style={{ position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%)", padding: "1px 5px", borderRadius: 4, background: "var(--primary)", color: "#fff", fontSize: 7.5, fontWeight: 900, letterSpacing: "0.1em", whiteSpace: "nowrap" }}>TÚ</span>
+          )}
+          {i === 0 && compact && (
+            <span
+              style={{
+                position: "absolute",
+                bottom: 1,
+                left: "50%",
+                transform: "translateX(-50%)",
+                fontSize: 7,
+                fontWeight: 900,
+                letterSpacing: "0.08em",
+                color: "var(--primary)",
+                lineHeight: 1,
+              }}
+            >
+              TÚ
+            </span>
           )}
         </div>
       ))}
-      <div style={{ marginLeft: large ? 6 : 4, paddingLeft: large ? 12 : 8, borderLeft: "1px dashed " + (dark ? "rgba(255,255,255,0.18)" : "var(--border)") }}>
-        <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: large ? 22 : 15, letterSpacing: "-0.02em", color: dark ? "#fff" : "#0a0a0a", lineHeight: 1 }}>
+      <div
+        style={{
+          marginLeft: compact ? 2 : large ? 6 : 4,
+          paddingLeft: compact ? 8 : large ? 12 : 8,
+          borderLeft: "1px dashed " + (dark ? "rgba(255,255,255,0.18)" : "var(--border)"),
+          flexShrink: 0,
+        }}
+      >
+        <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: large ? 22 : compact ? 14 : 15, letterSpacing: "-0.02em", color: dark ? "#fff" : "#0a0a0a", lineHeight: 1 }}>
           {players.length}<span style={{ color: dark ? "rgba(255,255,255,0.3)" : "#a3a3a3" }}>/{total}</span>
         </div>
-        <div style={{ fontSize: large ? 9.5 : 8.5, color: dark ? "rgba(255,255,255,0.5)" : "var(--muted-fg)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", marginTop: 2 }}>
-          {empty === 1 ? "1 cupo" : empty + " cupos"}
+        <div style={{ fontSize: large ? 9.5 : compact ? 8 : 8.5, color: dark ? "rgba(255,255,255,0.5)" : "var(--muted-fg)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 2, whiteSpace: "nowrap" }}>
+          {empty === 1 ? "1 cupo" : `${empty} cupos`}
         </div>
       </div>
     </div>
@@ -971,6 +1104,8 @@ function FeedFilterSheet({
   scopeLabel,
   sport,
   setSport,
+  sportFilterOptions,
+  showSportFilter,
   mode,
   setMode,
   day,
@@ -986,6 +1121,8 @@ function FeedFilterSheet({
   scopeLabel: (chip: (typeof SCOPE_CHIPS)[number]) => string;
   sport: "all" | MatchSeek["sport"];
   setSport: (v: "all" | MatchSeek["sport"]) => void;
+  sportFilterOptions: { k: string; l: string }[];
+  showSportFilter: boolean;
   mode: string;
   setMode: (v: string) => void;
   day: string;
@@ -1074,18 +1211,15 @@ function FeedFilterSheet({
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div className="label-mp">Detalle</div>
-            <FineFilter
-              label="Deporte"
-              value={sport}
-              onChange={(v) => setSport(v as "all" | MatchSeek["sport"])}
-              options={[
-                { k: "all", l: "Todos" },
-                { k: "pickleball", l: "Pickleball" },
-                { k: "padel", l: "Pádel" },
-                { k: "tennis", l: "Tenis" },
-              ]}
-              fullWidth
-            />
+            {showSportFilter && (
+              <FineFilter
+                label="Deporte"
+                value={sport}
+                onChange={(v) => setSport(v as "all" | MatchSeek["sport"])}
+                options={sportFilterOptions}
+                fullWidth
+              />
+            )}
             <FineFilter
               label="Modalidad"
               value={mode}
@@ -1169,7 +1303,7 @@ function SortMenu({
         <span style={{ fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-fg)" }}>Ordenar</span>
       </div>
       <select value={value} onChange={(e) => onChange(e.target.value)} style={{ border: 0, background: "transparent", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, cursor: "pointer", outline: "none", marginLeft: fullWidth ? "auto" : undefined }}>
-        <option value="relevancia">Relevancia</option>
+        <option value="relevancia">Cercanos primero</option>
         <option value="hora">Más pronto</option>
         <option value="ciudad">Ciudad</option>
       </select>
@@ -1430,6 +1564,7 @@ function PublishSeekModal({
   onDone: () => void;
 }) {
   const toast = useToast();
+  const { sports: enabledSports, single: singleSport } = useEnabledSports();
   const [pending, startTransition] = useTransition();
   const [sport, setSport] = useState<MatchSeek["sport"]>("pickleball");
   const [mode, setMode] = useState<MatchSeek["mode"]>("singles");
@@ -1472,15 +1607,26 @@ function PublishSeekModal({
   };
 
   return (
-    <ModalShell title="Publicar aviso" onClose={onClose}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Deporte">
-          <select value={sport} onChange={(e) => setSport(e.target.value as MatchSeek["sport"])} style={inputStyle}>
-            <option value="pickleball">Pickleball</option>
-            <option value="padel">Pádel</option>
-            <option value="tennis">Tenis</option>
-          </select>
-        </Field>
+    <ModalShell
+      title="Publicar aviso"
+      onClose={onClose}
+      footer={
+        <SeekModalActions>
+          <button type="button" className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Publicar aviso</button>
+        </SeekModalActions>
+      }
+    >
+      <div className="mp-seek-form-grid">
+        {!singleSport && (
+          <Field label="Deporte">
+            <select value={sport} onChange={(e) => setSport(e.target.value as MatchSeek["sport"])} style={inputStyle}>
+              {enabledSports.map((s) => (
+                <option key={s} value={s}>{SPORT_META[s].label}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Modalidad">
           <ModeSegmented value={mode} onChange={(next) => { setMode(next); setPartner([]); }} />
         </Field>
@@ -1498,10 +1644,6 @@ function PublishSeekModal({
       <Field label="Mensaje">
         <textarea value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Busco partido competitivo, puedo moverme por la zona." style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
       </Field>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
-        <button className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Publicar aviso</button>
-      </div>
     </ModalShell>
   );
 }
@@ -1535,7 +1677,16 @@ function ApplyModal({ seek, meUserId, onClose, onDone }: { seek: MatchSeek; meUs
   };
 
   return (
-    <ModalShell title="Postularme" onClose={onClose}>
+    <ModalShell
+      title="Postularme"
+      onClose={onClose}
+      footer={
+        <SeekModalActions>
+          <button type="button" className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Enviar postulación</button>
+        </SeekModalActions>
+      }
+    >
       <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
         <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Aviso abierto</div>
         <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
@@ -1553,10 +1704,6 @@ function ApplyModal({ seek, meUserId, onClose, onDone }: { seek: MatchSeek; meUs
       <Field label="Mensaje para el autor">
         <textarea value={message} maxLength={280} onChange={(e) => setMessage(e.target.value)} placeholder="Cuéntale tu disponibilidad o contexto." style={{ ...inputStyle, minHeight: 88, resize: "vertical" }} />
       </Field>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
-        <button className="btn btn-primary" onClick={submit} disabled={pending || !canSubmit}>Enviar postulación</button>
-      </div>
     </ModalShell>
   );
 }
@@ -1575,7 +1722,23 @@ function PartnerInviteModal({
   onReject: () => void;
 }) {
   return (
-    <ModalShell title="Invitación de dupla" onClose={onClose}>
+    <ModalShell
+      title="Invitación de dupla"
+      onClose={onClose}
+      footer={
+        <SeekModalActions>
+          <button type="button" className="btn btn-outline" onClick={onClose} disabled={busy}>
+            Después
+          </button>
+          <button type="button" className="btn btn-outline" onClick={onReject} disabled={busy}>
+            Rechazar
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onAccept} disabled={busy}>
+            Aceptar dupla
+          </button>
+        </SeekModalActions>
+      }
+    >
       <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
         <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Te invitaron como partner</div>
         <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
@@ -1593,17 +1756,6 @@ function PartnerInviteModal({
       <p style={{ margin: 0, fontSize: 13, color: "var(--muted-fg)", lineHeight: 1.5 }}>
         Si aceptas, el aviso se publicará en el lobby y podrán recibir postulaciones de rivales.
       </p>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-outline" onClick={onClose} disabled={busy}>
-          Después
-        </button>
-        <button type="button" className="btn btn-outline" onClick={onReject} disabled={busy}>
-          Rechazar
-        </button>
-        <button type="button" className="btn btn-primary" onClick={onAccept} disabled={busy}>
-          Aceptar dupla
-        </button>
-      </div>
     </ModalShell>
   );
 }
@@ -1670,7 +1822,16 @@ function EditSeekModal({
   };
 
   return (
-    <ModalShell title="Editar aviso" onClose={onClose}>
+    <ModalShell
+      title="Editar aviso"
+      onClose={onClose}
+      footer={
+        <SeekModalActions>
+          <button type="button" className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={pending}>Guardar cambios</button>
+        </SeekModalActions>
+      }
+    >
       <div style={{ background: "#0a0a0a", color: "#fff", borderRadius: 16, padding: 18 }}>
         <div className="label-mp" style={{ color: "rgba(255,255,255,0.55)" }}>Gestionar aviso abierto</div>
         <h3 className="font-heading" style={{ margin: "6px 0 0", fontWeight: 900, fontSize: 24, textTransform: "uppercase" }}>
@@ -1688,7 +1849,7 @@ function EditSeekModal({
       {needsPartner && (
         <PlayerPicker label="Tu partner" max={1} selected={partner} onChange={setPartner} excludeIds={meUserId ? [meUserId] : []} />
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-seek-form-grid">
         <Field label="Fecha">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
         </Field>
@@ -1700,10 +1861,6 @@ function EditSeekModal({
       <Field label="Mensaje">
         <textarea value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Busco partido competitivo, puedo moverme por la zona." style={{ ...inputStyle, minHeight: 82, resize: "vertical" }} />
       </Field>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-outline" onClick={onClose} disabled={pending}>Cancelar</button>
-        <button className="btn btn-primary" onClick={submit} disabled={pending}>Guardar cambios</button>
-      </div>
     </ModalShell>
   );
 }
@@ -1771,7 +1928,7 @@ function LevelRangeSelector({
   const applyPreset = (lo: number, hi: number) => onChange(lo, hi);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="mp-level-range-selector" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <style>{`
         .mp-level-range-input {
           position: absolute;
@@ -1817,20 +1974,20 @@ function LevelRangeSelector({
           cursor: grab;
         }
       `}</style>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      <div className="mp-level-range-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div>
           <div className="label-mp">Rango de nivel MPR</div>
-          <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>
+          <div className="mp-level-range-summary" style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 3 }}>
             {summary || "Elige el rango competitivo recomendado para este aviso."}
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div className="font-heading tabular" aria-live="polite" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", whiteSpace: "nowrap" }}>
+        <div className="mp-level-range-value-wrap" style={{ textAlign: "right" }}>
+          <div className="font-heading tabular mp-level-range-value" aria-live="polite" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", whiteSpace: "nowrap" }}>
             {formatSkillLevel(min)} — {formatSkillLevel(max)}
           </div>
         </div>
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div className="mp-level-range-presets" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {SKILL_LEVEL_PRESETS.map((preset) => {
           const active = min === preset.min && max === preset.max;
           return (
@@ -1894,6 +2051,7 @@ function LevelRangeSelector({
           })}
         </div>
         <div
+          className="mp-level-range-band-labels"
           style={{
             display: "flex",
             marginTop: 5,
@@ -1977,23 +2135,67 @@ function LevelRangeSelector({
   );
 }
 
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,10,10,0.65)", backdropFilter: "blur(6px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="card" style={{ width: 620, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", padding: 0 }}>
-        <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h3 className="font-heading" style={{ margin: 0, fontSize: 18, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.02em" }}>
+function SeekModalActions({ children }: { children: ReactNode }) {
+  return <div className="mp-seek-modal-actions">{children}</div>;
+}
+
+function ModalShell({
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="mp-seek-modal-overlay mp-modal-overlay"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        ref={panelRef}
+        className="card mp-seek-modal-panel mp-modal-pop"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+      >
+        <div className="mp-seek-modal-header">
+          <h3 className="font-heading mp-seek-modal-title">
             {title}<span className="dot">.</span>
           </h3>
-          <button onClick={onClose} aria-label="Cerrar" style={{ width: 30, height: 30, borderRadius: "50%", border: 0, background: "var(--muted)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="mp-seek-modal-close">
             <Icon name="x" size={13} />
           </button>
         </div>
-        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
-          {children}
-        </div>
+        <div className="mp-seek-modal-body">{children}</div>
+        {footer ? <div className="mp-seek-modal-footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2143,12 +2345,6 @@ function toMatch(seek: MatchSeek, myCity?: string | null): Match {
   };
 }
 
-function sportLabel(sport: MatchSeek["sport"]) {
-  if (sport === "tennis") return "Tenis";
-  if (sport === "padel") return "Pádel";
-  return "Pickleball";
-}
-
 function modeLabel(mode: MatchSeek["mode"]) {
   return mode === "doubles" ? "Dobles" : "Singles";
 }
@@ -2181,17 +2377,11 @@ function levelNumber(value: number | null | undefined): string {
 }
 
 function formatDateLabel(iso: string) {
-  const d = new Date(iso);
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  if (sameDay(d, today)) return "Hoy";
-  if (sameDay(d, tomorrow)) return "Mañana";
-  return d.toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" }).replace(".", "");
+  return fmtShortDateEc(iso);
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
+  return fmtTimeEc(iso);
 }
 
 function startsInLabel(date: Date) {

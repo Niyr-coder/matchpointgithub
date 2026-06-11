@@ -8,6 +8,8 @@ const LABELS: Record<string, string> = {
   "club-membresias": "Membresías",
   "mis-sorteos": "Mis sorteos",
   "club-sorteos": "Sorteos del club",
+  shop: "Shop",
+  "e-shop": "Pro shop",
 };
 
 export function FeatureOffScreen({ section }: { section: string }) {

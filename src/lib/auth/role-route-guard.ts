@@ -36,6 +36,22 @@ export function isDashboardRoleKey(r: string): r is RoleKey {
   return (DASHBOARD_ROLE_KEYS as readonly string[]).includes(r);
 }
 
+/** Rol de inicio tras login o visita a `/` / `/dashboard` sin segmento de rol. */
+export function pickLoginRole(granted: Set<RoleKey>): RoleKey {
+  return ROLE_LOGIN_PRIORITY.find((r) => granted.has(r)) ?? "user";
+}
+
+/** Prefiere la cookie activa si sigue siendo válida; si no, mismo criterio que sign-in. */
+export function resolveDashboardHomeRole(
+  cookieRole: string | null | undefined,
+  granted: Set<RoleKey>,
+): RoleKey {
+  if (cookieRole && isDashboardRoleKey(cookieRole) && granted.has(cookieRole)) {
+    return cookieRole;
+  }
+  return pickLoginRole(granted);
+}
+
 export type RoleRouteDecision =
   | { action: "allow"; syncCookieTo: RoleKey | null }
   | { action: "redirect"; toRole: RoleKey };

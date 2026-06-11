@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
+import { SHOP_FLAG } from "@/lib/flags/shop";
 import { FeatureOffScreen } from "@/components/dashboard/FeatureOffScreen";
 import { RoleScreenStub } from "@/components/dashboard/RoleScreenStub";
 import { HelpScreen } from "@/components/dashboard/HelpScreen";
@@ -257,7 +258,12 @@ const SECTION_FLAGS: Record<string, string> = {
   "club-marketing": "club_marketing_enabled",
   "mis-sorteos": "club_giveaways_enabled",
   "club-sorteos": "club_giveaways_enabled",
+  shop: "shop_enabled",
+  "e-shop": "shop_enabled",
 };
+
+/** Flags opt-in: apagados salvo `enabled === true` (default en DB: off). */
+const OPT_IN_FLAGS = new Set<string>([SHOP_FLAG]);
 
 export default async function RoleSectionPage({
   params,
@@ -285,8 +291,9 @@ export default async function RoleSectionPage({
   const flagKey = SECTION_FLAGS[section];
   if (flagKey) {
     const fr = await getMyEffectiveFlags();
-    if (fr.ok && fr.data[flagKey] === false) {
-      return <FeatureOffScreen section={section} />;
+    if (fr.ok) {
+      const off = OPT_IN_FLAGS.has(flagKey) ? fr.data[flagKey] !== true : fr.data[flagKey] === false;
+      if (off) return <FeatureOffScreen section={section} />;
     }
   }
 

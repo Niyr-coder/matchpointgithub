@@ -5,6 +5,8 @@ import { ToastProvider } from "@/components/dashboard/ToastProvider";
 import { ResetPasswordToast } from "@/components/dashboard/ResetPasswordToast";
 import { PromptModalProvider } from "@/components/dashboard/widgets/PromptModal";
 import { DashboardModals } from "@/components/dashboard/modals/DashboardModals";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
+import { isShopEnabled } from "@/lib/flags/shop";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getAdminClient } from "@/lib/db/client.admin";
@@ -78,6 +80,8 @@ export default async function DashboardLayout({
     profile.displayName,
     profile.username,
   );
+  const flagsRes = await getMyEffectiveFlags();
+  const shopEnabled = flagsRes.ok ? isShopEnabled(flagsRes.data) : false;
   const state = await readOnboardedAtCached(currentUserId);
   if (state.profileExists && state.onboardedAt == null) {
     redirect("/onboarding");
@@ -92,7 +96,11 @@ export default async function DashboardLayout({
         {/* Bajamos el userId desde server al wrapper de modales para que
             CrearMatchModal / RetarModal puedan armar teamA con el creador
             sin necesidad de un fetch extra al abrir. */}
-        <DashboardModals currentUserId={currentUserId} initialRetarYou={initialRetarYou} />
+        <DashboardModals
+          currentUserId={currentUserId}
+          initialRetarYou={initialRetarYou}
+          shopEnabled={shopEnabled}
+        />
       </PromptModalProvider>
     </ToastProvider>
   );

@@ -51,21 +51,11 @@ export function MpPlusUpsell({
   };
 
   const cta = onPrimaryClick ? (
-    <button
-      type="button"
-      onClick={handlePrimaryClick}
-      className="mp-upgrade-cta"
-      style={ctaStyle}
-    >
+    <button type="button" onClick={handlePrimaryClick} className="mp-upgrade-cta">
       {ctaLabel} →
     </button>
   ) : (
-    <Link
-      href={href}
-      onClick={trackClick}
-      className="mp-upgrade-cta"
-      style={{ ...ctaStyle, textDecoration: "none", display: "inline-flex" }}
-    >
+    <Link href={href} onClick={trackClick} className="mp-upgrade-cta mp-upgrade-cta-link">
       {ctaLabel}
       <Icon name="arrow-right" size={12} />
     </Link>
@@ -89,107 +79,33 @@ export function MpPlusUpsell({
       }}
     >
       <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(ellipse at 92% 18%, rgba(16,185,129,0.24), transparent 44%), radial-gradient(ellipse at 14% 108%, rgba(250,204,21,0.14), transparent 48%)",
-          pointerEvents: "none",
-        }}
+        className="mp-upgrade-banner-glow"
+        aria-hidden
       />
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
+      {onDismiss && (
+        <button
+          type="button"
+          className="mp-upgrade-close mp-upgrade-banner-dismiss"
+          onClick={onDismiss}
+          aria-label="Cerrar"
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
-            <div
-              className="mp-upgrade-crown"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                background: "linear-gradient(135deg, #0a0a0a 0%, #123128 100%)",
-                color: "#facc15",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "1px solid rgba(16,185,129,0.28)",
-                boxShadow: "0 12px 26px rgba(10,10,10,0.18)",
-                flexShrink: 0,
-              }}
-            >
-              <Icon name={icon} size={18} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div
-                className="font-heading"
-                style={{
-                  fontWeight: 900,
-                  fontSize: 16,
-                  letterSpacing: "-0.02em",
-                  lineHeight: 1.1,
-                  textTransform: "uppercase",
-                }}
-              >
-                {title}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255,255,255,0.72)",
-                  marginTop: 4,
-                  lineHeight: 1.45,
-                  maxWidth: 620,
-                }}
-              >
-                {description}
-              </div>
-            </div>
+          ×
+        </button>
+      )}
+      <div className="mp-upgrade-banner-body">
+        <div className="mp-upgrade-banner-main">
+          <div className="mp-upgrade-crown mp-upgrade-banner-icon">
+            <Icon name={icon} size={18} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {cta}
-            {onDismiss && (
-              <button
-                type="button"
-                className="mp-upgrade-close"
-                onClick={onDismiss}
-                aria-label="Cerrar"
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  color: "rgba(255,255,255,0.72)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  borderRadius: 999,
-                  width: 32,
-                  height: 32,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  lineHeight: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "inherit",
-                }}
-              >
-                ×
-              </button>
-            )}
+          <div className="mp-upgrade-banner-copy">
+            <div className="mp-upgrade-banner-title font-heading">{title}</div>
+            <p className="mp-upgrade-banner-desc">{description}</p>
           </div>
         </div>
+        <div className="mp-upgrade-banner-actions">{cta}</div>
 
         {features && features.length > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 8,
-            }}
-          >
+          <div className="mp-upgrade-banner-features">
             {features.map((feature) => (
               <div
                 key={feature.title}
@@ -215,20 +131,3 @@ export function MpPlusUpsell({
     </div>
   );
 }
-
-const ctaStyle: CSSProperties = {
-  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-  color: "#fff",
-  fontSize: 12,
-  fontWeight: 900,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-  padding: "11px 16px",
-  borderRadius: 999,
-  border: 0,
-  cursor: "pointer",
-  fontFamily: "inherit",
-  whiteSpace: "nowrap",
-  alignItems: "center",
-  gap: 6,
-};

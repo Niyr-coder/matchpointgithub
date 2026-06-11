@@ -62,7 +62,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Explorar",
         items: [
           { k: "clubes", label: "Clubes", icon: "building-2" },
-          { k: "shop", label: "Shop", icon: "shopping-bag" },
+          { k: "shop", label: "Shop", icon: "shopping-bag", flag: "shop_enabled" },
         ],
       },
       {
@@ -332,7 +332,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Caja & tienda",
         items: [
           { k: "e-caja", label: "Caja del día", icon: "banknote" },
-          { k: "e-shop", label: "Tienda", icon: "shopping-bag" },
+          { k: "e-shop", label: "Tienda", icon: "shopping-bag", flag: "shop_enabled" },
         ],
       },
       {
