@@ -51,7 +51,7 @@ export function ClubFeedPostForm({ clubId }: { clubId: string }) {
           router.refresh();
         });
       }}
-      style={{ display: "grid", gap: 10 }}
+      className="mp-anuncios-form"
     >
       <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} style={inputStyle}>
         <option value="notice">Aviso</option>
@@ -109,7 +109,7 @@ export function PublishAnnouncementForm({ clubId }: { clubId: string }) {
           router.refresh();
         });
       }}
-      style={{ display: "grid", gap: 10 }}
+      className="mp-anuncios-form"
     >
       <input
         value={title}
@@ -227,31 +227,21 @@ export function GiveawayRow({ giveaway }: { giveaway: ClubGiveawayView }) {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: 12,
-        padding: "12px 14px",
-        borderRadius: 12,
-        border: "1px solid var(--border-soft)",
-        background: "var(--surface-muted, #fafafa)",
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ fontWeight: 900, fontSize: 14 }}>{giveaway.title}</div>
-        <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 2 }}>
+    <div className="mp-anuncios-giveaway-row">
+      <div className="mp-anuncios-giveaway-row-main">
+        <div className="mp-anuncios-giveaway-row-title">{giveaway.title}</div>
+        <div className="mp-anuncios-giveaway-row-meta">
           {giveaway.prizeLabel} · {giveawayEligibilityLabel(giveaway.eligibility)} · {giveaway.entryCount} participantes
         </div>
       </div>
-      <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+      <span className="mp-anuncios-giveaway-row-status">
         {statusLabel[giveaway.status] ?? giveaway.status}
       </span>
       {giveaway.status === "open" ? (
         <button
           type="button"
           disabled={pending}
+          className="mp-anuncios-draw-btn"
           onClick={() =>
             start(async () => {
               const res = await drawClubGiveawayWinners({ giveawayId: giveaway.id });
@@ -269,7 +259,7 @@ export function GiveawayRow({ giveaway }: { giveaway: ClubGiveawayView }) {
         </button>
       ) : null}
       {giveaway.status === "drawn" && giveaway.winners.length > 0 ? (
-        <span style={{ fontSize: 12, color: "#047857", fontWeight: 700 }}>
+        <span className="mp-anuncios-giveaway-row-winners">
           <Icon name="trophy" size={12} /> {giveaway.winners.map((w) => w.displayName).join(", ")}
         </span>
       ) : null}

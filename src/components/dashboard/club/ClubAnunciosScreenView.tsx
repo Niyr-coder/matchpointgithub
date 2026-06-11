@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { PolHero } from "@/components/dashboard/widgets/PolHero";
 import type { ClubGiveawayView } from "@/lib/schemas/club-comms";
-import { PublishAnnouncementForm, CreateGiveawayForm, GiveawayRow, ClubFeedPostForm } from "./ClubAnunciosForms";
+import { PublishAnnouncementForm, GiveawayRow, ClubFeedPostForm } from "./ClubAnunciosForms";
 
 export type ClubAnunciosOverview = {
   clubId: string;
@@ -20,71 +21,89 @@ type Props = {
 };
 
 export function ClubAnunciosScreenView({ roleSegment, overview, giveaways }: Props) {
-  return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 48px" }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
-          Comunicación
-        </div>
-        <h1 className="font-heading" style={{ fontSize: 28, fontWeight: 900, margin: "6px 0 8px", letterSpacing: "-0.03em" }}>
-          Anuncios y sorteos
-        </h1>
-        <p style={{ fontSize: 14, color: "var(--muted-fg)", margin: 0, maxWidth: 560 }}>
-          Publica avisos para seguidores y socios. Los sorteos viven en el canal de anuncios del club.
-        </p>
-      </div>
+  const sorteosHref = `/dashboard/${roleSegment}/club-sorteos`;
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 24 }}>
+  return (
+    <div className="mp-anuncios-root">
+      <PolHero
+        tone="dark"
+        wm="COMMS"
+        label={`Club · ${overview.clubName}`}
+        title="Anuncios"
+        sub="Publica en el feed del club y en el canal de anuncios. Los sorteos se gestionan en la sección Sorteos."
+        right={
+          <div className="mp-anuncios-hero-actions">
+            <div className="mp-anuncios-hero-pair">
+              {overview.announcementsConversationId ? (
+                <Link
+                  href={`/dashboard/${roleSegment}/chat?conv=${overview.announcementsConversationId}`}
+                  className="btn mp-anuncios-hero-btn"
+                  style={heroBtnStyle}
+                >
+                  <Icon name="megaphone" size={13} color="#fff" />
+                  Anuncios
+                </Link>
+              ) : null}
+              {overview.communityConversationId ? (
+                <Link
+                  href={`/dashboard/${roleSegment}/chat?conv=${overview.communityConversationId}`}
+                  className="btn mp-anuncios-hero-btn"
+                  style={heroBtnStyle}
+                >
+                  <Icon name="messages-square" size={13} color="#fff" />
+                  Chat VIP
+                </Link>
+              ) : null}
+            </div>
+            <Link href={sorteosHref} className="btn btn-primary mp-anuncios-hero-primary" style={{ textDecoration: "none" }}>
+              <Icon name="gift" size={13} color="#fff" />
+              Sorteos
+            </Link>
+          </div>
+        }
+      />
+
+      <div className="mp-anuncios-kpis">
         <StatCard label="Seguidores" value={String(overview.followerCount)} icon="users" />
         <StatCard label="Socios VIP activos" value={String(overview.vipCount)} icon="star" />
-        <StatCard label="Sorteos" value={String(giveaways.length)} icon="gift" />
+        <StatCard label="Sorteos activos" value={String(giveaways.filter((g) => g.status === "open").length)} icon="gift" />
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 28 }}>
-        {overview.announcementsConversationId ? (
-          <Link
-            href={`/dashboard/${roleSegment}/chat?conv=${overview.announcementsConversationId}`}
-            style={linkBtnStyle}
-          >
-            <Icon name="megaphone" size={14} />
-            Ver canal de anuncios
-          </Link>
-        ) : null}
-        {overview.communityConversationId ? (
-          <Link
-            href={`/dashboard/${roleSegment}/chat?conv=${overview.communityConversationId}`}
-            style={linkBtnStyle}
-          >
-            <Icon name="messages-square" size={14} />
-            Chat comunidad VIP
-          </Link>
-        ) : null}
-      </div>
+      <div className="mp-anuncios-body">
+        <div className="mp-anuncios-compose">
+          <Panel title="Publicar en el feed" sub="Avisos, fotos, torneos y spotlight en el perfil público del club.">
+            <ClubFeedPostForm clubId={overview.clubId} />
+          </Panel>
 
-      <div style={{ display: "grid", gap: 20 }}>
-        <Panel title="Publicar en el feed" sub="Avisos, fotos, torneos y spotlight en el perfil del club.">
-          <ClubFeedPostForm clubId={overview.clubId} />
-        </Panel>
+          <Panel title="Publicar aviso" sub="Llega a seguidores y socios en el canal de anuncios y en el feed.">
+            <PublishAnnouncementForm clubId={overview.clubId} />
+          </Panel>
+        </div>
 
-        <Panel title="Publicar aviso" sub="Llega a seguidores y socios en el canal de anuncios y en el feed.">
-          <PublishAnnouncementForm clubId={overview.clubId} />
-        </Panel>
+        <aside className="mp-anuncios-aside">
+          <section className="card mp-anuncios-aside-card">
+            <h2 className="mp-anuncios-panel-title">Sorteos</h2>
+            <p className="mp-anuncios-panel-sub">
+              Crea sorteos con mecánicas, entradas ponderadas y sorteo en vivo desde la sección dedicada.
+            </p>
+            <Link href={sorteosHref} className="btn btn-primary mp-anuncios-sorteos-cta" style={{ textDecoration: "none" }}>
+              <Icon name="plus" size={13} color="#fff" />
+              Crear sorteo
+            </Link>
+          </section>
 
-        <Panel title="Crear sorteo" sub="Owner o manager. Elegibilidad configurable.">
-          <CreateGiveawayForm clubId={overview.clubId} />
-        </Panel>
-
-        <Panel title="Sorteos del club" sub="Sorteo manual cuando cierre la participación.">
-          {giveaways.length === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: 0 }}>Aún no hay sorteos publicados.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {giveaways.map((g) => (
-                <GiveawayRow key={g.id} giveaway={g} />
-              ))}
-            </div>
-          )}
-        </Panel>
+          <Panel title="Sorteos publicados" sub="Sorteos legacy en el canal de anuncios. Para v2, usa Sorteos.">
+            {giveaways.length === 0 ? (
+              <p className="mp-anuncios-empty">Aún no hay sorteos en el canal.</p>
+            ) : (
+              <div className="mp-anuncios-giveaway-list">
+                {giveaways.map((g) => (
+                  <GiveawayRow key={g.id} giveaway={g} />
+                ))}
+              </div>
+            )}
+          </Panel>
+        </aside>
       </div>
     </div>
   );
@@ -92,38 +111,29 @@ export function ClubAnunciosScreenView({ roleSegment, overview, giveaways }: Pro
 
 function StatCard({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div style={{ padding: "14px 16px", borderRadius: 14, border: "1px solid var(--border)", background: "#fff" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+    <div className="card mp-anuncios-stat">
+      <div className="mp-anuncios-stat-head">
         <Icon name={icon} size={14} color="var(--muted-fg)" />
-        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {label}
-        </span>
+        <span className="mp-anuncios-stat-label">{label}</span>
       </div>
-      <div className="font-heading" style={{ fontSize: 24, fontWeight: 900 }}>{value}</div>
+      <div className="font-heading mp-anuncios-stat-value">{value}</div>
     </div>
   );
 }
 
 function Panel({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
-    <section style={{ padding: 20, borderRadius: 16, border: "1px solid var(--border)", background: "#fff" }}>
-      <h2 style={{ fontSize: 16, fontWeight: 900, margin: "0 0 4px" }}>{title}</h2>
-      <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "0 0 16px" }}>{sub}</p>
+    <section className="card mp-anuncios-panel">
+      <h2 className="mp-anuncios-panel-title">{title}</h2>
+      <p className="mp-anuncios-panel-sub">{sub}</p>
       {children}
     </section>
   );
 }
 
-const linkBtnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "10px 14px",
-  borderRadius: 9999,
-  border: "1px solid var(--border)",
-  background: "#fff",
-  color: "var(--fg)",
-  fontSize: 12,
-  fontWeight: 800,
+const heroBtnStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.1)",
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.18)",
   textDecoration: "none",
 };

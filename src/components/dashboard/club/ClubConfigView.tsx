@@ -4,6 +4,7 @@
 // de cableado a backend la hicieron 4 agentes en paralelo, uno por par
 // de secciones.
 import { useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "@/components/dashboard/widgets/PolHero";
 import { useToast } from "@/components/dashboard/ToastProvider";
@@ -50,6 +51,8 @@ export function ClubConfigView({ data }: { data?: ClubConfigData }) {
     "foto de portada en alta resolución",
     "3 reglas más",
   ];
+  const publicSlug = data?.identidad?.slug;
+  const publicProfileHref = publicSlug ? `/dashboard/clubes/${publicSlug}` : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -61,9 +64,23 @@ export function ClubConfigView({ data }: { data?: ClubConfigData }) {
         sub="Identidad, horarios, tarifas, pagos y políticas. Tu club, tus reglas — todo se publica al instante en MATCHPOINT."
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Ver perfil público · próximamente")}>
-              <Icon name="eye" size={13} color="#fff" />Ver perfil público
-            </button>
+            {publicProfileHref ? (
+              <Link
+                href={publicProfileHref}
+                className="btn"
+                style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)", textDecoration: "none" }}
+              >
+                <Icon name="eye" size={13} color="#fff" />Ver perfil del club
+              </Link>
+            ) : (
+              <button
+                className="btn"
+                style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }}
+                onClick={() => toast({ icon: "alert-circle", title: "Sin slug", sub: "El club aún no tiene URL de perfil." })}
+              >
+                <Icon name="eye" size={13} color="#fff" />Ver perfil del club
+              </button>
+            )}
             <span style={{ alignSelf: "center", color: "rgba(255,255,255,0.72)", fontSize: 11, fontWeight: 700 }}>
               Cada sección guarda sus cambios por separado.
             </span>

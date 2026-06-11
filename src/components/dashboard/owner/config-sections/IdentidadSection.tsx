@@ -1,11 +1,15 @@
 "use client";
-// Sección Identidad del Club Config v2. Cableada contra `clubs` via
-// updateClubIdentity. Logo/cover upload queda pendiente (Storage fase futura).
+// Sección Identidad del Club Config v2. Texto vía updateClubIdentity;
+// logo, cover y coords vía updateClub + Storage / ClubMapPicker.
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { ImageUploader } from "@/components/ImageUploader";
+import { ClubMapPicker } from "@/components/dashboard/clubes/ClubMapPicker";
+import { ClubMap } from "@/components/dashboard/clubes/ClubMap";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { updateClubIdentity } from "@/server/actions/club-config-identidad";
+import { updateClub } from "@/server/actions/clubs";
 import { Field, type SectionToast } from "./_shared";
 
 export type IdentidadData = {
@@ -33,6 +37,8 @@ export type IdentidadData = {
   ratingAvg: number | null;
   ratingCount: number | null;
   openLabel: string;
+  slug: string | null;
+  version: number;
 };
 
 type FormState = {
@@ -81,6 +87,52 @@ export function IdentidadSection({
   const [form, setForm] = useState<FormState>(() => toFormState(data));
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSaving, setPickerSaving] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(data?.logoUrl ?? null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(data?.coverUrl ?? null);
+  const [coords, setCoords] = useState<{ lat: number | null; lng: number | null }>({
+    lat: data?.latitude ?? null,
+    lng: data?.longitude ?? null,
+  });
+
+  const persistClubAsset = async (kind: "logoUrl" | "coverUrl", url: string) => {
+    if (!data?.clubId) return;
+    const res = await updateClub({
+      clubId: data.clubId,
+      patch: { [kind]: url },
+    });
+    if (res.ok) {
+      if (kind === "logoUrl") setLogoUrl(url);
+      else setCoverUrl(url);
+      toast({ icon: "check-circle-2", title: kind === "logoUrl" ? "Logo actualizado" : "Portada actualizada" });
+      router.refresh();
+    } else {
+      toast({ icon: "alert-circle", title: "Error", sub: res.error.message });
+    }
+  };
+
+  const handleSaveCoords = async (lat: number, lng: number) => {
+    if (!data?.clubId) return;
+    setPickerSaving(true);
+    const res = await updateClub({
+      clubId: data.clubId,
+      patch: {
+        latitude: lat,
+        longitude: lng,
+        expectedVersion: data.version ?? 1,
+      },
+    });
+    setPickerSaving(false);
+    if (res.ok) {
+      setCoords({ lat, lng });
+      toast({ icon: "check-circle-2", title: "Ubicación guardada" });
+      setPickerOpen(false);
+      router.refresh();
+    } else {
+      toast({ icon: "alert-circle", title: "Error", sub: res.error.message });
+    }
+  };
 
   const initials = (form.name.trim()
     ? form.name
@@ -142,8 +194,8 @@ export function IdentidadSection({
               height: 180,
               borderRadius: 12,
               overflow: "hidden",
-              background: data?.coverUrl
-                ? `url(${data.coverUrl}) center/cover`
+              background: coverUrl
+                ? `url(${coverUrl}) center/cover`
                 : "linear-gradient(135deg, #166534, #10b981 60%, #34d399)",
             }}
           >
@@ -210,9 +262,9 @@ export function IdentidadSection({
                   overflow: "hidden",
                 }}
               >
-                {data?.logoUrl ? (
+                {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={data.logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <span className="font-heading" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.03em" }}>
                     {initials}
@@ -250,54 +302,51 @@ export function IdentidadSection({
               </div>
             </div>
           </div>
-          <div className="mp-ccfg-cover-actions" style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btn"
-              style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 11 }}
-              onClick={() => onAction("Cambiar portada · próximamente")}
-            >
-              <Icon name="upload" size={12} />
-              Cambiar
-            </button>
-            <button
-              type="button"
-              className="btn"
-              style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 11 }}
-              onClick={() => onAction("Encuadrar · próximamente")}
-            >
-              <Icon name="crop" size={12} />
-              Encuadrar
-            </button>
+          <div className="mp-ccfg-cover-actions" style={{ marginTop: 10 }}>
+            {data?.clubId ? (
+              <ImageUploader
+                bucket="clubs"
+                folder={data.clubId}
+                filenamePrefix="cover"
+                currentUrl={coverUrl}
+                shape="rectangle"
+                height={140}
+                onUploaded={(url) => persistClubAsset("coverUrl", url)}
+              />
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>Activa el club para subir la portada.</div>
+            )}
           </div>
         </div>
 
         <div className="mp-ccfg-ident-logo-row" style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 14, marginBottom: 18 }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Logo</label>
-            <button type="button" onClick={() => onAction("Cambiar logo · próximamente")} style={{ width: 100, height: 100, borderRadius: 14, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", border: 0, overflow: "hidden" }}>
-              {data?.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={data.logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
+            {data?.clubId ? (
+              <ImageUploader
+                bucket="clubs"
+                folder={data.clubId}
+                filenamePrefix="logo"
+                currentUrl={logoUrl}
+                shape="circle"
+                height={100}
+                onUploaded={(url) => persistClubAsset("logoUrl", url)}
+              />
+            ) : (
+              <div style={{ width: 100, height: 100, borderRadius: 14, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 <span className="font-heading" style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em" }}>{initials}</span>
-              )}
-            </button>
+              </div>
+            )}
           </div>
           <div style={{ minWidth: 0 }}>
             <Field l="Nombre comercial" v={form.name} onChange={update("name")} hint="Aparece en el browse y en compartidos sociales." />
-            <Field l="Razón social (factura)" v={form.legalName} disabled hint="Próximamente — aún no editable" />
           </div>
         </div>
 
         <Field l="Descripción corta" v={form.description} onChange={update("description")} hint={`Máx. 280 caracteres · ${form.description.length} / 280`} />
         <div className="mp-ccfg-ident-contact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field l="Teléfono" v={form.phone} onChange={update("phone")} icon="phone" />
-          <Field l="WhatsApp" v={form.whatsapp} disabled icon="message-circle" hint="Próximamente — aún no editable" />
           <Field l="Email" v={form.email} onChange={update("email")} icon="mail" />
-          <Field l="Website" v={form.website} disabled icon="globe" hint="Próximamente — aún no editable" />
-          <Field l="Instagram" v={form.instagram} disabled icon="at-sign" hint="Próximamente — aún no editable" />
-          <Field l="TikTok" v={form.tiktok} disabled icon="music" hint="Próximamente — aún no editable" />
         </div>
 
         <div style={{ marginTop: 18, padding: 14, background: "var(--muted)", borderRadius: 10 }}>
@@ -309,20 +358,29 @@ export function IdentidadSection({
             <Field l="Ciudad" v={form.city} onChange={update("city")} />
             <Field l="País" v={form.country} onChange={update("country")} />
             <Field l="Dirección" v={form.address} onChange={update("address")} />
-            <Field l="Referencia" v={form.reference} disabled hint="Próximamente — aún no editable" />
           </div>
-          <div style={{ height: 110, borderRadius: 8, background: "linear-gradient(135deg, #d4f1de 0%, #bbf7d0 60%, #ecfdf5 100%)", position: "relative", overflow: "hidden", marginTop: 4 }}>
-            <svg viewBox="0 0 400 110" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} aria-hidden>
-              <path d="M0 60 Q 80 30, 160 70 T 320 50 T 480 80" stroke="#10b981" strokeWidth="2" fill="none" strokeDasharray="4 3" opacity="0.4" />
-              <path d="M0 90 Q 100 60, 200 95 T 400 70" stroke="#0a0a0a" strokeWidth="1.5" fill="none" opacity="0.2" />
-            </svg>
-            <div style={{ position: "absolute", left: "42%", top: "40%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
-                <Icon name="map-pin" size={14} color="#fff" />
+          <div style={{ borderRadius: 8, overflow: "hidden", marginTop: 4, position: "relative", minHeight: 110 }}>
+            {coords.lat != null && coords.lng != null ? (
+              <ClubMap latitude={coords.lat} longitude={coords.lng} height={110} />
+            ) : (
+              <div style={{ height: 110, background: "linear-gradient(135deg, #d4f1de 0%, #bbf7d0 60%, #ecfdf5 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "var(--muted-fg)" }}>
+                Sin pin en el mapa
               </div>
-              <div style={{ width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: "8px solid var(--primary)", marginTop: -2 }} />
-            </div>
-            <button className="btn" style={{ position: "absolute", right: 10, bottom: 10, background: "#fff", border: "1px solid var(--border)", fontSize: 10 }} onClick={() => onAction("Editar en mapa · próximamente")}>Editar en mapa</button>
+            )}
+            <button
+              type="button"
+              className="btn"
+              style={{ position: "absolute", right: 10, bottom: 10, background: "#fff", border: "1px solid var(--border)", fontSize: 10, zIndex: 2 }}
+              onClick={() => {
+                if (!data?.clubId) {
+                  toast({ icon: "alert-circle", title: "No hay club activo" });
+                  return;
+                }
+                setPickerOpen(true);
+              }}
+            >
+              Editar en mapa
+            </button>
           </div>
         </div>
 
@@ -345,14 +403,14 @@ export function IdentidadSection({
       <div className="mp-ccfg-preview" style={{ position: "sticky", top: 80 }}>
         <div className="label-mp" style={{ marginBottom: 8 }}>● Vista previa pública</div>
         <div className="card" style={{ padding: 0, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.08)" }}>
-          <div style={{ height: 120, background: data?.coverUrl ? `url(${data.coverUrl}) center/cover` : "linear-gradient(135deg, #166534, #10b981 60%, #34d399)", position: "relative", overflow: "hidden" }}>
+          <div style={{ height: 120, background: coverUrl ? `url(${coverUrl}) center/cover` : "linear-gradient(135deg, #166534, #10b981 60%, #34d399)", position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 25% 80%, rgba(255,255,255,0.18), transparent 50%)" }} />
           </div>
           <div style={{ padding: 16, position: "relative" }}>
             <div style={{ width: 56, height: 56, borderRadius: 12, background: "#0a0a0a", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "3px solid #fff", marginTop: -40, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", overflow: "hidden" }}>
-              {data?.logoUrl ? (
+              {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={data.logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={logoUrl} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <span className="font-heading" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.03em" }}>{initials}</span>
               )}
@@ -384,6 +442,16 @@ export function IdentidadSection({
           Así te verán los jugadores en <b>matchpoint.top/clubes</b>
         </div>
       </div>
+
+      {pickerOpen && (
+        <ClubMapPicker
+          initialLat={coords.lat}
+          initialLng={coords.lng}
+          onCancel={() => setPickerOpen(false)}
+          onSave={handleSaveCoords}
+          saving={pickerSaving}
+        />
+      )}
     </div>
   );
 }

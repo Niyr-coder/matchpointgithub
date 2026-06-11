@@ -100,6 +100,7 @@ export function PromptModalProvider({ children }: { children: ReactNode }) {
       {children}
       {pending && (
         <div
+          data-mp-overlay
           onClick={() => close(pending.kind === "confirm" ? false : null)}
           style={{
             position: "fixed",

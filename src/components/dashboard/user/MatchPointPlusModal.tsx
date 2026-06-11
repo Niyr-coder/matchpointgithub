@@ -41,6 +41,7 @@ export function MatchPointPlusModal({ mode, pending, onConfirm, onCancel }: Prop
   return (
     <div
       role="presentation"
+      data-mp-overlay
       onClick={onCancel}
       style={{
         position: "fixed",

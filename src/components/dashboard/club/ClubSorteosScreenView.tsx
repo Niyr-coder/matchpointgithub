@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
+import { PolHero } from "@/components/dashboard/widgets/PolHero";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import {
   MiniStat,
   MECHANIC_CATALOG,
 } from "@/components/giveaways";
-import { SectionHead, StripedImg, WizardShell } from "@/components/giveaways/handoff";
+import { StripedImg, WizardShell } from "@/components/giveaways/handoff";
 import type { GiveawayDetailView } from "@/lib/schemas/giveaways";
 import {
   saveGiveawayPremio,
@@ -448,7 +449,7 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
   const tableRows = [...active, ...drafts, ...ended];
 
   return (
-    <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="mp-club-sorteos-root">
       {loadError && (
         <div
           className="card"
@@ -463,24 +464,30 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
           No pudimos cargar la lista de sorteos: {loadError}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
-        <SectionHead
-          kicker={`Organizador · ${overview.clubName}`}
-          title="Sorteos del club"
-          sub="Maneja todos los giveaways activos, borradores y los que ya cerraron."
-        />
-        <button type="button" className="btn btn-onyx" onClick={() => setMode("wizard")}>
-          <Icon name="plus" size={12} color="#fff" /> Crear sorteo
-        </button>
-      </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <PolHero
+        tone="dark"
+        wm="GIFT"
+        label={`Organizador · ${overview.clubName}`}
+        title="Sorteos del club"
+        sub="Maneja todos los giveaways activos, borradores y los que ya cerraron."
+        right={
+          <div className="mp-club-sorteos-hero-wrap">
+            <button type="button" className="btn btn-primary mp-club-sorteos-hero-cta" onClick={() => setMode("wizard")}>
+              <Icon name="plus" size={13} color="#fff" />
+              Crear sorteo
+            </button>
+          </div>
+        }
+      />
+
+      <div className="mp-club-sorteos-kpis">
         {[
           { label: "Activos", value: String(active.length), hint: `${active.reduce((s, g) => s + g.entryCount, 0)} entradas`, color: "var(--primary-dark)" },
           { label: "En borrador", value: String(drafts.length), hint: "Listo para publicar" },
           { label: "Cerrados", value: String(ended.length), hint: "Historial del club" },
         ].map((s) => (
-          <div key={s.label} className="card" style={{ padding: 16, flex: "1 1 160px" }}>
+          <div key={s.label} className="card mp-club-sorteos-kpi-card">
             <MiniStat label={s.label} value={s.value} hint={s.hint} color={s.color} />
           </div>
         ))}

@@ -39,15 +39,7 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
 
   return (
     <>
-      <section
-        style={{
-          position: "relative",
-          height: 420,
-          background: "linear-gradient(135deg, #064e3b 0%, #047857 60%, #10b981 100%)",
-          overflow: "hidden",
-          color: "#fff",
-        }}
-      >
+      <section className="mp-club-detail-hero" style={{ position: "relative", overflow: "hidden", color: "#fff", background: "linear-gradient(135deg, #064e3b 0%, #047857 60%, #10b981 100%)" }}>
         <div
           style={{
             position: "absolute",
@@ -136,10 +128,9 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
           </div>
         </div>
       </section>
-      <main
-        className="max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-8 md:gap-10"
-      >
-        <div>
+      <div className="mp-club-detail-root max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-15">
+        <div className="mp-club-detail-grid grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-8 md:gap-10">
+        <div className="mp-club-detail-main min-w-0">
           <div className="label-mp">Sobre el club</div>
           <h2
             className="font-heading"
@@ -188,7 +179,7 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
             Hoy · {todayLabel()}
             <span className="dot">.</span>
           </h3>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <div className="mp-club-detail-slots grid grid-cols-4 sm:grid-cols-5 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {DEFAULT_SLOTS.map((s, i) => {
               const taken = i === 2 || i === 5;
               return (
@@ -215,8 +206,8 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
             })}
           </div>
         </div>
-        <div style={{ position: "sticky", top: 100, height: "fit-content" }}>
-          <div className="card" style={{ padding: 26 }}>
+        <aside className="mp-club-detail-sidebar min-w-0">
+          <div className="card mp-club-detail-booking" style={{ padding: 26 }}>
             <div className="label-mp" style={{ color: "var(--primary)" }}>Reservar ahora</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
               <span
@@ -238,28 +229,21 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
               <Icon name="calendar-plus" size={14} />
               Reservar cancha
             </button>
-            <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px dashed var(--border)", fontSize: 11.5 }}>
+            <div className="mp-club-detail-meta" style={{ marginTop: 18, paddingTop: 18, borderTop: "1px dashed var(--border)", fontSize: 11.5 }}>
               {([
                 ["Horario", "06:00 – 22:00 L-V"],
                 ["Sábado", "07:00 – 23:00"],
                 ["Cancelación", "Gratis 24h antes"],
                 ["Métodos de pago", FALLBACK_PAYMENT],
               ] as const).map(([k, v]) => (
-                <div
-                  key={k}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "7px 0",
-                    borderTop: "1px dashed var(--border)",
-                  }}
-                >
+                <div key={k} className="mp-club-detail-meta-row">
                   <span style={{ color: "var(--muted-fg)" }}>{k}</span>
                   <b>{v}</b>
                 </div>
               ))}
             </div>
           </div>
+        </aside>
         </div>
 
         <ReviewsSection
@@ -270,7 +254,7 @@ export function ClubDetailView({ detail, stats, reviews, myReview, canReview }: 
           canReview={canReview}
           onPaywall={() => onPaywall("perfil")}
         />
-      </main>
+      </div>
     </>
   );
 }
@@ -328,7 +312,7 @@ function ReviewsSection({
   const otherReviews = reviews.filter((r) => r.id !== myReview?.id);
 
   return (
-    <section className="max-w-[1240px] mx-auto px-4 md:px-7 pt-6 md:pt-8 pb-10 md:pb-14">
+    <section className="mp-club-detail-reviews">
       <h2
         className="font-heading"
         style={{
@@ -375,7 +359,7 @@ function ReviewsSection({
         {errorMsg && (
           <div style={{ fontSize: 11.5, color: "#dc2626" }}>{errorMsg}</div>
         )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="mp-club-detail-review-actions">
           <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
             {canReview
               ? myReview

@@ -106,7 +106,7 @@ export function DashboardChrome({
           {children}
         </main>
       </div>
-      <MobileBottomNav role={role} onOpenDrawer={() => setDrawerOpen(true)} />
+      <MobileBottomNav role={role} onOpenDrawer={() => setDrawerOpen(true)} drawerOpen={drawerOpen} />
     </div>
   );
 }

@@ -84,32 +84,39 @@ export function ClubClientesScreenView({ data }: { data: ClientesData }) {
     {
       k: "n",
       l: "Socio",
+      minWidth: 148,
       render: (c) => {
         if (isPh(c)) {
           return (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: 0.6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, opacity: 0.6 }}>
               <div
                 style={{
+                  flexShrink: 0,
                   width: 32,
                   height: 32,
+                  minWidth: 32,
+                  minHeight: 32,
                   borderRadius: "50%",
                   background: PLACEHOLDER_GRADIENT,
                   border: "1px dashed var(--border)",
                 }}
               />
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--muted-fg)" }}>—</div>
-                <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>Desde —</div>
+              <div style={{ minWidth: 0, overflow: "hidden" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--muted-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>—</div>
+                <div style={{ fontSize: 9.5, color: "var(--muted-fg)", whiteSpace: "nowrap" }}>Desde —</div>
               </div>
             </div>
           );
         }
         return (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <div
               style={{
+                flexShrink: 0,
                 width: 32,
                 height: 32,
+                minWidth: 32,
+                minHeight: 32,
                 borderRadius: "50%",
                 background: c.avBg,
                 color: "#fff",
@@ -123,9 +130,9 @@ export function ClubClientesScreenView({ data }: { data: ClientesData }) {
             >
               {c.av}
             </div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 800 }}>{c.name}</div>
-              <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>Desde {c.joined}</div>
+            <div style={{ minWidth: 0, overflow: "hidden" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+              <div style={{ fontSize: 9.5, color: "var(--muted-fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Desde {c.joined}</div>
             </div>
           </div>
         );

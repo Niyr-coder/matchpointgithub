@@ -325,7 +325,7 @@ export function SoporteScreenView({
       </div>
 
       {selectedId ? (
-        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setSelectedId(null)}>
+        <div role="dialog" aria-modal="true" data-mp-overlay style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setSelectedId(null)}>
           <div className="card" style={{ width: "min(560px, 100%)", maxHeight: "min(80vh, 720px)", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>

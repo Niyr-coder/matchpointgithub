@@ -56,7 +56,7 @@ export async function loadIdentidadData(
   const { data: club } = await (supabase as any)
     .from("clubs")
     .select(
-      "id,name,description,logo_url,cover_url,country,city,address,phone,email,latitude,longitude,sports",
+      "id,name,description,logo_url,cover_url,country,city,address,phone,email,latitude,longitude,sports,slug,version",
     )
     .eq("id", clubId)
     .maybeSingle();
@@ -106,6 +106,8 @@ export async function loadIdentidadData(
     ratingAvg,
     ratingCount: ratings.length || null,
     openLabel: "Abierto",
+    slug: (club.slug as string | null) ?? null,
+    version: (club.version as number | null) ?? 1,
   };
 }
 

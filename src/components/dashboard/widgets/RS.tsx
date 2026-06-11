@@ -152,6 +152,7 @@ export type RSColumn<R> = {
   l: string;
   align?: "left" | "center" | "right";
   valign?: CSSProperties["verticalAlign"];
+  minWidth?: number | string;
   tip?: string;
   render?: (row: R, i: number) => ReactNode;
 };
@@ -186,6 +187,7 @@ export function RSTable<R extends Record<string, unknown>>({
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
                     color: "var(--muted-fg)",
+                    ...(c.minWidth != null ? { minWidth: c.minWidth } : {}),
                   }}
                 >
                   {c.tip ? (
@@ -222,6 +224,7 @@ export function RSTable<R extends Record<string, unknown>>({
                       padding: "11px 14px",
                       textAlign: c.align || "left",
                       verticalAlign: c.valign || "middle",
+                      ...(c.minWidth != null ? { minWidth: c.minWidth } : {}),
                     }}
                   >
                     {c.render ? c.render(r, i) : (r[c.k] as ReactNode)}

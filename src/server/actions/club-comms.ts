@@ -36,12 +36,19 @@ async function requireUserId(): Promise<string> {
 async function assertAnnouncementsPublisher(clubId: string): Promise<string> {
   const userId = await requireUserId();
   const supabase = await getServerClient();
-  const { data, error } = await (supabase as any).rpc("fn_is_club_announcements_publisher", {
-    p_club_id: clubId,
-    p_user_id: userId,
-  });
-  if (error) throw new MpError("CLUB_COMMS.AUTH_FAILED", error.message, 500);
-  if (!data) {
+  const { data: assignments, error: raErr } = await supabase
+    .from("role_assignments")
+    .select("role, club_id")
+    .eq("user_id", userId)
+    .is("revoked_at", null);
+  if (raErr) throw new MpError("CLUB_COMMS.AUTH_FAILED", raErr.message, 500);
+
+  const canPublish = (assignments ?? []).some(
+    (row) =>
+      row.role === "admin" ||
+      ((row.role === "owner" || row.role === "manager") && row.club_id === clubId),
+  );
+  if (!canPublish) {
     throw new AuthError("AUTH.ROLE_REQUIRED", "Solo owner o manager pueden publicar anuncios");
   }
   return userId;
