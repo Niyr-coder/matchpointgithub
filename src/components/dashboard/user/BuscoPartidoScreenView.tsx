@@ -29,6 +29,7 @@ import {
   rangeBandSummary,
   skillLevelToPercent,
 } from "@/lib/mpr/skill-level-bands";
+import type { MatchSeek, MatchSeekApplication } from "@/lib/schemas/match-seeks";
 
 type MatchPlayer = { a: string; b: string; title?: string };
 type Match = {
