@@ -132,7 +132,11 @@ export async function createApplication(): Promise<ActionResult<ClubApplication>
 
         const { data, error } = await supabase
           .from("club_applications")
-          .insert({ applicant_id: userId } as never)
+          .insert({
+            applicant_id: userId,
+            org_type: "public",
+            sports: ["pickleball"],
+          } as never)
           .select()
           .single();
 

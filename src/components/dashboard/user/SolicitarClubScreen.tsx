@@ -6,6 +6,7 @@ import {
 } from "@/server/actions/clubApplications";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { resolveLocationFromDistrict } from "@/lib/geo/ecuador-locations";
 import {
   SolicitarClubScreenView,
   type AppStatus,
@@ -61,11 +62,12 @@ export async function SolicitarClubScreen() {
         }
         return { open: defOpen, close: defClose };
       };
+      const location = resolveLocationFromDistrict(a.province, a.district);
       initial = {
         applicationId: a.id,
         name: a.name ?? "",
-        orgType: (a.orgType as "private" | "public" | "concession" | null) ?? "private",
-        sports: a.sports ?? [],
+        orgType: (a.orgType as "private" | "public" | "concession" | null) ?? "public",
+        sports: a.sports?.length ? a.sports : ["pickleball"],
         description: a.shortDescription ?? "",
         accentColor: "#10b981",
         coverPhoto: (() => {
@@ -74,7 +76,8 @@ export async function SolicitarClubScreen() {
             ? { id: cover.id, previewUrl: cover.previewUrl ?? null }
             : null;
         })(),
-        city: a.district ?? "",
+        locationCity: location.locationCity,
+        sector: location.sector,
         province: a.province ?? "",
         country: a.country ?? "Ecuador",
         address: a.address ?? "",

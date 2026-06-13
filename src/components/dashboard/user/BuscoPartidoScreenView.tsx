@@ -16,6 +16,7 @@ import { cancelMatch, rescheduleMatch } from "@/server/actions/matches";
 import { useEnabledSports } from "@/components/SportsProvider";
 import { SPORT_META, sportLabel } from "@/lib/sports";
 import { fmtShortDateEc, fmtTimeEc } from "@/lib/api/format";
+import { cityCoords } from "@/lib/geo/ecuador-locations";
 import {
   SKILL_LEVEL_BANDS,
   SKILL_LEVEL_MAX,
@@ -109,8 +110,19 @@ const FEED_VIEW_OPTIONS = [
   { k: "map", i: "map" },
 ] as const;
 
+const FEED_VIEW_STORAGE_KEY = "mp.busco-partido.view";
+
 function normalizeFeedView(v?: string): View {
   return v === "map" ? "map" : "cards";
+}
+
+function readStoredFeedView(): View {
+  if (typeof window === "undefined") return "cards";
+  try {
+    return sessionStorage.getItem(FEED_VIEW_STORAGE_KEY) === "map" ? "map" : "cards";
+  } catch {
+    return "cards";
+  }
 }
 
 function Lucide({ name, style }: { name: string; style?: React.CSSProperties }) {
@@ -150,7 +162,23 @@ function BuscarMatchScreen({
   );
   const [scope, setScope] = useState<Scope>("para-ti");
   const [tab, setTab] = useState<Tab>("feed");
-  const [view, setView] = useState<View>(normalizeFeedView(tweaks.view));
+  const [view, setView] = useState<View>(() => (
+    tweaks.view != null ? normalizeFeedView(tweaks.view) : "cards"
+  ));
+  const feedContentRef = useRef<HTMLDivElement>(null);
+  const setFeedView = (next: View) => {
+    setView(next);
+    try {
+      sessionStorage.setItem(FEED_VIEW_STORAGE_KEY, next);
+    } catch {
+      /* storage bloqueado */
+    }
+    if (next === "map") {
+      window.requestAnimationFrame(() => {
+        feedContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
   const [sortBy, setSortBy] = useState<SortBy>(tweaks.sortBy || "relevancia");
   const [levelMode, setLevelMode] = useState<LevelMode>(tweaks.levelMode || "flex");
   const [sport, setSport] = useState<"all" | MatchSeek["sport"]>("all");
@@ -194,7 +222,14 @@ function BuscarMatchScreen({
   );
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setView(normalizeFeedView(tweaks.view)); }, [tweaks.view]);
+  useEffect(() => {
+    if (tweaks.view != null) {
+      setFeedView(normalizeFeedView(tweaks.view));
+      return;
+    }
+    const stored = readStoredFeedView();
+    if (stored !== "cards") setView(stored);
+  }, [tweaks.view]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSortBy(tweaks.sortBy || "relevancia"); }, [tweaks.sortBy]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -393,6 +428,16 @@ function BuscarMatchScreen({
   };
 
   const renderFeedMatches = () => {
+    if (view === "map") {
+      return (
+        <MatchSeekMapView
+          matches={sorted}
+          onApply={apply}
+          myCity={myCity}
+          emptyHint={sorted.length === 0 ? "Ningún aviso coincide con los filtros actuales." : undefined}
+        />
+      );
+    }
     if (sorted.length === 0) {
       return (
         <div className="card" style={{ padding: 22, textAlign: "center" }}>
@@ -403,7 +448,7 @@ function BuscarMatchScreen({
     }
     return (
       <>
-        {featured && view !== "map" && (
+        {featured && (
           <FeaturedMatch
             m={featured}
             isMine={featured.seek.createdBy === meUserId}
@@ -416,15 +461,11 @@ function BuscarMatchScreen({
             disabled={actionPending}
           />
         )}
-        {view === "map" ? (
-          <MapView matches={sorted} onApply={apply} />
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
-            {rest.map((m) => (
-              <MatchCard key={m.id} m={m} me={me} onApply={apply} disabled={actionPending} />
-            ))}
-          </div>
-        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
+          {rest.map((m) => (
+            <MatchCard key={m.id} m={m} me={me} onApply={apply} disabled={actionPending} />
+          ))}
+        </div>
       </>
     );
   };
@@ -433,7 +474,7 @@ function BuscarMatchScreen({
     <UnavailableState reason={unavailableReason} />
   ) : allMatches.length === 0 ? (
     view === "map" ? (
-      <MapView matches={[]} onApply={apply} />
+      <MatchSeekMapView matches={[]} onApply={apply} myCity={myCity} />
     ) : (
       <EmptyLobby city={myCity} />
     )
@@ -470,7 +511,7 @@ function BuscarMatchScreen({
           </button>
           {tab === "feed" && (
             <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-2">
-              <SegBM options={[...FEED_VIEW_OPTIONS]} value={view} onChange={(v) => setView(v as View)} />
+              <SegBM options={[...FEED_VIEW_OPTIONS]} value={view} onChange={(v) => setFeedView(v as View)} />
               <button
                 type="button"
                 className="btn btn-outline shrink-0 md:hidden"
@@ -574,7 +615,11 @@ function BuscarMatchScreen({
         </div>
       )}
 
-      {tab === "feed" && feedBody}
+      {tab === "feed" && (
+        <div ref={feedContentRef} data-feed-view={view} className="min-w-0">
+          {feedBody}
+        </div>
+      )}
       {tab === "mine" && (
         <MinePanel
           items={mineActive}
@@ -1335,57 +1380,159 @@ function FineFilter({
   );
 }
 
-function MapView({ matches, onApply }: { matches: Match[]; onApply: (seek: MatchSeek) => void }) {
+function MatchSeekMapView({
+  matches,
+  onApply,
+  myCity,
+  emptyHint,
+}: {
+  matches: Match[];
+  onApply: (seek: MatchSeek) => void;
+  myCity?: string | null;
+  emptyHint?: string;
+}) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapBundleRef = useRef<{ map: any; markers: any[]; userMarker: any | null } | null>(null);
+  const onApplyRef = useRef(onApply);
+  onApplyRef.current = onApply;
+  const [mapReady, setMapReady] = useState(false);
   const isEmpty = matches.length === 0;
-  return (
-    <div className="card" style={{ padding: 0, overflow: "hidden", height: 520, position: "relative", background: "radial-gradient(ellipse at 50% 50%, #e7f0ec 0%, #d6e3dd 35%, #c7d6cf 70%, #b6c8c0 100%)" }}>
-      <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, opacity: 0.35 }}>
-        <defs>
-          <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse" patternTransform="rotate(8)">
-            <path d="M 0 40 L 80 40 M 40 0 L 40 80" stroke="#fff" strokeWidth="1.5" fill="none" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-        <path d="M 0 280 Q 200 240 400 290 T 800 270 T 1200 310" stroke="#fff" strokeWidth="6" fill="none" opacity="0.7" />
-        <path d="M 380 0 Q 360 200 410 360 T 440 720" stroke="#fff" strokeWidth="6" fill="none" opacity="0.7" />
-      </svg>
 
-      {matches.slice(0, 6).map((m, i) => {
-        const positions = [
-          { left: "32%", top: "38%" }, { left: "58%", top: "28%" }, { left: "72%", top: "55%" },
-          { left: "25%", top: "64%" }, { left: "48%", top: "72%" }, { left: "64%", top: "42%" },
-        ];
+  useEffect(() => {
+    if (!mapRef.current || mapBundleRef.current) return;
+    let cancelled = false;
+    (async () => {
+      if (!document.getElementById("leaflet-css")) {
+        const link = document.createElement("link");
+        link.id = "leaflet-css";
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      const L = (await import("leaflet")).default;
+      if (cancelled || !mapRef.current) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const map = L.map(mapRef.current).setView([-1.8312, -78.1834], 7);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 19,
+      }).addTo(map);
+      mapBundleRef.current = { map, markers: [], userMarker: null };
+      setMapReady(true);
+    })();
+    return () => {
+      cancelled = true;
+      setMapReady(false);
+      if (mapBundleRef.current) {
+        mapBundleRef.current.map.remove();
+        mapBundleRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const bundle = mapBundleRef.current;
+    if (!mapReady || !bundle) return;
+
+    let cancelled = false;
+    (async () => {
+      const L = (await import("leaflet")).default;
+      if (cancelled || !mapBundleRef.current) return;
+
+      const { map, markers } = mapBundleRef.current;
+      markers.forEach((m) => m.remove());
+      markers.length = 0;
+
+      if (mapBundleRef.current.userMarker) {
+        mapBundleRef.current.userMarker.remove();
+        mapBundleRef.current.userMarker = null;
+      }
+
+      const userCoords = myCity ? cityCoords(myCity) : null;
+      if (userCoords) {
+        mapBundleRef.current.userMarker = L.circleMarker([userCoords.lat, userCoords.lng], {
+          radius: 9,
+          color: "#2563eb",
+          weight: 3,
+          fillColor: "#3b82f6",
+          fillOpacity: 1,
+        }).addTo(map).bindPopup("Tu ciudad");
+      }
+
+      const cityCount = new Map<string, number>();
+      const boundsPoints: [number, number][] = [];
+
+      for (const m of matches) {
+        const base = cityCoords(m.seek.city);
+        const cityKey = (m.seek.city ?? m.id).toLowerCase();
+        const n = cityCount.get(cityKey) ?? 0;
+        cityCount.set(cityKey, n + 1);
+        const lat = base.lat + n * 0.012;
+        const lng = base.lng + n * 0.012;
+        boundsPoints.push([lat, lng]);
+
         const empty = m.slotsTotal - m.players.length;
-        return (
-          <div key={m.id} style={{ position: "absolute", ...positions[i], transform: "translate(-50%, -100%)" }}>
-            <button type="button" onClick={() => onApply(m.seek)} style={{ background: "#fff", border: "2px solid #0a0a0a", borderRadius: 12, padding: "8px 12px", boxShadow: "0 8px 18px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", fontFamily: "inherit", cursor: "pointer" }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: m.players[0].b, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 900, fontFamily: "Plus Jakarta Sans" }}>{m.players[0].a}</div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 900 }}>{m.date} · {m.time}</div>
-                <div style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{m.club.slice(0, 16)} · {empty} cupos</div>
-              </div>
-              <span style={{ padding: "2px 7px", borderRadius: 9999, background: "var(--primary)", color: "#fff", fontSize: 9, fontWeight: 900 }}>{m.fit == null ? "OK" : `${m.fit}%`}</span>
-            </button>
-            <div style={{ width: 12, height: 12, background: "#0a0a0a", transform: "rotate(45deg)", margin: "-7px auto 0", position: "relative", zIndex: -1 }} />
+        const cityLabel = m.seek.city ?? "Ciudad por definir";
+        const popupHtml = `
+          <div style="font-family:system-ui,sans-serif;min-width:160px">
+            <div style="font-weight:900;font-size:13px;margin-bottom:4px">${m.sport} · ${m.mode}</div>
+            <div style="font-size:12px;color:#525252;margin-bottom:6px">${m.date} · ${m.time}</div>
+            <div style="font-size:11px;color:#737373">${cityLabel}${base.approximate ? " (aprox.)" : ""} · ${empty} cupo${empty === 1 ? "" : "s"}</div>
+          </div>`;
+
+        const marker = L.marker([lat, lng]).addTo(map);
+        marker.bindPopup(popupHtml);
+        marker.on("click", () => onApplyRef.current(m.seek));
+        markers.push(marker);
+      }
+
+      if (userCoords) boundsPoints.push([userCoords.lat, userCoords.lng]);
+
+      if (boundsPoints.length === 1) {
+        map.setView(boundsPoints[0], 11);
+      } else if (boundsPoints.length > 1) {
+        map.fitBounds(L.latLngBounds(boundsPoints), { padding: [36, 36], maxZoom: 12 });
+      } else {
+        map.setView([-1.8312, -78.1834], 7);
+      }
+
+      window.setTimeout(() => map.invalidateSize(), 80);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matches, myCity, mapReady]);
+
+  return (
+    <div className="card mp-busco-partido-map" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+      <div ref={mapRef} className="mp-busco-partido-map__canvas" aria-hidden={!mapReady} />
+      {!mapReady && <MapSeekSkeleton />}
+      {mapReady && (
+        <>
+          <div style={{ position: "absolute", bottom: 16, left: 16, background: "#fff", padding: "10px 14px", borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", display: "flex", gap: 14, alignItems: "center", fontSize: 11, fontWeight: 700, zIndex: 500, pointerEvents: "none" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#3b82f6" }} /> Tú</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#0a0a0a" }} /> Aviso abierto</span>
           </div>
-        );
-      })}
-
-      <div style={{ position: "absolute", left: "45%", top: "50%", transform: "translate(-50%, -50%)" }}>
-        <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#3b82f6", border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(59,130,246,0.2), 0 2px 8px rgba(0,0,0,0.25)" }} />
-      </div>
-
-      <div style={{ position: "absolute", bottom: 16, left: 16, background: "#fff", padding: "10px 14px", borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", display: "flex", gap: 14, alignItems: "center", fontSize: 11, fontWeight: 700 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#3b82f6" }} /> Tú</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#0a0a0a" }} /> Aviso abierto</span>
-      </div>
-      <div style={{ position: "absolute", top: 16, right: 16, background: "#fff", padding: "8px 12px", borderRadius: 9999, boxShadow: "0 4px 10px rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <Lucide name="navigation" style={{ width: 12, height: 12, color: "var(--primary)" }} /> Vista referencial
-      </div>
-      {isEmpty && (
-        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "#fff", padding: "14px 18px", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", textAlign: "center", maxWidth: 280 }}>
+          <div style={{ position: "absolute", top: 16, right: 16, background: "#fff", padding: "8px 12px", borderRadius: 9999, boxShadow: "0 4px 10px rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 6, zIndex: 500, pointerEvents: "none" }}>
+            <Lucide name="map-pin" style={{ width: 12, height: 12, color: "var(--primary)" }} /> Por ciudad del aviso
+          </div>
+        </>
+      )}
+      {mapReady && isEmpty && (
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "#fff", padding: "14px 18px", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.1)", textAlign: "center", maxWidth: 300, zIndex: 500, pointerEvents: "none" }}>
           <div className="label-mp" style={{ marginBottom: 6 }}>Mapa sin avisos</div>
-          <p style={{ margin: 0, fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>Cuando haya partidos abiertos en tu zona, verás marcadores aquí.</p>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.4 }}>
+            {emptyHint ?? "Cuando haya partidos abiertos en tu zona, verás marcadores aquí."}
+          </p>
         </div>
       )}
     </div>
@@ -2211,19 +2358,94 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function PanelEmpty({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: 260 }}>
-        <div style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+    <div className="card mp-panel-empty" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="mp-panel-empty-grid">
+        <div className="mp-panel-empty-copy" style={{ padding: 28, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div className="chip-green" style={{ width: "fit-content", marginBottom: 12 }}><span className="chip-dot" />Estado vacío</div>
-          <h3 className="font-heading" style={{ margin: 0, fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em" }}>{title}<span className="dot">.</span></h3>
-          <p style={{ color: "var(--muted-fg)", fontSize: 13, maxWidth: 420 }}>{body}</p>
+          <h3 className="font-heading mp-panel-empty-title" style={{ margin: 0, fontSize: 28, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-0.025em" }}>{title}<span className="dot">.</span></h3>
+          <p style={{ color: "var(--muted-fg)", fontSize: 13, maxWidth: 420, margin: 0 }}>{body}</p>
         </div>
-        <div style={{ background: "#0a0a0a", color: "#fff", padding: 28, position: "relative", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div
+          className="mp-panel-empty-visual"
+          style={{
+            background: "#0a0a0a",
+            color: "#fff",
+            padding: 28,
+            position: "relative",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.28), transparent 50%)" }} />
-          <div style={{ position: "relative", width: 132, height: 132, borderRadius: "50%", border: "2px dashed rgba(16,185,129,0.5)", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(16,185,129,0.06)" }}>
+          <div
+            className="mp-panel-empty-icon"
+            style={{
+              position: "relative",
+              width: 132,
+              height: 132,
+              borderRadius: "50%",
+              border: "2px dashed rgba(16,185,129,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(16,185,129,0.06)",
+            }}
+          >
             <Icon name={icon} size={42} color="var(--primary)" />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MapSeekSkeleton() {
+  const pins = [
+    { left: "28%", top: "42%" },
+    { left: "58%", top: "34%" },
+    { left: "72%", top: "58%" },
+  ];
+  return (
+    <div
+      role="status"
+      aria-label="Cargando mapa"
+      className="mp-busco-partido-map__skeleton"
+      style={{ position: "absolute", inset: 0, zIndex: 400, overflow: "hidden", background: "var(--muted)" }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateRows: "repeat(2, 1fr)",
+          gap: 2,
+          opacity: 0.55,
+        }}
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} w="100%" h="100%" r={0} />
+        ))}
+      </div>
+      {pins.map((p, i) => (
+        <div
+          key={i}
+          aria-hidden
+          style={{ position: "absolute", left: p.left, top: p.top, transform: "translate(-50%, -100%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+        >
+          <Skeleton w={i === 1 ? 96 : 78} h={34} r={10} />
+          <Skeleton w={12} h={12} r={2} style={{ transform: "rotate(45deg)" }} />
+        </div>
+      ))}
+      <div aria-hidden style={{ position: "absolute", bottom: 16, left: 16, display: "flex", gap: 10, padding: "10px 14px", borderRadius: 10, background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
+        <Skeleton w={52} h={12} r={6} />
+        <Skeleton w={72} h={12} r={6} />
+      </div>
+      <div aria-hidden style={{ position: "absolute", top: 16, right: 16, padding: "8px 12px", borderRadius: 9999, background: "#fff", boxShadow: "0 4px 10px rgba(0,0,0,0.06)" }}>
+        <Skeleton w={108} h={12} r={6} />
       </div>
     </div>
   );

@@ -1,5 +1,8 @@
 /** Formato de copy para el panel de notificaciones (client-safe). */
 
+import { polishUserFacingText, SPORT_LABELS_ES } from "@/lib/user-facing/labels";
+import { resolveNotificationTitle } from "@/lib/user-facing/notification-kinds";
+
 export type NotifDisplayInput = {
   kind: string;
   title: string;
@@ -119,7 +122,8 @@ export function formatNotificationDisplay(n: NotifDisplayInput): NotificationDis
 
   if (n.kind.startsWith("reservation") && !subtitle) {
     const sport = str(payload, "sport");
-    if (sport && startsLabel) subtitle = `${sport} · ${startsLabel}`;
+    const sportLabel = sport ? (SPORT_LABELS_ES[sport.toLowerCase()] ?? sport) : null;
+    if (sportLabel && startsLabel) subtitle = `${sportLabel} · ${startsLabel}`;
   }
 
   if (n.kind === "quedada_joined" && actor && quedadaTitle) {
@@ -132,12 +136,18 @@ export function formatNotificationDisplay(n: NotifDisplayInput): NotificationDis
 
   // Evita repetir en chips lo que ya está en subtitle.
   const subtitleLower = (subtitle ?? "").toLowerCase();
-  const filteredChips = chips.filter((c) => !subtitleLower.includes(c.toLowerCase()));
+  const filteredChips = chips
+    .map((c) => polishUserFacingText(c))
+    .filter((c) => !subtitleLower.includes(c.toLowerCase()));
+
+  const title = polishUserFacingText(resolveNotificationTitle(n.kind, n.title));
+  const polishedSubtitle = subtitle ? polishUserFacingText(subtitle) : null;
+  const polishedDetail = detail ? polishUserFacingText(detail) : null;
 
   return {
-    title: n.title,
-    subtitle,
-    detail,
+    title,
+    subtitle: polishedSubtitle,
+    detail: polishedDetail,
     kindLabel: kindLabelFor(n.kind),
     chips: filteredChips,
   };

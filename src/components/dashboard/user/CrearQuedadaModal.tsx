@@ -434,6 +434,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
 
   return (
     <div
+      className="mp-crear-quedada-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -450,12 +451,11 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     >
       <style>{`@keyframes mp-q-fade{from{opacity:0}to{opacity:1}}
         @keyframes mp-q-pop{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}
-        .mp-crear-quedada-formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-        @media (max-width:640px){.mp-crear-quedada-formats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
+        .mp-crear-quedada-formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}`}</style>
       <div
         role="dialog"
         aria-modal="true"
-        className="card"
+        className="card mp-crear-quedada-modal"
         style={{
           width: "100%",
           maxWidth: MODAL_MAX_WIDTH_PX,
@@ -464,14 +464,15 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
           display: "flex",
           flexDirection: "column",
           padding: 0,
+          minWidth: 0,
           background: "#fff",
           boxShadow: "0 32px 64px rgba(0,0,0,0.5)",
           animation: "mp-q-pop 180ms var(--ease-out, ease)",
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="mp-crear-quedada-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
             <div
               style={{
                 width: 34,
@@ -486,29 +487,29 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
             >
               <Icon name="party-popper" size={16} color="#fff" />
             </div>
-            <div>
+            <div className="mp-crear-quedada-header-main">
               <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}>
                 Crear quedada
               </h2>
-              <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>
+              <div className="mp-crear-quedada-header-step" style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1 }}>
                 Paso {step + 1} de {STEPS.length} · {STEPS[step]}
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="btn" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }} aria-label="Cerrar">
+          <button onClick={onClose} className="btn mp-crear-quedada-close" style={{ background: "transparent", border: 0, padding: 4, color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }} aria-label="Cerrar">
             <Icon name="x" size={18} />
           </button>
         </div>
 
         {/* Step bar */}
-        <div style={{ display: "flex", gap: 4, padding: "0 22px 12px" }}>
+        <div className="mp-crear-quedada-steps" style={{ display: "flex", gap: 4, padding: "0 22px 12px" }}>
           {STEPS.map((_, i) => (
             <div key={i} style={{ flex: 1, height: 4, borderRadius: 9999, background: i <= step ? "var(--primary)" : "var(--border)" }} />
           ))}
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: 22, paddingTop: 8, display: "flex", flexDirection: "column", gap: 16, borderTop: "1px solid var(--border)" }}>
+        <div className="mp-crear-quedada-body" style={{ flex: 1, overflow: "auto", overflowX: "hidden", padding: 22, paddingTop: 8, display: "flex", flexDirection: "column", gap: 16, borderTop: "1px solid var(--border)", minWidth: 0 }}>
           {step === 0 && (
             <>
               {templates.length > 0 && (
@@ -527,7 +528,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   </div>
                 </Field>
               )}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+              <div className="mp-crear-quedada-grid-auto" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
                 <Field label="Título">
                   <input autoFocus value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Rotación de parejas del sábado en Cumbayá" style={inputStyle} />
                 </Field>
@@ -561,7 +562,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   })}
                 </div>
               </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="mp-crear-quedada-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field
                   label="Modo"
                   tip="Dobles = parejas fijas por cupo. Singles = un jugador por cupo y el rival rota según el formato."
@@ -590,7 +591,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   </div>
                 </Field>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="mp-crear-quedada-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field
                   label="Fecha y hora"
                   tip="Recomendamos poner la hora unos 30 minutos antes del inicio real del juego. Así el check-in y el aviso a inscritos encajan mejor con cuando la gente llega."
@@ -614,15 +615,15 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                     const setCat = (patch: Partial<CatDraft>) =>
                       setCategories((arr) => arr.map((x, j) => (j === i ? patchCategoryLevel(x, patch) : x)));
                     return (
-                      <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input value={c.name} placeholder="Nombre (ej. Suma 6.0, Open Mixto)" style={{ ...inputStyle, flex: 1 }} onChange={(e) => setCat({ name: e.target.value })} />
+                      <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+                          <input value={c.name} placeholder="Nombre (ej. Suma 6.0, Open Mixto)" style={{ ...inputStyle, flex: 1, minWidth: 0 }} onChange={(e) => setCat({ name: e.target.value })} />
                           <button
                             type="button"
                             onClick={() => setCategories((arr) => arr.filter((_, j) => j !== i))}
                             disabled={categories.length <= 1}
-                            className="btn"
-                            style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "0 12px", opacity: categories.length <= 1 ? 0.4 : 1 }}
+                            className="btn mp-crear-quedada-cat-del"
+                            style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "0 12px", opacity: categories.length <= 1 ? 0.4 : 1, flexShrink: 0 }}
                             aria-label="Quitar categoría"
                             title={categories.length <= 1 ? "Debe quedar al menos una categoría" : undefined}
                           >
@@ -652,7 +653,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                           )}
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div className="mp-crear-quedada-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           <input type="time" value={c.hour} style={inputStyle} onChange={(e) => setCat({ hour: e.target.value })} />
                           <input type="number" min={1} required value={c.slots} placeholder="Cupos *" style={inputStyle} onChange={(e) => setCat({ slots: e.target.value })} />
                         </div>
@@ -684,7 +685,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                 <input type="number" min={0} step="0.5" value={feeUsd} onChange={(e) => setFeeUsd(e.target.value)} placeholder="0" style={inputStyle} />
                 <Hint>0 = gratis. Si cobras, el jugador sube comprobante (transferencia).</Hint>
               </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div className="mp-crear-quedada-grid-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <Field label="Canchas" tip="Opcional. Con horas y precio/hora estimamos el costo de cancha repartido entre los jugadores (según cupos del paso 1).">
                   <input type="number" min={1} max={64} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="Ej. 2" style={inputStyle} />
                 </Field>
@@ -776,30 +777,30 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", background: "var(--muted)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={step === 0 ? onClose : back} className="btn btn-outline" disabled={pending}>
+        <div className="mp-crear-quedada-footer">
+          <button onClick={step === 0 ? onClose : back} className="btn btn-outline mp-crear-quedada-footer-back" disabled={pending}>
             {step === 0 ? "Cancelar" : "Atrás"}
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <div className="mp-crear-quedada-footer-right">
             <button
               type="button"
               onClick={() => void saveAsTemplate()}
-              className="btn btn-outline"
+              className="btn btn-outline mp-crear-quedada-footer-template"
               disabled={pending || templates.length >= 5}
               title={templates.length >= 5 ? "Máximo 5 plantillas. Borra una para guardar otra." : "Guardar la configuración actual del wizard"}
-              style={{ fontSize: 11.5, whiteSpace: "nowrap" }}
             >
               <Icon name="bookmark" size={12} />
-              Guardar plantilla
+              <span className="mp-crear-quedada-footer-template-label-long">Guardar plantilla</span>
+              <span className="mp-crear-quedada-footer-template-label-short">Plantilla</span>
               <span style={{ color: "var(--muted-fg)", fontWeight: 700 }}>({templates.length}/5)</span>
             </button>
             {isLast ? (
-              <button onClick={save} className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
+              <button onClick={save} className="btn btn-primary mp-crear-quedada-footer-primary" disabled={pending} style={{ opacity: pending ? 0.6 : 1 }}>
                 {!pending && <Icon name="party-popper" size={13} color="#fff" />}
                 {pending ? "Creando…" : "Crear quedada"}
               </button>
             ) : (
-              <button onClick={next} className="btn btn-primary" disabled={pending}>
+              <button onClick={next} className="btn btn-primary mp-crear-quedada-footer-primary" disabled={pending}>
                 Siguiente <Icon name="arrow-right" size={13} color="#fff" />
               </button>
             )}

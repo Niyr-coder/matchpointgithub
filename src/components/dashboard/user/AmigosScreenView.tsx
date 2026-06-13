@@ -94,7 +94,10 @@ export function AmigosScreenView({
     return () => window.clearTimeout(handle);
   }, [smartMatchesClosing]);
 
+  const [searchFocused, setSearchFocused] = useState(false);
   const globalSearchActive = query.trim().length >= 2;
+  const mobileSearchUi = searchFocused || query.trim().length > 0;
+  const mobileSearchCollapsed = mobileSearchUi ? "is-collapsed" : "";
 
   useRealtimeRefresh(
     meUserId
@@ -192,9 +195,16 @@ export function AmigosScreenView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }} data-screen-label="Amigos">
-      <TopBar query={query} onQuery={setQuery} onDiscover={() => setDiscoverOpen(true)} />
+      <TopBar
+        query={query}
+        onQuery={setQuery}
+        onDiscover={() => setDiscoverOpen(true)}
+        searchMode={mobileSearchUi}
+        onSearchFocus={() => setSearchFocused(true)}
+        onSearchBlur={() => setSearchFocused(false)}
+      />
 
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <section className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi accent label="Amigos" value={friends.length} sub="en tu red" icon="users" />
         <Kpi label="Actividad real" value={recent} sub="con cruce reciente" icon="activity" />
         <Kpi label="Misma ciudad" value={sameCity} sub={myCity ?? "configura tu ciudad"} icon="map-pin" />
@@ -202,25 +212,45 @@ export function AmigosScreenView({
       </section>
 
       {!smartMatchesHidden && friends.length >= SMART_MATCHES_MIN_FRIENDS && (
-        <SmartMatches
-          friends={enriched.slice(0, 3)}
-          viewerIsPremium={viewerIsPremium}
-          closing={smartMatchesClosing}
-          onDismiss={() => setSmartMatchesClosing(true)}
-        />
+        <div
+          className={`mp-amigos-search-collapse${mobileSearchCollapsed ? " is-collapsed" : ""}`}
+        >
+          <div className="mp-amigos-search-collapse-inner">
+            <SmartMatches
+              friends={enriched.slice(0, 3)}
+              viewerIsPremium={viewerIsPremium}
+              closing={smartMatchesClosing}
+              onDismiss={() => setSmartMatchesClosing(true)}
+            />
+          </div>
+        </div>
       )}
 
-      <section className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
+      <section
+        className={`grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start${mobileSearchUi ? " max-lg:gap-0" : ""}`}
+      >
         <main className="order-2 lg:order-none flex flex-col gap-3.5 min-w-0">
           {query.trim().length === 1 ? (
-            <p style={{ margin: 0, fontSize: 11.5, color: tk.muted, lineHeight: 1.45 }}>
+            <p
+              className="mp-amigos-search-hint"
+              style={{ margin: 0, fontSize: 11.5, color: tk.muted, lineHeight: 1.45 }}
+            >
               Escribe al menos 2 letras para buscar jugadores en toda la app.
             </p>
           ) : null}
           {!globalSearchActive ? (
-            <Filters friends={friends} myCity={myCity} myLevel={myLevel} value={filter} onChange={setFilter} />
+            <div
+              className={`mp-amigos-search-collapse${mobileSearchCollapsed ? " is-collapsed" : ""}`}
+            >
+              <div className="mp-amigos-search-collapse-inner">
+                <Filters friends={friends} myCity={myCity} myLevel={myLevel} value={filter} onChange={setFilter} />
+              </div>
+            </div>
           ) : (
-            <p style={{ margin: 0, fontSize: 11.5, color: tk.muted, lineHeight: 1.45 }}>
+            <p
+              className="mp-amigos-search-hint"
+              style={{ margin: 0, fontSize: 11.5, color: tk.muted, lineHeight: 1.45 }}
+            >
               Resultados en MATCHPOINT para “{query.trim()}”.
             </p>
           )}
@@ -264,17 +294,37 @@ export function AmigosScreenView({
           )}
         </main>
 
-        <aside className="order-1 lg:order-none grid grid-cols-1 lg:grid-cols-1 gap-3 min-w-0">
-          <RequestsPanel requests={requests} />
-          <SuggestionsPanel suggestions={suggestions} onDiscover={() => setDiscoverOpen(true)} />
-          <NetworkPanel friends={friends} withCrosses={withCrosses} />
+        <aside className="order-1 lg:order-none min-w-0">
+          <div
+            className={`mp-amigos-search-collapse${mobileSearchCollapsed ? " is-collapsed" : ""}`}
+          >
+            <div className="mp-amigos-search-collapse-inner mp-amigos-search-collapse-stack lg:grid lg:grid-cols-1 lg:gap-3">
+              <RequestsPanel requests={requests} />
+              <SuggestionsPanel suggestions={suggestions} onDiscover={() => setDiscoverOpen(true)} />
+              <NetworkPanel friends={friends} withCrosses={withCrosses} />
+            </div>
+          </div>
         </aside>
       </section>
     </div>
   );
 }
 
-function TopBar({ query, onQuery, onDiscover }: { query: string; onQuery: (value: string) => void; onDiscover: () => void }) {
+function TopBar({
+  query,
+  onQuery,
+  onDiscover,
+  searchMode,
+  onSearchFocus,
+  onSearchBlur,
+}: {
+  query: string;
+  onQuery: (value: string) => void;
+  onDiscover: () => void;
+  searchMode: boolean;
+  onSearchFocus: () => void;
+  onSearchBlur: () => void;
+}) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
       <div>
@@ -282,7 +332,9 @@ function TopBar({ query, onQuery, onDiscover }: { query: string; onQuery: (value
           Amigos
         </h1>
       </div>
-      <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-[420px] sm:min-w-0">
+      <div
+        className={`mp-amigos-topbar-search-row flex items-center gap-2 w-full sm:flex-1 sm:max-w-[420px] sm:min-w-0${searchMode ? " is-searching" : ""}`}
+      >
         <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
           <span style={{ position: "absolute", left: 12, top: 11, color: tk.muted }}>
             <Icon name="search" size={13} />
@@ -290,6 +342,8 @@ function TopBar({ query, onQuery, onDiscover }: { query: string; onQuery: (value
           <input
             value={query}
             onChange={(event) => onQuery(event.target.value)}
+            onFocus={onSearchFocus}
+            onBlur={onSearchBlur}
             placeholder="Buscar por nombre o @username…"
             className="mp-amigos-search"
             style={{
@@ -304,7 +358,12 @@ function TopBar({ query, onQuery, onDiscover }: { query: string; onQuery: (value
             }}
           />
         </div>
-        <button type="button" className="btn btn-primary mp-press" onClick={onDiscover} style={{ flexShrink: 0 }}>
+        <button
+          type="button"
+          className="btn btn-primary mp-press mp-amigos-invite-btn"
+          onClick={onDiscover}
+          style={{ flexShrink: 0 }}
+        >
           <Icon name="user-plus" size={13} />
           Invitar
         </button>

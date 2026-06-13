@@ -2,6 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { RatingSparkline } from "../widgets/RatingSparkline";
 import type { RankingEntry, RankingSnapshot } from "@/lib/schemas/ranking";
@@ -126,6 +127,7 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
   const [scope, setScope] = useState("Nacional");
   const [category, setCategory] = useState("Open");
   const [period, setPeriod] = useState("30d");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Filter pipeline: scope → category → re-rank.
   const filtered = entries.filter((e) => {
@@ -212,24 +214,67 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
                 : "Aún sin partidos oficiales"}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <FilterGroup
-              label="Ámbito"
-              options={["Nacional", "Ciudad", "Club"]}
-              value={scope}
-              onChange={setScope}
-              isDisabled={scopeDisabled}
-            />
-            <FilterGroup
-              label="Categoría"
-              options={["Open", "3.0-3.5", "3.5-4.0", "4.0+"]}
-              value={category}
-              onChange={setCategory}
-            />
-            <FilterGroup label="Periodo" options={["30d", "90d", "Año"]} value={period} onChange={setPeriod} />
+          <div className="w-full md:w-auto">
+            <button
+              type="button"
+              className="btn mp-press md:hidden w-full"
+              onClick={() => setFiltersOpen(true)}
+              style={{
+                background: "#fff",
+                border: "1px solid var(--border)",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <Icon name="sliders-horizontal" size={14} />
+                <span style={{ fontWeight: 900, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Filtrar
+                </span>
+              </span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: "var(--muted-fg)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: "58%",
+                }}
+              >
+                {scope} · {category} · {period}
+              </span>
+            </button>
+            <div className="hidden md:flex" style={{ gap: 16, flexWrap: "wrap" }}>
+              <RankingFiltersPanel
+                scope={scope}
+                category={category}
+                period={period}
+                onScope={setScope}
+                onCategory={setCategory}
+                onPeriod={setPeriod}
+                scopeDisabled={scopeDisabled}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {filtersOpen ? (
+        <RankingFiltersSheet
+          scope={scope}
+          category={category}
+          period={period}
+          onScope={setScope}
+          onCategory={setCategory}
+          onPeriod={setPeriod}
+          scopeDisabled={scopeDisabled}
+          onClose={() => setFiltersOpen(false)}
+        />
+      ) : null}
 
       {emptyLabel && (
         <div
@@ -469,30 +514,205 @@ export function RankingScreenClient({ data, meUserId, isPremium }: Props) {
   );
 }
 
+function RankingFiltersPanel({
+  scope,
+  category,
+  period,
+  onScope,
+  onCategory,
+  onPeriod,
+  scopeDisabled,
+  stacked = false,
+}: {
+  scope: string;
+  category: string;
+  period: string;
+  onScope: (v: string) => void;
+  onCategory: (v: string) => void;
+  onPeriod: (v: string) => void;
+  scopeDisabled?: (opt: string) => boolean;
+  stacked?: boolean;
+}) {
+  return (
+    <>
+      <FilterGroup
+        label="Ámbito"
+        options={["Nacional", "Ciudad", "Club"]}
+        value={scope}
+        onChange={onScope}
+        isDisabled={scopeDisabled}
+        stacked={stacked}
+      />
+      <FilterGroup
+        label="Categoría"
+        options={["Open", "3.0-3.5", "3.5-4.0", "4.0+"]}
+        value={category}
+        onChange={onCategory}
+        stacked={stacked}
+      />
+      <FilterGroup label="Periodo" options={["30d", "90d", "Año"]} value={period} onChange={onPeriod} stacked={stacked} />
+    </>
+  );
+}
+
+function RankingFiltersSheet({
+  scope,
+  category,
+  period,
+  onScope,
+  onCategory,
+  onPeriod,
+  scopeDisabled,
+  onClose,
+}: {
+  scope: string;
+  category: string;
+  period: string;
+  onScope: (v: string) => void;
+  onCategory: (v: string) => void;
+  onPeriod: (v: string) => void;
+  scopeDisabled?: (opt: string) => boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="mp-modal-overlay mp-ranking-filters-overlay"
+      onMouseDown={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "rgba(10,10,10,0.55)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: 0,
+      }}
+    >
+      <div
+        className="card mp-ranking-filters-sheet mp-modal-pop"
+        onMouseDown={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mp-ranking-filters-title"
+        style={{
+          width: "100%",
+          maxWidth: 480,
+          padding: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            padding: "16px 18px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div className="label-mp">Ranking</div>
+            <h2
+              id="mp-ranking-filters-title"
+              className="font-heading"
+              style={{
+                margin: "4px 0 0",
+                fontSize: 18,
+                fontWeight: 900,
+                textTransform: "uppercase",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Filtrar
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="btn mp-press"
+            onClick={onClose}
+            aria-label="Cerrar filtros"
+            style={{
+              width: 36,
+              height: 36,
+              padding: 0,
+              borderRadius: "50%",
+              background: "#fff",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+        <div style={{ padding: "18px 18px 8px", display: "flex", flexDirection: "column", gap: 18 }}>
+          <RankingFiltersPanel
+            scope={scope}
+            category={category}
+            period={period}
+            onScope={onScope}
+            onCategory={onCategory}
+            onPeriod={onPeriod}
+            scopeDisabled={scopeDisabled}
+            stacked
+          />
+        </div>
+        <div
+          style={{
+            padding: "12px 18px calc(12px + env(safe-area-inset-bottom, 0px))",
+            borderTop: "1px solid var(--border)",
+            background: "var(--muted)",
+          }}
+        >
+          <button type="button" className="btn btn-primary mp-press w-full" onClick={onClose}>
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FilterGroup({
   label,
   options,
   value,
   onChange,
   isDisabled,
+  stacked = false,
 }: {
   label: string;
   options: string[];
   value: string;
   onChange: (v: string) => void;
   isDisabled?: (opt: string) => boolean;
+  stacked?: boolean;
 }) {
   return (
-    <div>
+    <div style={{ width: stacked ? "100%" : undefined }}>
       <div className="label-mp" style={{ marginBottom: 6 }}>
         {label}
       </div>
-      <div style={{ display: "inline-flex", background: "#f5f5f5", borderRadius: 9999, padding: 3 }}>
+      <div
+        style={{
+          display: "inline-flex",
+          background: "#f5f5f5",
+          borderRadius: 9999,
+          padding: 3,
+          flexWrap: stacked ? "wrap" : "nowrap",
+          width: stacked ? "100%" : undefined,
+          gap: stacked ? 4 : 0,
+        }}
+      >
         {options.map((o) => {
           const dis = isDisabled?.(o) ?? false;
           return (
             <button
               key={o}
+              type="button"
               onClick={() => !dis && onChange(o)}
               disabled={dis}
               title={dis ? "No disponible" : undefined}
@@ -509,6 +729,7 @@ function FilterGroup({
                 cursor: dis ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
                 opacity: dis ? 0.5 : 1,
+                flex: stacked ? "1 1 auto" : undefined,
               }}
             >
               {o}

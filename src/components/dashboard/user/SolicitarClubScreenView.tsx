@@ -73,7 +73,8 @@ export type ClubDraft = {
   description: string;
   accentColor: string;
   coverPhoto: CoverPhoto;
-  city: string;
+  locationCity: string;
+  sector: string;
   province: string;
   country: string;
   address: string;
@@ -123,12 +124,13 @@ const EMPTY_WEEKLY_HOURS: WeeklyHours = {
 const EMPTY_DRAFT: ClubDraft = {
   applicationId: null,
   name: "",
-  orgType: "private",
+  orgType: "public",
   sports: ["pickleball"],
   description: "",
   accentColor: "#10b981",
   coverPhoto: null,
-  city: "",
+  locationCity: "",
+  sector: "",
   province: "",
   country: "Ecuador",
   address: "",
@@ -148,57 +150,12 @@ const EMPTY_DRAFT: ClubDraft = {
   courts: [],
 };
 
-// Mapa de paths Zod (camelCase) → label humano en español. Si el backend
-// retorna fields={ contactEmail: ["Invalid email"] }, el toast dice "Email
-// de contacto: formato inválido" en vez del genérico "Invalid input".
-const FIELD_LABEL_ES: Record<string, string> = {
-  name: "Nombre del club",
-  orgType: "Tipo de organización",
-  sports: "Deportes",
-  shortDescription: "Descripción",
-  legalName: "Razón social",
-  taxId: "RUC / Tax ID",
-  foundedYear: "Año de fundación",
-  contactPerson: "Persona de contacto",
-  contactEmail: "Email de contacto",
-  contactPhone: "Celular de contacto",
-  websiteOrSocial: "Web/Redes",
-  address: "Dirección",
-  district: "Ciudad / Distrito",
-  province: "Provincia",
-  country: "País",
-  referenceNote: "Referencia",
-  parking: "Estacionamiento",
-  geoLat: "Coordenadas (lat)",
-  geoLng: "Coordenadas (lng)",
-  cancellationPolicy: "Política de cancelación",
-  weeklyHours: "Horario semanal",
-  currency: "Moneda",
-};
-
-function translateZodMessage(msg: string): string {
-  if (/email/i.test(msg)) return "formato inválido";
-  if (/too small|min/i.test(msg)) return "muy corto";
-  if (/too big|max/i.test(msg)) return "muy largo";
-  if (/required|invalid/i.test(msg)) return "requerido";
-  return msg;
-}
-
-// Convierte el error de una server action en un sub-mensaje útil. Si trae
-// fields (VALIDATION.FAILED), lista el primer problema por campo.
-function formatActionError(err: { message: string; fields?: Record<string, string[]> }): string {
-  if (err.fields && Object.keys(err.fields).length > 0) {
-    return Object.entries(err.fields)
-      .map(([path, msgs]) => {
-        const label = FIELD_LABEL_ES[path] ?? path;
-        const msg = translateZodMessage(msgs[0] ?? "inválido");
-        return `${label}: ${msg}`;
-      })
-      .slice(0, 3)
-      .join(" · ");
-  }
-  return err.message;
-}
+import { formatActionError } from "@/lib/user-facing/errors";
+import {
+  getCitiesForProvince,
+  getEcuadorProvinces,
+  getSectorsForCity,
+} from "@/lib/geo/ecuador-locations";
 
 const ClubDraftCtx = createContext<ClubDraftContextValue | null>(null);
 
@@ -222,14 +179,16 @@ function ClubDraftProvider({
 
   const saveStep1 = async (): Promise<boolean> => {
     if (!draft.applicationId) return false;
+    const sports =
+      draft.sports.length > 0 ? draft.sports : (["pickleball"] as string[]);
     const r = await updateApplication({
       applicationId: draft.applicationId,
       patch: {
         step: 1,
         data: {
           name: draft.name,
-          orgType: draft.orgType,
-          sports: draft.sports,
+          orgType: "public",
+          sports,
           shortDescription: draft.description,
         },
       },
@@ -251,11 +210,27 @@ function ClubDraftProvider({
       });
       return false;
     }
-    if (!draft.city || draft.city.trim().length < 2) {
+    if (!draft.sector || draft.sector.trim().length < 2) {
+      toast({
+        icon: "alert-triangle",
+        title: "Parroquia o sector obligatorio",
+        sub: "Elige una opción de la lista.",
+      });
+      return false;
+    }
+    if (!draft.locationCity || draft.locationCity.trim().length < 2) {
       toast({
         icon: "alert-triangle",
         title: "Ciudad obligatoria",
-        sub: "Mínimo 2 caracteres.",
+        sub: "Elige una ciudad de la lista.",
+      });
+      return false;
+    }
+    if (!draft.province || draft.province.trim().length < 2) {
+      toast({
+        icon: "alert-triangle",
+        title: "Provincia obligatoria",
+        sub: "Elige una provincia de la lista.",
       });
       return false;
     }
@@ -263,7 +238,7 @@ function ClubDraftProvider({
     // campo, si va, debe cumplir su min.
     const data: Record<string, unknown> = {
       address: draft.address.trim(),
-      district: draft.city.trim(),
+      district: draft.sector.trim(),
       parking: draft.parking,
     };
     if (draft.country && draft.country.trim().length > 0) {
@@ -511,92 +486,58 @@ function Field({
 }
 
 function Stepper({ step }: { step: StepKey }) {
+  const activeStep = STEPS.find((s) => s.k === step) ?? STEPS[0];
+
   return (
-    <div
-      style={{
-        padding: "20px 28px",
-        borderBottom: "1px solid var(--border)",
-        background: "var(--muted)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            top: 18,
-            left: "8%",
-            right: "8%",
-            height: 2,
-            background: "var(--border)",
-            zIndex: 0,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: 18,
-            left: "8%",
-            height: 2,
-            width: ((step - 1) / (STEPS.length - 1)) * 84 + "%",
-            background: "var(--primary)",
-            zIndex: 1,
-          }}
-        />
-        {STEPS.map((s) => {
-          const done = s.k < step;
-          const active = s.k === step;
-          return (
+    <div className="mp-solicitar-club-stepper">
+      <div className="mp-solicitar-club-stepper-compact">
+        <div className="mp-solicitar-club-stepper-bar">
+          {STEPS.map((s) => (
             <div
               key={s.k}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 8,
-                position: "relative",
-                zIndex: 2,
-                flex: 1,
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  background: done ? "var(--primary)" : active ? "#0a0a0a" : "#fff",
-                  color: done || active ? "#fff" : "var(--muted-fg)",
-                  border: active
-                    ? "1px solid rgba(16,185,129,0.42)"
-                    : done
-                      ? 0
-                      : "1.5px solid var(--border)",
-                  boxShadow: active
-                    ? "0 0 0 5px rgba(16,185,129,0.12), 0 8px 18px rgba(10,10,10,0.18)"
-                    : done
-                      ? "0 6px 14px rgba(16,185,129,0.18)"
-                      : "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon name={done ? "check" : s.icon} size={14} color={done || active ? "#fff" : "var(--muted-fg)"} />
+              className="mp-solicitar-club-stepper-segment"
+              data-active={s.k <= step ? "true" : "false"}
+            />
+          ))}
+        </div>
+        <p className="mp-solicitar-club-stepper-caption">
+          Paso {step} de {STEPS.length} · {activeStep.l}
+        </p>
+      </div>
+
+      <div className="mp-solicitar-club-stepper-full">
+        <div className="mp-solicitar-club-stepper-track">
+          <div className="mp-solicitar-club-stepper-track-bg" />
+          <div
+            className="mp-solicitar-club-stepper-track-fill"
+            style={{ width: `${((step - 1) / (STEPS.length - 1)) * 84}%` }}
+          />
+          {STEPS.map((s) => {
+            const done = s.k < step;
+            const active = s.k === step;
+            return (
+              <div key={s.k} className="mp-solicitar-club-stepper-node">
+                <div
+                  className="mp-solicitar-club-stepper-dot"
+                  data-done={done ? "true" : "false"}
+                  data-active={active ? "true" : "false"}
+                >
+                  <Icon
+                    name={done ? "check" : s.icon}
+                    size={14}
+                    color={done || active ? "#fff" : "var(--muted-fg)"}
+                  />
+                </div>
+                <div
+                  className="mp-solicitar-club-stepper-label"
+                  data-active={active ? "true" : "false"}
+                >
+                  {s.l}
+                </div>
               </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: active ? 900 : 700,
-                  color: active ? "#0a0a0a" : "var(--muted-fg)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  textAlign: "center",
-                }}
-              >
-                {s.l}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -625,6 +566,7 @@ function Frame({
 }) {
   return (
     <div
+      className="mp-solicitar-club-frame"
       style={{
         background: "#fafafa",
         display: "grid",
@@ -634,13 +576,14 @@ function Frame({
       }}
     >
       {/* Columna izquierda: título + form card (gana todo el ancho del form interno) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        <div>
+      <div className="mp-solicitar-club-main" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+        <div className="mp-solicitar-club-intro">
           <div className="label-mp">Solicitar Club · Listing oficial</div>
-          <h1 className="font-heading display-md" style={{ margin: "6px 0 0" }}>
+          <h1 className="font-heading display-md mp-solicitar-club-title" style={{ margin: "6px 0 0" }}>
             Registra tu club <span className="dot">●</span>
           </h1>
           <p
+            className="mp-solicitar-club-lead"
             style={{
               marginTop: 8,
               fontSize: 13.5,
@@ -653,10 +596,11 @@ function Frame({
           </p>
         </div>
 
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="card mp-solicitar-club-form-card" style={{ padding: 0, overflow: "hidden" }}>
           <Stepper step={step} />
-          <div style={{ padding: 32 }}>{children}</div>
+          <div className="mp-solicitar-club-form-body" style={{ padding: 32 }}>{children}</div>
           <div
+            className="mp-solicitar-club-footer"
             style={{
               padding: "18px 28px",
               borderTop: "1px solid var(--border)",
@@ -664,6 +608,8 @@ function Frame({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
             }}
           >
             <button
@@ -680,7 +626,7 @@ function Frame({
               <Icon name="arrow-left" size={13} />
               Atrás
             </button>
-            <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+            <div className="mp-solicitar-club-footer-step" style={{ fontSize: 11, color: "var(--muted-fg)" }}>
               Paso {step} / {STEPS.length}
             </div>
             <button
@@ -700,7 +646,7 @@ function Frame({
       </div>
 
       {/* Rail derecho sticky: estado + preview consolidados */}
-      <aside style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 12 }}>
+      <aside className="mp-solicitar-club-aside" style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <div className="card" style={{ padding: 14 }}>
           <div className="label-mp" style={{ marginBottom: 4 }}>
             Estado
@@ -861,7 +807,7 @@ function ClubCardPreview({ highlightStep }: { highlightStep: StepKey }) {
           >
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--muted-fg)" }}>
               <Icon name="map-pin" size={11} />
-              {draft.city || "—"}
+              {draft.sector || draft.locationCity || "—"}
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 800 }}>
               <Icon name="star" size={11} color="#d97706" />
@@ -966,6 +912,17 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
   const [coverBusy, setCoverBusy] = useState(false);
   const visibleSports = ALL_SPORTS.filter((s) => enabledSports.includes(s.k));
 
+  useEffect(() => {
+    if (draft.sports.length > 0) return;
+    const fallback = enabledSports[0] ?? "pickleball";
+    set("sports", [fallback]);
+  }, [draft.sports.length, enabledSports, set]);
+
+  useEffect(() => {
+    if (draft.orgType === "public") return;
+    set("orgType", "public");
+  }, [draft.orgType, set]);
+
   const handleCoverUpload = async (file: File) => {
     if (!draft.applicationId) return;
     setCoverBusy(true);
@@ -1013,7 +970,7 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="mp-solicitar-club-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <h2
             className="font-heading"
@@ -1227,40 +1184,6 @@ function Step1({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               })}
             </div>
           </Field>
-          <Field
-            label="Tipo de organización"
-            hint="Solo informativo, no se muestra públicamente"
-          >
-            <div style={{ display: "flex", gap: 8 }}>
-              {[
-                { l: "Privado", v: "private" as const },
-                { l: "Público", v: "public" as const },
-                { l: "Concesión", v: "concession" as const },
-              ].map((o) => {
-                const active = draft.orgType === o.v;
-                return (
-                  <button
-                    key={o.v}
-                    type="button"
-                    onClick={() => set("orgType", o.v)}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 9999,
-                      fontSize: 11,
-                      fontWeight: 800,
-                      fontFamily: "inherit",
-                      cursor: "pointer",
-                      background: active ? "#0a0a0a" : "#fff",
-                      color: active ? "#fff" : "#0a0a0a",
-                      border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
-                    }}
-                  >
-                    {o.l}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
         </div>
       </div>
     </Frame>
@@ -1379,7 +1302,7 @@ function LocationPicker({
           background: "#f4f4f5",
         }}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+      <div className="mp-solicitar-club-grid-latlng" style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
         <input
           type="number"
           step="0.000001"
@@ -1426,6 +1349,40 @@ function LocationPicker({
 
 function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
   const { draft, set, saveStep2 } = useClubDraft();
+  const ecProvinces = getEcuadorProvinces();
+  const cityOptions = getCitiesForProvince(draft.province);
+  const sectorOptions = getSectorsForCity(draft.province, draft.locationCity);
+
+  useEffect(() => {
+    if (!draft.province || !draft.locationCity) return;
+    const cities = getCitiesForProvince(draft.province);
+    if (!cities.includes(draft.locationCity)) {
+      set("locationCity", "");
+      set("sector", "");
+    }
+  }, [draft.province, draft.locationCity, set]);
+
+  useEffect(() => {
+    if (!draft.province || !draft.locationCity || !draft.sector) return;
+    const sectors = getSectorsForCity(draft.province, draft.locationCity);
+    if (!sectors.includes(draft.sector)) {
+      set("sector", "");
+    }
+  }, [draft.province, draft.locationCity, draft.sector, set]);
+
+  const handleProvinceChange = (value: string) => {
+    set("province", value);
+    set("locationCity", "");
+    set("sector", "");
+    if (value) set("country", "Ecuador");
+  };
+
+  const handleCityChange = (value: string) => {
+    set("locationCity", value);
+    const sectors = getSectorsForCity(draft.province, value);
+    set("sector", sectors.length === 1 ? sectors[0] : "");
+  };
+
   const handleNext = async () => {
     const ok = await saveStep2();
     if (ok) onNext?.();
@@ -1440,6 +1397,7 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onNext={handleNext}
     >
       <div
+        className="mp-solicitar-club-grid-aside"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1.2fr",
@@ -1479,27 +1437,62 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               placeholder="Av. Interoceánica km 12, Local 4"
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
-            <Field label="Parroquia / sector" required hint="Aparece como pill izquierda en el card">
+          <div className="mp-solicitar-club-location-fields" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Provincia" required>
               <select
                 style={inp}
-                value={draft.city}
-                onChange={(e) => set("city", e.target.value)}
+                value={draft.province}
+                onChange={(e) => handleProvinceChange(e.target.value)}
               >
-                <option value="">— elige una —</option>
-                {["Cumbayá", "Tumbaco", "La Carolina", "Quito", "Guayaquil", "Cuenca"].map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                <option value="">— elige provincia —</option>
+                {ecProvinces.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
                 ))}
               </select>
             </Field>
-            <Field label="Provincia">
-              <input
-                style={inp}
-                value={draft.province}
-                onChange={(e) => set("province", e.target.value)}
-                placeholder="Pichincha"
-                maxLength={80}
-              />
+            <Field label="Ciudad" required>
+              <select
+                style={{
+                  ...inp,
+                  opacity: draft.province ? 1 : 0.55,
+                  cursor: draft.province ? "pointer" : "not-allowed",
+                }}
+                value={draft.locationCity}
+                onChange={(e) => handleCityChange(e.target.value)}
+                disabled={!draft.province}
+              >
+                <option value="">
+                  {draft.province ? "— elige ciudad —" : "Elige provincia primero"}
+                </option>
+                {cityOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Parroquia / sector" required hint="Es la ubicación que ven los jugadores en el listado">
+              <select
+                style={{
+                  ...inp,
+                  opacity: draft.locationCity ? 1 : 0.55,
+                  cursor: draft.locationCity ? "pointer" : "not-allowed",
+                }}
+                value={draft.sector}
+                onChange={(e) => set("sector", e.target.value)}
+                disabled={!draft.locationCity}
+              >
+                <option value="">
+                  {draft.locationCity ? "— elige parroquia o sector —" : "Elige ciudad primero"}
+                </option>
+                {sectorOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
           <Field label="Referencia / esquina" hint="Ayuda a los jugadores a encontrarte rápido">
@@ -1551,7 +1544,6 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               padding: 14,
               background: "#ecfdf5",
               borderRadius: 10,
-              borderLeft: "3px solid var(--primary)",
               display: "flex",
               gap: 10,
             }}
@@ -1595,17 +1587,11 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-          }}
-        >
-          <div>
+      <div className="mp-solicitar-club-step3" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="mp-solicitar-club-step3-header">
+          <div className="mp-solicitar-club-step3-intro">
             <h2
-              className="font-heading"
+              className="font-heading mp-solicitar-club-step-title"
               style={{
                 fontSize: 22,
                 fontWeight: 900,
@@ -1628,13 +1614,14 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               tarifas dinámicas después.
             </p>
           </div>
-          <button className="btn btn-primary" onClick={addCourt}>
+          <button className="btn btn-primary mp-solicitar-club-step3-add" onClick={addCourt}>
             <Icon name="plus" size={13} color="#fff" />
             Agregar cancha
           </button>
         </div>
 
         <div
+          className="mp-solicitar-club-grid-2"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(2, 1fr)",
@@ -1710,8 +1697,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                   </button>
                 </div>
               </div>
-              <div
-                style={{
+              <div className="mp-solicitar-club-court-meta" style={{
                   display: "flex",
                   gap: 14,
                   fontSize: 11.5,
@@ -1763,6 +1749,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
         </div>
 
         <div
+          className="mp-solicitar-club-grid-aside"
           style={{
             display: "grid",
             gridTemplateColumns: "1.4fr 1fr",
@@ -1796,6 +1783,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 return (
                   <div
                     key={d.k}
+                    className="mp-solicitar-club-hours-row"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr auto auto auto",
@@ -1807,11 +1795,12 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                       background: closed ? "#fafafa" : "#fff",
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: closed ? "var(--muted-fg)" : "#0a0a0a" }}>
+                    <div className="mp-solicitar-club-hours-day" style={{ fontSize: 12, fontWeight: 700, color: closed ? "var(--muted-fg)" : "#0a0a0a" }}>
                       {d.l}
                     </div>
                     <input
                       type="time"
+                      className="mp-solicitar-club-hours-open"
                       value={open}
                       disabled={closed}
                       onChange={(e) => updateDay({ open: e.target.value, close })}
@@ -1825,6 +1814,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                     />
                     <input
                       type="time"
+                      className="mp-solicitar-club-hours-close"
                       value={close}
                       disabled={closed}
                       onChange={(e) => updateDay({ open, close: e.target.value })}
@@ -1838,6 +1828,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                     />
                     <button
                       type="button"
+                      className="mp-solicitar-club-hours-toggle"
                       onClick={() =>
                         updateDay(closed ? { open: "06:00", close: "22:00" } : null)
                       }
@@ -2073,7 +2064,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
       onBack={onBack}
       onNext={handleNext}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="mp-solicitar-club-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <h2
             className="font-heading"
@@ -2107,7 +2098,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               onChange={(e) => set("legalName", e.target.value)}
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-solicitar-club-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="RUC" required>
               <input
                 style={inp}
@@ -2133,7 +2124,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               onChange={(e) => set("contactPerson", e.target.value)}
             />
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-solicitar-club-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Email" required>
               <input
                 style={inp}
@@ -2283,7 +2274,7 @@ function Step4({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             <span>Galería del club</span>
             <span style={{ color: "var(--muted-fg)" }}>{photoCount} / 6</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          <div className="mp-solicitar-club-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
             {Array.from({ length: 6 }).map((_, i) => {
               const photo = uploaded.photos[i];
               return (
@@ -2459,7 +2450,7 @@ function Step5({ onBack, onSubmit }: { onBack?: () => void; onSubmit?: () => voi
       l: "Ubicación",
       items: [
         ["Dirección", draft.address || "—"],
-        ["Sector", [draft.city, draft.country].filter(Boolean).join(" · ") || "—"],
+        ["Sector", [draft.sector, draft.locationCity, draft.country].filter(Boolean).join(" · ") || "—"],
       ],
     },
     {
@@ -2518,7 +2509,7 @@ function Step5({ onBack, onSubmit }: { onBack?: () => void; onSubmit?: () => voi
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="mp-solicitar-club-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {blocks.map((b) => (
             <div key={b.l} className="card" style={{ padding: 16 }}>
               <div
@@ -3136,6 +3127,7 @@ function ApprovedView({ club }: { club: ApprovedClubSummary | null }) {
         <ApprovedChecklist club={club} />
 
         <div
+          className="mp-solicitar-club-grid-3"
           style={{
             padding: "0 24px 24px",
             display: "grid",

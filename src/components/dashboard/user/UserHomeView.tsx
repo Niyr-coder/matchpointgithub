@@ -146,11 +146,15 @@ export function UserHomeView({ data }: { data: UserHomeData }) {
       </div>
       <ClubActivityFeed items={buildActivityItems(data)} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
-        <MpRatingWidget
-          ratingsByMode={data.ratingsByMode}
-          historiesByMode={data.historiesByMode}
-        />
-        <MyBadgesSection badges={data.badges} matchesTotal={data.matchesTotal} />
+        <div className="hidden md:block">
+          <MpRatingWidget
+            ratingsByMode={data.ratingsByMode}
+            historiesByMode={data.historiesByMode}
+          />
+        </div>
+        <div className={data.badges.length === 0 ? "hidden md:block" : undefined}>
+          <MyBadgesSection badges={data.badges} matchesTotal={data.matchesTotal} />
+        </div>
         <QuickActionsPanel referralSlug={data.username} />
       </div>
       {showWizard && (

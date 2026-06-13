@@ -10,6 +10,8 @@ const OVERLAY_SELECTOR = [
   ".mp-modal-backdrop",
   ".mp-seek-modal-overlay",
   ".mp-quedada-detail-overlay",
+  ".mp-crear-quedada-overlay",
+  ".mp-crear-match-overlay",
   ".mp-notif-backdrop",
 ].join(",");
 

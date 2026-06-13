@@ -15,14 +15,28 @@
 //  · Los dos siguientes son los rivales (teamB[0], teamB[1]).
 //  Es decir: picks = [partner, rivalA, rivalB] ⇒ teamA = [me, partner], teamB = [rivalA, rivalB].
 "use client";
-import { useEffect, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
-import { createMatch } from "@/server/actions/matches";
+import {
+  createMatch,
+  getRetarScheduleOptions,
+  type RetarScheduleClubOption,
+} from "@/server/actions/matches";
+import { listCourtsByClub } from "@/server/actions/courts";
+import { listReservations } from "@/server/actions/reservations";
+import {
+  buildStartSlots,
+  computeTakenSlots,
+  dayRangeIso,
+  type BookingDuration,
+  type ExistingReservation,
+} from "@/lib/booking/court-slots";
 import { PlayerPicker, type Player } from "@/components/dashboard/widgets/PlayerPicker";
 import { RankedBadge } from "@/components/dashboard/widgets/RankedBadge";
 import { useEnabledSports } from "@/components/SportsProvider";
+import type { Court } from "@/lib/schemas/courts";
 
 type Sport = "pickleball" | "padel" | "tenis";
 type Mode = "singles" | "dobles" | "mixto";
@@ -33,32 +47,51 @@ type Form = {
   mode: Mode;
   date: string;
   time: string;
-  duration: number;
-  club: string;
-  court: string;
+  duration: BookingDuration;
+  clubId: string | null;
+  clubName: string;
+  courtId: string | null;
+  courtLabel: string;
   visibility: Visibility;
-  level: string;
+  level: string | null;
   splitCost: boolean;
   totalCost: number;
   notes: string;
-  // Jugadores reales seleccionados con el PlayerPicker.
-  //  · singles: 1 elemento (el rival).
-  //  · doubles / mixto: 3 elementos en este orden [partner, rivalA, rivalB].
   picks: Player[];
 };
+
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function dateTimeToIso(dateIso: string, time: string): string {
+  const [h, mi] = time.split(":").map((n) => parseInt(n, 10));
+  const [y, mo, da] = dateIso.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, mo - 1, da, h, mi, 0, 0).toISOString();
+}
+
+function courtLabel(court: Court): string {
+  return court.name?.trim() || `Cancha ${court.code}`;
+}
 
 const INITIAL_FORM: Form = {
   sport: "pickleball",
   mode: "dobles",
-  date: "2026-05-12",
+  date: todayIso(),
   time: "19:00",
   duration: 60,
-  club: "Club Norte Pickleball",
-  court: "Cancha 3",
+  clubId: null,
+  clubName: "",
+  courtId: null,
+  courtLabel: "",
   visibility: "amigos",
-  level: "3.5-4.0",
+  level: null,
   splitCost: true,
-  totalCost: 24,
+  totalCost: 0,
   notes: "",
   picks: [],
 };
@@ -92,11 +125,191 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
       setOpen(true);
       setStep(0);
       setDone(false);
-      setForm(INITIAL_FORM);
+      setForm({ ...INITIAL_FORM, date: todayIso() });
     };
     window.addEventListener("mp-open-crear-match", handler);
     return () => window.removeEventListener("mp-open-crear-match", handler);
   }, []);
+
+  const [scheduleClubs, setScheduleClubs] = useState<RetarScheduleClubOption[]>([]);
+  const [scheduleCourts, setScheduleCourts] = useState<Court[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [existingReservations, setExistingReservations] = useState<ExistingReservation[]>([]);
+
+  const timeSlots = useMemo(
+    () => buildStartSlots(form.duration),
+    [form.duration],
+  );
+  const takenSlots = useMemo(
+    () => computeTakenSlots(form.date, timeSlots, form.duration, existingReservations),
+    [form.date, timeSlots, form.duration, existingReservations],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setScheduleClubs([]);
+      setScheduleCourts([]);
+      setExistingReservations([]);
+      return;
+    }
+    let cancelled = false;
+    setScheduleLoading(true);
+    const sportDb = SPORT_TO_DB[form.sport];
+    void (async () => {
+      if (currentUserId) {
+        const res = await getRetarScheduleOptions({ sport: sportDb });
+        if (cancelled) return;
+        setScheduleLoading(false);
+        if (res.ok) {
+          setScheduleClubs(res.data.clubs);
+        } else {
+          setScheduleClubs([]);
+        }
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ sport: sportDb, pageSize: "40", page: "1" });
+        const res = await fetch(`/api/v1/clubs?${params}`, { cache: "no-store" });
+        const json = await res.json();
+        if (cancelled) return;
+        setScheduleLoading(false);
+        if (res.ok && json.ok) {
+          setScheduleClubs(
+            (json.data ?? []).map((c: { id: string; name: string; city: string }) => ({
+              id: c.id,
+              name: c.name,
+              city: c.city,
+            })),
+          );
+        } else {
+          setScheduleClubs([]);
+        }
+      } catch {
+        if (!cancelled) {
+          setScheduleLoading(false);
+          setScheduleClubs([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, currentUserId, form.sport]);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm((f) => ({
+      ...f,
+      clubId: null,
+      clubName: "",
+      courtId: null,
+      courtLabel: "",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar deporte
+  }, [form.sport]);
+
+  useEffect(() => {
+    if (!form.clubId) {
+      setScheduleCourts([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await listCourtsByClub({ clubId: form.clubId! });
+      if (cancelled || !res.ok) return;
+      const sportDb = SPORT_TO_DB[form.sport];
+      setScheduleCourts(res.data.filter((c) => c.sport === sportDb));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clubId, form.sport]);
+
+  useEffect(() => {
+    if (!form.clubId || scheduleCourts.length === 0) return;
+    if (form.courtId && scheduleCourts.some((c) => c.id === form.courtId)) return;
+    const first = scheduleCourts[0];
+    setForm((f) => ({
+      ...f,
+      courtId: first.id,
+      courtLabel: courtLabel(first),
+    }));
+  }, [scheduleCourts, form.clubId, form.courtId]);
+
+  useEffect(() => {
+    if (!form.clubId || !form.courtId) {
+      setExistingReservations([]);
+      return;
+    }
+    let cancelled = false;
+    setAvailLoading(true);
+    const { from, to } = dayRangeIso(form.date);
+    void (async () => {
+      const res = await listReservations({
+        clubId: form.clubId!,
+        courtId: form.courtId!,
+        from,
+        to,
+        pageSize: 100,
+      });
+      if (cancelled) return;
+      setAvailLoading(false);
+      if (!res.ok) {
+        setExistingReservations([]);
+        return;
+      }
+      setExistingReservations(
+        res.data.map((r) => ({
+          id: r.id,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          status: r.status,
+        })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clubId, form.courtId, form.date]);
+
+  useEffect(() => {
+    if (takenSlots.has(form.time)) {
+      const free = timeSlots.find((s) => !takenSlots.has(s));
+      if (free) setForm((f) => ({ ...f, time: free }));
+    }
+  }, [takenSlots, form.time, timeSlots]);
+
+  const scheduleComplete =
+    !!form.clubId && !!form.courtId && !!form.time && !takenSlots.has(form.time);
+
+  const validateScheduleStep = (): boolean => {
+    if (!form.clubId || !form.clubName) {
+      toast({
+        icon: "alert-triangle",
+        title: "Elige club y cancha",
+        sub: "Necesitamos un lugar para verificar horarios disponibles.",
+      });
+      return false;
+    }
+    if (!form.courtId) {
+      toast({
+        icon: "alert-triangle",
+        title: "Elige una cancha",
+        sub: "Este club no tiene canchas activas para el deporte seleccionado.",
+      });
+      return false;
+    }
+    if (takenSlots.has(form.time)) {
+      toast({
+        icon: "alert-triangle",
+        title: "Horario ocupado",
+        sub: "Ese slot ya está reservado. Elige otra hora.",
+      });
+      return false;
+    }
+    return true;
+  };
 
   // Validez de submit: necesitamos current user + selección completa de jugadores.
   //  · singles → 1 pick (rival).
@@ -126,9 +339,24 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
       });
       return;
     }
+    if (!form.clubId || !form.courtId) {
+      toast({
+        icon: "alert-triangle",
+        title: "Falta club o cancha",
+        sub: "Vuelve al paso anterior y elige dónde jugarán.",
+      });
+      return;
+    }
+    if (takenSlots.has(form.time)) {
+      toast({
+        icon: "alert-triangle",
+        title: "Horario ocupado",
+        sub: "Ese slot ya no está disponible. Elige otra hora.",
+      });
+      return;
+    }
     startSubmit(async () => {
-      // Combina date + time en horario local del navegador.
-      const playedAt = new Date(`${form.date}T${form.time}:00`).toISOString();
+      const playedAt = dateTimeToIso(form.date, form.time);
       const pickIds = form.picks.map((p) => p.id);
       // Convención (ver header del archivo):
       //  · singles  → teamA = [me], teamB = [rival]
@@ -140,9 +368,8 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
       const res = await createMatch({
         sport: SPORT_TO_DB[form.sport],
         mode: MODE_TO_DB[form.mode],
-        // TODO: cuando exista selector real de club/cancha, pasar UUIDs reales.
-        clubId: null,
-        courtId: null,
+        clubId: form.clubId,
+        courtId: form.courtId,
         playedAt,
         durationMin: form.duration,
         teamAPlayerIds,
@@ -167,8 +394,7 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
-    <div
-      style={{
+    <div className="mp-crear-match-overlay" style={{
         position: "fixed",
         inset: 0,
         background: "rgba(10,10,10,0.65)",
@@ -179,11 +405,10 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
         justifyContent: "center",
         padding: 24,
         fontFamily: "inherit",
-      }}
-    >
+      }}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card"
+        className="card mp-crear-match-modal"
         style={{
           width: "100%",
           maxWidth: 760,
@@ -192,21 +417,22 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
           display: "flex",
           flexDirection: "column",
           padding: 0,
+          minWidth: 0,
           background: "#fff",
           boxShadow: "0 32px 64px rgba(0,0,0,0.4)",
         }}
       >
-        <div
-          style={{
+        <div className="mp-crear-match-header" style={{
             padding: "20px 28px",
             borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 16,
-          }}
-        >
-          <div>
+            minWidth: 0,
+            flexShrink: 0,
+          }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div className="label-mp" style={{ marginBottom: 4 }}>
               Acción rápida · Inicio
             </div>
@@ -242,15 +468,26 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
         </div>
 
         {!done && (
-          <div
-            style={{
-              padding: "14px 28px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              gap: 0,
-              alignItems: "center",
-            }}
-          >
+          <div className="mp-crear-match-steps">
+            <div className="mp-crear-match-steps-compact">
+              <div className="mp-crear-match-steps-bar">
+                {STEPS.map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: 4,
+                      borderRadius: 9999,
+                      background: i <= step ? "var(--primary)" : "var(--border)",
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="mp-crear-match-step-caption">
+                Paso {step + 1} de {STEPS.length} · {STEPS[step]}
+              </div>
+            </div>
+            <div className="mp-crear-match-steps-full">
             {STEPS.map((s, i) => (
               <div key={s} style={{ display: "contents" }}>
                 <div
@@ -269,16 +506,19 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
                       fontSize: 11,
                       fontWeight: 900,
                       fontFamily: "Plus Jakarta Sans",
+                      flexShrink: 0,
                     }}
                   >
                     {i < step ? <Icon name="check" size={11} color="#fff" /> : i + 1}
                   </div>
                   <span
+                    className="mp-crear-match-step-label"
                     style={{
                       fontSize: 11,
                       fontWeight: i === step ? 900 : 700,
                       textTransform: "uppercase",
                       letterSpacing: "0.1em",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {s}
@@ -286,26 +526,38 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
                 </div>
                 {i < STEPS.length - 1 && (
                   <div
+                    className="mp-crear-match-step-connector"
                     style={{
                       flex: 1,
                       height: 1,
                       background: i < step ? "var(--primary)" : "var(--border)",
                       margin: "0 12px",
+                      minWidth: 8,
                     }}
                   />
                 )}
               </div>
             ))}
+            </div>
           </div>
         )}
 
-        <div style={{ flex: 1, overflow: "auto", padding: 28 }}>
+        <div className="mp-crear-match-body" style={{ flex: 1, overflow: "auto", overflowX: "hidden", padding: 28, minWidth: 0 }}>
           {done ? (
             <DoneScreen form={form} />
           ) : step === 0 ? (
             <Step1 form={form} set={set} />
           ) : step === 1 ? (
-            <Step2 form={form} set={set} />
+            <Step2
+              form={form}
+              set={set}
+              clubs={scheduleClubs}
+              courts={scheduleCourts}
+              scheduleLoading={scheduleLoading}
+              availLoading={availLoading}
+              timeSlots={timeSlots}
+              takenSlots={takenSlots}
+            />
           ) : step === 2 ? (
             <Step3 form={form} set={set} currentUserId={currentUserId} />
           ) : (
@@ -313,26 +565,17 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
           )}
         </div>
 
-        <div
-          style={{
-            padding: "16px 28px",
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-            background: "#fafafa",
-          }}
-        >
+        <div className="mp-crear-match-footer">
           {done ? (
             <>
               <button
-                className="btn"
+                className="btn mp-crear-match-footer-btn mp-crear-match-footer-back"
                 onClick={close}
                 style={{ background: "#fff", border: "1px solid var(--border)" }}
               >
                 Cerrar
               </button>
-              <button className="btn btn-primary" onClick={close}>
+              <button className="btn btn-primary mp-crear-match-footer-btn mp-crear-match-footer-primary" onClick={close}>
                 <Icon name="message-circle" size={13} color="#fff" />
                 Ir al chat del match
               </button>
@@ -340,7 +583,7 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
           ) : (
             <>
               <button
-                className="btn"
+                className="btn mp-crear-match-footer-btn mp-crear-match-footer-back"
                 onClick={() => (step === 0 ? close() : setStep((s) => s - 1))}
                 style={{ background: "#fff", border: "1px solid var(--border)" }}
               >
@@ -348,9 +591,10 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
                 {step === 0 ? "Cancelar" : "Atrás"}
               </button>
               <button
-                className="btn btn-primary"
+                className="btn btn-primary mp-crear-match-footer-btn mp-crear-match-footer-primary"
                 disabled={step === 3 && (submitting || !canSubmit)}
                 onClick={() => {
+                  if (step === 1 && !validateScheduleStep()) return;
                   if (step !== 3) {
                     setStep((s) => s + 1);
                     return;
@@ -360,7 +604,9 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
                 style={
                   step === 3 && !canSubmit
                     ? { opacity: 0.55, cursor: "not-allowed" }
-                    : undefined
+                    : step === 1 && !scheduleComplete
+                      ? { opacity: 0.85 }
+                      : undefined
                 }
                 title={
                   step === 3 && !canSubmit
@@ -507,7 +753,7 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Deporte
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {visibleSports.map((s) => (
             <PickCard
               key={s.k}
@@ -545,7 +791,7 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Modalidad
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {MODES.map((m) => (
             <PickCard key={m.k} active={form.mode === m.k} accent onClick={() => set("mode", m.k)}>
               <div
@@ -560,14 +806,18 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
         </div>
       </div>
       <div>
-        <div className="label-mp" style={{ marginBottom: 12 }}>
+        <div className="label-mp" style={{ marginBottom: 4 }}>
           Nivel sugerido
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted-fg)", marginBottom: 12 }}>
+          Opcional · ayuda a que otros jugadores sepan qué esperar
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {LEVELS.map((l) => (
             <button
               key={l}
-              onClick={() => set("level", l)}
+              type="button"
+              onClick={() => set("level", form.level === l ? null : l)}
               style={{
                 padding: "8px 14px",
                 borderRadius: 9999,
@@ -589,24 +839,54 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
   );
 }
 
-// Slots alineados con la convención de booking: cada hora 09:00–21:00.
-const TIME_SLOTS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
-const CLUBS = [
-  { n: "Club Norte Pickleball", d: "Cumbayá · 8 km", price: "$24/h" },
-  { n: "MATCHPOINT Quito", d: "La Carolina · 4 km", price: "$28/h" },
-  { n: "Smash Sport Cumbayá", d: "Cumbayá · 12 km", price: "$22/h" },
-  { n: "Pickle Club Guayaquil", d: "Samborondón · 6 km", price: "$26/h" },
-];
+// Slots alineados con la convención de booking (ver lib/booking/court-slots).
 
-function Step2({ form, set }: { form: Form; set: Setter }) {
+function Step2({
+  form,
+  set,
+  clubs,
+  courts,
+  scheduleLoading,
+  availLoading,
+  timeSlots,
+  takenSlots,
+}: {
+  form: Form;
+  set: Setter;
+  clubs: RetarScheduleClubOption[];
+  courts: Court[];
+  scheduleLoading: boolean;
+  availLoading: boolean;
+  timeSlots: string[];
+  takenSlots: Set<string>;
+}) {
+  const [clubQuery, setClubQuery] = useState("");
+  const filteredClubs = useMemo(() => {
+    const q = clubQuery.trim().toLowerCase();
+    if (!q) return clubs;
+    return clubs.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.city.toLowerCase().includes(q),
+    );
+  }, [clubs, clubQuery]);
+
+  const selectClub = (club: RetarScheduleClubOption) => {
+    set("clubId", club.id);
+    set("clubName", club.name);
+    set("courtId", null);
+    set("courtLabel", "");
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-crear-match-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <CMField label="Fecha">
           <input
             type="date"
             style={cmInp}
             value={form.date}
+            min={todayIso()}
             onChange={(e) => set("date", e.target.value)}
           />
         </CMField>
@@ -614,39 +894,14 @@ function Step2({ form, set }: { form: Form; set: Setter }) {
           <select
             style={cmInp}
             value={form.duration}
-            onChange={(e) => set("duration", +e.target.value)}
+            onChange={(e) => set("duration", +e.target.value as BookingDuration)}
           >
             <option value={60}>1 hora</option>
             <option value={120}>2 horas</option>
           </select>
         </CMField>
       </div>
-      <div>
-        <div className="label-mp" style={{ marginBottom: 10 }}>
-          Hora de inicio
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-          {TIME_SLOTS.map((s) => (
-            <button
-              key={s}
-              onClick={() => set("time", s)}
-              style={{
-                padding: "10px 8px",
-                borderRadius: 8,
-                fontSize: 12.5,
-                fontWeight: 800,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                background: form.time === s ? "var(--primary)" : "#fff",
-                color: form.time === s ? "#fff" : "#0a0a0a",
-                border: "1px solid " + (form.time === s ? "var(--primary)" : "var(--border)"),
-              }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
+
       <div>
         <div
           style={{
@@ -654,10 +909,15 @@ function Step2({ form, set }: { form: Form; set: Setter }) {
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 10,
+            gap: 10,
+            flexWrap: "wrap",
           }}
         >
           <div className="label-mp">Club</div>
-          <div style={{ position: "relative" }}>
+          <div
+            className="mp-crear-match-club-search"
+            style={{ position: "relative", flex: "1 1 140px", maxWidth: 280 }}
+          >
             <span
               style={{
                 position: "absolute",
@@ -670,44 +930,186 @@ function Step2({ form, set }: { form: Form; set: Setter }) {
             </span>
             <input
               placeholder="Buscar club…"
+              value={clubQuery}
+              onChange={(e) => setClubQuery(e.target.value)}
               style={{
                 ...cmInp,
                 padding: "7px 10px 7px 28px",
                 fontSize: 12,
-                width: 180,
+                width: "100%",
               }}
             />
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {CLUBS.map((c) => (
-            <button
-              key={c.n}
-              onClick={() => set("club", c.n)}
-              style={{
-                padding: 12,
-                borderRadius: 10,
-                border: form.club === c.n ? "2px solid var(--primary)" : "1px solid var(--border)",
-                background: form.club === c.n ? "#ecfdf5" : "#fff",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                fontFamily: "inherit",
-                textAlign: "left",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 800 }}>{c.n}</div>
-                <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{c.d}</div>
-              </div>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--primary)" }}>
-                {c.price}
-              </div>
-            </button>
-          ))}
-        </div>
+        {scheduleLoading ? (
+          <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: "8px 0" }}>
+            Cargando clubes…
+          </div>
+        ) : filteredClubs.length === 0 ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 10,
+              border: "1px dashed var(--border)",
+              background: "#fafafa",
+              fontSize: 12.5,
+              color: "var(--muted-fg)",
+            }}
+          >
+            {clubs.length === 0
+              ? "No hay clubes disponibles para este deporte."
+              : "Ningún club coincide con tu búsqueda."}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {filteredClubs.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => selectClub(c)}
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border:
+                    form.clubId === c.id ? "2px solid var(--primary)" : "1px solid var(--border)",
+                  background: form.clubId === c.id ? "#ecfdf5" : "#fff",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                  gap: 10,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>{c.city}</div>
+                </div>
+                {form.clubId === c.id ? (
+                  <Icon name="check-circle-2" size={16} color="var(--primary)" />
+                ) : null}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {form.clubId ? (
+        <div>
+          <div className="label-mp" style={{ marginBottom: 10 }}>
+            Cancha
+          </div>
+          {courts.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+              Este club no tiene canchas activas para el deporte elegido.
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {courts.map((court) => {
+                const label = courtLabel(court);
+                const on = form.courtId === court.id;
+                return (
+                  <button
+                    key={court.id}
+                    type="button"
+                    onClick={() => {
+                      set("courtId", court.id);
+                      set("courtLabel", label);
+                    }}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 9999,
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      background: on ? "#0a0a0a" : "#fff",
+                      color: on ? "#fff" : "#0a0a0a",
+                      border: "1px solid " + (on ? "#0a0a0a" : "var(--border)"),
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {form.clubId && form.courtId ? (
+        <div>
+          <div
+            className="label-mp"
+            style={{
+              marginBottom: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span>Hora de inicio</span>
+            {availLoading ? (
+              <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700 }}>
+                Verificando…
+              </span>
+            ) : null}
+          </div>
+          <div
+            className="mp-crear-match-time-grid"
+            style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}
+          >
+            {timeSlots.map((s) => {
+              const on = form.time === s;
+              const busy = takenSlots.has(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => !busy && set("time", s)}
+                  style={{
+                    padding: "10px 8px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: busy ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                    background: busy ? "#f4f4f5" : on ? "var(--primary)" : "#fff",
+                    color: busy ? "#a1a1aa" : on ? "#fff" : "#0a0a0a",
+                    border:
+                      "1px solid " +
+                      (busy ? "var(--border)" : on ? "var(--primary)" : "var(--border)"),
+                    opacity: busy ? 0.65 : 1,
+                  }}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+          {!availLoading && timeSlots.every((t) => takenSlots.has(t)) ? (
+            <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700, marginTop: 8 }}>
+              No hay horarios libres este día. Prueba otra fecha o cancha.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            background: "#fafafa",
+            fontSize: 12.5,
+            color: "var(--muted-fg)",
+          }}
+        >
+          Elige club y cancha para ver los horarios disponibles.
+        </div>
+      )}
     </div>
   );
 }
@@ -737,7 +1139,7 @@ function Step3({
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Visibilidad
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {VISIBILITY_OPTIONS.map((o) => (
             <PickCard
               key={o.k}
@@ -828,9 +1230,12 @@ function Step4({ form }: { form: Form }) {
     day: "numeric",
     month: "long",
   });
-  const perPlayer = form.splitCost
-    ? (form.totalCost / (form.picks.length + 1)).toFixed(2)
-    : form.totalCost.toFixed(2);
+  const costKnown = form.totalCost > 0;
+  const perPlayer = costKnown
+    ? form.splitCost
+      ? (form.totalCost / (form.picks.length + 1)).toFixed(2)
+      : form.totalCost.toFixed(2)
+    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -899,28 +1304,33 @@ function Step4({ form }: { form: Form }) {
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <Icon name="map-pin" size={13} color="#fff" />
-              {form.club}
+              {form.clubName || "Sin club"}
             </span>
           </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-crear-match-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="card" style={{ padding: 16 }}>
           <div className="label-mp" style={{ marginBottom: 8 }}>
             Configuración
           </div>
-          <Row k="Nivel" v={form.level} />
+          {form.level ? <Row k="Nivel" v={form.level} /> : null}
           <Row k="Visibilidad" v={visName} />
-          <Row k="Cancha" v={form.court} />
+          <Row k="Cancha" v={form.courtLabel || "—"} />
         </div>
         <div className="card" style={{ padding: 16 }}>
           <div className="label-mp" style={{ marginBottom: 8 }}>
             Costo
           </div>
-          <Row k="Total cancha" v={"$" + form.totalCost.toFixed(2)} />
+          <Row
+            k="Total cancha"
+            v={costKnown ? "$" + form.totalCost.toFixed(2) : "Por confirmar en el club"}
+          />
           <Row k="Modalidad" v={form.splitCost ? "Dividir entre todos" : "Pago organizador"} />
-          <Row k="Por jugador" v={"$" + perPlayer} accent />
+          {costKnown && perPlayer ? (
+            <Row k="Por jugador" v={"$" + perPlayer} accent />
+          ) : null}
         </div>
       </div>
 
@@ -1042,7 +1452,7 @@ function DoneScreen({ form }: { form: Form }) {
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <Icon name="map-pin" size={12} />
-          {form.club}
+          {form.clubName || "Sin club"}
         </span>
       </div>
     </div>

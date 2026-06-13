@@ -68,10 +68,15 @@ function mapApplication(row: Record<string, unknown>): ClubApplication {
   });
 }
 
-const STATUS_LABEL_ES: Partial<Record<ClubApplication["status"], string>> = {
+const STATUS_LABEL_ES: Record<ClubApplication["status"], string> = {
+  draft: "borrador",
+  submitted: "enviada",
   docs_review: "revisión documental",
   field_verification: "verificación en sitio",
   final_review: "revisión final",
+  approved: "aprobada",
+  rejected: "rechazada",
+  withdrawn: "retirada",
 };
 
 async function requireAdmin(): Promise<string> {

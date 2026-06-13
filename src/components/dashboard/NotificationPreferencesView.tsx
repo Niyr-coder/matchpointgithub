@@ -3,6 +3,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { RoleKey } from "@/lib/roles";
 import { MP_ROLES } from "@/lib/roles";
+import { notificationKindLabel } from "@/lib/user-facing/notification-kinds";
 import { Icon } from "@/components/Icon";
 import { useToast } from "./ToastProvider";
 
@@ -87,13 +88,7 @@ function parsePrefKey(key: string): { kind: string; channel: NotificationChannel
 }
 
 function categoryLabel(category: string): string {
-  return CATEGORY_LABELS[category] ?? humanize(category);
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return CATEGORY_LABELS[category] ?? category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function buildSaved(preferences: NotificationPreferenceVM[], role: RoleKey): Record<string, boolean> {
@@ -406,11 +401,8 @@ export function NotificationPreferencesView({
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#0a0a0a" }}>
-                      {kind.description || humanize(kind.kind)}
+                      {notificationKindLabel(kind.kind, kind.description)}
                     </div>
-                    <code style={{ fontSize: 10.5, color: "var(--muted-fg)", fontFamily: "ui-monospace, monospace" }}>
-                      {kind.kind}
-                    </code>
                   </div>
                   {CHANNELS.map((channel) => {
                     const available = kind.defaultChannels.includes(channel.key);

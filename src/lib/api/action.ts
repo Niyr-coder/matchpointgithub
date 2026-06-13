@@ -7,6 +7,7 @@ import { ApiErr, ApiOk, fail, ok } from "./response";
 import { MpError } from "./errors";
 import { AuthError } from "@/lib/auth/session";
 import { captureError } from "@/lib/observability/sentry";
+import { translateErrorMessage } from "@/lib/user-facing/errors";
 
 export type ActionResult<T> = ApiOk<T> | ApiErr;
 
@@ -35,11 +36,18 @@ function mapErr(err: unknown): ApiErr {
     }
     // DEBUG: emit each issue to server log so we can see which field failed.
     console.error("[runAction] ZodError issues:", JSON.stringify(err.issues, null, 2));
-    return fail("VALIDATION.FAILED", "Invalid input", { fields });
+    return fail("VALIDATION.FAILED", translateErrorMessage({ code: "VALIDATION.FAILED", message: "Invalid input", fields }), { fields });
   }
-  if (err instanceof AuthError) return fail(err.code, err.message);
-  if (err instanceof MpError)
-    return fail(err.code, err.message, err.fields ? { fields: err.fields } : undefined);
+  if (err instanceof AuthError) {
+    return fail(err.code, translateErrorMessage({ code: err.code, message: err.message }));
+  }
+  if (err instanceof MpError) {
+    return fail(
+      err.code,
+      translateErrorMessage({ code: err.code, message: err.message, fields: err.fields }),
+      err.fields ? { fields: err.fields } : undefined,
+    );
+  }
   captureError(err, { layer: "action" });
-  return fail("INTERNAL.UNEXPECTED", "Something went wrong");
+  return fail("INTERNAL.UNEXPECTED", translateErrorMessage({ code: "INTERNAL.UNEXPECTED", message: "Something went wrong" }));
 }
