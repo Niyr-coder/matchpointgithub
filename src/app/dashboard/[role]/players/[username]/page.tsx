@@ -24,6 +24,7 @@ import { ProfileV3ScreenView } from "@/components/dashboard/user/profile-v3/Prof
 import { loadProfileFor } from "@/components/dashboard/user/loadProfileFor.server";
 import { getRetarHeroContext } from "@/server/actions/matches";
 import { trustBadgeMeta } from "@/lib/ui/trust-badge";
+import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
 
 export default async function PublicPlayerProfilePage({
   params,
@@ -248,7 +249,7 @@ function OfficialAccountView({
                   }}
                 >
                   {name}
-                  <span className="dot">.</span>
+                  <NameplateMark nameplateKey="support" size="lg" />
                 </div>
                 <MpBadge {...trustBadgeMeta("official")} variant="icon-only" size="md" />
               </div>

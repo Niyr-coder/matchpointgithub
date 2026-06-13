@@ -1080,6 +1080,7 @@ select.mp-input:disabled {
 @media (max-width: 820px) {
   .mp-flair-an, .mp-flair-words { grid-template-columns: 1fr !important; }
   .mp-flair-report { grid-template-columns: 1fr !important; }
+  .mp-nameplate-handoff-grid { grid-template-columns: 1fr !important; }
 }
 
 /* Configuración v2: sidebar (260px) + contenido colapsan; sidebar deja de ser

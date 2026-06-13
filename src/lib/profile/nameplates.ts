@@ -8,11 +8,14 @@ export type NameplateKey =
   | "club_pro"
   | "support";
 
+export type NameplateMarkChar = "." | "●" | "✦" | "/" | "+";
+
 export type NameplateDefinition = {
   key: NameplateKey;
-  mark: "." | "/" | "*" | "+";
+  mark: NameplateMarkChar;
   tone: NameplateTone;
   color: string;
+  /** Nombre interno para el selector; no se muestra junto al nombre del jugador. */
   label: string;
   description: string;
   rules: string[];
@@ -28,11 +31,11 @@ export const NAMEPLATES: NameplateDefinition[] = [
     color: "#10b981",
     label: "Clásico MATCHPOINT",
     description: "Remate verde por defecto para perfiles de jugador.",
-    rules: ["Asignado por defecto.", "No agrega etiqueta visible junto al nombre."],
+    rules: ["Asignado por defecto.", "Solo el símbolo junto al nombre, sin pill ni texto extra."],
   },
   {
     key: "competitor",
-    mark: "/",
+    mark: "●",
     tone: "forest",
     color: "#064e3b",
     label: "Competidor",
@@ -41,7 +44,7 @@ export const NAMEPLATES: NameplateDefinition[] = [
   },
   {
     key: "founder",
-    mark: "*",
+    mark: "✦",
     tone: "gold",
     color: "#ca8a04",
     label: "Fundador",
@@ -53,7 +56,7 @@ export const NAMEPLATES: NameplateDefinition[] = [
     mark: "+",
     tone: "violet",
     color: "#7c3aed",
-    label: "Comunidad",
+    label: "Social",
     description: "Remate de comunidad para perfiles sociales.",
     rules: ["Representa actividad social.", "Se renderiza solo como símbolo."],
   },
@@ -68,7 +71,7 @@ export const NAMEPLATES: NameplateDefinition[] = [
   },
   {
     key: "support",
-    mark: "*",
+    mark: "●",
     tone: "charcoal",
     color: "#111827",
     label: "Soporte",
@@ -83,4 +86,12 @@ export const NAMEPLATE_BY_KEY = Object.fromEntries(
 
 export function getNameplate(key: NameplateKey | null | undefined): NameplateDefinition {
   return NAMEPLATE_BY_KEY[key ?? DEFAULT_NAMEPLATE_KEY] ?? NAMEPLATE_BY_KEY[DEFAULT_NAMEPLATE_KEY];
+}
+
+export function resolveNameplateKey(
+  isOfficial: boolean | undefined,
+  nameplateKey: NameplateKey | null | undefined,
+): NameplateKey | null {
+  if (isOfficial) return "support";
+  return nameplateKey ?? null;
 }

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
+import { resolveNameplateKey, type NameplateKey } from "@/lib/profile/nameplates";
 import { useToast } from "../ToastProvider";
 import { startConversation } from "@/server/actions/messaging";
 import { sendFriendRequest } from "@/server/actions/friends";
@@ -21,6 +22,7 @@ export type FriendLite = {
   sport: string;
   level: number;
   isOfficial: boolean;
+  nameplateKey?: NameplateKey | null;
   isPremium: boolean;
   friendSince?: string | null;
   matchesTogether?: number;
@@ -84,7 +86,7 @@ export function FriendCard({
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-      <NameplateMark size="sm" />
+      <NameplateMark nameplateKey={resolveNameplateKey(f.isOfficial, f.nameplateKey)} size="sm" />
     </div>
   );
 
@@ -299,7 +301,7 @@ function OfficialFriendCard({ f }: { f: FriendLite }) {
           style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.15, display: "inline-flex", alignItems: "center", gap: 0 }}
         >
           {f.name}
-          <NameplateMark nameplateKey="support" size="sm" />
+          <NameplateMark nameplateKey={resolveNameplateKey(f.isOfficial, f.nameplateKey)} size="sm" />
         </div>
         <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 6, lineHeight: 1.45 }}>
           Cuenta oficial de MATCHPOINT EC. Te enviamos novedades y recordatorios. El chat oficial es solo informativo.

@@ -8,6 +8,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
+import type { NameplateKey } from "@/lib/profile/nameplates";
 
 const MONTHS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -22,6 +23,7 @@ const DEFAULT_ACCENT = "#10b981";
 
 export type ProfileHeaderCardProps = {
   name: string;
+  nameplateKey?: NameplateKey | null;
   username: string;
   city: string | null;
   bio: string | null;
@@ -37,6 +39,7 @@ export type ProfileHeaderCardProps = {
 
 export function ProfileHeaderCard({
   name,
+  nameplateKey,
   username,
   city,
   bio,
@@ -134,7 +137,7 @@ export function ProfileHeaderCard({
                 }
               >
                 {name}
-                <NameplateMark size="lg" />
+                <NameplateMark nameplateKey={nameplateKey} size="lg" />
               </div>
             </div>
             <div

@@ -18,7 +18,6 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   keywords: ["pickleball", "ecuador", "canchas", "reservas", "ranking"],
   alternates: { canonical: "/" },
-  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     title: "MATCHPOINT",
@@ -31,8 +30,12 @@ export const metadata: Metadata = {
     icon: [
       { url: "/icons/matchpoint-icon.svg", type: "image/svg+xml" },
       { url: "/icons/matchpoint-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/matchpoint-icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/icons/matchpoint-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
   },
   // TODO: agregar imagen OG (1200×630) — hoy no hay asset en /public, así que
   // se comparte sin preview de imagen. Cuando exista, sumar `images` acá y

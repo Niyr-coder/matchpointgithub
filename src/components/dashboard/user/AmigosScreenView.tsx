@@ -17,6 +17,7 @@ import { startConversation } from "@/server/actions/messaging";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { REQ_AVATARS, initials, type FriendLite } from "../widgets/FriendCard";
+import { resolveNameplateKey } from "@/lib/profile/nameplates";
 import { MP_GRADIENT_SURFACE_SOCIAL_DARK } from "@/lib/ui/gradients";
 
 export type { FriendLite };
@@ -811,7 +812,7 @@ function FriendName({ friend, small = false }: { friend: FriendLite; small?: boo
   const inner = (
     <span className="font-heading" style={{ fontWeight: 900, fontSize: small ? 12.5 : 16, letterSpacing: "-0.015em", color: tk.ink, display: "inline-flex", alignItems: "center", gap: 0, maxWidth: "100%" }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friend.name}</span>
-      <NameplateMark nameplateKey={friend.isOfficial ? "support" : undefined} size="sm" />
+      <NameplateMark nameplateKey={resolveNameplateKey(friend.isOfficial, friend.nameplateKey)} size="sm" />
     </span>
   );
   if (!friend.username) return inner;
@@ -1001,7 +1002,7 @@ function DiscoverCard({ player, avatarBg, busy, onSend }: { player: PlayerSearch
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "inline-flex", alignItems: "center", gap: 0, maxWidth: "100%" }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.displayName}</span>
-          <NameplateMark nameplateKey={player.isOfficial ? "support" : undefined} size="sm" />
+          <NameplateMark nameplateKey={resolveNameplateKey(player.isOfficial, undefined)} size="sm" />
         </div>
         <div style={{ fontSize: 11, color: tk.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.username ? `@${player.username}` : "Sin alias"}{player.city ? ` · ${player.city}` : ""}</div>
       </div>

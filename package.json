@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
     "seed:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
+    "icons:generate": "tsx scripts/generate-app-icons.ts",
+    "db:wipe": "tsx --env-file=.env.local scripts/wipe-db.ts --confirm",
     "seed:qa-roles": "tsx --env-file=.env.local scripts/seed-qa-role-accounts.ts",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chrome",

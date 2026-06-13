@@ -12,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "es-EC",
     display: "standalone",
     display_override: ["standalone", "browser"],
-    background_color: "#fafafa",
+    background_color: "#0a0a0a",
     theme_color: "#10b981",
     categories: ["sports", "lifestyle"],
     icons: [
@@ -29,16 +29,10 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: "/icons/matchpoint-icon-512.png",
+        src: "/icons/matchpoint-icon-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
-      },
-      {
-        src: "/icons/matchpoint-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any",
       },
     ],
   };

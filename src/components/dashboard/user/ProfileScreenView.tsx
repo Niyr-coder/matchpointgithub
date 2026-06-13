@@ -13,6 +13,7 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { EditProfilePanel } from "./EditProfilePanel";
 import { EditBioModal } from "./EditBioModal";
 import { RatingSparkline } from "../widgets/RatingSparkline";
+import { NameplateMark } from "../widgets/NameplateMark";
 import { MP_GRADIENT_SURFACE_PREMIUM_DARK, MP_GRADIENT_SURFACE_SOCIAL_DARK } from "@/lib/ui/gradients";
 import { defaultShowcasePins, type ShowcasePins } from "@/lib/profile/showcase-pins";
 
@@ -502,7 +503,8 @@ function Hero({
         <div className="pb-1">
           <div className="flex items-center gap-3 flex-wrap mb-2">
             <h1 className="font-heading" style={{ margin: 0, fontWeight: 900, fontSize: "clamp(30px, 5vw, 38px)", lineHeight: 1, letterSpacing: "-0.035em", textTransform: "uppercase" }}>
-              {data.name}<span className="dot">.</span>
+              {data.name}
+              <NameplateMark size="lg" />
             </h1>
             <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, color: tk.muted, letterSpacing: "0.08em" }}>@{data.username}</span>
           </div>

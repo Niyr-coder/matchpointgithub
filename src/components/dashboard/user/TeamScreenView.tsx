@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
 import { NameplateMark } from "@/components/dashboard/widgets/NameplateMark";
+import type { NameplateKey } from "@/lib/profile/nameplates";
 import { trustBadgeMeta } from "@/lib/ui/trust-badge";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -63,6 +64,7 @@ export type TeamMemberLite = {
   userId: string;
   username: string | null;
   name: string;
+  nameplateKey?: NameplateKey | null;
   role: string;
   level: number;
   played: number;
@@ -3112,7 +3114,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                                 }}
                               >
                                 {p.name}
-                                <NameplateMark size="sm" />
+                                <NameplateMark nameplateKey={p.nameplateKey} size="sm" />
                               </span>
                               {isMe && <SelfChip />}
                             </div>
@@ -3308,7 +3310,7 @@ function TeamHome({ setView, team: TEAM, meUserId }: { setView: (v: View) => voi
                           >
                             <span style={{ display: "inline-flex", alignItems: "baseline", gap: 0, minWidth: 0 }}>
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                              <NameplateMark size="sm" />
+                              <NameplateMark nameplateKey={p.nameplateKey} size="sm" />
                             </span>
                             {isMe && <SelfChip />}
                           </span>
