@@ -237,7 +237,7 @@ function V2Heatmap() {
           <span style={{ fontSize: 9.5, color: v2tk.muted, fontWeight: 700 }}>más</span>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '22px repeat(6, 1fr)', gap: 4, alignItems: 'center' }}>
+      <div className="pv3-scroll-x" style={{ display: 'grid', gridTemplateColumns: '22px repeat(6, 1fr)', gap: 4, alignItems: 'center', minWidth: 300 }}>
         <div />
         {['6-9', '9-12', '12-15', '15-18', '18-21', '21-24'].map(f => (
           <div key={f} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: v2tk.muted, textAlign: 'center', letterSpacing: '0.04em' }}>{f}</div>
@@ -280,7 +280,7 @@ function V2Community({ sub }) {
             {usePerfilV3Data().partners.map(p => {
               const rate = Math.round((p.wins / p.matches) * 100);
               return (
-                <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 90px 50px', alignItems: 'center', gap: 14 }}>
+                <div key={p.name} className="pv3-scroll-x" style={{ display: 'grid', gridTemplateColumns: '40px 1fr 90px 50px', alignItems: 'center', gap: 14, minWidth: 330 }}>
                   <AvatarBlob size={36} tone={p.tone} label={p.initials} ring="#fff" ringWidth={2} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: v2tk.ink }}>{p.name}</div>
@@ -431,7 +431,7 @@ function V2Preferences({ sub }) {
         {/* Cover picker */}
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', color: v2tk.muted, textTransform: 'uppercase', marginBottom: 8 }}>Portada</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+          <div className="pv3-scroll-x" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, minWidth: 300 }}>
             {Object.entries(v2tk.covers).map(([k, c]) => {
               const selected = k === V2_PERSONALIZATION.cover;
               const locked = !c.free && !isPlus;

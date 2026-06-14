@@ -68,7 +68,8 @@ export function PrizesEditor({
         </div>
       )}
       {value.map((r, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "70px 1fr 88px auto", gap: 6, alignItems: "center" }}>
+        <div key={i} className="mp-table-scroll">
+          <div style={{ minWidth: 360, display: "grid", gridTemplateColumns: "70px 1fr 88px auto", gap: 6, alignItems: "center" }}>
           <input value={r.place} onChange={(e) => setRow(i, { place: e.target.value })} placeholder="Puesto" maxLength={40} style={{ ...inp, fontWeight: 800 }} />
           <input value={r.prize} onChange={(e) => setRow(i, { prize: e.target.value })} placeholder="Premio (ej. media docena de pelotas)" maxLength={120} style={inp} />
           <div style={{ position: "relative" }}>
@@ -78,6 +79,7 @@ export function PrizesEditor({
           <button type="button" onClick={() => remove(i)} className="btn" style={{ background: "#fff", border: "1px solid var(--destructive-border)", color: "var(--destructive-fg)", padding: "0 11px" }} aria-label="Quitar premio">
             <Icon name="trash-2" size={13} />
           </button>
+          </div>
         </div>
       ))}
       <button type="button" onClick={add} className="btn btn-outline" style={{ alignSelf: "flex-start" }}>
