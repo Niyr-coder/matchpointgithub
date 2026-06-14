@@ -264,7 +264,8 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
             <span>100%</span>
           </div>
         </div>
-        <div>
+        <div className="mp-table-scroll">
+          <div style={{ minWidth: 620 }}>
           <div
             style={{
               display: "grid",
@@ -293,6 +294,7 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
             hasOcupacion={hasOcupacion}
             heatColor={heatColor}
           />
+          </div>
         </div>
         <div
           style={{
