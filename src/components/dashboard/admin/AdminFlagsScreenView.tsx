@@ -246,7 +246,8 @@ export function AdminFlagsScreenView({ data }: { data: FlagsData }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {hasRows
           ? data.rows.map((f) => (
-              <div key={f.k} className="card" style={{ padding: 18 }}>
+              <div key={f.k} className="card mp-table-scroll" style={{ padding: 18 }}>
+                <div style={{ minWidth: 780 }}>
                 <div
                   style={{
                     display: "grid",
@@ -361,6 +362,7 @@ export function AdminFlagsScreenView({ data }: { data: FlagsData }) {
                       Eliminar
                     </button>
                   </div>
+                </div>
                 </div>
               </div>
             ))
