@@ -113,14 +113,14 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
   const kpis = [
     { i: "send", l: "Campañas enviadas", v: nf(counts.sent), sub: `${nf(campaigns.length)} en total`, color: "#0a0a0a", up: false },
     { i: "users", l: "Destinatarios", v: nf(totalRecipients), sub: "suma de envíos", color: "var(--primary)", up: false },
-    { i: "clock", l: "Programadas", v: nf(counts.scheduled), sub: "sin worker automático", color: "#fbbf24", up: false },
+    { i: "clock", l: "Programadas", v: nf(counts.scheduled), sub: "se envían solas a su hora", color: "#fbbf24", up: false },
     { i: "save", l: "Borradores", v: nf(counts.draft), sub: "sin enviar", color: "#dc2626", up: false },
   ];
 
   // Envío REAL in-app (banner va por otro flujo). Push/email todavía no tienen
   // dispatcher externo; se mantienen visibles como próximos canales.
-  // Programar solo
-  // deja la campaña registrada; falta worker/cron que despache automáticamente.
+  // Programar deja la campaña en status=scheduled; el cron
+  // fn_dispatch_scheduled_broadcasts (cada 5 min) la despacha a su hora.
   const CHANNEL_MAP: Record<string, string[]> = { "in-app": ["inapp"] };
   const sendCampaign = (mode: "now" | "time" | "draft") =>
     startTransition(async () => {
@@ -135,8 +135,8 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
       } else {
         toast({
           icon: mode === "time" ? "calendar" : "save",
-          title: mode === "time" ? "Campaña guardada como programada" : "Borrador guardado",
-          sub: mode === "time" ? "Falta activar el worker de despacho automático." : undefined,
+          title: mode === "time" ? "Campaña programada" : "Borrador guardado",
+          sub: mode === "time" ? "Se enviará automáticamente a la hora elegida." : undefined,
         });
       }
       router.refresh();

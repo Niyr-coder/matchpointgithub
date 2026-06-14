@@ -1495,6 +1495,14 @@ create table broadcast_recipients (
 );
 ```
 
+**Despacho programado (mig `20260614120000`):** una campaña con
+`status='scheduled'` + `scheduled_for` la despacha automáticamente el cron
+`fn_dispatch_scheduled_broadcasts()` (pg_cron, cada 5 min). La función reusa
+`fn_enqueue_notification` por target — idéntico al envío manual
+`dispatchBroadcast` — y solo replica la resolución de audiencia por scope
+(platform/club/partner). Reclama la fila a `status='sending'` antes del
+fan-out para evitar doble envío en corridas solapadas.
+
 ---
 
 ## 21. Dominio · moderation + audit
