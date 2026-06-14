@@ -792,9 +792,10 @@ function CRFull({
         }}
       >
         <div
-          className="card"
+          className="card mp-table-scroll"
           style={{ padding: 0, overflow: "hidden", alignSelf: "flex-start" }}
         >
+          <div style={{ minWidth: 470 }}>
           <div
             style={{
               padding: "10px 16px",
@@ -923,6 +924,7 @@ function CRFull({
               </button>
             </div>
           ))}
+          </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1231,7 +1233,8 @@ function CRCheckout({
                 </button>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8 }}>
+            <div className="mp-table-scroll">
+            <div style={{ minWidth: 356, display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8 }}>
               <CKField
                 label="Número de tarjeta"
                 val="•••• •••• •••• 4886"
@@ -1239,6 +1242,7 @@ function CRCheckout({
               />
               <CKField label="Vencimiento" val="09 / 28" />
               <CKField label="CVV" val="•••" />
+            </div>
             </div>
           </CheckoutSection>
         </div>

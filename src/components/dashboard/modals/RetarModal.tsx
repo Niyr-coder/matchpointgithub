@@ -1314,7 +1314,8 @@ function RTStep2({
           <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700 }}>Actualizando…</span>
         ) : null}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 5 }}>
+      <div className="mp-table-scroll">
+      <div style={{ minWidth: 170, display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 5 }}>
         {timeSlots.map((t) => {
           const on = form.time === t;
           const busy = takenSlots.has(t);
@@ -1341,6 +1342,7 @@ function RTStep2({
             </button>
           );
         })}
+      </div>
       </div>
       {form.clubId && form.courtId && !availLoading && timeSlots.every((t) => takenSlots.has(t)) ? (
         <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700, marginTop: 4 }}>
