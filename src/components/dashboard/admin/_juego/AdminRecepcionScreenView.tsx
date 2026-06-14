@@ -141,7 +141,7 @@ export function AdminRecepcionScreenView({ data }: { data: AdminReceptionOvervie
         {data.clubs.length === 0 ? (
           <EmptyState label="No hay señales de recepción para hoy." />
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="mp-table-scroll">
             <div style={{ minWidth: 860 }}>
               <div
                 style={{
