@@ -29,21 +29,6 @@ async function requireAdminUserId(): Promise<string> {
   return user.id;
 }
 
-export async function setMultisportEnabled(input: unknown): Promise<ActionResult<{ enabled: boolean }>> {
-  return runAction(z.object({ enabled: z.boolean() }), input, async ({ enabled }) => {
-    const adminId = await requireAdminUserId();
-    // platform_config es admin-RLS; mutamos con service role tras validar rol.
-    const admin = getAdminClient();
-    await setAuditActor(admin, adminId, "admin");
-    const { error } = await admin
-      .from("platform_config")
-      .update({ value: enabled } as never) // jsonb acepta el boolean directo
-      .eq("key", "multisport_enabled");
-    if (error) throw new MpError("CONFIG.UPDATE_FAILED", error.message, 500);
-    return { enabled };
-  });
-}
-
 // ── Editor genérico de platform_config (pantalla admin-config) ──────────────
 // Allowlist de keys editables desde la UI con su tipo esperado. Cualquier key
 // fuera de esta lista se rechaza (no se inventan rows arbitrarias). Cada tipo

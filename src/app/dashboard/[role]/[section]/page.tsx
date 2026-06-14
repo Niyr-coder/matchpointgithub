@@ -29,12 +29,12 @@ import { AdminMetricsScreen } from "@/components/dashboard/admin/AdminMetricsScr
 // AdminAuditView (categoría/severidad derivadas; actor/ip/ua/diff reales; export
 // CSV/JSON real; refresh en vivo).
 import { AdminAuditScreen } from "@/components/dashboard/admin/AdminAuditScreen";
-// MERGE: el server AdminConfigScreenServer carga la config REAL de
-// platform_config y alimenta el rediseño AdminConfigView. Las keys editables
-// (take_rate_pct, estelar_price_cents, refund_window_days, ranking_min_matches,
-// match_seek_*, multisport_enabled, system_messages_enabled) PERSISTEN vía
-// updatePlatformConfig (admin-only, auditada). La pantalla real previa
-// (AdminConfigScreen + AdminConfigScreenView) queda preservada, des-importada.
+// El server AdminConfigScreenServer carga la config REAL de platform_config y
+// alimenta AdminConfigView. Las keys editables (take_rate_pct,
+// estelar_price_cents, refund_window_days, ranking_min_matches, match_seek_*,
+// multisport_enabled, system_messages_enabled) PERSISTEN vía
+// updatePlatformConfig (admin-only, auditada); las filas sin key real se
+// muestran como solo-lectura (sin lápiz ni save bar), no como inputs muertos.
 import { AdminConfigScreenServer } from "@/components/dashboard/admin/AdminConfigScreenServer";
 // MERGE: el server AdminRolesScreen lee datos reales (counts/miembros/solicitudes
 // /clubes) y alimenta el rediseño AdminRolesView, que ya recablea lo operativo:
