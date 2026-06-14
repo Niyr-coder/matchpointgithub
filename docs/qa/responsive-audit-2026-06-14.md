@@ -39,6 +39,29 @@ Los **medios** (93 `two-col-layout` + 15 `section-padding`) son menor prioridad:
 muchos `1fr 1fr` inline son pares de botones que toleran no colapsar; revisar
 solo donde el contenido de cada columna sea ancho (texto/inputs largos).
 
+## Resultado de la ejecución (6 tandas paralelas)
+
+Se aplicaron **13 wraps reales** (`.mp-table-scroll`/`pv3-scroll-x` + `minWidth`)
+en: AdminFlagsScreenView, AdminRecepcionScreenView, ProfileScreenView,
+PerfilV2Sections, PrizesEditor, EmployeeCaja/Checkin/Home, CarritoModal,
+RetarModal, ClubReportesScreenView. Typecheck limpio.
+
+De los 40 HIGH originales, **~20 eran falsos positivos** ya cubiertos por
+patrones que el scanner v1 no reconocía: clases de scroll bespoke
+(`.mp-audit-stream-scroll`, `.mp-metrics-heatmap-scroll`,
+`.mp-coach-calendar-scroll`, `.mp-stf-schedule-scroll`), el componente
+`<RSTable>` (envuelve en `mp-table-scroll`), grids `hidden md:grid`
+(desktop-only con variante mobile aparte), y tablas que **restackean** a card
+en mobile vía `data-label` (`.mp-admin-event-reg-*`). El scanner se actualizó
+para reconocer `*-scroll`, `RSTable` y `md:grid`.
+
+**Re-scan tras fixes: 7 HIGH**, todos verificados como NO-riesgo (restacking
+CSS, desktop-only, identicon decorativo, o pocas px fijas + `1fr` que comprime):
+`AdminRolesScreenView:407`, `EventRegistrationsTable:81`,
+`TournamentRegistrationsTable:68`, `MyGiveawaysViewClient:563`,
+`MisMembresiasScreenView:317`, `UserHomeView:622`, `GiveawayPrereqSheet:103`.
+La deuda real de page-overflow está cerrada.
+
 ## Fix canónico
 
 **Tablas (wide-table-grid):** envolver en el wrapper de scroll contenido que ya

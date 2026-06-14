@@ -34,9 +34,16 @@ for (const file of files) {
   // filas de una tabla comparten el wrapper de su cabecera aunque estén lejos,
   // por eso se evalúa por archivo y no por ventana de líneas (evita falsos
   // positivos en tablas largas).
+  // Señales de scroll contenido: el wrapper canónico, cualquier clase `*-scroll`
+  // bespoke (mp-audit-stream-scroll, mp-coach-calendar-scroll, pv3-scroll-x…),
+  // overflowX inline, minWidth de 3 dígitos, o uso de <RSTable> (el componente
+  // de tabla reusable que ya envuelve en mp-table-scroll).
   const fileHasScrollWrap =
-    /mp-table-scroll|overflowX:\s*["'`](auto|scroll)|overflow-x-auto|minWidth:\s*\d{3}|min-w-\[/.test(src);
-  const hasScrollWrapNear = () => fileHasScrollWrap;
+    /[\w-]+-scroll["'`\s]|overflowX:\s*["'`](auto|scroll)|overflow-x-auto|minWidth:\s*\d{3}|min-w-\[|RSTable/.test(src);
+  // Grid desktop-only (tiene variante mobile aparte) → no es riesgo mobile.
+  const isDesktopOnly = (idx) =>
+    /hidden\s+md:grid|md:grid\b/.test(lines.slice(Math.max(0, idx - 2), idx + 2).join(" "));
+  const hasScrollWrapNear = (idx) => fileHasScrollWrap || isDesktopOnly(idx);
 
   lines.forEach((line, i) => {
     const m = line.match(reGrid);
@@ -51,7 +58,7 @@ for (const file of files) {
     let sev = "med";
     if (repeat && Number(repeat[1]) >= 3 && !hasResponsiveHelper) {
       rule = "inline-repeat-grid";
-      sev = Number(repeat[1]) >= 6 ? "high" : "med";
+      sev = hasScrollWrapNear(i) ? "low" : Number(repeat[1]) >= 6 ? "high" : "med";
     } else if (pxCols >= 2 && !hasResponsiveHelper) {
       rule = "inline-wide-table-grid";
       sev = hasScrollWrapNear(i) ? "low" : "high"; // wrapper → contenido scrollea
