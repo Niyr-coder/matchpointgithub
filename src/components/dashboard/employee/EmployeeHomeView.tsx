@@ -271,6 +271,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
             </Link>
           }
         >
+          <div className="mp-table-scroll">
+          <div style={{ minWidth: 400 }}>
           {hasCheckins
             ? data.nextCheckins.map((r, i) => (
                 <div
@@ -341,6 +343,8 @@ export function EmployeeHomeView({ data }: { data: EmployeeHomeData }) {
             : Array.from({ length: PLACEHOLDER_CHECKINS }).map((_, i) => (
                 <CheckinPlaceholderRow key={i} first={i === 0} />
               ))}
+          </div>
+          </div>
         </RHPanel>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

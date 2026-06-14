@@ -313,10 +313,12 @@ export function EmployeeCajaScreenView({ data }: { data: CajaData }) {
       {hasTx ? (
         <RSTable cols={cols} rows={data.txs} rowKey={(t) => t.id} />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {Array.from({ length: PLACEHOLDER_TX }).map((_, i) => (
-            <TxPlaceholderRow key={i} />
-          ))}
+        <div className="mp-table-scroll">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 580 }}>
+            {Array.from({ length: PLACEHOLDER_TX }).map((_, i) => (
+              <TxPlaceholderRow key={i} />
+            ))}
+          </div>
         </div>
       )}
     </>

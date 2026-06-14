@@ -224,7 +224,8 @@ export function EmployeeCheckinScreenView({ data }: { data: CheckinData }) {
         }
       />
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="mp-table-scroll">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 560 }}>
           {hasQueue
             ? data.queue.map((r) => (
                 <div
@@ -292,6 +293,7 @@ export function EmployeeCheckinScreenView({ data }: { data: CheckinData }) {
                 </div>
               ))
             : Array.from({ length: PLACEHOLDER_COUNT }).map((_, i) => <QueuePlaceholderCard key={i} />)}
+        </div>
         </div>
         <div
           className="card"
