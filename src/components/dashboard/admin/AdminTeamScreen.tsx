@@ -1,5 +1,6 @@
 // Server: equipo interno MATCHPOINT (role_assignments role=admin sin club_id).
 import { getServerClient } from "@/lib/db/client.server";
+import { getSession } from "@/lib/auth/session";
 import { AdminTeamScreenView, type TeamData, type MemberRow } from "./AdminTeamScreenView";
 
 const AV_GRADIENTS = [
@@ -124,6 +125,8 @@ async function loadData(): Promise<TeamData> {
 }
 
 export async function AdminTeamScreen() {
+  const session = await getSession();
+  const viewerUserId = session.authenticated ? session.session.userId : null;
   const data = await loadData();
-  return <AdminTeamScreenView data={data} />;
+  return <AdminTeamScreenView data={data} viewerUserId={viewerUserId} />;
 }

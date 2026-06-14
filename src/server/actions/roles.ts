@@ -17,6 +17,14 @@ import { recipientRoleForAssignedRole } from "@/lib/notifications/helpers";
 const ROLE = z.enum(["admin", "partner", "owner", "manager", "coach", "employee", "user"]);
 const CLUB_SCOPED_ROLES = new Set(["owner", "manager", "coach", "employee"]);
 
+const SAFE_SEARCH_TERM = /^[\p{L}\p{N} ._\-@]{1,32}$/u;
+function sanitizeIlikeTerm(raw: string): string | null {
+  const term = raw.replace(/^@/, "").trim();
+  if (!term) return null;
+  if (!SAFE_SEARCH_TERM.test(term)) return null;
+  return term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export type RoleMemberDTO = {
   assignmentId: string;
   userId: string;
@@ -81,7 +89,8 @@ export async function searchUsers(input: unknown): Promise<ActionResult<{ id: st
     // ranking solo cuando el creador es Premium), no aquí.
     await requireUser();
     const supabase = await getServerClient();
-    const term = q.replace(/^@/, "").trim();
+    const term = sanitizeIlikeTerm(q);
+    if (!term) return [];
     const { data, error } = await supabase
       .from("profiles")
       .select("id,username,display_name")
@@ -278,7 +287,9 @@ export async function listRoleMembers(input: unknown): Promise<ActionResult<Role
     async ({ role, offset, limit, q }) => {
       await requireAdmin();
       const supabase = await getServerClient();
-      const term = q?.trim();
+      const rawTerm = q?.trim();
+      const term = rawTerm ? sanitizeIlikeTerm(rawTerm) : null;
+      if (rawTerm && !term) return [];
       let list: { id: string; user_id: string; club_id: string | null; granted_at: string }[];
       if (term) {
         // Búsqueda: primero matchear perfiles por nombre/@username, luego filtrar

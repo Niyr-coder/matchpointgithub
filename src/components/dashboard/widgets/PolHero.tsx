@@ -28,6 +28,8 @@ export function PolHero({
 
   return (
     <div
+      className="mp-pol-hero"
+      data-tone={tone}
       style={{
         position: "relative",
         padding: "32px 32px 28px",
@@ -111,7 +113,7 @@ export function PolHero({
             </div>
           )}
         </div>
-        {right}
+        {right ? <div className="mp-pol-hero__right">{right}</div> : null}
       </div>
     </div>
   );

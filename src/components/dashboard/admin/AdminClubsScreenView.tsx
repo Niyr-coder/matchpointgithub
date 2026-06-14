@@ -705,6 +705,7 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
   return (
     <>
       <PendingAppsBanner apps={data.pending} />
+      <div className="mp-admin-clubs-screen flex min-w-0 flex-col gap-3 md:gap-4">
       <RSHeader
         label="Plataforma · Clubes"
         title={
@@ -714,9 +715,9 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
           </>
         }
         action={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ position: "relative" }}>
-              <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
+          <div className="mp-rs-toolbar">
+            <div className="mp-rs-toolbar-search">
+              <span className="mp-rs-toolbar-search-icon" aria-hidden>
                 <Icon name="search" size={13} />
               </span>
               <input
@@ -724,17 +725,12 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar club o ciudad…"
                 aria-label="Buscar clubes"
-                style={{
-                  padding: "8px 14px 8px 32px",
-                  border: RS_BORDER,
-                  borderRadius: 9999,
-                  fontSize: 12,
-                  fontFamily: "inherit",
-                  minWidth: 220,
-                }}
+                className="mp-rs-toolbar-search-input"
               />
             </div>
+            <div className="mp-rs-toolbar-actions">
             <button
+              type="button"
               className="btn"
               style={{ background: "#fff", border: RS_BORDER }}
               onClick={() =>
@@ -753,12 +749,13 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
               disabled={filtered.length === 0}
             >
               <Icon name="download" size={12} />
-              Exportar CSV
+              <span className="mp-rs-toolbar-btn-label">Exportar CSV</span>
             </button>
-            <button className="btn btn-primary">
+            <button type="button" className="btn btn-primary">
               <Icon name="plus" size={13} />
-              Invitar club
+              <span className="mp-rs-toolbar-btn-label">Invitar club</span>
             </button>
+            </div>
           </div>
         }
       />
@@ -773,6 +770,7 @@ export function AdminClubsScreenView({ data }: { data: ClubsData }) {
         ]}
       />
       <RSTable cols={cols} rows={filtered} rowKey={(c) => c.id} />
+      </div>
       {dialog?.kind === "grant" && (
         <GrantClubPlanDialog
           club={dialog.club}

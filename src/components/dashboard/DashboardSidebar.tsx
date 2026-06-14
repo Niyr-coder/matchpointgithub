@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { MP_ROLES, type RoleKey, type SidebarItem } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { signOutAndRedirect } from "@/server/actions/auth";
-import { ActiveRoleSwitcher, type RoleSwitchOption } from "./ActiveRoleSwitcher";
+import { SidebarRoleMenu } from "./SidebarRoleMenu";
+import type { RoleSwitchOption } from "./ActiveRoleSwitcher";
 
 type Props = {
   role: RoleKey;
@@ -23,6 +24,8 @@ type Props = {
   // explícitamente off (ausente o true = visible).
   flags?: Record<string, boolean>;
   roleSwitchOptions?: RoleSwitchOption[];
+  /** Admin puede cambiar a cualquier rol demo desde el footer. */
+  isAdmin?: boolean;
 };
 
 // Deriva la sección activa del pathname:
@@ -45,6 +48,7 @@ export function DashboardSidebar({
   onMobileClose,
   flags,
   roleSwitchOptions,
+  isAdmin,
 }: Props) {
   const cfg = MP_ROLES[role];
   const itemVisible = (flag?: string) => !(flag && flags?.[flag] === false);
@@ -66,6 +70,29 @@ export function DashboardSidebar({
 
   const [pending, startTransition] = useTransition();
   const [hover, setHover] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const footerRef = useRef<HTMLDivElement>(null);
+
+  const otherRoles = roleSwitchOptions?.filter((o) => o.role !== role).length ?? 0;
+  const canSwitchRoles = Boolean(isAdmin || otherRoles > 0);
+
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (footerRef.current && !footerRef.current.contains(e.target as Node)) {
+        setRoleMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRoleMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [roleMenuOpen]);
 
   const doSignOut = () => {
     if (pending) return;
@@ -164,33 +191,51 @@ export function DashboardSidebar({
           );
         })}
       </nav>
-      {roleSwitchOptions && roleSwitchOptions.length > 1 && (
-        <ActiveRoleSwitcher current={role} options={roleSwitchOptions} />
-      )}
-      <div
-        style={{
-          padding: 12,
-          borderTop: "1px solid var(--sidebar-border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: hover && !pending ? "rgba(255,255,255,0.02)" : "transparent",
-          transition: "background 120ms ease",
-        }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-      >
+      <div ref={footerRef} style={{ position: "relative" }}>
+        {roleMenuOpen && canSwitchRoles && (
+          <SidebarRoleMenu
+            current={role}
+            isAdmin={isAdmin}
+            options={roleSwitchOptions}
+            onClose={() => setRoleMenuOpen(false)}
+          />
+        )}
         <div
           style={{
-            flex: 1,
+            padding: 12,
+            borderTop: "1px solid var(--sidebar-border)",
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            padding: 8,
-            borderRadius: 8,
-            minWidth: 0,
+            gap: 8,
+            background: hover && !pending ? "rgba(255,255,255,0.02)" : "transparent",
+            transition: "background 120ms ease",
           }}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
         >
+          <button
+            type="button"
+            onClick={() => canSwitchRoles && setRoleMenuOpen((v) => !v)}
+            disabled={!canSwitchRoles}
+            aria-expanded={canSwitchRoles ? roleMenuOpen : undefined}
+            aria-haspopup={canSwitchRoles ? "dialog" : undefined}
+            title={canSwitchRoles ? "Cambiar rol" : undefined}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: 8,
+              borderRadius: 8,
+              minWidth: 0,
+              border: 0,
+              background: canSwitchRoles && roleMenuOpen ? "rgba(255,255,255,0.06)" : "transparent",
+              cursor: canSwitchRoles ? "pointer" : "default",
+              fontFamily: "inherit",
+              textAlign: "left",
+              transition: "background 120ms ease",
+            }}
+          >
           <div
             style={{
               width: 32,
@@ -235,7 +280,15 @@ export function DashboardSidebar({
               {contextSub}
             </div>
           </div>
-        </div>
+          {canSwitchRoles && (
+            <Icon
+              name={roleMenuOpen ? "chevron-down" : "chevron-up"}
+              size={14}
+              color="#71717a"
+              style={{ flexShrink: 0 }}
+            />
+          )}
+        </button>
         <button
           type="button"
           onClick={doSignOut}
@@ -269,6 +322,7 @@ export function DashboardSidebar({
         >
           <Icon name="log-out" size={16} />
         </button>
+        </div>
       </div>
       </aside>
     </>

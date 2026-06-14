@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getSession } from "@/lib/auth/session";
+import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { TopBar } from "@/components/dashboard/TopBar";
@@ -103,11 +104,14 @@ export default async function PartnerTorneoPage({
   const isAdmin = !!adminRow;
   if (!isAdmin) {
     if (!partnerId) notFound();
+    const activePartnerId = await resolveActivePartnerId();
+    if (!activePartnerId || activePartnerId !== partnerId) notFound();
     const { data: member } = await admin
       .from("partner_members")
-      .select("user_id")
+      .select("role")
       .eq("partner_id", partnerId)
       .eq("user_id", session.session.userId)
+      .in("role", ["owner", "admin"])
       .maybeSingle();
     if (!member) notFound();
   }
@@ -276,6 +280,14 @@ export default async function PartnerTorneoPage({
     value_cents: number | null;
     sponsor: string | null;
   };
+  const { data: bracketRow } = await admin
+    .from("brackets")
+    .select("id")
+    .eq("tournament_id", id)
+    .limit(1)
+    .maybeSingle();
+  const hasBracket = !!bracketRow;
+
   const prizes: PrizeRow[] = ((prizesRaw ?? []) as unknown as PrizeRowRaw[]).map((p) => ({
     id: p.id,
     position: p.position ?? 0,
@@ -574,6 +586,7 @@ export default async function PartnerTorneoPage({
               isFeatured={isFeatured}
               isAdmin={isAdmin}
               acceptedCount={acceptedCount}
+              hasBracket={hasBracket}
               editable={{
                 id: t.id as string,
                 name: t.name as string,

@@ -24,6 +24,7 @@ type Props = {
   isFeatured: boolean;
   isAdmin: boolean;
   acceptedCount: number;
+  hasBracket: boolean;
   editable: EditableTournament;
 };
 
@@ -34,6 +35,7 @@ export function PartnerTorneoActions({
   isFeatured,
   isAdmin,
   acceptedCount,
+  hasBracket,
   editable,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
@@ -163,7 +165,7 @@ export function PartnerTorneoActions({
           loading={busy === "cerrar"}
           disabled={closed}
         />
-        {!isGroupsFormat && (
+        {!isGroupsFormat && !hasBracket && (
           <ActionBtn
             icon="trophy"
             label="Generar bracket"

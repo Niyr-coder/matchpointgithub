@@ -1,6 +1,6 @@
 // Client view de AdminPagosScreen — layout 1:1 (RoleScreens.jsx 210-261).
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { InfoTip } from "@/components/dashboard/widgets/InfoTip";
@@ -27,6 +27,7 @@ export type TxRow = {
   when: string;
   st: TxStatus;
   rawStatus: string;
+  createdAt: string;
 };
 export type PendingProofView = {
   transactionId: string;
@@ -84,6 +85,26 @@ function fmtPct(value: number): string {
 }
 
 const PLACEHOLDER_COUNT = 4;
+
+type TxPeriod = "today" | "week" | "month" | "all";
+
+const PERIOD_LABEL: Record<TxPeriod, string> = {
+  today: "Hoy",
+  week: "7 días",
+  month: "30 días",
+  all: "Todas",
+};
+
+function rowInPeriod(createdAt: string, period: TxPeriod): boolean {
+  if (period === "all") return true;
+  const at = new Date(createdAt);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") return at >= todayStart;
+  const cutoff = new Date(todayStart);
+  cutoff.setDate(cutoff.getDate() - (period === "week" ? 7 : 30));
+  return at >= cutoff;
+}
 
 function TxPlaceholderRow() {
   return (
@@ -161,6 +182,23 @@ export function AdminPagosScreenView({
   const [busyProofId, setBusyProofId] = useState<string | null>(null);
   const [busyPayoutId, setBusyPayoutId] = useState<string | null>(null);
   const [busyRefundId, setBusyRefundId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<TxPeriod>("today");
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!periodOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (periodRef.current && !periodRef.current.contains(e.target as Node)) setPeriodOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [periodOpen]);
+
+  const filteredRows = useMemo(
+    () => data.rows.filter((t) => rowInPeriod(t.createdAt, period)),
+    [data.rows, period],
+  );
 
   const handleApproveProof = async (p: PendingProofView) => {
     const ok = await confirm({
@@ -293,7 +331,7 @@ export function AdminPagosScreenView({
     }
   };
 
-  const hasRows = data.rows.length > 0;
+  const hasRows = filteredRows.length > 0;
 
   const KPIS: [string, string, string, string, string][] = [
     ["GMV · hoy", fmtUSD(data.kpis.gmvTodayCents), "var(--primary)", "captured", "Volumen bruto capturado hoy (inscripciones, shop, eventos). Solo transacciones en estado captured."],
@@ -450,17 +488,69 @@ export function AdminPagosScreenView({
         label="Plataforma · Pagos & Payouts"
         title={
           <>
-            Transacciones <span className="dot">●</span> hoy
+            Transacciones <span className="dot">●</span> {PERIOD_LABEL[period].toLowerCase()}
             <InfoTip maxWidth={260} text="Cola operativa de comprobantes, payouts y transacciones captured. Aprobar comprobantes activa suscripciones o inscripciones según el tipo." />
           </>
         }
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" style={{ background: "#fff", border: RS_BORDER }}>
-              <Icon name="filter" size={12} />
-              Hoy
-            </button>
-            <button className="btn btn-primary" onClick={handleProcessPayouts} disabled={isPending}>
+            <div ref={periodRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="btn"
+                style={{ background: "#fff", border: RS_BORDER }}
+                onClick={() => setPeriodOpen((v) => !v)}
+                aria-expanded={periodOpen}
+                aria-haspopup="listbox"
+              >
+                <Icon name="filter" size={12} />
+                {PERIOD_LABEL[period]}
+              </button>
+              {periodOpen && (
+                <div
+                  role="listbox"
+                  className="card"
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    minWidth: 140,
+                    padding: 6,
+                    zIndex: 20,
+                    boxShadow: "0 12px 28px rgba(0,0,0,0.1)",
+                  }}
+                >
+                  {(Object.keys(PERIOD_LABEL) as TxPeriod[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="option"
+                      aria-selected={period === key}
+                      onClick={() => {
+                        setPeriod(key);
+                        setPeriodOpen(false);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "9px 12px",
+                        border: 0,
+                        borderRadius: 8,
+                        background: period === key ? "var(--muted)" : "transparent",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        fontSize: 12,
+                        fontWeight: period === key ? 800 : 600,
+                        textAlign: "left",
+                      }}
+                    >
+                      {PERIOD_LABEL[key]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button type="button" className="btn btn-primary" onClick={handleProcessPayouts} disabled={isPending}>
               <Icon name="play" size={13} />
               {isPending ? "Preparando…" : "Preparar payouts"}
             </button>
@@ -502,7 +592,14 @@ export function AdminPagosScreenView({
         ))}
       </div>
       {hasRows ? (
-        <RSTable cols={cols} rows={data.rows} rowKey={(t) => t.id} />
+        <RSTable cols={cols} rows={filteredRows} rowKey={(t) => t.id} />
+      ) : data.rows.length > 0 ? (
+        <div
+          className="card"
+          style={{ padding: "20px 18px", fontSize: 13, color: "var(--muted-fg)", fontWeight: 600 }}
+        >
+          No hay transacciones en {PERIOD_LABEL[period].toLowerCase()}. Prueba otro periodo en el filtro.
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => (

@@ -203,12 +203,57 @@ const USER_QUICK_ACTIONS = [
   },
 ] as const;
 
-function UserQuickActionSheet({
+const ADMIN_QUICK_ACTIONS = [
+  {
+    icon: "shield",
+    label: "Revisar moderación",
+    hint: "Reportes y sanciones pendientes",
+    href: "/dashboard/admin/admin-mod",
+  },
+  {
+    icon: "users",
+    label: "Gestionar usuarios",
+    hint: "Directorio global y perfiles",
+    href: "/dashboard/admin/admin-users",
+  },
+  {
+    icon: "credit-card",
+    label: "Pagos y payouts",
+    hint: "Comprobantes y transferencias",
+    href: "/dashboard/admin/admin-pagos",
+  },
+  {
+    icon: "megaphone",
+    label: "Broadcast",
+    hint: "Mensajes masivos a la plataforma",
+    href: "/dashboard/admin/admin-broadcast",
+  },
+  {
+    icon: "scroll-text",
+    label: "Auditoría",
+    hint: "Log de cambios del sistema",
+    href: "/dashboard/admin/admin-audit",
+  },
+] as const;
+
+function QuickActionSheet({
   open,
   onClose,
+  title,
+  actions,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
+  title: string;
+  actions: readonly {
+    icon: string;
+    label: string;
+    hint: string;
+    href?: string;
+    event?: string;
+  }[];
+  className?: string;
 }) {
   const router = useRouter();
 
@@ -227,8 +272,7 @@ function UserQuickActionSheet({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Acciones rápidas"
-      className="md:hidden"
+      aria-label={title}
       style={{
         position: "fixed",
         inset: 0,
@@ -237,11 +281,14 @@ function UserQuickActionSheet({
         backdropFilter: "blur(4px)",
         display: "flex",
         alignItems: "flex-end",
+        justifyContent: "center",
+        padding: "0 16px 16px",
       }}
+      className={`md:items-center md:p-6${className ? ` ${className}` : ""}`}
       onClick={onClose}
     >
       <div
-        className="card"
+        className="card md:max-w-md"
         style={{
           width: "100%",
           borderRadius: "18px 18px 0 0",
@@ -270,7 +317,7 @@ function UserQuickActionSheet({
               letterSpacing: "-0.02em",
             }}
           >
-            ¿Qué quieres hacer?<span className="dot">.</span>
+            {title}<span className="dot">.</span>
           </h3>
           <button
             type="button"
@@ -293,14 +340,14 @@ function UserQuickActionSheet({
           </button>
         </div>
         <div style={{ padding: "10px 12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {USER_QUICK_ACTIONS.map((action) => (
+          {actions.map((action) => (
             <button
               key={action.label}
               type="button"
               onClick={() => {
-                if ("event" in action && action.event) {
+                if (action.event) {
                   window.dispatchEvent(new Event(action.event));
-                } else if ("href" in action && action.href) {
+                } else if (action.href) {
                   router.push(action.href);
                 }
                 onClose();
@@ -351,6 +398,41 @@ function UserQuickActionSheet({
   );
 }
 
+function UserQuickActionSheet({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <QuickActionSheet
+      open={open}
+      onClose={onClose}
+      title="¿Qué quieres hacer?"
+      actions={USER_QUICK_ACTIONS}
+      className="md:hidden"
+    />
+  );
+}
+
+function AdminQuickActionSheet({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <QuickActionSheet
+      open={open}
+      onClose={onClose}
+      title="Crear acción"
+      actions={ADMIN_QUICK_ACTIONS}
+    />
+  );
+}
+
 export function TopBar({
   role,
   contextLabel,
@@ -369,6 +451,7 @@ export function TopBar({
   const ref = useRef<HTMLDivElement>(null);
   const cta = CTA_BY_ROLE[role];
   const showUserQuickMenu = role === "user";
+  const showAdminQuickMenu = role === "admin";
   const toast = useToast();
   const [, startTransition] = useTransition();
 
@@ -493,12 +576,16 @@ export function TopBar({
   };
 
   const handleCta = () => {
+    if (showAdminQuickMenu) {
+      setQuickActionOpen(true);
+      return;
+    }
     if (cta.ev) window.dispatchEvent(new Event(cta.ev));
     else toast({ icon: cta.i, title: cta.l + " — próximamente" });
   };
 
   const handleMobilePrimary = () => {
-    if (showUserQuickMenu) setQuickActionOpen(true);
+    if (showUserQuickMenu || showAdminQuickMenu) setQuickActionOpen(true);
     else handleCta();
   };
 
@@ -581,13 +668,16 @@ export function TopBar({
             fontFamily: "inherit",
           }}
           onClick={handleMobilePrimary}
-          aria-label={showUserQuickMenu ? "Acciones rápidas" : cta.l}
-          aria-expanded={showUserQuickMenu ? quickActionOpen : undefined}
+          aria-label={showUserQuickMenu || showAdminQuickMenu ? "Acciones rápidas" : cta.l}
+          aria-expanded={showUserQuickMenu || showAdminQuickMenu ? quickActionOpen : undefined}
         >
           <Icon name={cta.i} size={15} />
         </button>
         {showUserQuickMenu && (
           <UserQuickActionSheet open={quickActionOpen} onClose={() => setQuickActionOpen(false)} />
+        )}
+        {showAdminQuickMenu && (
+          <AdminQuickActionSheet open={quickActionOpen} onClose={() => setQuickActionOpen(false)} />
         )}
         <div ref={ref} style={{ position: "relative" }}>
           <button

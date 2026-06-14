@@ -10,9 +10,15 @@ import {
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-function fmtDateRange(starts: string, ends: string): string {
+function fmtDateRange(starts: string, ends: string | null): string {
   const a = new Date(starts);
+  if (!ends) {
+    return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} ${a.getFullYear()}`;
+  }
   const b = new Date(ends);
+  if (a.getTime() === b.getTime()) {
+    return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} ${a.getFullYear()}`;
+  }
   const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
   if (sameMonth) {
     return `${a.getDate()}-${b.getDate()} ${MONTHS_SHORT[a.getMonth()]} ${a.getFullYear()}`;
@@ -22,10 +28,17 @@ function fmtDateRange(starts: string, ends: string): string {
 
 const COLORS = ["#10b981", "#0a0a0a", "#0c4a6e", "#7c3aed", "#db2777", "#0ea5e9", "#fbbf24"];
 
-function deriveStatus(dbStatus: string, starts: Date, ends: Date, now: Date): TorneoStatus {
+function endOfDay(d: Date): Date {
+  const e = new Date(d);
+  e.setHours(23, 59, 59, 999);
+  return e;
+}
+
+function deriveStatus(dbStatus: string, starts: Date, ends: Date | null, now: Date): TorneoStatus {
   if (dbStatus === "completed" || dbStatus === "cancelled") return "CLOSED";
-  if (starts <= now && now <= ends) return "LIVE";
-  if (starts <= now && now > ends) return "CLOSED";
+  const effectiveEnd = ends ?? endOfDay(starts);
+  if (starts <= now && now <= effectiveEnd) return "LIVE";
+  if (starts <= now && now > effectiveEnd) return "CLOSED";
   // pre-event
   if (dbStatus === "draft") return "CLOSED";
   if (dbStatus === "active" || dbStatus === "registration_open") return "OPEN";
@@ -76,8 +89,10 @@ async function loadData(): Promise<TorneosData> {
   }
 
   const rows: TorneoRow[] = (tournaments ?? []).map((t, i) => {
-    const starts = new Date(t.starts_at as string);
-    const ends = new Date(t.ends_at as string);
+    const startsRaw = t.starts_at as string;
+    const endsRaw = (t.ends_at as string | null) ?? null;
+    const starts = new Date(startsRaw);
+    const ends = endsRaw ? new Date(endsRaw) : null;
     const cap = (t.max_participants as number | null) ?? 0;
     const regs = regsByTour.get(t.id as string) ?? 0;
     const prize = (t.prize_pool_cents as number | null) ?? 0;
@@ -89,7 +104,7 @@ async function loadData(): Promise<TorneosData> {
       slug: (t.slug as string) ?? (t.id as string),
       n: (t.name as string) ?? "—",
       sport: `${sportLabel}${formatLabel ? ` · ${formatLabel}` : ""}`,
-      date: fmtDateRange(t.starts_at as string, t.ends_at as string),
+      date: fmtDateRange(startsRaw, endsRaw),
       cupos: cap > 0 ? `${regs} / ${cap}` : `${regs} / —`,
       revenue: `$${Math.round(rev / 100).toLocaleString("en-US")}`,
       prize: prize > 0 ? `$${Math.round(prize / 100).toLocaleString("en-US")}` : "$—",

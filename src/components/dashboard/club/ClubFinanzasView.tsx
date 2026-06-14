@@ -187,17 +187,19 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
         title="Las cuentas claras"
         sub="Tu revenue, tus payouts, y dónde está cada dólar. De la pelota a tu banco, sin sorpresas."
         right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ display: "inline-flex", padding: "7px 12px", borderRadius: 9999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", color: "#fff", fontSize: 10.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <>
+            <span className="mp-pol-hero-period" aria-hidden="true">
               {PERIOD_LABEL[period]}
-            </div>
-            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Estado de cuenta · próximamente")}>
-              <Icon name="file-text" size={13} color="#fff" />Estado de cuenta
+            </span>
+            <button type="button" className="btn mp-pol-hero-action" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Estado de cuenta · próximamente")}>
+              <Icon name="file-text" size={13} color="#fff" />
+              Estado de cuenta
             </button>
-            <button className="btn btn-primary" onClick={exportCsv}>
-              <Icon name="download" size={13} color="#fff" />Exportar CSV
+            <button type="button" className="btn btn-primary mp-pol-hero-action" onClick={exportCsv}>
+              <Icon name="download" size={13} color="#fff" />
+              Exportar CSV
             </button>
-          </div>
+          </>
         }
       />
 

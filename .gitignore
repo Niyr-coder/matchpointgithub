@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# artefactos locales (reportes de UI-audit, paquetes de diseño scratch)
+/audit-out.json
+/claude-design/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

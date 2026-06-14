@@ -88,7 +88,13 @@ function MemberPlaceholder() {
   );
 }
 
-export function AdminTeamScreenView({ data }: { data: TeamData }) {
+export function AdminTeamScreenView({
+  data,
+  viewerUserId,
+}: {
+  data: TeamData;
+  viewerUserId: string | null;
+}) {
   useRealtimeRefresh([{ table: "role_assignments" }, { table: "tickets" }, { table: "reports" }], { debounceMs: 4000 });
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
@@ -311,53 +317,58 @@ export function AdminTeamScreenView({ data }: { data: TeamData }) {
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-                  <button
-                    className="btn"
-                    style={{
-                      flex: 1,
-                      background: "#fff",
-                      border: "1px solid var(--border)",
-                      fontSize: 10.5,
-                    }}
-                    onClick={() =>
-                      toast({
-                        icon: "message-square",
-                        title: "Mensajería interna pendiente",
-                        sub: "La pantalla muestra carga real, pero aún no abre chats directos entre admins.",
-                      })
-                    }
-                  >
-                    <Icon name="message-square" size={11} />
-                    Mensaje
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    style={{ flex: 1, fontSize: 10.5 }}
-                    onClick={() => handleAssignCase(p.id, p.n)}
-                    disabled={isPending}
-                  >
-                    <Icon name="user-plus" size={11} />
-                    Asignar caso
-                  </button>
-                  <button
-                    className="btn"
-                    style={{
-                      background: "#fff",
-                      border: "1px solid var(--border)",
-                      fontSize: 10.5,
-                    }}
-                    onClick={() =>
-                      toast({
-                        icon: "more-horizontal",
-                        title: "Más acciones pendientes",
-                        sub: "La gestión fina de permisos se hace desde Permisos & Roles.",
-                      })
-                    }
-                  >
-                    <Icon name="more-horizontal" size={11} />
-                  </button>
-                </div>
+                {viewerUserId !== p.id && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        background: "#fff",
+                        border: "1px solid var(--border)",
+                        fontSize: 10.5,
+                      }}
+                      onClick={() =>
+                        toast({
+                          icon: "message-square",
+                          title: "Mensajería interna pendiente",
+                          sub: "La pantalla muestra carga real, pero aún no abre chats directos entre admins.",
+                        })
+                      }
+                    >
+                      <Icon name="message-square" size={11} />
+                      Mensaje
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ flex: 1, fontSize: 10.5 }}
+                      onClick={() => handleAssignCase(p.id, p.n)}
+                      disabled={isPending}
+                    >
+                      <Icon name="user-plus" size={11} />
+                      Asignar caso
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        background: "#fff",
+                        border: "1px solid var(--border)",
+                        fontSize: 10.5,
+                      }}
+                      onClick={() =>
+                        toast({
+                          icon: "more-horizontal",
+                          title: "Más acciones pendientes",
+                          sub: "La gestión fina de permisos se hace desde Permisos & Roles.",
+                        })
+                      }
+                    >
+                      <Icon name="more-horizontal" size={11} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => <MemberPlaceholder key={k} />)}

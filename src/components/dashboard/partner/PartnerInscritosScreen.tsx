@@ -38,7 +38,7 @@ async function loadData(): Promise<InscritosData> {
   let chosen: { id: string; name: string; cap: number; fee: number } | null = null;
   for (const t of tours ?? []) {
     const s = new Date(t.starts_at as string);
-    const e = new Date(t.ends_at as string);
+    const e = new Date((t.ends_at as string | null) ?? (t.starts_at as string));
     if (s <= now && now <= e) {
       chosen = {
         id: t.id as string,

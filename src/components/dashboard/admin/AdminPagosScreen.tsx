@@ -149,6 +149,7 @@ async function loadData(): Promise<PagosData> {
       when: relativeTime(t.created_at as string, now),
       st: mapStatus(rawStatus),
       rawStatus,
+      createdAt: t.created_at as string,
     };
   });
 

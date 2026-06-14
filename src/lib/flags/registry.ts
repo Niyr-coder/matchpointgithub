@@ -142,9 +142,9 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     key: "paywall_enforce_match_seek_cap",
     label: "Paywall · Cap de busco-partido",
     description: "Encendido = free limitado a N avisos simultáneos (platform_config.match_seek_max_open_per_user); premium ilimitado.",
-    surfaces: ["pending: src/server/actions/match-seeks.ts"],
+    surfaces: ["src/server/actions/match-seeks.ts (createMatchSeek)"],
     impact: "low",
-    wired: false,
+    wired: true,
   },
   {
     key: "paywall_enforce_profile_customization",

@@ -891,7 +891,80 @@ select.mp-input:disabled {
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-2px); }
 }
-@keyframes mpSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes mpSlideIn {
+  from { clip-path: inset(0 0 0 100%); }
+  to { clip-path: inset(0 0 0 0); }
+}
+/* Drawers laterales (Audit, Usuarios, Broadcast). Sin transform en el panel:
+   transform desalinea hitbox vs pintura en Electron/Chromium. */
+.mp-slide-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(10, 10, 10, 0.55);
+  display: flex;
+  justify-content: flex-end;
+}
+.mp-slide-drawer-panel {
+  width: 100%;
+  max-width: var(--mp-slide-drawer-max, 520px);
+  height: 100%;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
+  animation: mpSlideIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.mp-slide-drawer-panel--scroll {
+  overflow: auto;
+}
+.mp-slide-drawer-head {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mp-slide-drawer-head-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.mp-slide-drawer-head-body {
+  position: relative;
+  z-index: 1;
+}
+.mp-slide-drawer-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.mp-slide-drawer-close--dark {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-slide-drawer-panel {
+    animation: none;
+  }
+}
 @keyframes mpToastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes mpSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) {
@@ -1432,6 +1505,57 @@ select.mp-input:disabled {
   .mp-ccfg-cover-actions .btn { flex: 1 1 calc(50% - 4px); justify-content: center; min-width: 0; }
   .mp-ccfg-ident-save { flex-direction: column; align-items: stretch !important; }
   .mp-ccfg-ident-save .btn-primary { width: 100%; justify-content: center; }
+}
+
+/* PolHero — acciones reales separadas de metadata de periodo. */
+.mp-pol-hero__right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.mp-pol-hero-period {
+  display: inline-flex;
+  padding: 7px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+.mp-pol-hero[data-tone="light"] .mp-pol-hero-period {
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--muted-fg);
+}
+@media (max-width: 767px) {
+  .mp-pol-hero {
+    padding: 22px 18px 20px !important;
+  }
+  .mp-pol-hero h1 {
+    font-size: clamp(28px, 8vw, 44px) !important;
+  }
+  .mp-pol-hero__right {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+  /* Periodo ya va en el label del hero — no duplicar como pill tipo botón. */
+  .mp-pol-hero-period {
+    display: none !important;
+  }
+  .mp-pol-hero__right .mp-pol-hero-action,
+  .mp-pol-hero__right .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* Finanzas club v2: hero+KPIs y splits 2-col colapsan; fuentes 4→2→1. */
@@ -2880,6 +3004,20 @@ select.mp-input:disabled {
   }
 }
 
+/* Admin usuarios — lista + panel lateral de detalle */
+/* Admin usuarios — drawer de detalle (patrón EventDrawer) */
+.mp-user-detail-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mp-user-detail-skeleton-row {
+  height: 36px;
+  border-radius: 8px;
+  background: var(--muted);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
 .mp-admin-sponsors-kpis {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -3393,6 +3531,168 @@ select.mp-input:disabled {
 
 /* RS headers compartidos */
 .mp-rs-header-copy { min-width: 0; }
+.mp-rs-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.mp-rs-filter-chip {
+  flex-shrink: 0;
+}
+.mp-rs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.mp-rs-toolbar-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+.mp-rs-toolbar-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted-fg);
+  pointer-events: none;
+  display: inline-flex;
+}
+.mp-rs-toolbar-search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 14px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  font-size: 12px;
+  font-family: inherit;
+  background: #fff;
+}
+.mp-rs-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 767px) {
+  .mp-rs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .mp-rs-toolbar-search {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .mp-rs-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .mp-rs-toolbar-actions .btn {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .mp-rs-toolbar-btn-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mp-rs-filters {
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+  .mp-rs-table tbody {
+    display: block;
+  }
+  .mp-rs-table-scroll {
+    overflow-x: visible !important;
+  }
+  .mp-rs-table-head {
+    display: none;
+  }
+  .mp-rs-table-row {
+    display: block !important;
+    position: relative;
+    padding: 14px 16px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .mp-rs-table-row:first-child {
+    border-top: 0;
+  }
+  .mp-rs-table-cell {
+    display: block !important;
+    width: 100%;
+    min-width: 0 !important;
+    text-align: left !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+  }
+  .mp-rs-table-value {
+    min-width: 0;
+  }
+  .mp-rs-table-primary {
+    padding: 0 40px 12px 0 !important;
+    margin-bottom: 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  }
+  .mp-rs-table-primary .mp-rs-table-value {
+    min-width: 0;
+  }
+  .mp-rs-table-actions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: auto !important;
+  }
+  .mp-rs-table-cell:not(.mp-rs-table-primary):not(.mp-rs-table-actions) {
+    display: flex !important;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0 !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .mp-rs-table-cell:not(.mp-rs-table-primary):not(.mp-rs-table-actions):nth-last-child(2) {
+    border-bottom: 0;
+    padding-bottom: 2px !important;
+  }
+  .mp-rs-table-cell:not(.mp-rs-table-primary):not(.mp-rs-table-actions)::before {
+    content: attr(data-label);
+    flex: 0 0 108px;
+    color: var(--muted-fg);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1.35;
+  }
+  .mp-rs-table-cell:not(.mp-rs-table-primary):not(.mp-rs-table-actions) .mp-rs-table-value {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-width: 0;
+  }
+  .mp-rs-table-cell:not(.mp-rs-table-primary):not(.mp-rs-table-actions) .mp-rs-table-value > * {
+    max-width: 100%;
+  }
+}
+@media (max-width: 480px) {
+  .mp-rs-toolbar-actions {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Admin reservas v2: la tabla usa tracks flexibles en desktop y se apila como
    cards cuando el ancho ya no alcanza para siete columnas legibles. */

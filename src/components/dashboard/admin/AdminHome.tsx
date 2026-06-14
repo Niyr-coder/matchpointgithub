@@ -1,5 +1,7 @@
 // Server: home del admin con KPIs globales reales + actividad reciente desde audit_log.
 import { getServerClient } from "@/lib/db/client.server";
+import { getProfileSummary } from "@/lib/auth/profile";
+import { getSession } from "@/lib/auth/session";
 import {
   AUDIT_HOME_NOISE_ENTITIES,
   auditActivitySubtitle,
@@ -24,8 +26,15 @@ function severityFor(entity: string): "alta" | "media" | "baja" {
   return "baja";
 }
 
+async function loadUserName(): Promise<string | null> {
+  const s = await getSession();
+  if (!s.authenticated) return null;
+  const p = await getProfileSummary(s.session.userId);
+  return p.displayName ?? p.username ?? null;
+}
+
 async function loadData(): Promise<AdminHomeData> {
-  const supabase = await getServerClient();
+  const [userName, supabase] = await Promise.all([loadUserName(), getServerClient()]);
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -136,6 +145,7 @@ async function loadData(): Promise<AdminHomeData> {
     .in("status", ["pending", "reviewing"]);
 
   return {
+    userName,
     kpis: {
       mau: profilesCount ?? 0,
       gmvCents: gmvMonthCents,

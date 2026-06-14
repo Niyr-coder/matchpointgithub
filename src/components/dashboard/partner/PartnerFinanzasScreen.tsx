@@ -48,7 +48,14 @@ async function loadData(): Promise<FinanzasData> {
   for (const t of tournaments ?? []) {
     tourNameById.set(t.id as string, (t.name as string) ?? "—");
     const s = new Date(t.starts_at as string);
-    const e = new Date(t.ends_at as string);
+    const endsRaw = (t.ends_at as string | null) ?? null;
+    let e: Date;
+    if (endsRaw) {
+      e = new Date(endsRaw);
+    } else {
+      e = new Date(s);
+      e.setHours(23, 59, 59, 999);
+    }
     tourLiveById.set(t.id as string, s <= now && now <= e);
   }
   const activeTournaments = (tournaments ?? []).filter(

@@ -639,14 +639,26 @@ function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void
       ]
     : null;
   return (
-    <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(10,10,10,0.55)", display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 540, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
-        <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 85% 20%, ${km.c}33, transparent 60%)` }} />
-          <button onClick={close} style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
+    <div className="mp-slide-drawer-overlay" onClick={close}>
+      <div
+        className="mp-slide-drawer-panel mp-slide-drawer-panel--scroll"
+        style={{ ["--mp-slide-drawer-max" as string]: "540px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mp-slide-drawer-head" style={{ background: "#0a0a0a", color: "#fff", padding: 22 }}>
+          <div className="mp-slide-drawer-head-fx" style={{ background: `radial-gradient(ellipse at 85% 20%, ${km.c}33, transparent 60%)` }} aria-hidden />
+          <button
+            type="button"
+            className="mp-slide-drawer-close mp-slide-drawer-close--dark"
+            onClick={(evt) => {
+              evt.stopPropagation();
+              close();
+            }}
+            aria-label="Cerrar"
+          >
             <Icon name="x" size={13} color="#fff" />
           </button>
-          <div style={{ position: "relative" }}>
+          <div className="mp-slide-drawer-head-body">
             <div className="label-mp" style={{ color: km.c }}>● Campaña · {km.l}</div>
             <h2 className="font-heading" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "10px 0 0", lineHeight: 1.15 }}>{c.t}<span style={{ color: "var(--primary)" }}>.</span></h2>
             <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 11, color: "rgba(255,255,255,0.7)", flexWrap: "wrap" }}>

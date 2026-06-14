@@ -14,14 +14,23 @@ async function loadUserName(): Promise<string | null> {
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-function fmtDateRange(starts: string, ends: string): string {
+function fmtDateRange(starts: string, ends: string | null): string {
   const a = new Date(starts);
+  if (!ends) return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]}`;
   const b = new Date(ends);
+  if (a.getTime() === b.getTime()) return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]}`;
   const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
   if (sameMonth) {
     return `${a.getDate()}-${b.getDate()} ${MONTHS_SHORT[a.getMonth()]}`;
   }
   return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} - ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]}`;
+}
+
+function effectiveEnd(starts: string, ends: string | null): Date {
+  if (ends) return new Date(ends);
+  const s = new Date(starts);
+  s.setHours(23, 59, 59, 999);
+  return s;
 }
 
 function fmtUSD(cents: number): string {
@@ -122,7 +131,7 @@ async function loadData(): Promise<PartnerHomeData> {
     if (["draft", "cancelled", "completed"].includes(status)) continue;
     active++;
     const starts = new Date(t.starts_at as string);
-    const ends = new Date(t.ends_at as string);
+    const ends = effectiveEnd(t.starts_at as string, (t.ends_at as string | null) ?? null);
     if (starts <= now && now <= ends) inProgress++;
     else if (starts > now) upcoming++;
   }
@@ -188,9 +197,9 @@ async function loadData(): Promise<PartnerHomeData> {
     .filter((t) => !["draft", "cancelled", "completed"].includes(t.status as string))
     .sort((a, b) => {
       const aS = new Date(a.starts_at as string).getTime();
-      const aE = new Date(a.ends_at as string).getTime();
+      const aE = effectiveEnd(a.starts_at as string, (a.ends_at as string | null) ?? null).getTime();
       const bS = new Date(b.starts_at as string).getTime();
-      const bE = new Date(b.ends_at as string).getTime();
+      const bE = effectiveEnd(b.starts_at as string, (b.ends_at as string | null) ?? null).getTime();
       const aLive = aS <= now.getTime() && now.getTime() <= aE ? 0 : 1;
       const bLive = bS <= now.getTime() && now.getTime() <= bE ? 0 : 1;
       if (aLive !== bLive) return aLive - bLive;
@@ -199,7 +208,7 @@ async function loadData(): Promise<PartnerHomeData> {
     .slice(0, 3)
     .map((t, i) => {
       const starts = new Date(t.starts_at as string);
-      const ends = new Date(t.ends_at as string);
+      const ends = effectiveEnd(t.starts_at as string, (t.ends_at as string | null) ?? null);
       const live = starts <= now && now <= ends;
       const regs = regsByTour.get(t.id as string) ?? 0;
       const cap = (t.max_participants as number | null) ?? 0;
@@ -210,7 +219,7 @@ async function loadData(): Promise<PartnerHomeData> {
         id: t.id as string,
         n: (t.name as string) ?? "—",
         s: `${sportLabel}${formatLabel ? ` · ${formatLabel}` : ""}`,
-        date: fmtDateRange(t.starts_at as string, t.ends_at as string),
+        date: fmtDateRange(t.starts_at as string, (t.ends_at as string | null) ?? null),
         cupos: cap > 0 ? `${regs} / ${cap}` : `${regs} / —`,
         revenue: fmtUSD(rev),
         live,

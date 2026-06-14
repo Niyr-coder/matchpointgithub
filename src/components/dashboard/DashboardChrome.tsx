@@ -9,7 +9,7 @@ import { Icon } from "@/components/Icon";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { TopBar } from "./TopBar";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { ActiveRoleSwitcher, type RoleSwitchOption } from "./ActiveRoleSwitcher";
+import type { RoleSwitchOption } from "./ActiveRoleSwitcher";
 
 type Props = {
   role: RoleKey;
@@ -22,6 +22,8 @@ type Props = {
   flags?: Record<string, boolean>;
   /** Otros roles asignados (cambio explícito vía switchRole). */
   roleSwitchOptions?: RoleSwitchOption[];
+  /** Admin puede cambiar a cualquier rol demo desde el sidebar. */
+  isAdmin?: boolean;
   children: ReactNode;
 };
 
@@ -33,6 +35,7 @@ export function DashboardChrome({
   banner,
   flags,
   roleSwitchOptions,
+  isAdmin,
   children,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -73,6 +76,7 @@ export function DashboardChrome({
         onMobileClose={() => setDrawerOpen(false)}
         flags={flags}
         roleSwitchOptions={roleSwitchOptions}
+        isAdmin={isAdmin}
       />
       <div
         style={{

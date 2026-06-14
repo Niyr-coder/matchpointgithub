@@ -738,30 +738,66 @@ export async function markRegistrationPaidByPartner(
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
-      .select("id,tournament_id,paid_transaction_id,tournaments(partner_id)")
+      .select("id,tournament_id,paid_transaction_id,tournaments(partner_id,status)")
       .eq("id", registrationId)
       .maybeSingle();
-    if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Registration not found", 404);
+    if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "No se encontró la inscripción", 404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const partnerId = ((reg as any).tournaments?.partner_id as string | null) ?? null;
+    const tourn = (reg as any).tournaments as { partner_id: string | null; status: string } | null;
+    const partnerId = tourn?.partner_id ?? null;
     if (!partnerId) {
-      throw new MpError("TOURNAMENTS.NO_PARTNER", "Tournament has no partner owner", 422);
+      throw new MpError("TOURNAMENTS.NO_PARTNER", "Este torneo no tiene partner organizador", 422);
     }
-    // Verificar membresía del caller en el partner_org.
+    const tournamentStatus = tourn?.status ?? null;
+    if (tournamentStatus === "cancelled" || tournamentStatus === "finished") {
+      throw new MpError(
+        "TOURNAMENTS.CLOSED",
+        tournamentStatus === "cancelled"
+          ? "El torneo está cancelado, no puedes marcar pagos."
+          : "El torneo ya finalizó, no puedes marcar pagos.",
+        422,
+      );
+    }
+    // Verificar membresía del caller en el partner_org con rol owner/admin.
     const { data: member } = await supabase
       .from("partner_members")
-      .select("user_id,role")
+      .select("role")
       .eq("partner_id", partnerId)
       .eq("user_id", userId)
+      .in("role", ["owner", "admin"])
       .maybeSingle();
     if (!member) {
-      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el partner organizador puede marcar pagado");
+      throw new AuthError(
+        "AUTH.ROLE_REQUIRED",
+        "Solo un owner o admin del partner organizador puede marcar pagado.",
+      );
     }
     const txId = reg.paid_transaction_id as string | null;
     if (!txId) {
-      throw new MpError("REGISTRATION.NO_TX", "Esta inscripción no tiene transacción asociada", 422);
+      throw new MpError(
+        "REGISTRATION.NO_TX",
+        "Esta inscripción no tiene transacción asociada.",
+        422,
+      );
     }
     const admin = getAdminClient();
+    const { data: txRow } = await admin
+      .from("transactions")
+      .select("id,status")
+      .eq("id", txId)
+      .maybeSingle();
+    if (!txRow) throw new MpError("TX.NOT_FOUND", "No se encontró la transacción asociada", 404);
+    const currentTxStatus = (txRow.status as string) ?? "";
+    if (currentTxStatus === "captured") {
+      throw new MpError("TX.ALREADY_CAPTURED", "Esta inscripción ya está marcada como pagada.", 422);
+    }
+    if (currentTxStatus === "refunded") {
+      throw new MpError(
+        "TX.REFUNDED",
+        "Esta transacción está reembolsada y no se puede marcar como pagada.",
+        422,
+      );
+    }
     await setAuditActor(admin, userId, "partner");
     const { data: updated, error } = await admin
       .from("transactions")
@@ -923,6 +959,21 @@ export async function generateBracket(
       );
     }
 
+    let existingQ = supabase
+      .from("brackets")
+      .select("id")
+      .eq("tournament_id", tournamentId);
+    if (categoryId) existingQ = existingQ.eq("category_id", categoryId);
+    else existingQ = existingQ.is("category_id", null);
+    const { data: existingBracket } = await existingQ.maybeSingle();
+    if (existingBracket) {
+      throw new MpError(
+        "BRACKETS.ALREADY_EXISTS",
+        "El bracket ya está generado para este torneo.",
+        422,
+      );
+    }
+
     let regQ = supabase
       .from("registrations")
       .select("id")
@@ -932,7 +983,11 @@ export async function generateBracket(
     const { data: regs } = await regQ;
     const ids = (regs ?? []).map((r) => r.id as string);
     if (ids.length < 2) {
-      throw new MpError("BRACKETS.NOT_ENOUGH", "Need at least 2 accepted registrations", 422);
+      throw new MpError(
+        "BRACKETS.NOT_ENOUGH",
+        "Necesitas al menos 2 inscripciones aceptadas para generar el bracket.",
+        422,
+      );
     }
 
     // Round size = next power of 2 >= ids.length.
@@ -984,7 +1039,22 @@ export async function generateBracket(
       const { error: mErr } = await supabase
         .from("bracket_matches")
         .insert(matches as never);
-      if (mErr) throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
+      if (mErr) {
+        const rollback = getAdminClient();
+        const { error: delErr } = await rollback
+          .from("brackets")
+          .delete()
+          .eq("id", bracketId);
+        if (delErr) {
+          console.error("[generateBracket] rollback failed", {
+            bracketId,
+            tournamentId,
+            insertError: mErr.message,
+            rollbackError: delErr.message,
+          });
+        }
+        throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
+      }
     }
     return { bracketId, size };
   });

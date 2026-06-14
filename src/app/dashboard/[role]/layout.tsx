@@ -2,7 +2,6 @@ import { notFound, redirect } from "next/navigation";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import type { RoleSwitchOption } from "@/components/dashboard/ActiveRoleSwitcher";
-import { RoleSwitcher } from "@/components/dashboard/RoleSwitcher";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
 import { getServerClient } from "@/lib/db/client.server";
@@ -332,11 +331,11 @@ export default async function RoleLayout({
         badgeOverrides={badgeOverrides}
         banner={banner}
         flags={flags}
-        roleSwitchOptions={!isAdmin ? roleSwitchOptions : undefined}
+        isAdmin={isAdmin}
+        roleSwitchOptions={roleSwitchOptions}
       >
         {children}
       </DashboardChrome>
-      {isAdmin && <RoleSwitcher current={role} />}
     </>
   );
 }

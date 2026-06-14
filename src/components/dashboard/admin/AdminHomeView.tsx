@@ -16,6 +16,7 @@ export type ActivityItem = {
 };
 export type ModQueueItem = { id: string; t: string; sev: "alta" | "media" | "baja" };
 export type AdminHomeData = {
+  userName: string | null;
   kpis: {
     mau: number;
     gmvCents: number;
@@ -149,7 +150,7 @@ export function AdminHomeView({ data }: { data: AdminHomeData }) {
 
   return (
     <>
-      <RHWelcome role="admin" />
+      <RHWelcome role="admin" userName={data.userName} />
       <div className="grid min-w-0 grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3.5 max-md:[&_.mp-rh-kpi]:!p-3.5 max-md:[&_.mp-rh-kpi-value]:!text-[22px] max-md:[&_.mp-rh-kpi-sub]:!text-[9.5px]">
         <RHKpi
           label="Usuarios totales"

@@ -18,6 +18,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
+import { getPlanForUser, isPaywallFlagEnabled } from "@/lib/auth/plan";
 import { notify } from "@/server/notifications/dispatch";
 import { createMatch } from "@/server/actions/matches";
 import {
@@ -160,21 +161,30 @@ export async function createMatchSeek(input: unknown): Promise<ActionResult<Matc
   return runAction(CreateMatchSeekSchema, input, async (data) => {
     await assertFeatureEnabled();
     const userId = await requireUserId();
-    const supabase = (await getServerClient()) as unknown as LooseClient;
+    const typedSupabase = await getServerClient();
+    const supabase = typedSupabase as unknown as LooseClient;
 
-    // Tope de avisos abiertos por jugador.
-    const maxOpen = await readConfigInt("match_seek_max_open_per_user", FALLBACK_MAX_OPEN);
-    const { count: openCount } = await supabase
-      .from("match_seeks")
-      .select("id", { count: "exact", head: true })
-      .eq("created_by", userId)
-      .eq("status", "open");
-    if ((openCount ?? 0) >= maxOpen) {
-      throw new MpError(
-        "MATCH_SEEK.MAX_OPEN_REACHED",
-        `Ya tienes ${maxOpen} avisos abiertos. Cierra alguno antes de publicar otro.`,
-        409,
-      );
+    const paywallOn = await isPaywallFlagEnabled(
+      typedSupabase,
+      "paywall_enforce_match_seek_cap",
+    );
+    const plan = await getPlanForUser(typedSupabase, userId);
+    const bypassCap = paywallOn && plan.tier === "premium";
+
+    if (!bypassCap) {
+      const maxOpen = await readConfigInt("match_seek_max_open_per_user", FALLBACK_MAX_OPEN);
+      const { count: openCount } = await supabase
+        .from("match_seeks")
+        .select("id", { count: "exact", head: true })
+        .eq("created_by", userId)
+        .eq("status", "open");
+      if ((openCount ?? 0) >= maxOpen) {
+        throw new MpError(
+          "MATCH_SEEK.MAX_OPEN_REACHED",
+          `Ya tienes ${maxOpen} avisos abiertos. Cierra alguno antes de publicar otro.`,
+          409,
+        );
+      }
     }
 
     const profile = await getProfileSummary(userId);

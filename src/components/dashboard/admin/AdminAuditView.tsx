@@ -839,14 +839,22 @@ function EventDrawer({ e, close }: { e: Ev; close: () => void }) {
     }
   };
   return (
-    <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(10,10,10,0.55)", display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={(evt) => evt.stopPropagation()} style={{ width: "100%", maxWidth: 520, background: "#fff", height: "100%", overflow: "auto", boxShadow: "-12px 0 32px rgba(0,0,0,0.18)", animation: "mpSlideIn 220ms cubic-bezier(0.16,1,0.3,1)" }}>
-        <div style={{ background: "#0a0a0a", color: "#fff", padding: 22, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 20%, rgba(220,38,38,0.18), transparent 60%)" }} />
-          <button onClick={close} aria-label="Cerrar" style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}>
+    <div className="mp-slide-drawer-overlay" onClick={close}>
+      <div className="mp-slide-drawer-panel mp-slide-drawer-panel--scroll" onClick={(evt) => evt.stopPropagation()}>
+        <div className="mp-slide-drawer-head" style={{ background: "#0a0a0a", color: "#fff", padding: 22 }}>
+          <div className="mp-slide-drawer-head-fx" style={{ background: "radial-gradient(ellipse at 85% 20%, rgba(220,38,38,0.18), transparent 60%)" }} aria-hidden />
+          <button
+            type="button"
+            className="mp-slide-drawer-close mp-slide-drawer-close--dark"
+            onClick={(evt) => {
+              evt.stopPropagation();
+              close();
+            }}
+            aria-label="Cerrar"
+          >
             <Icon name="x" size={13} color="#fff" />
           </button>
-          <div style={{ position: "relative" }}>
+          <div className="mp-slide-drawer-head-body">
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span className="label-mp" style={{ color: "#fca5a5" }}>● Evento de auditoría</span>
               <span style={{ padding: "3px 9px", borderRadius: 9999, background: sevMeta.bg, color: sevMeta.c, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase" }}>{sevMeta.l}</span>

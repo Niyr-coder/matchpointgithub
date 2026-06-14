@@ -119,6 +119,7 @@ async function loadData(): Promise<UsersData> {
     const reliabilityMeta = reliabilityTier(reliabilityValue);
     return {
       id,
+      username: (p.username as string | null) ?? null,
       n: name,
       e: `@${(p.username as string) ?? "—"}`,
       l: Math.round((elo / 1000) * 10) / 10, // ELO 2500 → 2.5
