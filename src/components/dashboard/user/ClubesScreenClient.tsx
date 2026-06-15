@@ -430,7 +430,7 @@ function FeaturedCard({
               <span style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>Sin reseñas todavía</span>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
+          <div className="mp-grid-form-2 gap-2.5" style={{ marginBottom: 14 }}>
             {[
               { icon: "square", label: "Canchas", val: String(c.courtsCount) },
               {
@@ -541,7 +541,7 @@ function FeaturedPlaceholder() {
       <div style={{ padding: 28 }}>
         <div style={{ height: 16, background: "var(--muted)", borderRadius: 4, marginBottom: 10, width: "60%" }} />
         <div style={{ height: 14, background: "var(--muted)", borderRadius: 4, marginBottom: 16, width: "40%" }} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+        <div className="mp-grid-form-2 gap-2.5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} style={{ padding: 16, background: "var(--muted)", borderRadius: 10 }} />
           ))}

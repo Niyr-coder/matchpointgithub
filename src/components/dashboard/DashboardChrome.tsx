@@ -15,6 +15,7 @@ type Props = {
   role: RoleKey;
   userName: string;
   contextLabel: string | null;
+  homeHref: string;
   badgeOverrides?: Record<string, number | string>;
   /** Banner global (anuncio activo o mantenimiento). null = sin banner. Lo ven todos los roles. */
   banner?: { message: string; level: "info" | "warn" | "critical"; ctaLabel?: string | null; ctaHref?: string | null } | null;
@@ -31,6 +32,7 @@ export function DashboardChrome({
   role,
   userName,
   contextLabel,
+  homeHref,
   badgeOverrides,
   banner,
   flags,
@@ -86,7 +88,7 @@ export function DashboardChrome({
           minWidth: 0,
         }}
       >
-        <TopBar role={role} contextLabel={contextLabel} />
+        <TopBar role={role} contextLabel={contextLabel} homeHref={homeHref} />
         {banner && !bannerDismissed && (() => {
           const lvl = { info: { bg: "#dbeafe", bd: "#93c5fd", fg: "#1e3a8a", ic: "info" }, warn: { bg: "#fef3c7", bd: "#fcd34d", fg: "#78350f", ic: "alert-triangle" }, critical: { bg: "#fee2e2", bd: "#fca5a5", fg: "#7f1d1d", ic: "alert-octagon" } }[banner.level];
           return (

@@ -195,7 +195,7 @@ export function AdminRolesView({ data }: { data: RolesData }) {
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div className="label-mp" style={{ color: "#dc2626" }}>● RBAC · control de acceso basado en roles</div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+            <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 0" }}>
               Permisos & Roles<span className="dot">.</span>
             </h1>
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
@@ -484,7 +484,7 @@ function DomainCard({ d, selectedKey, cmpKey, selRole, cmpRole, levelOf }: { d: 
         <h3 className="font-heading" style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em", textTransform: "uppercase", margin: 0 }}>{d.d}<span className="dot">.</span></h3>
         <span style={{ fontSize: 10.5, color: "var(--muted-fg)", fontFamily: "ui-monospace, monospace", marginLeft: 4 }}>{d.caps.length} permisos</span>
       </div>
-      <div style={{ overflowX: "auto" }}>
+      <div className="mp-table-scroll">
         <div style={{ minWidth: cmpRole ? 460 : 320, display: "grid", gridTemplateColumns: cmpRole ? "1fr 130px 24px 130px" : "1fr 160px", gap: 12, alignItems: "center" }}>
           {cmpRole && (
             <>

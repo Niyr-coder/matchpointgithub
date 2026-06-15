@@ -5,7 +5,7 @@ export default function Loading() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Block height={140} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="mp-grid-form-2 gap-5">
         <Block height={260} />
         <Block height={260} />
       </div>

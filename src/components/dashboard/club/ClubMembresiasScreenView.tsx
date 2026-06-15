@@ -392,7 +392,7 @@ function PlanOverviewCard({ plan, isEditing, onEdit, onTogglePublish, onDelete }
         <span style={{ fontSize: 12, color: "var(--muted-fg)", fontWeight: 700 }}>/{plan.cycle}</span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 0", borderTop: "1px dashed var(--border)", borderBottom: "1px dashed var(--border)" }}>
+      <div className="mp-grid-form-2 gap-2" style={{ padding: "10px 0", borderTop: "1px dashed var(--border)", borderBottom: "1px dashed var(--border)" }}>
         <div>
           <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Activos</div>
           <div className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900 }}>{plan.active}</div>
@@ -499,7 +499,7 @@ function PlanEditor({ clubId, plan, onClose, onSaved }: { clubId: string; plan: 
         </div>
       </div>
 
-      <div className="mp-plan-editor-body" style={{ padding: 22, display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 24 }}>
+      <div className="mp-plan-editor-body mp-grid-split gap-6" style={{ padding: 22 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <EditorSection num="01" label="Datos básicos">
             <EditField label="Nombre del plan">
@@ -508,7 +508,7 @@ function PlanEditor({ clubId, plan, onClose, onSaved }: { clubId: string; plan: 
             <EditField label="Subtítulo (descripción corta)">
               <input value={sub} onChange={(e) => setSub(e.target.value)} style={inputStyle} maxLength={280} />
             </EditField>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="mp-grid-form-2 gap-2.5">
               <EditField label="Precio (USD)">
                 <input type="number" min={0} step="0.01" value={priceCents / 100} onChange={(e) => setPriceCents(Math.round(Number(e.target.value) * 100))} style={{ ...inputStyle, fontVariantNumeric: "tabular-nums" }} />
               </EditField>
@@ -669,9 +669,9 @@ function SociosSection({ plans, members, onRevoke }: { plans: Plan[]; members: R
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
+        <div className="mp-table-scroll">
           <div style={{ minWidth: 700 }}>
-            <div style={{ display: "grid", gridTemplateColumns: SUBS_COLS, gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--muted)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+            <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: SUBS_COLS, gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--border)", background: "var(--muted)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
               <span>Socio</span>
               <span>Plan</span>
               <span>Estado</span>
@@ -892,7 +892,7 @@ function CreatePlanModal({ clubId, onClose, onCreated }: { clubId: string; onClo
           )}
 
           {step === 2 && (
-            <div className="mp-create-step2" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 20 }}>
+            <div className="mp-create-step2 mp-grid-split gap-5">
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <EditField label="Nombre del plan">
                   <input autoFocus value={draft.l} onChange={(e) => patch({ l: e.target.value })} placeholder="Ej: Verano sin límites" maxLength={60} style={inputStyle} />
@@ -900,7 +900,7 @@ function CreatePlanModal({ clubId, onClose, onCreated }: { clubId: string; onClo
                 <EditField label="Descripción corta (subtítulo)">
                   <input value={draft.sub} onChange={(e) => patch({ sub: e.target.value })} placeholder="Ej: Para los que vienen 3+ veces por semana" maxLength={280} style={inputStyle} />
                 </EditField>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="mp-grid-form-2 gap-2.5">
                   <EditField label="Precio (USD)">
                     <input type="number" min={0} step="0.01" value={draft.priceCents / 100} onChange={(e) => patch({ priceCents: Math.round(Number(e.target.value) * 100) })} style={{ ...inputStyle, fontVariantNumeric: "tabular-nums" }} />
                   </EditField>

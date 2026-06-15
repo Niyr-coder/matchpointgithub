@@ -233,7 +233,7 @@ export async function AdminApplicationDetail({ applicationId }: { applicationId:
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="mp-grid-form-2 gap-4">
         <div className="card" style={{ padding: 20 }}>
           <div className="label-mp" style={{ marginBottom: 12 }}>Identidad pública</div>
           <DetailRow k="Nombre" v={data.name} />

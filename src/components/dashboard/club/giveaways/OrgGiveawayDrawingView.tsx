@@ -62,7 +62,7 @@ export function OrgGiveawayDrawingView({ role, giveaway }: Props) {
   return (
     <div style={{ position: "relative", minHeight: "calc(100vh - 120px)", background: "#0a0a0a", color: "#fff", margin: -28 }}>
       <div className="hero-emerald" style={{ position: "absolute", inset: 0, opacity: 0.4 }} />
-      <div style={{ position: "relative", padding: "60px 40px", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
+      <div className="relative flex flex-col items-center gap-8 px-4 py-10 md:px-10 md:py-15">
         <div className="label-mp" style={{ color: "var(--gw-accent-soft)" }}>
           {drawLabel} · transmitiendo
         </div>

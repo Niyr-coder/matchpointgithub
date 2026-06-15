@@ -93,7 +93,7 @@ export function GiveawayDetailMobile({
           </p>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 16 }}>
+        <div className="mp-grid-form-3 gap-2" style={{ marginTop: 16 }}>
           <MobileHeroStat label="Participan" value={data.entryCount} />
           <MobileHeroStat label="Cierra" value={closesLabel} />
           <MobileHeroStat label="Max entradas" value={data.maxEntriesPerUser} accent />

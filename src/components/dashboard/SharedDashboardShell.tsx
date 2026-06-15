@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { MP_ROLES, type RoleKey } from "@/lib/roles";
+import { dashboardHomePath } from "@/lib/dashboard/resolve-off-segment-role";
 import { DashboardChrome } from "./DashboardChrome";
 import { getSession, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
@@ -108,6 +109,7 @@ export async function renderDashboardChromeShell(
       role={role}
       userName={userName}
       contextLabel={contextLabel}
+      homeHref={dashboardHomePath(role)}
       banner={banner}
       flags={flags}
       isAdmin={isAdmin}

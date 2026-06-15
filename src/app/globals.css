@@ -1172,6 +1172,92 @@ select.mp-input:disabled {
   overscroll-behavior-x: contain;
 }
 
+/* ── Responsive grid helpers (dashboard / modals / forms) ─────
+   Reemplazan inline gridTemplateColumns. Ver docs/guides/06-responsive.md §3 */
+.mp-grid-form-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .mp-grid-form-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.mp-grid-form-3 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .mp-grid-form-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.mp-grid-form-4 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .mp-grid-form-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.mp-grid-form-5 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .mp-grid-form-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+.mp-grid-form-6 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .mp-grid-form-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+.mp-grid-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .mp-grid-split { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+}
+
+.mp-grid-split-wide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .mp-grid-split-wide { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+}
+
+.mp-grid-split-cart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .mp-grid-split-cart { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+}
+
+/* Tablas / filas admin: scroll horizontal en mobile */
+.mp-table-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.mp-table-scroll > .mp-table-row {
+  min-width: 640px;
+}
+
+@media (max-width: 767px) {
+  .mp-map-overlay-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(180px, 38vh) minmax(0, 1fr);
+  }
+}
+
 /* ── Motion utilities (Emil-style polish) ─────────────────────
    Solo transform + opacity = GPU, off-main-thread, no repaint.
    Hover gated a `hover: hover` para no triggear en touch. */
@@ -1278,6 +1364,19 @@ select.mp-input:disabled {
 }
 .mp-stf-schedule-inner {
   min-width: 480px;
+}
+.mp-grid-hours-24 {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+}
+.mp-grid-hours-17 {
+  display: grid;
+  grid-template-columns: repeat(17, 1fr);
+}
+.mp-qr-cells {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
 }
 .mp-stf-card-body {
   display: grid;
@@ -3147,6 +3246,66 @@ select.mp-input:disabled {
   }
 }
 
+/* Admin intensive — títulos, tablas, toolbars, stacks */
+.font-heading.mp-admin-page-title,
+.font-heading.mp-rs-header-title {
+  font-size: clamp(26px, 6.5vw, 40px);
+  line-height: 1.05;
+}
+.mp-admin-hero-value {
+  font-size: clamp(28px, 5vw, 42px);
+}
+.mp-admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.mp-admin-memberships-inner { min-width: 680px; }
+.mp-admin-matches-inner { min-width: 920px; }
+.mp-admin-flags-detail-inner { min-width: 720px; }
+.mp-admin-subs-inner { min-width: 720px; }
+
+@media (max-width: 980px) {
+  .mp-admin-memberships-head { display: none !important; }
+  .mp-admin-memberships-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 14px !important;
+    align-items: start !important;
+  }
+  .mp-admin-memberships-cell {
+    display: grid !important;
+    grid-template-columns: 88px minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: center;
+    min-width: 0;
+  }
+  .mp-admin-memberships-cell::before {
+    content: attr(data-label);
+    color: var(--muted-fg);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+@media (max-width: 640px) {
+  .mp-admin-bcast-draft-row {
+    grid-template-columns: 36px 1fr !important;
+    gap: 10px !important;
+  }
+  .mp-admin-bcast-draft-row > :nth-child(3),
+  .mp-admin-bcast-draft-row > :nth-child(4) {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .mp-admin-bcast-draft-row > :nth-child(4) {
+    margin-top: 4px;
+  }
+}
+
 /* ── Flujo 5 · Owner / coach / landing ── */
 .mp-ccfg-grid {
   display: grid;
@@ -3895,6 +4054,22 @@ select.mp-input:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   .mp-press:active { transform: none; }
+}
+
+/* Botón circular — el outline nativo no sigue border-radius; usamos box-shadow. */
+.mp-focus-ring-circle {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mp-focus-ring-circle:focus-visible {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 0 3px rgba(255, 255, 255, 0.92);
+}
+.mp-focus-ring-circle--light:focus-visible {
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 3px var(--primary);
 }
 
 /* Marquee de clubes del landing. La animación vive en CSS (no inline) para

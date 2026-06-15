@@ -262,7 +262,7 @@ function Step0({
       <div className="label-mp" style={{ marginBottom: 12 }}>
         Elige tu paquete
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      <div className="mp-grid-form-3 gap-2.5">
         {PACKS.map((p) => {
           const on = pack === p.k;
           return (
@@ -433,14 +433,7 @@ function Step1({ sel, total }: { sel: Pack; total: string }) {
       <div className="label-mp" style={{ marginBottom: 10 }}>
         Método de pago
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 6,
-          marginBottom: 14,
-        }}
-      >
+      <div className="mp-grid-form-3 gap-1.5" style={{ marginBottom: 14 }}>
         {PAY_METHODS.map((p) => (
           <button
             key={p.l}

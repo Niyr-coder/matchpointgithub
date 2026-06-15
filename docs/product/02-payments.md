@@ -188,7 +188,30 @@ que se defina un flujo contable específico.
    siempre `getAdminClient()` tras validar rol.
 5. **El customer no puede aprobar/rechazar nada** — todo admin/partner.
 
-## 11. TODOs
+## 11. PSP piloto (infra, flag off)
+
+Beta actual sigue **sin PSP** (comprobante manual). La infra para checkout con
+tarjeta ya está cableada pero **apagada** hasta staging:
+
+| Pieza | Ruta |
+|---|---|
+| Adaptadores | `src/lib/payments/providers/stripe.ts`, `mercadopago.ts` |
+| Registry | `src/lib/payments/registry.ts` |
+| Checkout | `src/lib/payments/checkout.ts` + `beginPspCheckoutAction` |
+| Webhooks idempotentes | `payment_webhook_events` + `/api/webhooks/stripe`, `/api/webhooks/mercadopago` |
+| Cascada post-capture | `src/lib/payments/capture-cascade.ts` (compartida con comprobantes) |
+| Flag | `psp_checkout_enabled` (default **off**) |
+
+**Kinds piloto:** `plan`, `tournament`, `event`, `club_featuring`.
+
+**Encender en staging:** migración → env `STRIPE_*` o `MP_*` → webhook URL en
+dashboard del PSP → flag `psp_checkout_enabled` ON → UI botón "Pagar con tarjeta"
+(pendiente).
+
+**Env:** ver `.env.example` (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `PSP_DEFAULT_PROVIDER`).
+
+## 12. TODOs
 
 - [ ] Refunds automáticos al cancelar torneo (queue de refunds pendientes
       para que partner solo confirme transferencia)

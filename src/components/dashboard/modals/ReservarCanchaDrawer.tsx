@@ -299,15 +299,8 @@ function DayPickerRow({
         <Icon name="chevron-left" size={18} />
       </button>
 
-      <div
-        style={{
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`,
-          gap: 6,
-          minWidth: 0,
-        }}
-      >
+      <div className="mp-table-scroll flex-1 min-w-0">
+        <div className="grid grid-cols-7 gap-1.5 mp-table-row">
         {days.map((opt, i) => (
           <ChoiceChip
             key={opt.iso}
@@ -338,6 +331,7 @@ function DayPickerRow({
             <div style={{ fontSize: 8, color: "var(--muted-fg)", marginTop: 1 }}>{opt.monthShort}</div>
           </ChoiceChip>
         ))}
+        </div>
       </div>
 
       <button
@@ -484,13 +478,11 @@ function ReservationTicketSummary({
             </div>
           </div>
           <div
+            className="mp-grid-form-2 gap-x-3 gap-y-1.5"
             style={{
               marginTop: 10,
               paddingTop: 10,
               borderTop: "1px dashed #e5e5e5",
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "6px 12px",
               fontSize: 10.5,
             }}
           >
@@ -1309,7 +1301,7 @@ export function ReservarCanchaDrawer() {
               </Section>
 
               <Section n={3} title="Duración">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="mp-grid-form-2 gap-2">
                   {([60, 120] as Duration[]).map((m) => (
                     <ChoiceChip
                       key={m}
@@ -1340,13 +1332,7 @@ export function ReservarCanchaDrawer() {
                     <SkeletonRows rows={3} />
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: 8,
-                    }}
-                  >
+                  <div className="mp-grid-form-3 gap-2">
                     {slots.map((h) => {
                       const isPast = pastSlots.has(h);
                       const isTaken = !isPast && taken.has(h);
@@ -1477,7 +1463,7 @@ export function ReservarCanchaDrawer() {
                     <div style={{ fontSize: 10.5, fontWeight: 800, marginBottom: 6, color: "var(--muted-fg)" }}>
                       Visibilidad
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div className="mp-grid-form-2 gap-2">
                       <ChoiceChip
                         selected={visibility === "private"}
                         onClick={() => setVisibility("private")}
@@ -1669,7 +1655,7 @@ export function ReservarCanchaDrawer() {
             </div>
 
             <div className="label-mp">Próximos pasos</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div className="mp-grid-form-2 gap-2">
               {successActions.map((a) => (
                 <button
                   key={a.id}

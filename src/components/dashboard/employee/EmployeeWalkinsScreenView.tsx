@@ -525,7 +525,7 @@ export function EmployeeWalkinsScreenView({ data }: { data: WalkinsData }) {
           </div>
         }
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="mp-grid-form-2 gap-4">
         <div>
           <div className="label-mp" style={{ marginBottom: 10 }}>
             En cola · ordenado por tiempo de espera

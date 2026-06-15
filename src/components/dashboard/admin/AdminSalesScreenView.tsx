@@ -158,9 +158,8 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
       <div>
         <div className="label-mp" style={{ color: "var(--primary)" }}>● Monetización · Ventas</div>
         <h1
-          className="font-heading"
+          className="font-heading mp-admin-page-title"
           style={{
-            fontSize: 40,
             fontWeight: 900,
             letterSpacing: "-0.03em",
             textTransform: "uppercase",
@@ -175,7 +174,7 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+      <div className="mp-admin-kpis-5">
         <Kpi label="Leads" value={String(data.totals.total)} icon="inbox" />
         <Kpi label="Nuevos" value={String(data.totals.newCount)} icon="sparkles" />
         <Kpi label="Demos" value={String(data.totals.demoCount)} icon="calendar-check" />
@@ -213,7 +212,7 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
               No hay leads con estos filtros.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="mp-table-scroll">
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
                 <thead>
                   <tr style={{ background: "var(--muted)" }}>

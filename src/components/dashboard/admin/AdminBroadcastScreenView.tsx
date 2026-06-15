@@ -270,12 +270,12 @@ export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Composer · enviar ahora
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 220px", gap: 14 }}>
+        <div className="mp-grid-form-3 gap-3.5" style={{ alignItems: "start" }}>
           <div>
             <div className="label-mp" style={{ marginBottom: 6 }}>
               Tipo
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+            <div className="mp-grid-form-2 gap-1.5">
               {COMPOSER_TYPES.map((o) => {
                 const on = kind === o.k;
                 return (
@@ -397,7 +397,7 @@ export function AdminBroadcastScreenView({ data }: { data: BroadcastData }) {
             ? data.drafts.map((d) => (
                 <div
                   key={d.id}
-                  className="card"
+                  className="card mp-admin-bcast-draft-row"
                   style={{
                     padding: 14,
                     display: "grid",

@@ -18,6 +18,9 @@ type MembershipRow = {
   } | null;
 };
 
+const MEMB_RANKING_COLS = "44px 1.8fr 110px 100px 110px 130px";
+const MEMB_LIST_COLS = "86px 1.4fr 1.3fr 1fr 100px 110px 100px";
+
 type ClubSummary = {
   club: string;
   city: string;
@@ -104,14 +107,12 @@ export async function AdminClubMembresiasScreen() {
       >
         <div>
           <h1
-            className="font-heading"
+            className="font-heading mp-admin-page-title"
             style={{
               margin: 0,
-              fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
               textTransform: "uppercase",
-              lineHeight: 0.95,
             }}
           >
             Membresías de club<span style={{ color: "var(--primary)" }}>.</span>
@@ -152,7 +153,7 @@ export async function AdminClubMembresiasScreen() {
                 {takeRatePct.toFixed(takeRatePct % 1 === 0 ? 0 : 1)}% configurado
               </span>
             </div>
-            <div className="font-heading tabular" style={{ fontSize: 42, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
+            <div className="font-heading tabular mp-admin-hero-value" style={{ fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
               {moneyK(platformFeeCents)}
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", fontWeight: 700, marginLeft: 6 }}>/mes</span>
             </div>
@@ -182,7 +183,7 @@ export async function AdminClubMembresiasScreen() {
             </div>
             <div className="mp-table-scroll">
               <div style={{ minWidth: 760 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "44px 1.8fr 110px 100px 110px 130px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: MEMB_RANKING_COLS, gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                   <span>#</span>
                   <span>Club</span>
                   <span>Ciudad</span>
@@ -191,7 +192,7 @@ export async function AdminClubMembresiasScreen() {
                   <span style={{ textAlign: "right" }}>Mensual</span>
                 </div>
                 {summaries.map((club, index) => (
-                  <div key={club.club} style={{ display: "grid", gridTemplateColumns: "44px 1.8fr 110px 100px 110px 130px", gap: 12, padding: "13px 18px", alignItems: "center", borderBottom: index < summaries.length - 1 ? "1px solid var(--border)" : undefined }}>
+                  <div key={club.club} style={{ display: "grid", gridTemplateColumns: MEMB_RANKING_COLS, gap: 12, padding: "13px 18px", alignItems: "center", borderBottom: index < summaries.length - 1 ? "1px solid var(--border)" : undefined }}>
                     <span className="font-heading tabular" style={{ fontWeight: 900, color: index < 3 ? "var(--primary)" : "var(--muted-fg)" }}>{index + 1}</span>
                     <span style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{club.club}</span>
                     <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>{club.city}</span>
@@ -215,7 +216,7 @@ export async function AdminClubMembresiasScreen() {
             </div>
             <div className="mp-table-scroll">
               <div style={{ minWidth: 860 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "86px 1.4fr 1.3fr 1fr 100px 110px 100px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: MEMB_LIST_COLS, gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                   <span>Nº socio</span>
                   <span>Miembro</span>
                   <span>Club</span>
@@ -227,7 +228,7 @@ export async function AdminClubMembresiasScreen() {
                 {rows.slice(0, 80).map((row, index) => {
                   const meta = STATUS_META[row.status] ?? { label: row.status, color: "var(--muted-fg)" };
                   return (
-                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: "86px 1.4fr 1.3fr 1fr 100px 110px 100px", gap: 12, padding: "12px 18px", alignItems: "center", borderBottom: index < Math.min(rows.length, 80) - 1 ? "1px solid var(--border)" : undefined, fontSize: 12.5 }}>
+                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: MEMB_LIST_COLS, gap: 12, padding: "12px 18px", alignItems: "center", borderBottom: index < Math.min(rows.length, 80) - 1 ? "1px solid var(--border)" : undefined, fontSize: 12.5 }}>
                       <span style={{ fontWeight: 900, color: "var(--muted-fg)" }}>{row.member_no != null ? `#${String(row.member_no).padStart(3, "0")}` : "—"}</span>
                       <span style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{memberName(row)}</span>
                       <span style={{ color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.clubs?.name ?? "—"}</span>

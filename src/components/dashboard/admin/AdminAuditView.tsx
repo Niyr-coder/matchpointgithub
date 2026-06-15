@@ -23,6 +23,8 @@ type Ev = {
   avBg: string;
   actorType: string;
   action: string;
+  /** Título legible para UI (no técnico). */
+  actionLabel: string;
   cat: string;
   target: string;
   sev: Sev;
@@ -200,11 +202,11 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
     if (catF !== "all" && e.cat !== catF) return false;
     if (sevF !== "all" && e.sev !== sevF) return false;
     if (search) {
-      const blob = (e.who + " " + e.action + " " + e.target + " " + (e.ip || "")).toLowerCase();
+      const blob = (e.who + " " + e.actionLabel + " " + e.action + " " + e.target + " " + (e.ip || "")).toLowerCase();
       if (!blob.includes(search.toLowerCase())) return false;
     }
     for (const f of activeFilters) {
-      const blob = (e.who + " " + e.action + " " + e.target).toLowerCase();
+      const blob = (e.who + " " + e.actionLabel + " " + e.action + " " + e.target).toLowerCase();
       if (!blob.includes(f.toLowerCase())) return false;
     }
     return true;
@@ -225,13 +227,13 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
   );
   const critical = rangeEvents.filter((e) => e.sev === "critical").length;
   const actors = new Set(rangeEvents.map((e) => e.who)).size;
-  const actions = new Set(rangeEvents.map((e) => e.action)).size;
+  const actions = new Set(rangeEvents.map((e) => e.actionLabel)).size;
 
   const actorTally: Record<string, number> = {};
   rangeEvents.forEach((e) => (actorTally[e.who] = (actorTally[e.who] || 0) + 1));
   const topActors = Object.entries(actorTally).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const actionTally: Record<string, number> = {};
-  rangeEvents.forEach((e) => (actionTally[e.action] = (actionTally[e.action] || 0) + 1));
+  rangeEvents.forEach((e) => (actionTally[e.actionLabel] = (actionTally[e.actionLabel] || 0) + 1));
   const topActions = Object.entries(actionTally).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const catTally: Record<string, number> = {};
   rangeEvents.forEach((e) => (catTally[e.cat] = (catTally[e.cat] || 0) + 1));
@@ -249,7 +251,7 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
     } else {
       const head = "fecha,actor,rol,accion,categoria,severidad,target,ip\n";
       const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
-      content = head + filtered.map((e) => [e.t, e.who, e.actorType, e.action, e.cat, e.sev, e.target, e.ip ?? ""].map(esc).join(",")).join("\n");
+      content = head + filtered.map((e) => [e.t, e.who, e.actorType, e.actionLabel, e.cat, e.sev, e.target, e.ip ?? ""].map(esc).join(",")).join("\n");
       mime = "text/csv";
       name = "audit-log.csv";
     }
@@ -268,7 +270,7 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
       <div>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: 0, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: 0, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               Audit log<span className="dot">.</span>
               <InfoTip maxWidth={280} text="Si disputas cobros, suspensiones o grants admin, este log es la prueba. Exporta antes de cualquier investigación de integridad." />
             </h1>
@@ -290,11 +292,11 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
       </div>
 
       {/* KPI STRIP */}
-      <div className="mp-spon-kpis" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 12 }}>
+      <div className="mp-spon-kpis gap-3">
         <AuditHero count={rangeEvents.length} liveTail={liveTail} buckets={hourBuckets} range={range} />
         <AuditKpi icon="alert-octagon" label={`Críticos · ${rangeLabel}`} value={String(critical)} sub={critical > 0 ? "Revisar ahora" : "Sin alertas"} danger={critical > 0} tip="Eventos con severidad crítica en el rango (cancelaciones masivas, overrides sensibles, etc.). Prioriza revisarlos." />
         <AuditKpi icon="users" label="Actores únicos" value={String(actors)} sub="admins · staff · sistema" tip="Cuentas distintas que generaron eventos. Útil para detectar un actor con actividad anómala." />
-        <AuditKpi icon="terminal" label="Acciones únicas" value={String(actions)} sub="tipos distintos" tip="Valores distintos del campo action (INSERT/UPDATE/DELETE o nombres custom como tournament.cancelled)." />
+        <AuditKpi icon="terminal" label="Acciones únicas" value={String(actions)} sub="tipos distintos" tip="Tipos distintos de acción en lenguaje legible (ej. «Rol asignado», «Perfil actualizado»)." />
         <AuditKpi icon="shield-check" label="Integridad" value={nf(chainedCount)} sub="encadenados · hash chain" emerald tip="Filas con hash encadenado. Usa la tarjeta lateral «Verificar cadena» para comprobar que nadie alteró el log." />
       </div>
 
@@ -358,7 +360,7 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
       )}
 
       {/* MAIN GRID */}
-      <div className="mp-audit-grid" style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-audit-grid mp-grid-split-wide gap-4" style={{ alignItems: "start" }}>
         {/* STREAM */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -522,7 +524,7 @@ function EventRow({ e, live, onOpen }: { e: Ev; live: boolean; onOpen: () => voi
       <span style={{ width: 7, height: 7, borderRadius: "50%", background: sevDot, justifySelf: "center", boxShadow: e.sev === "critical" ? "0 0 0 3px rgba(239,68,68,0.18)" : "none" }} />
       <span style={{ fontSize: 12, fontWeight: 600, color: isSystem ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.92)", fontStyle: isSystem ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.who}</span>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
-        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{e.action}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{e.actionLabel}</span>
         <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{e.target}</span>
       </div>
       {e.diff ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 10, color: "#fbbf24", whiteSpace: "nowrap", opacity: 0.85 }}>+{e.diff.length} edit</span> : <span />}
@@ -541,7 +543,7 @@ function PulseCard({ title, rows, total }: { title: string; rows: { k: string; v
           return (
             <div key={r.k}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3, gap: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "ui-monospace, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.k}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.k}</span>
                 <span className="tabular" style={{ fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
                   {r.v}
                   <span style={{ color: "var(--muted-fg)", marginLeft: 4 }}>· {pct}%</span>
@@ -859,8 +861,9 @@ function EventDrawer({ e, close }: { e: Ev; close: () => void }) {
               <span className="label-mp" style={{ color: "#fca5a5" }}>● Evento de auditoría</span>
               <span style={{ padding: "3px 9px", borderRadius: 9999, background: sevMeta.bg, color: sevMeta.c, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase" }}>{sevMeta.l}</span>
             </div>
-            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em", wordBreak: "break-all" }}>{e.action}</div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 6 }}>{e.target}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.25 }}>{e.actionLabel}</div>
+            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 10.5, color: "rgba(255,255,255,0.45)", marginTop: 6, wordBreak: "break-all" }}>{e.action}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>{e.target}</div>
             <div style={{ display: "flex", gap: 18, marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)", fontSize: 11 }}>
               <DStat l="Cuándo" v={e.t.replace("T", " ") + " UTC"} />
               <DStat l="Request" v={e.reqId} />

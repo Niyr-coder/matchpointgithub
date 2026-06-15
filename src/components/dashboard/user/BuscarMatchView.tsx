@@ -13,6 +13,8 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
 
+const BM_LIST_COLS = "110px 1.5fr 1fr 130px 100px 130px";
+
 type Player = { a: string; b: string };
 type Match = {
   id: string;
@@ -445,7 +447,7 @@ function ListView({ matches, onJoin }: { matches: Match[]; onJoin: () => void })
   return (
     <div className="card" style={{ padding: 0, overflowX: "auto" }}>
       <div style={{ minWidth: 720 }}>
-        <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+        <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: BM_LIST_COLS, gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
           <div>Cuándo</div>
           <div>Match</div>
           <div>Jugadores</div>
@@ -456,7 +458,7 @@ function ListView({ matches, onJoin }: { matches: Match[]; onJoin: () => void })
         {matches.map((m) => {
           const empty = m.slotsTotal - m.players.length;
           return (
-            <div key={m.id} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "110px 1.5fr 1fr 130px 100px 130px", gap: 14, alignItems: "center" }}>
+            <div key={m.id} style={{ padding: "14px 22px", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: BM_LIST_COLS, gap: 14, alignItems: "center" }}>
               <div>
                 <div className="font-heading tabular" style={{ fontWeight: 900, fontSize: 14 }}>{m.date}</div>
                 <div style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>{m.time}</div>

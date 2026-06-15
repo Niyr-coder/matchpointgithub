@@ -18,6 +18,8 @@ import {
 import { useToast } from "../../ToastProvider";
 import { EmptyState, SectionTitle, fmtDate } from "../event-detail/primitives";
 
+const TOURNAMENT_REG_COLS = "1fr 110px 110px 90px 40px";
+
 type Reg = AdminTournamentDetail["registrations"][number];
 
 type DialogState = { kind: "none" } | { kind: "remove"; reg: Reg };
@@ -65,7 +67,7 @@ export function TournamentRegistrationsTable({
                 className="mp-admin-event-reg-row"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 110px 110px 90px 40px",
+                  gridTemplateColumns: TOURNAMENT_REG_COLS,
                   gap: 10,
                   padding: "12px 16px",
                   alignItems: "center",

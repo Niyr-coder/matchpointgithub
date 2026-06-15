@@ -34,8 +34,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
-import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
+import { runTransactionCaptureCascade } from "@/lib/payments/capture-cascade";
 import { notify } from "@/server/notifications/dispatch";
 
 // ── helpers de auth ─────────────────────────────────────────────────────
@@ -59,11 +58,6 @@ function mapResult(row: Record<string, unknown>): PaymentProofResult {
     proofReviewedAt: (row.proof_reviewed_at as string | null) ?? null,
     proofRejectionReason: (row.proof_rejection_reason as string | null) ?? null,
   };
-}
-
-function amountLabel(amountCents: number | null, currency: string | null): string {
-  if (amountCents == null) return "tu pago";
-  return `${currency ?? "USD"} ${(amountCents / 100).toFixed(2)}`;
 }
 
 async function isGiveawayPayTransaction(
@@ -224,116 +218,15 @@ export async function approvePaymentProofAdmin(
       .single();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
 
-    // Si la transacción está ligada a una inscripción, marcar como aceptada.
-    // Buscamos por paid_transaction_id en event_registrations y registrations.
-    if (tx.kind === "event") {
-      await supabase
-        .from("event_registrations")
-        .update({ status: "registered" } as never)
-        .eq("paid_transaction_id", transactionId);
-    } else if (tx.kind === "tournament") {
-      await supabase
-        .from("registrations")
-        .update({ status: "accepted" } as never)
-        .eq("paid_transaction_id", transactionId);
-    } else if (tx.kind === "plan") {
-      // Auto-activar la subscription de plan asociada a esta transaction.
-      // Si algo falla, logueamos pero no abortamos: el comprobante ya quedó
-      // aprobado y el admin puede activar la subscription manualmente.
-      try {
-        const { data: pendingSub, error: subReadErr } = await supabase
-          .from("player_subscriptions")
-          .select("id")
-          .eq("transaction_id", transactionId)
-          .eq("status", "pending")
-          .maybeSingle();
-        if (subReadErr) {
-          console.error(
-            "[approvePaymentProof] plan auto-activate failed:",
-            subReadErr,
-          );
-        } else if (!pendingSub) {
-          console.warn(
-            `[approvePaymentProof] no pending player_subscription for transaction ${transactionId}; skipping auto-activate`,
-          );
-        } else {
-          const activateResult = await approvePlanSubscriptionAdmin({
-            subscriptionId: pendingSub.id as string,
-          });
-          if (!activateResult.ok) {
-            console.error(
-              "[approvePaymentProof] plan auto-activate failed:",
-              activateResult.error,
-            );
-          }
-        }
-      } catch (err) {
-        console.error("[approvePaymentProof] plan auto-activate failed:", err);
-      }
-    } else if (tx.kind === "club_featuring") {
-      // Auto-activar la subscription de featuring asociada a esta
-      // transaction. Mismo patrón que 'plan': si algo falla, logueamos
-      // pero no abortamos — el comprobante ya quedó aprobado y el admin
-      // puede activar el featuring manualmente desde el panel.
-      try {
-        const { data: pendingSub, error: subReadErr } = await supabase
-          .from("club_featuring_subscriptions")
-          .select("id")
-          .eq("transaction_id", transactionId)
-          .eq("status", "pending")
-          .maybeSingle();
-        if (subReadErr) {
-          console.error(
-            "[approvePaymentProof] club_featuring auto-activate failed:",
-            subReadErr,
-          );
-        } else if (!pendingSub) {
-          console.warn(
-            `[approvePaymentProof] no pending club_featuring_subscription for transaction ${transactionId}; skipping auto-activate`,
-          );
-        } else {
-          const activateResult = await approveClubFeaturingAdmin({
-            subscriptionId: pendingSub.id as string,
-          });
-          if (!activateResult.ok) {
-            console.error(
-              "[approvePaymentProof] club_featuring auto-activate failed:",
-              activateResult.error,
-            );
-          }
-        }
-      } catch (err) {
-        console.error(
-          "[approvePaymentProof] club_featuring auto-activate failed:",
-          err,
-        );
-      }
-    } else if (tx.kind === "custom") {
-      await maybeSyncGiveawayPayMechanics(supabase, {
-        kind: tx.kind as string,
-        ref_id: (tx.ref_id as string | null) ?? null,
-        customer_user_id: (tx.customer_user_id as string | null) ?? null,
-        club_id: (tx.club_id as string | null) ?? null,
-      });
-    }
-
-    const customerId = tx.customer_user_id as string | null;
-    if (customerId) {
-      await notify({
-        userId: customerId,
-        role: "user",
-        kind: "payment_captured",
-        title: "Pago confirmado",
-        body: `Confirmamos ${amountLabel(tx.amount_cents as number | null, (tx.currency as string | null) ?? null)} en MATCHPOINT.`,
-        payload: {
-          transaction_id: transactionId,
-          transaction_kind: tx.kind,
-          ref_id: tx.ref_id,
-          amount_cents: tx.amount_cents,
-          currency: tx.currency,
-        },
-      });
-    }
+    await runTransactionCaptureCascade(supabase, {
+      id: tx.id as string,
+      kind: tx.kind as string,
+      ref_id: (tx.ref_id as string | null) ?? null,
+      club_id: (tx.club_id as string | null) ?? null,
+      customer_user_id: (tx.customer_user_id as string | null) ?? null,
+      amount_cents: tx.amount_cents as number | null,
+      currency: (tx.currency as string | null) ?? null,
+    });
 
     return mapResult(data);
   });

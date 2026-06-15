@@ -8,7 +8,7 @@
 
 - **Producción canónica:** `https://matchpointgithub.vercel.app`
 - **Repo fuente:** `Niyr-coder/matchpointgithub` (branch `main` → auto-deploy en Vercel).
-- **Build verification:** el AuthModal del repo (`src/components/auth/AuthModal.tsx`) se monta sobre el landing. `/login` redirige a `/?auth=signin`. Auth híbrido email/password con Google/Apple `[disabled]` "Próximamente".
+- **Build verification:** el AuthModal del repo (`src/components/auth/AuthModal.tsx`) se monta sobre el landing. `/login` redirige a `/?auth=signin`. Auth híbrido: **Google OAuth** + email/password.
 
 ## 2. Dominios que NO son nuestros (pero comparten brand)
 

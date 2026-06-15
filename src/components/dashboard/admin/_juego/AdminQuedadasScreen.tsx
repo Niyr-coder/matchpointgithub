@@ -57,6 +57,7 @@ type QuedadaRow = {
 };
 
 const NON_CANCELABLE = new Set<QuedadaStatus>(["cancelled", "finished"]);
+const QUEDADAS_TABLE_COLS = "minmax(260px,1.6fr) 1fr 1fr 100px 90px auto";
 
 function severityFor(createdAt: string): Severity {
   const ageHours = (Date.now() - Date.parse(createdAt)) / 36e5;
@@ -299,9 +300,9 @@ export function AdminQuedadasScreen() {
             <p style={{ fontSize: 12, marginTop: 6 }}>Prueba quitando filtros o cambiando la búsqueda.</p>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: "auto" }}>
-            <div style={{ minWidth: 920 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.6fr) 1fr 1fr 100px 90px auto", gap: 12, padding: "10px 16px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)", background: "var(--muted)", alignItems: "center" }}>
+          <div className="card mp-table-scroll" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="mp-admin-matches-inner">
+              <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: QUEDADAS_TABLE_COLS, gap: 12, padding: "10px 16px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)", background: "var(--muted)", alignItems: "center" }}>
                 <span>Quedada</span>
                 <span>Organizador</span>
                 <span>Formato · cuándo</span>
@@ -313,7 +314,7 @@ export function AdminQuedadasScreen() {
                 const cancelable = !NON_CANCELABLE.has(q.status);
                 const sm = QUEDADA_STATUS_META[q.status];
                 return (
-                  <div key={q.id} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.6fr) 1fr 1fr 100px 90px auto", gap: 12, padding: "12px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : 0, background: cancelable ? "#fff" : "#fafafa" }}>
+                  <div key={q.id} className="mp-table-row" style={{ display: "grid", gridTemplateColumns: QUEDADAS_TABLE_COLS, gap: 12, padding: "12px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : 0, background: cancelable ? "#fff" : "#fafafa" }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.title}</span>

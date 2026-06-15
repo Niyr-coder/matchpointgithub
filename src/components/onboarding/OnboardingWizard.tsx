@@ -523,7 +523,7 @@ function StepIdentity({
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <FieldLabel label="Nombre" error={errors.firstName}>
           <input
             value={firstName}
@@ -729,7 +729,7 @@ function StepPersonal({
         </select>
       </FieldLabel>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <FieldLabel label="Fecha de nacimiento" error={errors.birthdate}>
           <input
             type="date"
@@ -810,7 +810,7 @@ function StepHand({
       <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 18px" }}>
         Lo usamos para emparejarte mejor en dobles y mostrarlo en tu perfil.
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         {options.map((o) => {
           const active = current === o.value;
           return (

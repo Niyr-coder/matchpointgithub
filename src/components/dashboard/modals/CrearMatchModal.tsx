@@ -753,7 +753,7 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Deporte
         </div>
-        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-grid-form-3 gap-2.5">
           {visibleSports.map((s) => (
             <PickCard
               key={s.k}
@@ -791,7 +791,7 @@ function Step1({ form, set }: { form: Form; set: Setter }) {
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Modalidad
         </div>
-        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-grid-form-3 gap-2.5">
           {MODES.map((m) => (
             <PickCard key={m.k} active={form.mode === m.k} accent onClick={() => set("mode", m.k)}>
               <div
@@ -880,7 +880,7 @@ function Step2({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <div className="mp-crear-match-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         <CMField label="Fecha">
           <input
             type="date"
@@ -1139,7 +1139,7 @@ function Step3({
         <div className="label-mp" style={{ marginBottom: 12 }}>
           Visibilidad
         </div>
-        <div className="mp-crear-match-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="mp-grid-form-3 gap-2.5">
           {VISIBILITY_OPTIONS.map((o) => (
             <PickCard
               key={o.k}
@@ -1310,7 +1310,7 @@ function Step4({ form }: { form: Form }) {
         </div>
       </div>
 
-      <div className="mp-crear-match-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         <div className="card" style={{ padding: 16 }}>
           <div className="label-mp" style={{ marginBottom: 8 }}>
             Configuración

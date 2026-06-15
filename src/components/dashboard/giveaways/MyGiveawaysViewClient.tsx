@@ -17,6 +17,8 @@ import type {
 } from "@/lib/schemas/giveaways";
 import { getReferralShareUiCopy } from "@/lib/referrals/share";
 
+const MY_GW_ACTION_COLS = "48px 1fr 120px 110px";
+
 function unlockActionButtonLabel(kind: string, done: boolean, compact = false): string {
   if (done) return "Hecho";
   if (kind === "invite") {
@@ -377,7 +379,7 @@ function AdentroCard({ g, onOpen }: { g: MyGiveawayAdentro; onOpen: () => void }
               1 entrada confirmada
             </span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 6 }}>
+          <div className="mp-grid-form-3 gap-3.5" style={{ marginTop: 6 }}>
             <div>
               <div className="label-mp">Califican</div>
               <div className="font-heading tabular" style={{ fontSize: 18, fontWeight: 900, marginTop: 4 }}>
@@ -485,7 +487,7 @@ function PendingCard({ g, onOpen }: { g: MyGiveawayPending; onOpen: () => void }
         </div>
       </button>
 
-      <div className="card hidden md:grid" style={{ padding: 0, overflow: "hidden", gridTemplateColumns: "160px 1fr 220px" }}>
+      <div className="card hidden md:grid mp-grid-form-3" style={{ padding: 0, overflow: "hidden" }}>
         <PrizeThumb label={g.prizeLabel} imageUrl={g.prizeImageUrl} size={120} />
         <div style={{ padding: 16 }}>
           <OwnerBadge owner={g.ownerType} name={g.clubName} />
@@ -544,7 +546,7 @@ function UnlockActionRow({ action, onAction }: { action: MyGiveawayUnlockAction;
         className="card hidden md:grid"
         style={{
           padding: 14,
-          gridTemplateColumns: "48px 1fr 120px 110px",
+          gridTemplateColumns: MY_GW_ACTION_COLS,
           gap: 14,
           alignItems: "center",
           opacity: done ? 0.5 : 1,
