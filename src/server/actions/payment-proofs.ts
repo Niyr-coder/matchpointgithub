@@ -101,7 +101,11 @@ export async function submitPaymentProof(
 ): Promise<ActionResult<PaymentProofResult>> {
   return runMutation(SubmitProofSchema, input, async ({ transactionId, proofUrl }) => {
     const userId = await requireUserId();
-    await assertRateLimit({ key: `proof:submit:${userId}`, ...RATE_LIMITS.paymentProof });
+    await assertRateLimit({
+      key: `proof:submit:${userId}`,
+      ...RATE_LIMITS.paymentProof,
+      failClosed: true,
+    });
     const supabase = await getServerClient();
 
     const { data: tx, error: readErr } = await supabase
