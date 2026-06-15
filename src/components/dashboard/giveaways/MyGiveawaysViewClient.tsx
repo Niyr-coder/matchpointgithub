@@ -15,6 +15,15 @@ import type {
   MyGiveawayLost,
   MyGiveawaysDashboard,
 } from "@/lib/schemas/giveaways";
+import { getReferralShareUiCopy } from "@/lib/referrals/share";
+
+function unlockActionButtonLabel(kind: string, done: boolean, compact = false): string {
+  if (done) return "Hecho";
+  if (kind === "invite") {
+    return getReferralShareUiCopy({ surface: "giveaway", giveawayTitle: "", clubName: "" }).actionLabel;
+  }
+  return compact ? "Hacer" : "Hacer ahora";
+}
 
 type TabKey = "adentro" | "pendientes" | "ganados" | "pasados";
 
@@ -122,13 +131,14 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
         </div>
       </div>
 
-      {/* Tabs — mobile 3 sticky */}
+      {/* Tabs — mobile sticky bajo TopBar (mismo markup que v11 + Pasados) */}
       <div className="ms-mobile-tabs">
         {(
           [
             { k: "adentro" as TabKey, l: "Adentro", c: dashboard.stats.adentro },
             { k: "pendientes" as TabKey, l: "Califica", c: dashboard.stats.pendientes },
             { k: "ganados" as TabKey, l: "Ganados", c: dashboard.stats.ganados },
+            { k: "pasados" as TabKey, l: "Pasados", c: lostCount },
           ] as const
         ).map((t) => (
           <button
@@ -137,6 +147,7 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
             onClick={() => setTab(t.k)}
             style={{
               flex: 1,
+              minWidth: 0,
               padding: "12px 0",
               display: "flex",
               flexDirection: "column",
@@ -196,7 +207,7 @@ export function MyGiveawaysViewClient({ dashboard }: { dashboard: MyGiveawaysDas
         ))}
       </div>
 
-      <div style={{ paddingTop: 16, paddingBottom: 24 }}>
+      <div className="ms-panel-wrap">
         {tab === "adentro" && <AdentroPanel dashboard={dashboard} />}
         {tab === "pendientes" && <PendientesPanel dashboard={dashboard} unlockPending={unlockPending} />}
         {tab === "ganados" && <GanadosPanel items={dashboard.ganados} />}
@@ -244,59 +255,15 @@ function AdentroPanel({ dashboard }: { dashboard: MyGiveawaysDashboard }) {
 
   return (
     <>
-      <div className="md:grid md:grid-cols-[1fr_320px] md:gap-[18px] md:items-start flex flex-col gap-3">
-        <div className="flex flex-col gap-3">
+      <div className="md:grid md:grid-cols-[1fr_320px] md:gap-[18px] md:items-start flex flex-col gap-3 min-w-0">
+        <div className="flex flex-col gap-3 min-w-0">
           {dashboard.adentro.map((g) => (
             <AdentroCard key={g.id} g={g} onOpen={() => router.push(`/dashboard/clubes/giveaways/${g.id}`)} />
           ))}
         </div>
 
         <div className="hidden md:flex flex-col gap-3.5 sticky top-4">
-          {next ? (
-            <div className="card" style={{ padding: 18 }}>
-              <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase" }}>
-                Próximo sorteo<span style={{ color: "var(--primary)" }}>.</span>
-              </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 12,
-                  borderRadius: 10,
-                  background: next.urgent ? "var(--destructive-bg)" : "var(--primary-light)",
-                  border: `1px solid ${next.urgent ? "var(--destructive-border)" : "var(--primary)"}`,
-                }}
-              >
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)" }}>
-                  {next.title}
-                </div>
-                <div style={{ fontSize: 11, color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)", marginTop: 4 }}>
-                  {formatGiveawayDrawAt(next.drawAt)}
-                </div>
-                <div
-                  className="font-heading tabular"
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 900,
-                    color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)",
-                    marginTop: 6,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  1 entrada · {probLabel(next.probabilityPct)}
-                </div>
-                {next.drawChannel ? (
-                  <button
-                    type="button"
-                    className="btn btn-onyx"
-                    style={{ marginTop: 10, width: "100%" }}
-                    onClick={() => router.push(`/dashboard/clubes/giveaways/${next.giveawayId}`)}
-                  >
-                    <Icon name="video" size={11} color="#fff" /> Ver sorteo
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+          {next ? <NextDrawSidebarCard next={next} onOpen={() => router.push(`/dashboard/clubes/giveaways/${next.giveawayId}`)} /> : null}
           <div className="card" style={{ padding: 18, background: "#0a0a0a", color: "#fff", borderColor: "#0a0a0a" }}>
             <Icon name="lightbulb" size={16} color="var(--primary)" />
             <div style={{ fontSize: 12.5, fontWeight: 800, marginTop: 8 }}>Por qué 1 entrada por jugador</div>
@@ -335,17 +302,34 @@ function AdentroCard({ g, onOpen }: { g: MyGiveawayAdentro; onOpen: () => void }
             marginTop: 10,
             padding: "8px 10px",
             borderRadius: 8,
-            background: "var(--primary-light)",
-            border: "1px solid var(--primary)",
+            background: urgent ? "var(--destructive-bg)" : "var(--primary-light)",
+            border: `1px solid ${urgent ? "var(--destructive-border)" : "var(--primary)"}`,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: 8,
+            minWidth: 0,
           }}
         >
-          <span style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 11.5, fontWeight: 900, color: "var(--primary-dark)" }}>
-            <Icon name="ticket" size={12} color="var(--primary-dark)" /> 1 entrada · {probLabel(g.probabilityPct, 2)}
+          <span
+            style={{
+              display: "inline-flex",
+              gap: 5,
+              alignItems: "center",
+              fontSize: 11.5,
+              fontWeight: 900,
+              color: urgent ? "var(--destructive-fg)" : "var(--primary-dark)",
+              minWidth: 0,
+              flex: "1 1 auto",
+              overflow: "hidden",
+            }}
+          >
+            <Icon name="ticket" size={12} color={urgent ? "var(--destructive-fg)" : "var(--primary-dark)"} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              1 entrada · {probLabel(g.probabilityPct, 2)}
+            </span>
           </span>
-          <Countdown days={closesIn.days} hours={closesIn.hours} urgent={urgent} />
+          <Countdown days={closesIn.days} hours={closesIn.hours} urgent={urgent} compact />
         </div>
       </button>
 
@@ -432,9 +416,9 @@ function PendientesPanel({ dashboard, unlockPending }: { dashboard: MyGiveawaysD
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="card" style={{ padding: 14, background: "var(--primary-light)", borderColor: "var(--primary)" }}>
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-          <div>
+      <div className="card ms-pendientes-banner">
+        <div className="ms-pendientes-banner-body flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
+          <div className="min-w-0">
             <div className="label-mp" style={{ color: "var(--primary-dark)" }}>
               {unlockPending > 0 ? "Cómo funciona" : "Casi listo"}
             </div>
@@ -446,9 +430,9 @@ function PendientesPanel({ dashboard, unlockPending }: { dashboard: MyGiveawaysD
             </p>
           </div>
           {unlockPending > 0 ? (
-            <div className="font-heading tabular md:text-right" style={{ fontWeight: 900, fontSize: 36, color: "var(--primary-dark)", letterSpacing: "-0.03em" }}>
+            <div className="font-heading tabular ms-pendientes-banner-stat md:text-right">
               +{unlockPending}
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em" }}>SORTEOS POR DESBLOQUEAR</div>
+              <div className="ms-pendientes-banner-stat-sub">SORTEOS POR DESBLOQUEAR</div>
             </div>
           ) : null}
         </div>
@@ -610,7 +594,7 @@ function UnlockActionRow({ action, onAction }: { action: MyGiveawayUnlockAction;
           <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>sorteo{pending.length === 1 ? "" : "s"}</div>
         </div>
         <button type="button" className="btn btn-primary" disabled={done} onClick={onAction} style={done ? { background: "var(--muted)", color: "var(--muted-fg)" } : undefined}>
-          {done ? "Hecho" : "Hacer ahora"}
+          {unlockActionButtonLabel(action.kind, done)}
         </button>
       </div>
 
@@ -627,7 +611,7 @@ function UnlockActionRow({ action, onAction }: { action: MyGiveawayUnlockAction;
               </div>
             </div>
             <button type="button" className="btn btn-onyx btn-sm" onClick={onAction}>
-              Hacer
+              {unlockActionButtonLabel(action.kind, false, true)}
             </button>
           </div>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>
@@ -676,10 +660,7 @@ function GanadosPanel({ items }: { items: MyGiveawayWon[] }) {
                 </div>
               </div>
             </div>
-            <div
-              style={{ padding: "10px 12px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-              className="md:border-t-0 md:border-l md:border-dashed md:p-[18px] md:flex-col md:items-stretch md:justify-center md:gap-2"
-            >
+            <div className="ms-ganado-actions md:border-t-0 md:border-l md:border-dashed md:p-[18px] md:flex-col md:items-stretch md:justify-center md:gap-2">
               {p.claimStatus === "pending" ? (
                 <>
                   <div>
@@ -720,27 +701,98 @@ function PasadosPanel({ items }: { items: MyGiveawayLost[] }) {
   }
 
   return (
-    <div className="hidden md:flex flex-col gap-3">
-      {items.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          className="card"
-          style={{ padding: 14, display: "grid", gridTemplateColumns: "60px 1fr auto", gap: 14, alignItems: "center", opacity: 0.75, textAlign: "left", cursor: "pointer", width: "100%" }}
-          onClick={() => router.push(`/dashboard/clubes/giveaways/${p.id}`)}
-        >
-          <PrizeThumb label={p.title} imageUrl={p.prizeImageUrl} size={60} style={{ height: 60, width: 60, borderRadius: 9, minHeight: 60 }} />
-          <div>
-            <OwnerBadge owner={p.ownerType} name={p.clubName} />
-            <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>{p.title}</div>
-            <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-              {p.subtitle ?? "Finalizado"} · 1 entrada · {p.qualifierCount} jugadores
-              {p.drawnAt ? ` · ${formatGiveawayDrawAt(p.drawnAt)}` : ""}
+    <>
+      <div className="flex flex-col gap-3 md:hidden">
+        {items.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="card ms-pasado-mobile"
+            onClick={() => router.push(`/dashboard/clubes/giveaways/${p.id}`)}
+          >
+            <PrizeThumb label={p.title} imageUrl={p.prizeImageUrl} size={50} style={{ height: 50, width: 50, borderRadius: 8, minHeight: 50 }} />
+            <div style={{ minWidth: 0 }}>
+              <OwnerBadge owner={p.ownerType} name={p.clubName} />
+              <div style={{ fontSize: 12, fontWeight: 800, marginTop: 4, lineHeight: 1.2 }}>{p.title}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>
+                {p.qualifierCount} jugadores{p.drawnAt ? ` · ${formatGiveawayDrawAt(p.drawnAt)}` : ""}
+              </div>
             </div>
-          </div>
-          <span className="chip">FINALIZADO</span>
-        </button>
-      ))}
+            <span className="chip" style={{ flexShrink: 0 }}>FIN</span>
+          </button>
+        ))}
+      </div>
+      <div className="hidden md:flex flex-col gap-3">
+        {items.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="card"
+            style={{ padding: 14, display: "grid", gridTemplateColumns: "60px 1fr auto", gap: 14, alignItems: "center", opacity: 0.75, textAlign: "left", cursor: "pointer", width: "100%" }}
+            onClick={() => router.push(`/dashboard/clubes/giveaways/${p.id}`)}
+          >
+            <PrizeThumb label={p.title} imageUrl={p.prizeImageUrl} size={60} style={{ height: 60, width: 60, borderRadius: 9, minHeight: 60 }} />
+            <div>
+              <OwnerBadge owner={p.ownerType} name={p.clubName} />
+              <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>{p.title}</div>
+              <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                {p.subtitle ?? "Finalizado"} · 1 entrada · {p.qualifierCount} jugadores
+                {p.drawnAt ? ` · ${formatGiveawayDrawAt(p.drawnAt)}` : ""}
+              </div>
+            </div>
+            <span className="chip">FINALIZADO</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function NextDrawSidebarCard({
+  next,
+  onOpen,
+}: {
+  next: NonNullable<MyGiveawaysDashboard["nextDraw"]>;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="card" style={{ padding: 18 }}>
+      <div className="font-heading" style={{ fontSize: 14, fontWeight: 900, textTransform: "uppercase" }}>
+        Próximo sorteo<span style={{ color: "var(--primary)" }}>.</span>
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          padding: 12,
+          borderRadius: 10,
+          background: next.urgent ? "var(--destructive-bg)" : "var(--primary-light)",
+          border: `1px solid ${next.urgent ? "var(--destructive-border)" : "var(--primary)"}`,
+        }}
+      >
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)" }}>
+          {next.title}
+        </div>
+        <div style={{ fontSize: 11, color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)", marginTop: 4 }}>
+          {formatGiveawayDrawAt(next.drawAt)}
+        </div>
+        <div
+          className="font-heading tabular"
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            color: next.urgent ? "var(--destructive-fg)" : "var(--primary-dark)",
+            marginTop: 6,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          1 entrada · {probLabel(next.probabilityPct)}
+        </div>
+        {next.drawChannel ? (
+          <button type="button" className="btn btn-onyx" style={{ marginTop: 10, width: "100%" }} onClick={onOpen}>
+            <Icon name="video" size={11} color="#fff" /> Ver sorteo
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

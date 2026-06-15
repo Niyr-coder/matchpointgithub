@@ -8,23 +8,42 @@ import { MpError } from "./errors";
 import { AuthError } from "@/lib/auth/session";
 import { captureError } from "@/lib/observability/sentry";
 import { translateErrorMessage } from "@/lib/user-facing/errors";
+import { requireWritable } from "@/server/flags/read-only";
 
 export type ActionResult<T> = ApiOk<T> | ApiErr;
 
 type ActionFn<I, O> = (input: I) => Promise<O>;
 
+export type RunActionOptions = {
+  /** Si true, respeta read_only_mode (admins bypass). */
+  mutation?: boolean;
+};
+
 export async function runAction<S extends z.ZodTypeAny, O>(
   schema: S,
   rawInput: unknown,
   fn: ActionFn<z.infer<S>, O>,
+  options?: RunActionOptions,
 ): Promise<ActionResult<O>> {
   try {
     const input = schema.parse(rawInput);
+    if (options?.mutation) {
+      await requireWritable();
+    }
     const data = await fn(input);
     return ok(data);
   } catch (err) {
     return mapErr(err);
   }
+}
+
+/** Atajo para mutaciones que deben respetar read_only_mode. */
+export async function runMutation<S extends z.ZodTypeAny, O>(
+  schema: S,
+  rawInput: unknown,
+  fn: ActionFn<z.infer<S>, O>,
+): Promise<ActionResult<O>> {
+  return runAction(schema, rawInput, fn, { mutation: true });
 }
 
 function mapErr(err: unknown): ApiErr {

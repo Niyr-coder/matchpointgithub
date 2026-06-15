@@ -5367,9 +5367,59 @@ input[type="range"].mp-mpr,
   background: #fff;
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 0;
-  z-index: 2;
+  /* merge: top 60px = altura del TopBar dashboard; lado responsive-mobile gana */
+  top: 60px;
+  z-index: 5;
   margin-top: 12px;
+  min-width: 0;
+}
+.ms-panel-wrap {
+  padding-top: 16px;
+  padding-bottom: 24px;
+  min-width: 0;
+}
+.ms-pendientes-banner {
+  padding: 14px;
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+.ms-pendientes-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ms-pendientes-banner-stat {
+  font-weight: 900;
+  font-size: 28px;
+  color: var(--primary-dark);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.ms-pendientes-banner-stat-sub {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.ms-pasado-mobile {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  opacity: 0.85;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.ms-ganado-actions {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .ms-desktop-tabs {
   display: none;
@@ -5408,5 +5458,35 @@ input[type="range"].mp-mpr,
   }
   .ms-desktop-tabs {
     display: flex;
+  }
+}
+@media (max-width: 767px) {
+  .ms-hero {
+    margin-top: 0;
+    padding: 14px 14px 16px;
+    border-radius: 12px;
+  }
+  .ms-hero-title {
+    font-size: clamp(22px, 6.5vw, 28px);
+  }
+  .ms-hero-stat-tile {
+    padding: 8px 6px;
+  }
+  .ms-hero-stat-value {
+    font-size: 18px;
+  }
+  .ms-hero-stat-hint {
+    display: none;
+  }
+  .ms-pendientes-banner-stat {
+    font-size: 24px;
+  }
+  .ms-ganado-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ms-ganado-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }

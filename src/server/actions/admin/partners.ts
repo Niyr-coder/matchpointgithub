@@ -2,7 +2,7 @@ import "server-only";
 
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getServerClient } from "@/lib/db/client.server";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 
 export type AdminPartnerMember = {
   userId: string;
@@ -187,25 +187,6 @@ type PayoutLite = {
   period_start: string;
   period_end: string;
 };
-
-async function requireAdminUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return user.id;
-}
 
 function requireNoError<T>(label: string, result: { data: T | null; error: { message: string } | null }): T {
   if (result.error) throw new Error(`${label}: ${result.error.message}`);

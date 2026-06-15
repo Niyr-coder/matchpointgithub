@@ -154,6 +154,8 @@ export const GiveawayDetailViewSchema = z.object({
       rank: z.number().int(),
     }),
   ),
+  viewerUsername: z.string().nullable(),
+  viewerDisplayName: z.string().nullable(),
 });
 
 export const MyGiveawayRowSchema = z.object({

@@ -10,28 +10,11 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { getTakeRatePct } from "@/server/queries/platform-config";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
-
-async function requireAdmin(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
-  return user.id;
-}
 
 async function requireClubStaff(clubId: string): Promise<string> {
   const supabase = await getServerClient();
@@ -91,7 +74,7 @@ export async function processPendingPayouts(
   input: unknown,
 ): Promise<ActionResult<{ created: number; totalNetCents: number }>> {
   return runAction(ProcessSchema, input, async ({ periodStart, periodEnd }) => {
-    const adminId = await requireAdmin();
+    const adminId = await requireAdminUserId();
     const supabase = await getServerClient();
     const commissionPct = (await getTakeRatePct()) / 100;
 
@@ -161,7 +144,7 @@ export async function markPayoutPaid(input: unknown): Promise<ActionResult<{ ok:
     z.object({ id: UuidSchema, providerPayoutId: z.string().optional() }),
     input,
     async ({ id, providerPayoutId }) => {
-      await requireAdmin();
+      await requireAdminUserId();
       const supabase = await getServerClient();
       const { data: payout, error: getErr } = await supabase
         .from("payouts")

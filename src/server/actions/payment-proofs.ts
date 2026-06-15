@@ -29,37 +29,16 @@ import "server-only";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
+import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
 import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
 import { notify } from "@/server/notifications/dispatch";
 
 // ── helpers de auth ─────────────────────────────────────────────────────
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
-  return user.id;
-}
-
-async function requireAdminUserId(): Promise<string> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
-  return userId;
-}
 
 // ── tipo de salida común ────────────────────────────────────────────────
 export type PaymentProofResult = {
@@ -120,8 +99,9 @@ const SubmitProofSchema = z.object({
 export async function submitPaymentProof(
   input: unknown,
 ): Promise<ActionResult<PaymentProofResult>> {
-  return runAction(SubmitProofSchema, input, async ({ transactionId, proofUrl }) => {
+  return runMutation(SubmitProofSchema, input, async ({ transactionId, proofUrl }) => {
     const userId = await requireUserId();
+    await assertRateLimit({ key: `proof:submit:${userId}`, ...RATE_LIMITS.paymentProof });
     const supabase = await getServerClient();
 
     const { data: tx, error: readErr } = await supabase

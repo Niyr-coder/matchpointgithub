@@ -7,7 +7,7 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import {
   PartnerCreateSchema,
   PartnerDetailSchema,
@@ -30,23 +30,6 @@ function mapPartner(row: Record<string, unknown>): PartnerOrg {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
-}
-
-async function requireAdmin(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return user.id;
 }
 
 export async function listPartners(): Promise<ActionResult<PartnerOrg[]>> {
@@ -162,7 +145,7 @@ export async function unlinkClubFromPartner(
 
 export async function createPartner(input: unknown): Promise<ActionResult<PartnerOrg>> {
   return runAction(PartnerCreateSchema, input, async (data) => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { data: row, error } = await supabase
       .from("partner_orgs")

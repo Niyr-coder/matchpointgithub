@@ -8,7 +8,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { notify } from "@/server/notifications/dispatch";
 import {
   ActOnReportSchema,
@@ -33,29 +33,6 @@ function mapReport(row: Record<string, unknown>): Report {
     resolutionNotes: (row.resolution_notes as string | null) ?? null,
     createdAt: row.created_at,
   });
-}
-
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
-}
-
-async function requireAdmin(): Promise<string> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return userId;
 }
 
 // ── reportContent (any user) ───────────────────────────────────────────
@@ -89,7 +66,7 @@ export async function listReports(input: unknown): Promise<ActionResult<Report[]
     }),
     input,
     async ({ status, limit }) => {
-      await requireAdmin();
+      await requireAdminUserId();
       const supabase = await getServerClient();
       let q = supabase
         .from("reports")
@@ -133,7 +110,7 @@ async function resolveReportedUserId(
 
 export async function actOnReport(input: unknown): Promise<ActionResult<Report>> {
   return runAction(ActInputSchema, input, async ({ id, body }) => {
-    const adminId = await requireAdmin();
+    const adminId = await requireAdminUserId();
     const admin = getAdminClient();
     await setAuditActor(admin, adminId, "admin");
 

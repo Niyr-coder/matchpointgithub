@@ -28,6 +28,10 @@ export const RATE_LIMITS = {
   authNormal: { capacity: 30, refillPerSecond: 30 / 60 },     // 30/minute
   mutationsAuthn: { capacity: 60, refillPerSecond: 60 / 60 }, // 60/minute
   reads: { capacity: 600, refillPerSecond: 600 / 60 },        // 600/minute
+  paymentProof: { capacity: 10, refillPerSecond: 10 / 3600 }, // 10/hour
+  tournamentRegister: { capacity: 20, refillPerSecond: 20 / 3600 }, // 20/hour
+  tournamentCreate: { capacity: 10, refillPerSecond: 10 / 3600 }, // 10/hour
+  giveawayEnter: { capacity: 30, refillPerSecond: 30 / 3600 }, // 30/hour
 } as const;
 
 export async function assertRateLimit(opts: RateLimitOpts): Promise<void> {
@@ -49,9 +53,10 @@ export async function assertRateLimit(opts: RateLimitOpts): Promise<void> {
 
   const row = Array.isArray(data) ? data[0] : data;
   if (row && row.allowed === false) {
+    const retrySec = Math.ceil(Number(row.retry_after_seconds ?? 1));
     throw new MpError(
       "RATE_LIMIT.EXCEEDED",
-      `Too many requests. Retry in ${Math.ceil(Number(row.retry_after_seconds ?? 1))}s`,
+      `Demasiadas solicitudes. Intenta de nuevo en ${retrySec}s`,
       429,
     );
   }
