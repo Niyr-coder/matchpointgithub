@@ -121,8 +121,8 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
 
   // Envío REAL in-app (banner va por otro flujo). Push/email todavía no tienen
   // dispatcher externo; se mantienen visibles como próximos canales.
-  // Programar deja la campaña en status=scheduled; el cron
-  // fn_dispatch_scheduled_broadcasts (cada 5 min) la despacha a su hora.
+  // Programar deja la campaña en status=scheduled; el cron HTTP
+  // /api/cron/dispatch-broadcasts la despacha a su hora.
   const CHANNEL_MAP: Record<string, string[]> = { "in-app": ["inapp"] };
   const sendCampaign = (mode: "now" | "time" | "draft") =>
     startTransition(async () => {
