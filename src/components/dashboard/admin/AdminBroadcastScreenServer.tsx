@@ -19,6 +19,7 @@ function audienceSummary(tf: Record<string, unknown>): string {
   if (tf.sport) parts.push(String(tf.sport));
   if (tf.plan === "premium") parts.push("MP+");
   if (tf.role === "owner") parts.push("Owners");
+  if (tf.audience === "team_captains") parts.push("Capitanes");
   return parts.length ? parts.join(" · ") : "Todos los usuarios";
 }
 
@@ -58,6 +59,8 @@ async function loadData(): Promise<BroadcastData> {
       id: b.id,
       kind: kindFromChannels(b.channels as string[]),
       t: b.title,
+      body: b.body ?? "",
+      targetFilter: (b.targetFilter ?? {}) as Record<string, unknown>,
       audience: audienceSummary((b.targetFilter ?? {}) as Record<string, unknown>),
       reach: recipients,
       sent: sentLike ? recipients : null,

@@ -15,12 +15,13 @@ import { setAnnouncementBanner, clearAnnouncementBanner } from "@/server/actions
 import { createBroadcast, dispatchBroadcast, countAudience } from "@/server/actions/marketing";
 import { saveBroadcastTemplate, deleteBroadcastTemplate, type BroadcastTemplate } from "@/server/actions/broadcast-templates";
 
-type TargetFilter = { city?: string; sport?: string; plan?: string; role?: string };
+type TargetFilter = { city?: string; sport?: string; plan?: string; role?: string; audience?: string };
 type Chip = { k: string; l: string; c: string; filter: TargetFilter };
 // Campaign real (de broadcasts). opened viene de broadcast_recipients.opened_at;
-// clicked/converted = null porque no existe tracking de esas señales.
+// clicked/converted = null porque no existe tracking de esas señales. body y
+// targetFilter se cargan para poder duplicar la campaña en el composer.
 type Campaign = {
-  id: string; kind: "push" | "email" | "banner" | "in-app"; t: string; audience: string;
+  id: string; kind: "push" | "email" | "banner" | "in-app"; t: string; body: string; targetFilter: Record<string, unknown>; audience: string;
   reach: number | null; sent: number | null; opened: number | null; clicked: number | null; converted: number | null;
   when: string; st: "sent" | "live" | "scheduled" | "draft";
 };
@@ -33,6 +34,7 @@ function chipsFromFilter(tf: Record<string, unknown>): Chip[] {
   if (tf.sport) out.push({ k: "sport", l: `Deporte · ${tf.sport}`, c: "#fbbf24", filter: { sport: String(tf.sport) } });
   if (tf.plan === "premium") out.push({ k: "mpplus", l: "Suscriptores MP+", c: "#10b981", filter: { plan: "premium" } });
   if (tf.role === "owner") out.push({ k: "owner", l: "Dueños de club", c: "#7c3aed", filter: { role: "owner" } });
+  if (tf.audience === "team_captains") out.push({ k: "captains", l: "Capitanes de equipo", c: "#f97316", filter: { audience: "team_captains" } });
   return out;
 }
 const CHANNEL_ICON: Record<string, string> = { push: "smartphone", email: "mail", inapp: "message-square", banner: "megaphone" };
@@ -46,6 +48,7 @@ const DEFAULT_CHIPS: Chip[] = [
 const SUGGESTED_CHIPS: Chip[] = [
   { k: "mpplus", l: "Suscriptores MP+", c: "#10b981", filter: { plan: "premium" } },
   { k: "owner", l: "Dueños de club", c: "#7c3aed", filter: { role: "owner" } },
+  { k: "captains", l: "Capitanes de equipo", c: "#f97316", filter: { audience: "team_captains" } },
 ];
 
 const nf = (n: number) => n.toLocaleString("en-US");
@@ -169,6 +172,39 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
       else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
     });
 
+  // Duplicar: precarga el composer con la campaña (canal in-app salvo banner; los
+  // canales push/email siguen sin dispatcher). Reconstruye los chips de audiencia
+  // desde el target_filter guardado. Cierra el drawer y sube al composer.
+  const duplicateCampaign = (c: Campaign) => {
+    setChannel(c.kind === "banner" ? "banner" : "in-app");
+    setTitle(c.t);
+    setBody(c.body);
+    setChips(chipsFromFilter(c.targetFilter));
+    setScheduleMode("now");
+    setOpenCampaign(null);
+    toast({ icon: "copy", title: "Campaña duplicada en el composer", sub: "Revisa el contenido y envíala como una nueva campaña." });
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Exportar CSV: descarga client-side del resumen de la campaña con los datos
+  // ya cargados (sin tracking de clicks/conversión, así que no se inventan).
+  const exportCampaignCsv = (c: Campaign) => {
+    const openRate = c.opened !== null && c.sent ? `${((c.opened / c.sent) * 100).toFixed(1)}%` : "—";
+    const rows = [
+      ["Campaña", "Canal", "Audiencia", "Cuándo", "Destinatarios", "Aperturas", "Tasa de apertura", "Estado"],
+      [c.t, c.kind, c.audience, c.when, String(c.sent ?? 0), String(c.opened ?? 0), openRate, c.st],
+    ];
+    const csv = rows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `campana-${c.t.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) || "broadcast"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ icon: "download", title: "CSV exportado" });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* HEADER */}
@@ -262,10 +298,6 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>CTA:</span>
                 <input value={cta} onChange={(e) => setCta(e.target.value)} style={{ flex: 1, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", fontSize: 11, fontFamily: "inherit", outline: "none", maxWidth: 200 }} />
-                <span style={{ flex: 1 }} />
-                <button onClick={() => soon("Generar con IA · próximamente")} style={{ background: "transparent", border: 0, color: "var(--muted-fg)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
-                  <Icon name="sparkles" size={11} />Generar con IA
-                </button>
               </div>
               {channel === "banner" && (
                 <div style={{ marginTop: 10, padding: 12, borderRadius: 9, background: "#fffbeb", border: "1px solid #fde68a", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -309,9 +341,6 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
                     </span>
                   </span>
                 ))}
-                <button onClick={() => soon("Añadir condición · próximamente")} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 9999, background: "transparent", border: "1px dashed var(--border)", color: "var(--muted-fg)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                  <Icon name="plus" size={11} />Añadir condición
-                </button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
                 <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700, alignSelf: "center", marginRight: 4 }}>Sugeridos:</span>
@@ -466,7 +495,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
         </div>
       </div>
 
-      {openCampaign && <CampaignDrawer c={campaigns.find((x) => x.id === openCampaign)!} close={() => setOpenCampaign(null)} onAction={soon} />}
+      {openCampaign && <CampaignDrawer c={campaigns.find((x) => x.id === openCampaign)!} close={() => setOpenCampaign(null)} onDuplicate={duplicateCampaign} onExport={exportCampaignCsv} />}
     </div>
   );
 }
@@ -628,7 +657,7 @@ function CampaignRow({ c, last, onOpen }: { c: Campaign; last: boolean; onOpen: 
   );
 }
 
-function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void; onAction: (t: string) => void }) {
+function CampaignDrawer({ c, close, onDuplicate, onExport }: { c: Campaign; close: () => void; onDuplicate: (c: Campaign) => void; onExport: (c: Campaign) => void }) {
   const km = KIND_META[c.kind];
   // Funnel real hasta "Abiertos" (tracking de aperturas). No hay acuse real de
   // entrega, clicks ni conversión; no se inventan porcentajes.
@@ -698,10 +727,8 @@ function CampaignDrawer({ c, close, onAction }: { c: Campaign; close: () => void
         )}
 
         <div style={{ padding: 22, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, borderBottom: "1px solid var(--border)" }}>
-          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onAction("Duplicar campaña · próximamente")}><Icon name="copy" size={12} />Duplicar</button>
-          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onAction("Ver audiencia · próximamente")}><Icon name="users" size={12} />Ver audiencia</button>
-          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onAction("Exportar CSV · próximamente")}><Icon name="download" size={12} />Exportar CSV</button>
-          <button className="btn btn-primary" onClick={() => onAction("Re-enviar a no-abridores · próximamente")}><Icon name="repeat" size={12} color="#fff" />Re-enviar</button>
+          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onDuplicate(c)}><Icon name="copy" size={12} />Duplicar</button>
+          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onExport(c)}><Icon name="download" size={12} />Exportar CSV</button>
         </div>
 
         <div style={{ padding: 22 }}>
