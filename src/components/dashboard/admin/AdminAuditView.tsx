@@ -19,6 +19,7 @@ type Diff = { k: string; a: string; b: string };
 type Ev = {
   t: string;
   who: string;
+  actorId: string | null;
   av: string;
   avBg: string;
   actorType: string;
@@ -820,6 +821,7 @@ function ExportMenu({ onExport }: { onExport: (fmt: "csv" | "json") => void }) {
 
 function EventDrawer({ e, close }: { e: Ev; close: () => void }) {
   const toast = useToast();
+  const router = useRouter();
   const sevMeta = { info: { c: "#52525b", l: "Info", bg: "var(--muted)" }, warn: { c: "#92400e", l: "Warn", bg: "#fef3c7" }, critical: { c: "#dc2626", l: "Critical", bg: "#fee2e2" } }[e.sev];
   const rawJson = {
     request_id: e.reqId,
@@ -878,9 +880,11 @@ function EventDrawer({ e, close }: { e: Ev; close: () => void }) {
               <div style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.who}</div>
               <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 1, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>{e.actorType}</div>
             </div>
-            <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5, padding: "6px 11px" }} onClick={() => toast({ icon: "external-link", title: "Ver perfil · próximamente" })}>
-              <Icon name="external-link" size={11} />Ver perfil
-            </button>
+            {e.actorId && (
+              <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5, padding: "6px 11px" }} onClick={() => router.push(`/dashboard/admin/admin-users?focus=${e.actorId}`)}>
+                <Icon name="external-link" size={11} />Ver perfil
+              </button>
+            )}
           </div>
         </div>
 

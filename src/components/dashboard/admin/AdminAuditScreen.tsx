@@ -94,6 +94,7 @@ async function loadEvents(): Promise<{ events: AuditEvent[]; now: number; chaine
     return {
       t: l.created_at as string,
       who,
+      actorId: (l.actor_id as string | null) ?? null,
       av: initialsOf(who),
       avBg: avBgFor(who),
       actorType: ((l.actor_role as string | null) ?? (l.actor_id ? "admin" : "system")).toLowerCase(),
