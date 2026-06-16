@@ -465,6 +465,13 @@ REALES (`listBroadcasts` scope=platform + conteo de `broadcast_recipients`) →
 - **Tracking de aperturas** (mig 164, `broadcast_recipients.opened_at`): se marca
   cuando el usuario abre (lee) la notificación del broadcast (en `markNotificationRead`).
   → **open-rate real** en la lista de campañas + funnel (Enviados→Entregados→Abiertos).
+- **Acciones de campaña** (drawer): **Duplicar** (precarga el composer con
+  título/cuerpo/segmentos), **Exportar CSV** (resumen client-side de la campaña),
+  **Ver audiencia** (alcance real on-demand vía `countAudience`) y **Re-enviar a
+  no-abridores** (`resendToNonOpeners` reusa `notify()` solo con `opened_at IS
+  NULL`, gated a status=sent + confirm). Segmento **Capitanes de equipo**
+  (`audience=team_captains`, ya soportado en `resolvePlatformTargetIds`) y builder
+  **Añadir condición** (ciudad/deporte/segmentos) cableados.
 
 **Pendiente real (no fakeado — requieren más que cablear):**
 - **Clicks / conversión**: no hay señal de click separada de la apertura en el

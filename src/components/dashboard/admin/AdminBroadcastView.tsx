@@ -12,7 +12,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import { setAnnouncementBanner, clearAnnouncementBanner } from "@/server/actions/announcements";
-import { createBroadcast, dispatchBroadcast, countAudience } from "@/server/actions/marketing";
+import { createBroadcast, dispatchBroadcast, countAudience, resendToNonOpeners } from "@/server/actions/marketing";
 import { saveBroadcastTemplate, deleteBroadcastTemplate, type BroadcastTemplate } from "@/server/actions/broadcast-templates";
 
 type TargetFilter = { city?: string; sport?: string; plan?: string; role?: string; audience?: string };
@@ -51,12 +51,26 @@ const SUGGESTED_CHIPS: Chip[] = [
   { k: "captains", l: "Capitanes de equipo", c: "#f97316", filter: { audience: "team_captains" } },
 ];
 
+// Catálogo del builder "Añadir condición". Ciudad/Deporte comparten key por
+// dimensión (k="city"/"sport") porque target_filter soporta un solo valor por
+// cada uno → elegir otra ciudad reemplaza, no acumula. Todas mapean a columnas
+// reales (resolvePlatformTargetIds).
+const CONDITION_CATALOG: Chip[] = [
+  { k: "city", l: "Ciudad · Pichincha", c: "#0ea5e9", filter: { city: "Pichincha" } },
+  { k: "city", l: "Ciudad · Guayas", c: "#0ea5e9", filter: { city: "Guayas" } },
+  { k: "city", l: "Ciudad · Azuay", c: "#0ea5e9", filter: { city: "Azuay" } },
+  { k: "sport", l: "Deporte · Pickleball", c: "#fbbf24", filter: { sport: "pickleball" } },
+  { k: "sport", l: "Deporte · Pádel", c: "#fbbf24", filter: { sport: "padel" } },
+  { k: "sport", l: "Deporte · Tenis", c: "#fbbf24", filter: { sport: "tenis" } },
+  ...SUGGESTED_CHIPS,
+];
+
 const nf = (n: number) => n.toLocaleString("en-US");
 
 export function AdminBroadcastView({ data }: { data: BroadcastData }) {
   const toast = useToast();
   const router = useRouter();
-  const { ask } = usePromptModal();
+  const { ask, confirm } = usePromptModal();
   const soon = (title: string) => toast({ icon: "sparkles", title });
   const [pending, startTransition] = useTransition();
   const [bannerLevel, setBannerLevel] = useState<"info" | "warn" | "critical">("info");
@@ -87,6 +101,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
   const [tab, setTab] = useState<"all" | "sent" | "scheduled" | "draft">("all");
   const [openCampaign, setOpenCampaign] = useState<string | null>(null);
   const [reach, setReach] = useState<number | null>(null);
+  const [showConditions, setShowConditions] = useState(false);
 
   const targetFilter = chips.reduce((acc, c) => ({ ...acc, ...c.filter }), {} as TargetFilter);
   const tfKey = JSON.stringify(targetFilter);
@@ -102,6 +117,12 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
 
   const removeChip = (k: string) => setChips((c) => c.filter((x) => x.k !== k));
   const addChip = (chip: Chip) => setChips((cur) => (cur.some((x) => x.k === chip.k) ? cur : [...cur, chip]));
+  // Builder "Añadir condición": reemplaza la condición de la misma dimensión
+  // (mismo k) en vez de acumular, porque target_filter es un valor por dimensión.
+  const pickCondition = (chip: Chip) => {
+    setChips((cur) => [...cur.filter((x) => x.k !== chip.k), chip]);
+    setShowConditions(false);
+  };
 
   const campaigns = data.campaigns;
   const totalUsersLabel = nf(data.totalUsers);
@@ -205,6 +226,27 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
     toast({ icon: "download", title: "CSV exportado" });
   };
 
+  // Re-enviar a no-abridores: confirma (manda notificaciones reales) y llama a
+  // resendToNonOpeners, que reusa notify() solo con los que no abrieron.
+  const resendCampaign = async (c: Campaign) => {
+    const ok = await confirm({
+      title: "Re-enviar a no-abridores",
+      body: `Se reenviará "${c.t}" solo a quienes todavía no la abrieron. Cada uno recibe una notificación nueva.`,
+      confirmLabel: "Re-enviar",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const res = await resendToNonOpeners({ id: c.id });
+      if (!res.ok) return toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      toast(
+        res.data.resent > 0
+          ? { icon: "repeat", title: `Re-enviada a ${nf(res.data.resent)} ${res.data.resent === 1 ? "persona" : "personas"}` }
+          : { icon: "check", title: "No hay no-abridores", sub: "Todos los destinatarios ya la abrieron." },
+      );
+      router.refresh();
+    });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* HEADER */}
@@ -298,6 +340,10 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, color: "var(--muted-fg)", fontWeight: 700 }}>CTA:</span>
                 <input value={cta} onChange={(e) => setCta(e.target.value)} style={{ flex: 1, padding: "7px 12px", borderRadius: 9999, border: "1px solid var(--border)", fontSize: 11, fontFamily: "inherit", outline: "none", maxWidth: 200 }} />
+                <span style={{ flex: 1 }} />
+                <button onClick={() => soon("Generar con IA · próximamente")} style={{ background: "transparent", border: 0, color: "var(--muted-fg)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
+                  <Icon name="sparkles" size={11} />Generar con IA
+                </button>
               </div>
               {channel === "banner" && (
                 <div style={{ marginTop: 10, padding: 12, borderRadius: 9, background: "#fffbeb", border: "1px solid #fde68a", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -341,7 +387,24 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
                     </span>
                   </span>
                 ))}
+                <button onClick={() => setShowConditions((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 9999, background: showConditions ? "var(--muted)" : "transparent", border: "1px dashed var(--border)", color: "var(--muted-fg)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Icon name="plus" size={11} />Añadir condición
+                </button>
               </div>
+              {showConditions && (
+                <div style={{ marginTop: 8, padding: 12, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <span style={{ width: "100%", fontSize: 10, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>Elige una condición de audiencia</span>
+                  {CONDITION_CATALOG.map((opt) => {
+                    const active = chips.some((x) => x.l === opt.l);
+                    return (
+                      <button key={opt.l} onClick={() => pickCondition(opt)} disabled={active} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 9999, background: active ? "var(--muted)" : "#fff", border: "1px solid " + opt.c + "55", color: active ? "var(--muted-fg)" : "#0a0a0a", fontSize: 11, fontWeight: 800, cursor: active ? "default" : "pointer", opacity: active ? 0.6 : 1, fontFamily: "inherit" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: opt.c }} />
+                        {opt.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
                 <span style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700, alignSelf: "center", marginRight: 4 }}>Sugeridos:</span>
                 {SUGGESTED_CHIPS.filter((s) => !chips.some((x) => x.k === s.k)).map((s) => (
@@ -495,7 +558,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
         </div>
       </div>
 
-      {openCampaign && <CampaignDrawer c={campaigns.find((x) => x.id === openCampaign)!} close={() => setOpenCampaign(null)} onDuplicate={duplicateCampaign} onExport={exportCampaignCsv} />}
+      {openCampaign && <CampaignDrawer c={campaigns.find((x) => x.id === openCampaign)!} close={() => setOpenCampaign(null)} onDuplicate={duplicateCampaign} onExport={exportCampaignCsv} onResend={resendCampaign} />}
     </div>
   );
 }
@@ -657,8 +720,18 @@ function CampaignRow({ c, last, onOpen }: { c: Campaign; last: boolean; onOpen: 
   );
 }
 
-function CampaignDrawer({ c, close, onDuplicate, onExport }: { c: Campaign; close: () => void; onDuplicate: (c: Campaign) => void; onExport: (c: Campaign) => void }) {
+function CampaignDrawer({ c, close, onDuplicate, onExport, onResend }: { c: Campaign; close: () => void; onDuplicate: (c: Campaign) => void; onExport: (c: Campaign) => void; onResend: (c: Campaign) => void }) {
   const km = KIND_META[c.kind];
+  // Ver audiencia: alcance REAL del target_filter de la campaña (countAudience).
+  // Se calcula on-demand (cuántas personas matchean hoy ese segmento).
+  const [audience, setAudience] = useState<{ loading: boolean; count: number | null } | null>(null);
+  const audienceChips = chipsFromFilter(c.targetFilter);
+  const showAudience = () => {
+    setAudience({ loading: true, count: null });
+    countAudience({ targetFilter: c.targetFilter }).then((res) => {
+      setAudience({ loading: false, count: res.ok ? res.data.count : null });
+    });
+  };
   // Funnel real hasta "Abiertos" (tracking de aperturas). No hay acuse real de
   // entrega, clicks ni conversión; no se inventan porcentajes.
   const funnel = c.sent
@@ -726,12 +799,38 @@ function CampaignDrawer({ c, close, onDuplicate, onExport }: { c: Campaign; clos
           <div style={{ padding: 22, textAlign: "center", color: "var(--muted-fg)", fontSize: 12.5 }}>Campaña sin datos de envío todavía.</div>
         )}
 
-        <div style={{ padding: 22, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ padding: "22px 22px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onDuplicate(c)}><Icon name="copy" size={12} />Duplicar</button>
+          <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={showAudience}><Icon name="users" size={12} />Ver audiencia</button>
           <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onExport(c)}><Icon name="download" size={12} />Exportar CSV</button>
+          <button className="btn btn-primary" disabled={c.st !== "sent"} onClick={() => onResend(c)} title={c.st !== "sent" ? "Solo campañas enviadas" : undefined}><Icon name="repeat" size={12} color="#fff" />Re-enviar</button>
         </div>
 
-        <div style={{ padding: 22 }}>
+        {audience && (
+          <div style={{ margin: "12px 22px 0", padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "#fafafa" }}>
+            <div className="label-mp" style={{ marginBottom: 8 }}>Audiencia · {c.audience}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+              {audienceChips.length === 0 ? (
+                <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Sin filtros · todos los usuarios</span>
+              ) : (
+                audienceChips.map((ch) => (
+                  <span key={ch.l} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 9999, background: "#fff", border: "1px solid " + ch.c + "55", fontSize: 11, fontWeight: 800 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: ch.c }} />{ch.l}
+                  </span>
+                ))
+              )}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-fg)" }}>
+              {audience.loading
+                ? "Calculando alcance…"
+                : audience.count === null
+                ? "No se pudo calcular el alcance."
+                : <>Alcance hoy: <b className="font-heading tabular" style={{ color: "var(--primary)", fontSize: 15 }}>{nf(audience.count)}</b> {audience.count === 1 ? "persona" : "personas"} que matchean este segmento ahora.</>}
+            </div>
+          </div>
+        )}
+
+        <div style={{ padding: 22, marginTop: 22, borderTop: "1px solid var(--border)" }}>
           <div className="label-mp" style={{ marginBottom: 10 }}>Contenido enviado</div>
           <div style={{ padding: 14, borderRadius: 8, background: "#fafafa", border: "1px solid var(--border)" }}>
             <div style={{ fontSize: 12.5, fontWeight: 900 }}>{c.t}</div>

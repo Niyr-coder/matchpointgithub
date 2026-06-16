@@ -372,3 +372,57 @@ export async function dispatchBroadcast(
     return { id, sent: targets.length, status: "sent" };
   });
 }
+
+// ── resendToNonOpeners ─────────────────────────────────────────────────
+// Re-envía una campaña ya enviada SOLO a los destinatarios que no la abrieron
+// (broadcast_recipients.opened_at IS NULL). Reusa notify(); la apertura del
+// re-envío marca opened_at en la fila original (markNotificationRead matchea
+// por broadcastId), así que el open-rate se mantiene consistente. Cap de
+// seguridad BATCH_LIMIT. Solo para campañas status=sent.
+export async function resendToNonOpeners(
+  input: unknown,
+): Promise<ActionResult<{ resent: number }>> {
+  return runAction(z.object({ id: UuidSchema }), input, async ({ id }) => {
+    const supabase = await getServerClient();
+    const { data: bc } = await supabase
+      .from("broadcasts")
+      .select("id,scope,club_id,partner_id,title,body,status")
+      .eq("id", id)
+      .single();
+    if (!bc) throw new MpError("BROADCASTS.NOT_FOUND", "Broadcast not found", 404);
+    const callerId = await assertCanBroadcast(
+      bc.scope as "platform" | "club" | "partner",
+      bc.club_id as string | null,
+      bc.partner_id as string | null,
+    );
+    if (bc.status !== "sent") {
+      throw new MpError("BROADCASTS.NOT_RESENDABLE", "Solo se pueden re-enviar campañas ya enviadas", 409);
+    }
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, callerId, "admin");
+    const { data: recs } = await admin
+      .from("broadcast_recipients")
+      .select("user_id,opened_at")
+      .eq("broadcast_id", id);
+    // Database types no incluyen broadcast_recipients.opened_at (mig 164 aún sin
+    // regenerar en types.ts); se castea vía unknown como en el loader.
+    const nonOpeners = ((recs ?? []) as unknown as Array<{ user_id: string; opened_at: string | null }>)
+      .filter((r) => !r.opened_at)
+      .map((r) => r.user_id)
+      .slice(0, BATCH_LIMIT);
+    if (nonOpeners.length === 0) return { resent: 0 };
+
+    for (const userId of nonOpeners) {
+      await notify({
+        userId,
+        role: "user",
+        kind: "broadcast",
+        title: bc.title as string,
+        body: bc.body as string,
+        payload: { broadcastId: id, resend: true },
+      });
+    }
+    return { resent: nonOpeners.length };
+  });
+}
