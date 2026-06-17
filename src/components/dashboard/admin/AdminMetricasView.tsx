@@ -189,7 +189,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Toda la plataforma · vista ejecutiva</div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+            <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 0" }}>
               Métricas<span className="dot">.</span>
             </h1>
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
@@ -219,7 +219,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
       </div>
 
       {/* GMV + Funnel */}
-      <div className="mp-metrics-split" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 16, alignItems: "stretch" }}>
+      <div className="mp-metrics-split mp-grid-split-wide gap-4" style={{ alignItems: "stretch" }}>
         <div className="card" style={{ padding: 22, display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
             <div>
@@ -287,7 +287,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
       </div>
 
       {/* Heatmap + retention */}
-      <div className="mp-metrics-split" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-metrics-split mp-grid-split-wide gap-4" style={{ alignItems: "start" }}>
         <div className="card" style={{ padding: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 8, flexWrap: "wrap" }}>
             <div>
@@ -308,7 +308,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
           <div className="mp-metrics-heatmap-inner">
             <div style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 4 }}>
               <div />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 2 }}>
+              <div className="mp-grid-hours-24" style={{ gap: 2 }}>
                 {[0, 4, 8, 12, 16, 20].map((h) => (
                   <div key={h} style={{ gridColumn: `${h + 1} / span 4`, fontSize: 9, color: "var(--muted-fg)", textAlign: "left", fontWeight: 700, letterSpacing: "0.08em" }}>
                     {h.toString().padStart(2, "0")}h
@@ -318,7 +318,7 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
               {DOW_LABEL.map((d, di) => (
                 <div key={d} style={{ display: "contents" }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted-fg)", alignSelf: "center" }}>{d}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 2 }}>
+                  <div className="mp-grid-hours-24" style={{ gap: 2 }}>
                     {data.heatmap[di].map((v, hi) => {
                       const o = v === 0 ? 0.04 : Math.max(0.1, v / maxHeat);
                       return <div key={hi} title={`${d} ${hi}:00 · ${v} reservas`} style={{ aspectRatio: "1", borderRadius: 3, background: `rgba(16,185,129,${o})` }} />;
@@ -346,8 +346,8 @@ export function AdminMetricsScreenView({ data }: { data: MetricsData }) {
           <h3 className="font-heading" style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", margin: "4px 0 12px" }}>
             Cohortes<span className="dot">.</span>
           </h3>
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 320, display: "grid", gridTemplateColumns: `60px repeat(${data.cohortWeeks.length}, 1fr)`, gap: 3, fontSize: 9.5, fontFamily: "ui-monospace, monospace" }}>
+          <div className="mp-table-scroll">
+            <div className="mp-table-row" style={{ minWidth: 320, display: "grid", gridTemplateColumns: `60px repeat(${data.cohortWeeks.length}, 1fr)`, gap: 3, fontSize: 9.5, fontFamily: "ui-monospace, monospace" }}>
               <div style={{ color: "var(--muted-fg)" }}>Cohorte</div>
               {data.cohortWeeks.map((w) => (
                 <div key={w} style={{ color: "var(--muted-fg)", textAlign: "center", fontWeight: 700 }}>W{w}</div>

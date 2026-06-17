@@ -56,15 +56,7 @@ export function RulesPresetPicker({
         Marca las que apliquen a tu quedada. Debes elegir al menos una (predefinida o propia).
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: 8,
-        }}
-        className="mp-rules-preset-grid"
-      >
-        <style>{`@media (max-width:640px){.mp-rules-preset-grid{grid-template-columns:1fr!important}}`}</style>
+      <div className="mp-grid-form-2 gap-2">
         {PRESET_QUEDADA_RULES.map((r) => {
           const on = selectedIds.includes(r.id);
           const disablePick = !on && atMax;

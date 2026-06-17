@@ -569,9 +569,6 @@ function Frame({
       className="mp-solicitar-club-frame"
       style={{
         background: "#fafafa",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) 300px",
-        gap: 20,
         alignItems: "start",
       }}
     >
@@ -1761,6 +1758,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
             <div className="label-mp" style={{ marginBottom: 10 }}>
               Horario semanal por defecto
             </div>
+            <div className="mp-table-scroll">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {(
                 [
@@ -1783,7 +1781,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                 return (
                   <div
                     key={d.k}
-                    className="mp-solicitar-club-hours-row"
+                    className="mp-table-row mp-solicitar-club-hours-row"
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr auto auto auto",
@@ -1849,6 +1847,7 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                   </div>
                 );
               })}
+            </div>
             </div>
           </div>
           <div>

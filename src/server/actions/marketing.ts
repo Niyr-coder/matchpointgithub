@@ -11,6 +11,12 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { notify } from "@/server/notifications/dispatch";
 import {
+  executeBroadcastDispatch,
+  resolvePlatformTargetIds,
+  BROADCAST_BATCH_LIMIT,
+  type TargetFilter,
+} from "@/server/marketing/dispatch-broadcast-core";
+import {
   BroadcastCreateSchema,
   BroadcastListParamsSchema,
   BroadcastSchema,
@@ -88,52 +94,6 @@ async function assertCanBroadcast(
     }
   }
   return userId;
-}
-
-// Filtros de audiencia soportados (type-safe contra columnas reales de profiles
-// + role_assignments). Lo que no mapea a datos reales NO se ofrece (sin fakear).
-type TargetFilter = {
-  city?: string;
-  sport?: string;
-  plan?: string;
-  role?: string;
-  audience?: "team_captains";
-};
-
-async function resolvePlatformTargetIds(
-  admin: ReturnType<typeof getAdminClient>,
-  tf: TargetFilter,
-  limit: number,
-): Promise<string[]> {
-  let ownerIds: string[] | null = null;
-  if (tf.role === "owner") {
-    const { data } = await admin.from("role_assignments").select("user_id").eq("role", "owner").is("revoked_at", null);
-    ownerIds = Array.from(new Set((data ?? []).map((r) => r.user_id as string)));
-    if (ownerIds.length === 0) return [];
-  }
-  // audience='team_captains' (mig 164/165 + admin teams) — captains de teams active.
-  let captainIds: string[] | null = null;
-  if (tf.audience === "team_captains") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (admin as any)
-      .from("teams")
-      .select("captain_id")
-      .eq("status", "active");
-    captainIds = Array.from(
-      new Set(
-        ((data ?? []) as Array<{ captain_id: string }>).map((r) => r.captain_id),
-      ),
-    );
-    if (captainIds.length === 0) return [];
-  }
-  let q = admin.from("profiles").select("id").eq("is_system", false);
-  if (tf.city) q = q.ilike("city", tf.city);
-  if (tf.sport) q = q.eq("preferred_sport", tf.sport as never);
-  if (tf.plan === "premium") q = q.eq("plan_tier", "premium");
-  if (ownerIds) q = q.in("id", ownerIds);
-  if (captainIds) q = q.in("id", captainIds);
-  const { data } = await q.limit(limit);
-  return (data ?? []).map((r) => r.id as string);
 }
 
 // Conteo real de alcance para un target_filter (composer de Comunicaciones).
@@ -253,13 +213,6 @@ export async function activateBroadcast(input: unknown): Promise<ActionResult<Br
 }
 
 // ── dispatchBroadcast ──────────────────────────────────────────────────
-// Fan-out de un broadcast existente: query targets según scope, llama
-// notify() por cada uno, registra broadcast_recipients y marca status=sent.
-// Cap de seguridad: BATCH_LIMIT users por dispatch para no DoS-earnos a
-// nosotros mismos en producción. Si querés mandar a más, dividilo o
-// implementá worker.
-const BATCH_LIMIT = 1000;
-
 export async function dispatchBroadcast(
   input: unknown,
 ): Promise<ActionResult<{ id: string; sent: number; status: string }>> {
@@ -267,7 +220,7 @@ export async function dispatchBroadcast(
     const supabase = await getServerClient();
     const { data: bc } = await supabase
       .from("broadcasts")
-      .select("id,scope,club_id,partner_id,title,body,status,channels,target_filter")
+      .select("id,scope,club_id,partner_id,status")
       .eq("id", id)
       .single();
     if (!bc) throw new MpError("BROADCASTS.NOT_FOUND", "Broadcast not found", 404);
@@ -284,92 +237,8 @@ export async function dispatchBroadcast(
       );
     }
 
-    // Resolve target user_ids según scope.
-    const admin = getAdminClient();
-    await setAuditActor(admin, callerId, "admin");
-
-    let targets: string[] = [];
-    if (bc.scope === "platform") {
-      // Aplica el target_filter real (ciudad/deporte/plan/owner) en vez de
-      // mandar a todos. Filtro vacío = todos los usuarios no-sistema.
-      targets = await resolvePlatformTargetIds(admin, (bc.target_filter ?? {}) as TargetFilter, BATCH_LIMIT);
-    } else if (bc.scope === "club") {
-      // Clientes del club = organizers de reservations + members si existieran.
-      const { data } = await admin
-        .from("reservations")
-        .select("organizer_id")
-        .eq("club_id", bc.club_id as string)
-        .not("organizer_id", "is", null);
-      targets = Array.from(
-        new Set(((data ?? []).map((r) => r.organizer_id as string | null).filter(Boolean) as string[])),
-      ).slice(0, BATCH_LIMIT);
-    } else if (bc.scope === "partner") {
-      // Inscritos en torneos del partner.
-      const { data: tIds } = await admin
-        .from("tournaments")
-        .select("id")
-        .eq("partner_id", bc.partner_id as string);
-      const tournamentIds = (tIds ?? []).map((t) => t.id as string);
-      if (tournamentIds.length === 0) {
-        targets = [];
-      } else {
-        const { data: regs } = await admin
-          .from("registrations")
-          .select("player_ids")
-          .in("tournament_id", tournamentIds);
-        const set = new Set<string>();
-        for (const r of regs ?? []) {
-          for (const pid of (r.player_ids as string[] | null) ?? []) set.add(pid);
-        }
-        targets = Array.from(set).slice(0, BATCH_LIMIT);
-      }
-    }
-
-    if (targets.length === 0) {
-      // Marca igualmente como sent — no hay nadie a quien notificar, pero
-      // tampoco es error. Status sent con sent=0.
-      await admin
-        .from("broadcasts")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ status: "sent", sent_at: new Date().toISOString() } as any)
-        .eq("id", id);
-      return { id, sent: 0, status: "sent" };
-    }
-
-    // Fan-out: notify() por cada user, registra recipient. Errores
-    // individuales no rompen el batch (notify ya no lanza).
-    const role = "user" as const;
-    const recipientRows: Array<{ broadcast_id: string; user_id: string; notification_id: string | null }> = [];
-    for (const userId of targets) {
-      const notifId = await notify({
-        userId,
-        role,
-        kind: "broadcast",
-        title: bc.title as string,
-        body: bc.body as string,
-        payload: { broadcastId: id },
-      });
-      recipientRows.push({ broadcast_id: id, user_id: userId, notification_id: notifId });
-    }
-
-    if (recipientRows.length > 0) {
-      // Inserta en chunks de 500 para evitar payloads grandes.
-      for (let i = 0; i < recipientRows.length; i += 500) {
-        const chunk = recipientRows.slice(i, i + 500);
-        await admin
-          .from("broadcast_recipients")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .insert(chunk as any);
-      }
-    }
-
-    await admin
-      .from("broadcasts")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .update({ status: "sent", sent_at: new Date().toISOString() } as any)
-      .eq("id", id);
-
-    return { id, sent: targets.length, status: "sent" };
+    const result = await executeBroadcastDispatch(id, callerId);
+    return { id: result.id, sent: result.sent, status: result.status };
   });
 }
 
@@ -410,7 +279,7 @@ export async function resendToNonOpeners(
     const nonOpeners = ((recs ?? []) as unknown as Array<{ user_id: string; opened_at: string | null }>)
       .filter((r) => !r.opened_at)
       .map((r) => r.user_id)
-      .slice(0, BATCH_LIMIT);
+      .slice(0, BROADCAST_BATCH_LIMIT);
     if (nonOpeners.length === 0) return { resent: 0 };
 
     for (const userId of nonOpeners) {

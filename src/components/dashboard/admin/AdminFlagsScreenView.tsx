@@ -41,6 +41,8 @@ export type FlagRow = {
   assignments: FlagAssignment[];
 };
 export type ClubLite = { id: string; name: string };
+const FLAGS_DETAIL_COLS = "1fr 110px 220px 130px 200px";
+
 export type FlagsData = {
   rows: FlagRow[];
   clubs: ClubLite[];
@@ -249,9 +251,10 @@ export function AdminFlagsScreenView({ data }: { data: FlagsData }) {
               <div key={f.k} className="card mp-table-scroll" style={{ padding: 18 }}>
                 <div style={{ minWidth: 780 }}>
                 <div
+                  className="mp-admin-flags-detail-inner mp-table-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 110px 220px 130px 200px",
+                    gridTemplateColumns: FLAGS_DETAIL_COLS,
                     gap: 16,
                     alignItems: "center",
                   }}

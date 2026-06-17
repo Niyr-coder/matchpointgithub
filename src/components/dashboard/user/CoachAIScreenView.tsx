@@ -16,6 +16,8 @@ type Strength = { l: string; s: string };
 type Weakness = { l: string; s: string; priority: "alta" | "media" };
 type Drill = { l: string; dur: string; icon: string };
 
+const COACH_HIST_COLS = "1fr 130px 110px 60px 80px";
+
 const LAST = {
   title: "Match vs. Joaquín Ruiz",
   date: "Vie 02 may · 19:00",
@@ -219,7 +221,7 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
 
           {/* ANALIZAR — upload */}
           {tab === "analizar" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, alignItems: "start" }}>
+            <div className="mp-grid-split gap-4" style={{ alignItems: "start" }}>
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -414,7 +416,7 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div className="mp-grid-form-2 gap-3.5">
                 <div className="card" style={{ padding: 18 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                     <span
@@ -583,15 +585,16 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
 
           {/* HISTORIAL */}
           {tab === "historial" && (
-            <div className="card" style={{ overflow: "hidden" }}>
+            <div className="card mp-table-scroll" style={{ overflow: "hidden" }}>
               {PREVIOUS.map((p, i, arr) => {
                 const win = p.result.startsWith("Win");
                 return (
                   <div
                     key={i}
+                    className="mp-table-row"
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 130px 110px 60px 80px",
+                      gridTemplateColumns: COACH_HIST_COLS,
                       gap: 12,
                       padding: "14px 18px",
                       alignItems: "center",
@@ -684,7 +687,7 @@ export function CoachAIScreenView({ isPremium }: { isPremium: boolean }) {
                 <span>Hace 7 matches</span>
                 <span>Hoy</span>
               </div>
-              <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              <div className="mp-grid-form-3 gap-2.5" style={{ marginTop: 18 }}>
                 <ProgressTile label="Tendencia" value="Subiendo" sub="+1.2 puntos en 7 análisis" icon="trending-up" emerald />
                 <ProgressTile label="Mejor área" value="3er golpe" sub="+18% conversión vs primer análisis" icon="zap" />
                 <ProgressTile label="A trabajar" value="Saque" sub="Sigue siendo la #1 prioridad" icon="target" warn />

@@ -6,10 +6,6 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getSession } from "@/lib/auth/session";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
-import { MP_ROLES, type RoleKey } from "@/lib/roles";
-import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
-import { TopBar } from "@/components/dashboard/TopBar";
-import { getProfileSummary } from "@/lib/auth/profile";
 import { Icon } from "@/components/Icon";
 import { PartnerTorneoActions } from "@/components/dashboard/partner/PartnerTorneoActions";
 import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel";
@@ -297,16 +293,6 @@ export default async function PartnerTorneoPage({
     sponsor: p.sponsor ?? null,
   }));
 
-  const profile = await getProfileSummary(session.session.userId);
-  // Respetar el rol activo de la sesión (no forzar admin solo porque el user
-  // lo sea). Si la cookie no marca uno, asumimos partner — esta página vive
-  // bajo /dashboard/partner.
-  const activeRole = (session.session.activeRole as RoleKey | null) ?? null;
-  const role: RoleKey =
-    activeRole === "admin" || activeRole === "partner" ? activeRole : "partner";
-  const userName = profile.displayName ?? profile.username ?? "Usuario";
-  const cfg = MP_ROLES[role];
-
   const tournamentFormat = (t.format as string) ?? "single_elim";
   const club = t.clubs as { name?: string; city?: string } | null;
   const registrationLabels = Object.fromEntries(regs.map((r) => [r.id, r.label]));
@@ -332,12 +318,8 @@ export default async function PartnerTorneoPage({
   const isDraft = dbStatus === "draft";
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
-      <DashboardSidebar role={role} userName={userName} contextLabel={cfg.badge} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <TopBar role={role} contextLabel={null} />
-        <main className="mp-partner-torneo-main">
-          <TournamentGestionRealtime tournamentId={t.id as string} />
+    <main className="mp-partner-torneo-main">
+      <TournamentGestionRealtime tournamentId={t.id as string} />
           {isDraft && (
             <div
               style={{
@@ -847,9 +829,7 @@ export default async function PartnerTorneoPage({
               </div>
             </Link>
           </div>
-        </main>
-      </div>
-    </div>
+    </main>
   );
 }
 

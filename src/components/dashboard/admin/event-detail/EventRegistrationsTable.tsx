@@ -19,6 +19,8 @@ import {
 import { useToast } from "../../ToastProvider";
 import { EmptyState, SectionTitle, fmtDate } from "./primitives";
 
+const EVENT_REG_COLS = "1fr 110px 100px 110px 40px";
+
 type Reg = AdminEventDetail["registrations"][number];
 
 type DialogState =
@@ -78,7 +80,7 @@ export function EventRegistrationsTable({
                 className="mp-admin-event-reg-row"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 110px 100px 110px 40px",
+                  gridTemplateColumns: EVENT_REG_COLS,
                   gap: 10,
                   padding: "12px 16px",
                   alignItems: "center",

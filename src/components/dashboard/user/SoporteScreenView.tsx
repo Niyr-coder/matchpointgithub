@@ -11,6 +11,7 @@ import {
   ticketCategoryLabel,
   ticketStatusPalette,
   UI_CATEGORY_LABELS,
+  UI_TO_SEVERITY,
   UI_TO_TICKET_CATEGORY,
   type PlayerTicketRow,
 } from "@/lib/support/ticket-display";
@@ -39,6 +40,7 @@ export function SoporteScreenView({
   const [tickets, setTickets] = useState(initialTickets);
   const [topic, setTopic] = useState("");
   const [category, setCategory] = useState("reservas");
+  const [priority, setPriority] = useState("normal");
   const [detail, setDetail] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<TicketDetail | null>(null);
@@ -99,7 +101,7 @@ export function SoporteScreenView({
         subject: topic.trim(),
         body: `[${catLabel}]\n\n${detail.trim()}`,
         category: UI_TO_TICKET_CATEGORY[category] ?? "other",
-        severity: "medium",
+        severity: UI_TO_SEVERITY[priority] ?? "medium",
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo enviar", sub: res.error.message });
@@ -186,7 +188,7 @@ export function SoporteScreenView({
         />
       </div>
 
-      <div className="mp-soporte-body-grid" style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-soporte-body-grid mp-grid-split gap-4" style={{ alignItems: "start" }}>
         <div id="nuevo-caso" className="card" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14, scrollMarginTop: 16 }}>
           <div>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Nueva solicitud</div>
@@ -199,14 +201,29 @@ export function SoporteScreenView({
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Asunto</span>
             <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej: No puedo cancelar mi reserva" disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, outline: "none" }} />
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Categoría</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "#fff", outline: "none" }}>
-              {Object.entries(UI_CATEGORY_LABELS).map(([k, l]) => (
-                <option key={k} value={k}>{l}</option>
-              ))}
-            </select>
-          </label>
+          <div className="mp-grid-form-2 gap-2.5">
+            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Categoría</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={pending} style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "#fff", outline: "none" }}>
+                {Object.entries(UI_CATEGORY_LABELS).map(([k, l]) => (
+                  <option key={k} value={k}>{l}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Prioridad</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[{ k: "low", l: "Baja" }, { k: "normal", l: "Normal" }, { k: "urgent", l: "Urgente" }].map((pr) => {
+                  const on = priority === pr.k;
+                  return (
+                    <button key={pr.k} type="button" disabled={pending} onClick={() => setPriority(pr.k)} style={{ flex: 1, padding: "9px 8px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", background: on ? "#0a0a0a" : "#fff", color: on ? "#fff" : "var(--muted-fg)", border: "1px solid " + (on ? "#0a0a0a" : "var(--border)") }}>
+                      {pr.l}
+                    </button>
+                  );
+                })}
+              </div>
+            </label>
+          </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)" }}>Detalle</span>
             <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={4} disabled={pending} placeholder="Cuéntanos qué pasó. Si puedes, incluye fechas, club o torneo." style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, outline: "none", resize: "vertical", minHeight: 90 }} />
@@ -270,7 +287,7 @@ export function SoporteScreenView({
         </div>
       </div>
 
-      <div className="mp-soporte-status-grid" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-soporte-status-grid mp-grid-split-wide gap-4" style={{ alignItems: "start" }}>
         <div className="card" style={{ padding: 22 }}>
           <div style={{ marginBottom: 14 }}>
             <div className="label-mp" style={{ color: "var(--primary)" }}>● Status</div>

@@ -132,26 +132,39 @@ function LogoutFromQuery() {
 const SUSPENDED_NOTICE =
   "Tu cuenta está suspendida y cerramos tu sesión. Si crees que es un error, escríbenos a soporte.";
 
+const AUTH_ERROR_NOTICES: Record<string, string> = {
+  oauth_failed:
+    "No pudimos completar el inicio con Google. Inténtalo de nuevo o usa tu email.",
+  signups_closed:
+    "Los registros están cerrados temporalmente. Vuelve a intentarlo más tarde.",
+  account_suspended:
+    "Tu cuenta está suspendida. Contacta a soporte si crees que es un error.",
+};
+
 function AuthFromQuery() {
   const params = useSearchParams();
   const router = useRouter();
   const raw = params.get("auth");
   const next = params.get("next") ?? undefined;
   const suspended = params.get("suspended") === "1";
+  const errorCode = params.get("error");
   // Una suspensión siempre abre el modal en modo signin (es donde el usuario
   // reintentaría entrar), aunque el query `auth` no venga.
   const initial: AuthMode | null =
-    raw === "signin" || raw === "signup" ? raw : suspended ? "signin" : null;
+    raw === "signin" || raw === "signup" ? raw : suspended || errorCode ? "signin" : null;
   const [open, setOpen] = useState<AuthMode | null>(initial);
-  const [notice] = useState<string | undefined>(
-    suspended ? SUSPENDED_NOTICE : undefined,
-  );
+  const [notice] = useState<string | undefined>(() => {
+    if (suspended) return SUSPENDED_NOTICE;
+    if (errorCode && AUTH_ERROR_NOTICES[errorCode]) return AUTH_ERROR_NOTICES[errorCode];
+    return undefined;
+  });
 
   useEffect(() => {
-    if (initial || suspended) {
+    if (initial || suspended || errorCode) {
       const url = new URL(window.location.href);
       url.searchParams.delete("auth");
       url.searchParams.delete("suspended");
+      url.searchParams.delete("error");
       router.replace(url.pathname + (url.search || ""));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

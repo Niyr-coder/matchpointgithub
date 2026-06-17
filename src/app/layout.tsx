@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SportsProvider } from "@/components/SportsProvider";
+import { LegalComplianceShell } from "@/components/legal/LegalComplianceShell";
 import { getMultisportEnabled } from "@/lib/sports.server";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -72,7 +73,10 @@ export default async function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full">
-        <SportsProvider multisport={multisport}>{children}</SportsProvider>
+        <SportsProvider multisport={multisport}>
+          {children}
+          <LegalComplianceShell />
+        </SportsProvider>
       </body>
     </html>
   );

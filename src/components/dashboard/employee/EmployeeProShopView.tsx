@@ -22,6 +22,8 @@ type CartItem = PSProduct & { qty: number };
 
 type PaymentMethod = "cash" | "transfer" | "card" | "wallet";
 
+const PROSHOP_INV_COLS = "38px 1.8fr 100px 0.8fr 110px 130px";
+
 const PAY_METHODS: { k: PaymentMethod; l: string; icon: string }[] = [
   { k: "cash", l: "Efectivo", icon: "banknote" },
   { k: "transfer", l: "Transfer.", icon: "arrow-left-right" },
@@ -398,8 +400,8 @@ function POSTab({
 
   return (
     <div
-      className="mp-shop-pos"
-      style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "flex-start" }}
+      className="mp-shop-pos mp-grid-split-cart gap-4"
+      style={{ alignItems: "flex-start" }}
     >
       <div>
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -503,10 +505,7 @@ function POSTab({
             </p>
           </div>
         ) : (
-          <div
-            className="mp-shop-grid"
-            style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}
-          >
+          <div className="mp-shop-grid mp-grid-form-4 gap-3">
             {filtered.map((p) => {
               const inCart = cart[p.id] || 0;
               const low = p.stock > 0 && p.stock <= p.lowStockThreshold;
@@ -700,7 +699,7 @@ function POSTab({
             </button>
           )}
         </div>
-        <div style={{ maxHeight: 280, overflowY: "auto" }}>
+        <div className="mp-table-scroll" style={{ maxHeight: 280, overflowY: "auto" }}>
           {cartItems.length === 0 && (
             <div style={{ padding: 32, textAlign: "center", color: "var(--muted-fg)" }}>
               <Icon name="shopping-cart" size={28} style={{ opacity: 0.4 }} />
@@ -712,6 +711,7 @@ function POSTab({
           {cartItems.map((it) => (
             <div
               key={it.id}
+              className="mp-table-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: "32px 1fr 90px 24px",
@@ -867,14 +867,7 @@ function POSTab({
               <div className="label-mp" style={{ marginBottom: 6 }}>
                 Pago
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: 4,
-                  marginBottom: 10,
-                }}
-              >
+              <div className="mp-grid-form-4 gap-1" style={{ marginBottom: 10 }}>
                 {PAY_METHODS.map((m) => {
                   const on = payMethod === m.k;
                   return (
@@ -1046,15 +1039,7 @@ function InventarioTab({
 
   return (
     <>
-      <div
-        className="mp-shop-stats"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 14,
-          marginBottom: 16,
-        }}
-      >
+      <div className="mp-shop-stats mp-grid-form-4 gap-3.5" style={{ marginBottom: 16 }}>
         {[
           { l: "SKUs", v: String(skus), sub: `${data.categories.length} categorías`, color: "#0a0a0a" },
           { l: "Bajo stock", v: String(lowStock.length), sub: "necesitan reposición", color: "#dc2626" },
@@ -1118,10 +1103,7 @@ function InventarioTab({
               <span className="dot">.</span>
             </h3>
           </div>
-          <div
-            className="mp-shop-low"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}
-          >
+          <div className="mp-shop-low mp-grid-form-3 gap-2.5">
             {lowStock.map((p) => (
               <div
                 key={p.id}
@@ -1221,12 +1203,13 @@ function InventarioTab({
             </h3>
           </div>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 720 }}>
+        <div className="mp-table-scroll">
+          <div>
             <div
+              className="mp-table-row"
               style={{
                 display: "grid",
-                gridTemplateColumns: "38px 1.8fr 100px 0.8fr 110px 130px",
+                gridTemplateColumns: PROSHOP_INV_COLS,
                 gap: 12,
                 alignItems: "center",
                 padding: "10px 22px",
@@ -1269,9 +1252,10 @@ function InventarioTab({
               return (
                 <div
                   key={p.id}
+                  className="mp-table-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "38px 1.8fr 100px 0.8fr 110px 130px",
+                    gridTemplateColumns: PROSHOP_INV_COLS,
                     gap: 12,
                     alignItems: "center",
                     padding: "12px 22px",
@@ -1515,13 +1499,8 @@ function CatalogoTab({ data }: { data: ProShopData }) {
 
   return (
     <div
-      className="mp-shop-cat"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "380px 1fr",
-        gap: 16,
-        alignItems: "flex-start",
-      }}
+      className="mp-shop-cat mp-grid-split-wide gap-4"
+      style={{ alignItems: "flex-start" }}
     >
       <div className="card" style={{ padding: 20, position: "sticky", top: 80 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -1585,14 +1564,7 @@ function CatalogoTab({ data }: { data: ProShopData }) {
             ))}
           </select>
         </FormField>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-            marginBottom: 12,
-          }}
-        >
+        <div className="mp-grid-form-2 gap-2" style={{ marginBottom: 12 }}>
           <FormField label={`Precio (${data.defaultCurrency})`}>
             <div style={{ position: "relative" }}>
               <span
@@ -1700,10 +1672,7 @@ function CatalogoTab({ data }: { data: ProShopData }) {
             Sin productos. Subí el primero desde el form de la izquierda.
           </div>
         ) : (
-          <div
-            className="mp-shop-catgrid"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}
-          >
+          <div className="mp-shop-catgrid mp-grid-form-3 gap-2.5">
             {data.products.map((p) => (
               <div key={p.id} className="card" style={{ padding: 0, overflow: "hidden" }}>
                 <div
@@ -1854,15 +1823,7 @@ function MovimientosTab({ data }: { data: ProShopData }) {
 
   return (
     <>
-      <div
-        className="mp-shop-stats"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 14,
-          marginBottom: 16,
-        }}
-      >
+      <div className="mp-shop-stats mp-grid-form-4 gap-3.5" style={{ marginBottom: 16 }}>
         {[
           {
             l: "Ventas hoy",
@@ -1974,9 +1935,11 @@ function MovimientosTab({ data }: { data: ProShopData }) {
             Sin ventas registradas hoy.
           </div>
         ) : (
-          txns.map((t, i) => (
+          <div className="mp-table-scroll">
+          {txns.map((t, i) => (
             <div
               key={t.id}
+              className="mp-table-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: "50px 1fr 110px 90px",
@@ -2035,7 +1998,8 @@ function MovimientosTab({ data }: { data: ProShopData }) {
                 +{formatMoney(t.totalCents, t.currency)}
               </span>
             </div>
-          ))
+          ))}
+          </div>
         )}
       </div>
     </>

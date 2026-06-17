@@ -20,6 +20,8 @@ import {
 import { GiveawayDetailMobile } from "./GiveawayDetailMobile";
 import { GiveawayResultOverlay } from "./GiveawayResultOverlay";
 import { GiveawayShareSheet } from "./GiveawayShareSheet";
+import { ReferralInviteSheet } from "@/components/referrals/ReferralInviteSheet";
+import { getReferralShareUiCopy } from "@/lib/referrals/share";
 
 function closesInLabel(iso: string | null): string {
   if (!iso) return "—";
@@ -42,6 +44,7 @@ export function GiveawayDetailViewClient({
   const [data, setData] = useState(initial);
   const [showPrereq, setShowPrereq] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [followClub, setFollowClub] = useState(true);
   const [acceptRules, setAcceptRules] = useState(false);
   const [phase, setPhase] = useState<"detail" | "confirmation">("detail");
@@ -72,12 +75,25 @@ export function GiveawayDetailViewClient({
   const mechanicActionLabel = (kind: MechanicKind): string | undefined => {
     if (kind === "pay") return "Pagar $1";
     if (kind === "share") return "Subir captura";
+    if (kind === "invite") return getReferralShareUiCopy({ surface: "giveaway", giveawayTitle: data.title, clubName: data.clubName, prizeLabel: data.prizeLabel }).actionLabel;
     return undefined;
   };
 
   const handleMechanicAction = (kind: MechanicKind) => {
     if (kind === "share") {
       setShowShare(true);
+      return;
+    }
+    if (kind === "invite") {
+      if (!data.viewerUsername) {
+        toast({
+          icon: "alert-circle",
+          title: "Configura tu username",
+          sub: "Necesitas un username en tu perfil para invitar amigos",
+        });
+        return;
+      }
+      setShowInvite(true);
       return;
     }
     if (kind === "pay") {
@@ -96,7 +112,10 @@ export function GiveawayDetailViewClient({
 
   const mechanicActionFor = (m: GiveawayDetailView["mechanics"][number]) => {
     if (!participating || m.done || m.pending || ended) return undefined;
-    if (m.kind === "share" || m.kind === "pay" || m.autoVerify) {
+    if (m.kind === "share" || m.kind === "pay" || m.kind === "invite") {
+      return () => handleMechanicAction(m.kind);
+    }
+    if (m.autoVerify) {
       return () => handleMechanicAction(m.kind);
     }
     return undefined;
@@ -398,6 +417,20 @@ export function GiveawayDetailViewClient({
           onSubmitted={refreshDetail}
         />
       )}
+
+      {showInvite && data.viewerUsername ? (
+        <ReferralInviteSheet
+          referralSlug={data.viewerUsername}
+          referrerDisplayName={data.viewerDisplayName}
+          context={{
+            surface: "giveaway",
+            giveawayTitle: data.title,
+            clubName: data.clubName,
+            prizeLabel: data.prizeLabel,
+          }}
+          onClose={() => setShowInvite(false)}
+        />
+      ) : null}
 
       {showPrereq && (
         <>

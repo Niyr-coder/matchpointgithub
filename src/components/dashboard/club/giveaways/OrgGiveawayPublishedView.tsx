@@ -106,7 +106,7 @@ export function OrgGiveawayPublishedView({ role, giveaway, followerCount }: Prop
                 Copiar
               </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            <div className="mp-grid-form-4 gap-2">
               {[
                 ["Instagram Story", "instagram"],
                 ["Story Reel", "video"],

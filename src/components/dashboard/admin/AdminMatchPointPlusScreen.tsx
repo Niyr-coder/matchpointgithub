@@ -104,6 +104,7 @@ const SUB_STATUS: Record<SubStatus, { bg: string; fg: string; l: string }> = {
 const PROMOS: { code: string; off: string; uses: string; cap: string; exp: string }[] = [];
 
 const SUBS_COLS = "1.8fr 110px 130px 110px 110px 90px";
+const RECENT_SUBS_COLS = "1.6fr 110px 110px 120px 110px";
 
 export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
   const toast = useToast();
@@ -498,14 +499,12 @@ export function AdminMatchPointPlusScreen({ data }: { data: AdminPlusData }) {
       >
         <div>
           <h1
-            className="font-heading"
+            className="font-heading mp-admin-page-title"
             style={{
               margin: 0,
-              fontSize: 36,
               fontWeight: 900,
               letterSpacing: "-0.03em",
               textTransform: "uppercase",
-              lineHeight: 0.95,
             }}
           >
             MATCHPOINT<span style={{ color: "var(--primary)" }}>+</span>
@@ -1182,14 +1181,7 @@ function ResumenTab({
 
   if (Array.isArray(recent)) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div
-        className="mp-spon-kpis"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr",
-          gap: 14,
-        }}
-      >
+      <div className="mp-spon-kpis gap-3.5">
         <div
           style={{
             position: "relative",
@@ -1218,7 +1210,7 @@ function ResumenTab({
                 dato real
               </span>
             </div>
-            <div className="font-heading tabular" style={{ fontSize: 42, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
+            <div className="font-heading tabular mp-admin-hero-value" style={{ fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginTop: 6 }}>
               {activePlanCount.toLocaleString("es-EC")}
             </div>
             <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.72)", marginTop: 6 }}>
@@ -1246,9 +1238,9 @@ function ResumenTab({
             Sin suscripciones recientes.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 720 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 110px 110px 120px 110px", gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+          <div className="mp-table-scroll">
+            <div className="mp-admin-subs-inner">
+              <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: RECENT_SUBS_COLS, gap: 12, padding: "10px 18px", background: "var(--muted)", borderBottom: "1px solid var(--border)", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
                 <span>Usuario</span>
                 <span>Estado</span>
                 <span>Duración</span>
@@ -1256,7 +1248,7 @@ function ResumenTab({
                 <span>Creada</span>
               </div>
               {recentRows.map((row, index) => (
-                <div key={row.subscriptionId} style={{ display: "grid", gridTemplateColumns: "1.6fr 110px 110px 120px 110px", gap: 12, padding: "12px 18px", alignItems: "center", borderBottom: index < recentRows.length - 1 ? "1px solid var(--border)" : undefined, fontSize: 12.5 }}>
+                <div key={row.subscriptionId} style={{ display: "grid", gridTemplateColumns: RECENT_SUBS_COLS, gap: 12, padding: "12px 18px", alignItems: "center", borderBottom: index < recentRows.length - 1 ? "1px solid var(--border)" : undefined, fontSize: 12.5 }}>
                   <span style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.displayName}</span>
                   <span style={{ color: row.status === "active" ? "#047857" : "var(--muted-fg)", fontWeight: 900 }}>{row.status}</span>
                   <span style={{ color: "var(--muted-fg)" }}>{row.durationMonths} mes{row.durationMonths === 1 ? "" : "es"}</span>
@@ -1273,14 +1265,7 @@ function ResumenTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div
-        className="mp-spon-kpis"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr",
-          gap: 14,
-        }}
-      >
+      <div className="mp-spon-kpis gap-3.5">
         <div
           style={{
             position: "relative",
@@ -1316,9 +1301,8 @@ function ResumenTab({
               </span>
             </div>
             <div
-              className="font-heading tabular"
+              className="font-heading tabular mp-admin-hero-value"
               style={{
-                fontSize: 42,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
                 lineHeight: 1,
@@ -1583,9 +1567,10 @@ function ResumenTab({
             </h3>
           </div>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 720 }}>
+        <div className="mp-table-scroll">
+          <div className="mp-admin-subs-inner">
             <div
+              className="mp-table-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: SUBS_COLS,
@@ -1612,6 +1597,7 @@ function ResumenTab({
               return (
                 <div
                   key={s.who}
+                  className="mp-table-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: SUBS_COLS,

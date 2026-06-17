@@ -117,7 +117,7 @@ export function VerMapaOverlay() {
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", flex: 1, minHeight: 0 }}>
+      <div className="mp-map-overlay-layout" style={{ display: "grid", gridTemplateColumns: "340px 1fr", flex: 1, minHeight: 0 }}>
         {/* Left rail */}
         <div
           style={{

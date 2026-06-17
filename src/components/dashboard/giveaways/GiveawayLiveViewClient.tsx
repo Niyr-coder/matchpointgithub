@@ -75,7 +75,7 @@ export function GiveawayLiveViewClient({ giveawayId }: { giveawayId: string }) {
         overflow: "hidden",
         background: "#0a0a0a",
         color: "#fff",
-        margin: "-28px",
+        margin: "-1rem",
       }}
     >
       <div className="hero-emerald" style={{ position: "absolute", inset: 0, opacity: 0.55 }} />

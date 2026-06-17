@@ -144,6 +144,7 @@ export function AdminRecepcionScreenView({ data }: { data: AdminReceptionOvervie
           <div className="mp-table-scroll">
             <div style={{ minWidth: 860 }}>
               <div
+                className="mp-table-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1.5fr repeat(6, 1fr)",
@@ -199,7 +200,7 @@ export function AdminRecepcionScreenView({ data }: { data: AdminReceptionOvervie
         )}
       </Section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-grid-form-2 gap-4" style={{ alignItems: "start" }}>
         <Section title="Walk-ins" subtitle="cola abierta de hoy">
           {data.activeWalkins.length === 0 ? (
             <EmptyState label="Sin walk-ins activos." />
@@ -281,7 +282,7 @@ export function AdminRecepcionScreenView({ data }: { data: AdminReceptionOvervie
         </Section>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="mp-grid-form-2 gap-4" style={{ alignItems: "start" }}>
         <Section title="Caja" subtitle="sesiones abiertas y efectivo capturado">
           {data.openCashSessions.length === 0 ? (
             <EmptyState label="No hay cajas abiertas." />

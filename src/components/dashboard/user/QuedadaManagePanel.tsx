@@ -709,7 +709,7 @@ function InsightCardSkeleton() {
         <SkBar h={6} r={9999} />
         <SkBar w="46%" h={10} r={4} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={skLbl}>Puntos totales</span>
           <SkBar w="70%" h={22} r={6} />
@@ -740,7 +740,10 @@ function StandingsCardSkeleton() {
         </h3>
         <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
       </div>
+      <div className="mp-table-scroll">
+        <div>
       <div
+        className="mp-table-row"
         style={{
           display: "grid",
           gridTemplateColumns: cols,
@@ -762,7 +765,7 @@ function StandingsCardSkeleton() {
         <span style={{ textAlign: "center" }}>DIF</span>
       </div>
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px" }}>
+        <div key={i} className="mp-table-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px" }}>
           <SkBar w={18} h={14} r={4} />
           <SkBar w="85%" h={14} r={4} />
           <SkBar w={22} h={14} r={4} />
@@ -771,6 +774,8 @@ function StandingsCardSkeleton() {
           <SkBar w={32} h={14} r={4} />
         </div>
       ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -788,7 +793,9 @@ function StandingsCardEmpty({ hint = "Aún sin partidos jugados." }: { hint?: st
         </h3>
         <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+      <div className="mp-table-scroll">
+        <div>
+      <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
         <span>#</span>
         <span>Jugador</span>
         <span style={{ textAlign: "center" }}>PJ</span>
@@ -796,13 +803,15 @@ function StandingsCardEmpty({ hint = "Aún sin partidos jugados." }: { hint?: st
         <span style={{ textAlign: "center" }}>PF</span>
         <span style={{ textAlign: "center" }}>DIF</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "4px 4px 0", fontSize: 13 }}>
+      <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "4px 4px 0", fontSize: 13 }}>
         <span className="font-heading tabular" style={{ fontWeight: 900, color: "var(--muted-fg)" }}>—</span>
         <span style={{ color: "var(--muted-fg)" }}>—</span>
         <span className="tabular" style={dashCell}>—</span>
         <span className="tabular" style={dashCell}>—</span>
         <span className="tabular" style={dashCell}>—</span>
         <span className="tabular" style={dashCell}>—</span>
+      </div>
+        </div>
       </div>
       <p style={{ margin: 0, fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>{hint}</p>
     </div>
@@ -830,7 +839,9 @@ function StandingsCard({
         </h3>
         <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>Ranking individual</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
+      <div className="mp-table-scroll">
+        <div>
+      <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "0 4px 6px", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)", borderBottom: "1px solid var(--border)" }}>
         <span>#</span>
         {avatarOf && <span aria-hidden />}
         <span>Jugador</span>
@@ -840,7 +851,7 @@ function StandingsCard({
         <span style={{ textAlign: "center" }}>DIF</span>
       </div>
       {rows.map((r, i) => (
-        <div key={r.userId} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px", fontSize: 13 }}>
+        <div key={r.userId} className="mp-table-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 8, alignItems: "center", padding: "0 4px", fontSize: 13 }}>
           <span className="font-heading tabular" style={{ fontWeight: 900, color: played && i < 3 ? "var(--primary)" : "var(--muted-fg)" }}>{i + 1}</span>
           {avatarOf && (
             <PlayerStandingAvatar name={nameOf(r.userId)} avatarUrl={avatarOf(r.userId)} size={28} />
@@ -854,6 +865,8 @@ function StandingsCard({
           </span>
         </div>
       ))}
+        </div>
+      </div>
       {!played && <div style={{ fontSize: 11.5, color: "var(--muted-fg)", paddingTop: 2 }}>Aún sin partidos jugados.</div>}
     </div>
   );
@@ -900,7 +913,7 @@ function InsightCard({ playedN, scheduledN, totalPts, avg, closest, longest, str
       </div>
 
       {/* Puntos / promedio */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="mp-grid-form-2 gap-3">
         {stat("Puntos totales", playedN > 0 ? String(totalPts) : "—")}
         {stat("Promedio/partido", playedN > 0 ? avg.toFixed(1) : "—")}
       </div>
@@ -1508,14 +1521,14 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
               <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>Su historial en todas tus quedadas.</p>
             </div>
             {historyLoading || !history ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="mp-grid-form-2 gap-2.5">
                 {[0, 1, 2, 3].map((i) => <SkBar key={i} w="100%" h={52} r={10} />)}
               </div>
             ) : history.appearances === 0 ? (
               <div style={{ fontSize: 12.5, color: "var(--muted-fg)" }}>Aún no ha participado en ninguna de tus quedadas.</div>
             ) : (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="mp-grid-form-2 gap-2.5">
                   <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
                     <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-fg)" }}>Participaciones</span>
                     <span className="font-heading tabular" style={{ fontSize: 20, fontWeight: 900 }}>{history.appearances}</span>
@@ -4101,7 +4114,7 @@ function DetailsSection({ data, onSaved }: { data: ManageData; onSaved: () => Pr
       <Field label="Descripción">
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500} style={{ ...fieldInput, resize: "vertical" }} />
       </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <Field label="Fecha y hora">
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={fieldInput} />
         </Field>
@@ -4291,7 +4304,7 @@ function LogisticsSection({ data, onSaved }: { data: ManageData; onSaved: () => 
       titleTip="Opcional. Calcula costo total y un reparto sugerido según los inscritos actuales."
       sub="Define cuántas canchas, horas y el precio por hora."
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      <div className="mp-grid-form-3 gap-2.5">
         <Field label="Canchas (#)">
           <input type="number" min={1} value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="2" style={fieldInput} />
         </Field>
@@ -4703,7 +4716,7 @@ function CategoryForm({
 
   return (
     <div className="card" style={{ padding: 14, background: "var(--muted)", display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="mp-grid-form-2 gap-2.5">
         <Field label="Nombre">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Suma 6.0 / Open Mixto" maxLength={60} style={fieldInput} />
         </Field>
@@ -5102,7 +5115,7 @@ function AssignPairForm({
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: isDoubles ? "1fr 1fr" : "1fr", gap: 10 }}>
+          <div className={isDoubles ? "mp-grid-form-2 gap-2.5" : "grid grid-cols-1 gap-2.5"}>
             <Field label={isDoubles ? "Jugador A" : "Jugador"}>
               <select value={aId} onChange={(e) => setAId(e.target.value)} style={selStyle}>
                 <option value="">Elige inscrito…</option>

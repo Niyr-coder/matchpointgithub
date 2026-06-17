@@ -76,7 +76,7 @@ function V2Stats({ sub, view }) {
           </div>
           <span style={{ fontSize: 11, fontWeight: 700, color: v2tk.muted, fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>{usePerfilV3Data().matches} partidos · Mar–May</span>
         </div>
-        <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <div className="pv3-stack-sm mp-grid-form-4 gap-3">
           <SplitCard title="Singles vs Dobles" left={{ l: 'Singles', v: adv.bySplit.singles.matches }} right={{ l: 'Dobles', v: adv.bySplit.doubles.matches }} pct={adv.bySplit.doubles.matches / (adv.bySplit.singles.matches + adv.bySplit.doubles.matches)} />
           <SplitCard title="Outdoor vs Indoor" left={{ l: 'Outdoor', v: adv.bySurface.outdoor.matches }} right={{ l: 'Indoor', v: adv.bySurface.indoor.matches }} pct={adv.bySurface.outdoor.matches / (adv.bySurface.outdoor.matches + adv.bySurface.indoor.matches)} />
           <ValueCard label="DURACIÓN PROMEDIO" value={adv.durations.avg} sub={`máx ${adv.durations.longest}`} />
@@ -100,7 +100,7 @@ function V2Stats({ sub, view }) {
           {isPlus && <span style={{ fontSize: 11, color: v2tk.muted, fontWeight: 700 }}>Actualizado hace 4 min</span>}
         </div>
 
-        <div className="pv3-stack-sm" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12 }}>
+        <div className="pv3-stack-sm mp-grid-split-wide gap-3" style={{ position: 'relative' }}>
           {/* Rating evolution chart */}
           <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -157,7 +157,7 @@ function V2Stats({ sub, view }) {
                 <HandoffIcon name="sparkles" size={10} />v2 model
               </span>
             </div>
-            <div className="profile-v3-shot-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <div className="profile-v3-shot-grid mp-grid-form-3 gap-2.5">
               {adv.byShot.map(s => {
                 const strong = s.pct >= 65;
                 const pct = Math.min(100, Math.max(0, s.pct));
@@ -261,7 +261,7 @@ function V2Heatmap() {
 function V2Community({ sub }) {
   const { isPlus } = v2Sub(sub);
   return (
-    <div className="pv3-stack-sm" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
+    <div className="pv3-stack-sm mp-grid-split gap-4">
       {/* Compañeros */}
       <div style={{ position: 'relative' }}>
         <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '20px 22px' }}>
@@ -381,7 +381,7 @@ function V2Collection() {
           </div>
         </div>
       </div>
-      <div className="pv3-stack-sm" style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="pv3-stack-sm mp-grid-form-4 gap-3" style={{ marginTop: 22 }}>
         {all.map(b => {
           const isGold = b.rarity === 'Legendaria' || b.rarity === 'Épica';
           return (
@@ -422,7 +422,7 @@ function V2Collection() {
 function V2Preferences({ sub }) {
   const { isPlus } = v2Sub(sub);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+    <div className="mp-grid-form-2 gap-4">
       {/* Personalización */}
       <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '20px 22px' }}>
         <span className="label-mp" style={{ color: v2tk.muted }}>PERSONALIZACIÓN</span>

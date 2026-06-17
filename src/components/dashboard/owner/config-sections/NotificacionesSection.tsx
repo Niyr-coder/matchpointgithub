@@ -18,6 +18,8 @@ export type NotificacionesData = {
   matrix: Record<string, Record<NotifChannel, NotifTarget>>;
 };
 
+const NOTIF_MATRIX_COLS = "1.6fr repeat(4, 1fr) 80px";
+
 const DEFAULT_EVENTS: NotifEvent[] = [
   { key: "res_new", label: "Reserva confirmada", sub: "Cuando se completa el pago", critical: true },
   { key: "res_rem", label: "Recordatorio 24h", sub: "24 horas antes del juego", critical: false },
@@ -131,7 +133,7 @@ export function NotificacionesSection({
 
       <div className="mp-table-scroll">
         <div style={{ minWidth: 620 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr) 80px", gap: 6, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: NOTIF_MATRIX_COLS, gap: 6, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
             <div className="label-mp">Evento</div>
             {CHANNELS.map((c) => (
               <div key={c.k} style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
@@ -143,7 +145,7 @@ export function NotificacionesSection({
           </div>
 
           {events.map((e) => (
-            <div key={e.key} style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr) 80px", gap: 6, alignItems: "center", padding: "12px 0", borderTop: "1px dashed var(--border)" }}>
+            <div key={e.key} style={{ display: "grid", gridTemplateColumns: NOTIF_MATRIX_COLS, gap: 6, alignItems: "center", padding: "12px 0", borderTop: "1px dashed var(--border)" }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 800 }}>{e.label}</div>
                 <div style={{ fontSize: 10, color: "var(--muted-fg)", marginTop: 1 }}>{e.sub}</div>

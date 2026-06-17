@@ -115,7 +115,7 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
       />
 
       {/* 3 Big KPI cards — Ocupación (real) + NPS (sin tracking) + Tiempo atención (sin tracking) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+      <div className="mp-grid-form-3 gap-4">
         {/* Ocupación */}
         <div
           className="card"
@@ -326,7 +326,7 @@ export function ClubReportesScreenView({ data }: { data: ReportesData }) {
       </div>
 
       {/* No-shows + sport mix + top socios */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+      <div className="mp-grid-form-3 gap-4">
         {/* No-shows */}
         <div className="card" style={{ padding: 20 }}>
           <div className="label-mp">No-shows · 30 días</div>

@@ -198,7 +198,7 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
 
         {/* Right: secondary KPIs + payouts */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="mp-partner-fin-kpis-secondary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="mp-partner-fin-kpis-secondary mp-grid-form-2 gap-3">
             {secondary.map((k) => (
               <div key={k.l} className="card" style={{ padding: 16 }}>
                 <div className="label-mp">{k.l}</div>

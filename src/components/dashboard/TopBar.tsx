@@ -436,9 +436,12 @@ function AdminQuickActionSheet({
 export function TopBar({
   role,
   contextLabel,
+  homeHref,
 }: {
   role: RoleKey;
   contextLabel?: string | null;
+  /** Inicio según rol activo (cookie). Default: /dashboard/[role] del segmento URL. */
+  homeHref?: string;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
@@ -454,6 +457,7 @@ export function TopBar({
   const showAdminQuickMenu = role === "admin";
   const toast = useToast();
   const [, startTransition] = useTransition();
+  const roleHomeHref = homeHref ?? `/dashboard/${role}`;
 
   const unreadN = useMemo(() => items.filter((n) => !n.readAt).length, [items]);
 
@@ -604,11 +608,12 @@ export function TopBar({
         zIndex: 10,
       }}
     >
-      {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky). */}
+      {/* Logo solo en mobile (en desktop ya vive en el sidebar sticky).
+         Apunta al inicio del rol activo (cookie), no a la landing. */}
       <Link
-        href={`/dashboard/${role}`}
+        href={roleHomeHref}
         className="md:hidden flex items-center gap-1.5"
-        aria-label="Ir al inicio de MATCHPOINT"
+        aria-label="Ir al inicio de tu panel"
         style={{ textDecoration: "none", color: "inherit" }}
       >
         <span className="dot" style={{ fontSize: 16 }}>●</span>
