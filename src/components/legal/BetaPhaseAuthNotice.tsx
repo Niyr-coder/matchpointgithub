@@ -1,6 +1,6 @@
 import { Icon } from "@/components/Icon";
 
-/** Aviso de beta cerrada dentro del modal de registro / inicio de sesión. */
+/** Aviso de beta abierta dentro del modal de registro / inicio de sesión. */
 export function BetaPhaseAuthNotice() {
   return (
     <div
@@ -33,11 +33,11 @@ export function BetaPhaseAuthNotice() {
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 4 }}>
-            Estamos en beta cerrada
+            Estamos en beta abierta · gratis para todos
           </div>
           <p style={{ margin: 0 }}>
-            MATCHPOINT sigue en desarrollo activo. Puedes encontrar errores, cambios en funciones y
-            pagos manuales (sin cobro automático por ahora). Si algo falla, escríbenos a{" "}
+            MATCHPOINT es gratis para todos durante la beta. Sigue en desarrollo activo, así que
+            puedes encontrar errores y cambios en funciones. Si algo falla, escríbenos a{" "}
             <a
               href="mailto:soporte@matchpoint.top"
               style={{ color: "#047857", fontWeight: 700 }}
