@@ -24,7 +24,12 @@ export type TorneoRow = {
   color: string;
   dbStatus: string;
 };
-export type TorneosData = { partnerId: string | null; rows: TorneoRow[] };
+export type ClubOption = { id: string; name: string; city: string | null };
+export type TorneosData = {
+  partnerId: string | null;
+  rows: TorneoRow[];
+  clubs: ClubOption[];
+};
 
 const PLACEHOLDER_COUNT = 4;
 
@@ -347,6 +352,7 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
       {data.partnerId && (
         <CreateTournamentFlow
           partnerId={data.partnerId}
+          clubs={data.clubs}
           open={createOpen}
           onClose={() => setCreateOpen(false)}
         />

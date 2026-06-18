@@ -1,11 +1,13 @@
 "use client";
-// Wizard de creación de torneo: T&C → form → preview → submit.
+// Wizard de creación de torneo: T&C → datos → logística → categorías → preview.
 // Solo pickleball por ahora (sport bloqueado). Modalidad y scoring guiados.
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { createTournament } from "@/server/actions/tournaments";
+import { GENDERS, MprRangeSlider } from "./CategoriesPanel";
+import type { ClubOption } from "./PartnerTorneosScreenView";
 
 // ── Cláusulas estrictas (T&C) ─────────────────────────────────────────
 // Texto editable aquí. Si crece, mover a `src/lib/content/tournament-terms.ts`.
@@ -149,11 +151,43 @@ const PAYMENT_POLICIES: Array<{
 
 type Props = {
   partnerId: string;
+  clubs: ClubOption[];
   open: boolean;
   onClose: () => void;
 };
 
-type Step = "terms" | "form" | "preview";
+const STEPS = ["terms", "details", "logistics", "categories", "preview"] as const;
+type Step = (typeof STEPS)[number];
+
+// ── Categoría en estado de wizard ─────────────────────────────────────
+const MPR_DEFAULT_MIN = 3.0;
+const MPR_DEFAULT_MAX = 4.0;
+
+type CatDraft = {
+  name: string;
+  gender: "m" | "f" | "mixed" | "open";
+  mprMin: number;
+  mprMax: number;
+  noLevelLimit: boolean;
+  noUpperCap: boolean;
+  ageMin: string;
+  ageMax: string;
+  maxTeams: string;
+};
+
+type WizardCategory = CatDraft & { key: number };
+
+const EMPTY_CAT: CatDraft = {
+  name: "",
+  gender: "open",
+  mprMin: MPR_DEFAULT_MIN,
+  mprMax: MPR_DEFAULT_MAX,
+  noLevelLimit: true,
+  noUpperCap: false,
+  ageMin: "",
+  ageMax: "",
+  maxTeams: "",
+};
 
 function slugify(s: string): string {
   return s
@@ -169,7 +203,7 @@ function localInputToIso(local: string): string {
   return new Date(local).toISOString();
 }
 
-export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
+export function CreateTournamentFlow({ partnerId, clubs, open, onClose }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [, startTx] = useTransition();
@@ -177,23 +211,33 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Form state
+  // Form state — datos
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [clubId, setClubId] = useState<string>("");
   const [modality, setModality] = useState<"singles" | "doubles" | "mixed_doubles">("doubles");
   const [scoringId, setScoringId] = useState<string>("trad_11_bo3");
   const [format, setFormat] = useState<string>("single_elim");
   const [groupsCount, setGroupsCount] = useState<string>("2");
   const [advancePerGroup, setAdvancePerGroup] = useState<string>("4");
   const [finalBo5, setFinalBo5] = useState(false);
+
+  // Form state — logística
   const [startsAt, setStartsAt] = useState<string>("");
   const [endsAt, setEndsAt] = useState<string>("");
   const [singleDay, setSingleDay] = useState<boolean>(false);
+  const [regOpensAt, setRegOpensAt] = useState<string>("");
+  const [regClosesAt, setRegClosesAt] = useState<string>("");
   const [maxParticipants, setMaxParticipants] = useState<string>("32");
   const [entryFee, setEntryFee] = useState<string>("20");
   const [prize, setPrize] = useState<string>("");
   const [paymentPolicy, setPaymentPolicyRaw] = useState<
     "free" | "prepay" | "onsite" | "flexible"
   >("prepay");
+
+  // Form state — categorías
+  const [categories, setCategories] = useState<WizardCategory[]>([]);
+  const catKeyRef = useRef(0);
 
   const setPaymentPolicy = (next: typeof paymentPolicy) => {
     setPaymentPolicyRaw(next);
@@ -213,6 +257,8 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     setStep("terms");
     setTermsAccepted(false);
     setName("");
+    setDescription("");
+    setClubId("");
     setModality("doubles");
     setScoringId("trad_11_bo3");
     setFormat("single_elim");
@@ -222,10 +268,13 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     setStartsAt("");
     setEndsAt("");
     setSingleDay(false);
+    setRegOpensAt("");
+    setRegClosesAt("");
     setMaxParticipants("32");
     setEntryFee("20");
     setPrize("");
     setPaymentPolicyRaw("prepay");
+    setCategories([]);
   }, [open]);
 
   const scoring = useMemo(
@@ -244,18 +293,37 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     () => PAYMENT_POLICIES.find((p) => p.value === paymentPolicy)?.label ?? "",
     [paymentPolicy],
   );
+  const clubLabel = useMemo(() => {
+    if (!clubId) return "Sin sede · multi-club";
+    const c = clubs.find((x) => x.id === clubId);
+    return c ? `${c.name}${c.city ? ` · ${c.city}` : ""}` : "—";
+  }, [clubId, clubs]);
 
   if (!open) return null;
 
-  // ── Validación del form (step 'form') ──
-  const validateForm = (): string | null => {
+  // ── Validaciones por paso ──
+  const validateDetails = (): string | null => {
     if (name.trim().length < 2) return "El nombre debe tener al menos 2 caracteres.";
+    if (format === "groups_to_knockout") {
+      const g = Number(groupsCount);
+      const a = Number(advancePerGroup);
+      if (!Number.isInteger(g) || g < 1) return "Número de grupos inválido.";
+      if (!Number.isInteger(a) || a < 1) return "Clasificados por grupo inválido.";
+    }
+    return null;
+  };
+
+  const validateLogistics = (): string | null => {
     if (!startsAt) return "Falta la fecha de inicio.";
     if (!singleDay) {
       if (!endsAt) return "Falta la fecha de fin (o marca 'es de un solo día').";
       if (new Date(startsAt) >= new Date(endsAt))
         return "El inicio debe ser anterior al fin.";
     }
+    if (regOpensAt && regClosesAt && new Date(regOpensAt) >= new Date(regClosesAt))
+      return "La apertura de inscripciones debe ser anterior al cierre.";
+    if (regClosesAt && new Date(regClosesAt) > new Date(startsAt))
+      return "Las inscripciones deben cerrar antes (o al) inicio del torneo.";
     const cap = Number(maxParticipants);
     if (maxParticipants !== "" && (!Number.isInteger(cap) || cap <= 0))
       return "Cupos inválidos.";
@@ -270,8 +338,6 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     if (format === "groups_to_knockout") {
       const g = Number(groupsCount);
       const a = Number(advancePerGroup);
-      if (!Number.isInteger(g) || g < 1) return "Número de grupos inválido.";
-      if (!Number.isInteger(a) || a < 1) return "Clasificados por grupo inválido.";
       const capN = maxParticipants === "" ? null : Number(maxParticipants);
       if (capN != null && capN > 0 && g * a > capN) {
         return "Grupos × clasificados supera el cupo del torneo.";
@@ -280,9 +346,23 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
     return null;
   };
 
+  // Validación del paso actual antes de avanzar.
+  const validateStep = (s: Step): string | null => {
+    if (s === "details") return validateDetails();
+    if (s === "logistics") return validateLogistics();
+    return null;
+  };
+
+  const addCategory = (draft: CatDraft) => {
+    catKeyRef.current += 1;
+    setCategories((prev) => [...prev, { ...draft, key: catKeyRef.current }]);
+  };
+  const removeCategory = (key: number) =>
+    setCategories((prev) => prev.filter((c) => c.key !== key));
+
   const onSubmit = () => {
     if (saving) return;
-    const err = validateForm();
+    const err = validateDetails() ?? validateLogistics();
     if (err) {
       toast({ icon: "alert-triangle", title: "Revisa el formulario", sub: err });
       return;
@@ -293,14 +373,27 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
       const prizeNum = prize === "" ? null : Math.round(Number(prize) * 100);
       const cap = maxParticipants === "" ? undefined : Number(maxParticipants);
       const slug = `${slugify(name)}-${Date.now().toString(36).slice(-4)}`;
+      const apiCategories = categories.map((c) => ({
+        name: c.name.trim(),
+        gender: c.gender,
+        mprMin: c.noLevelLimit ? null : c.mprMin,
+        mprMax: c.noLevelLimit ? null : c.noUpperCap ? null : c.mprMax,
+        ageMin: c.ageMin === "" ? null : Number(c.ageMin),
+        ageMax: c.ageMax === "" ? null : Number(c.ageMax),
+        maxTeams: c.maxTeams === "" ? null : Number(c.maxTeams),
+      }));
       const res = await createTournament({
         partnerId,
+        clubId: clubId || undefined,
         name: name.trim(),
         slug,
+        description: description.trim() || undefined,
         sport: "pickleball",
         format,
         startsAt: localInputToIso(startsAt),
         endsAt: singleDay || !endsAt ? null : localInputToIso(endsAt),
+        registrationOpensAt: regOpensAt ? localInputToIso(regOpensAt) : undefined,
+        registrationClosesAt: regClosesAt ? localInputToIso(regClosesAt) : undefined,
         maxParticipants: cap,
         entryFeeCents: Math.round(fee * 100),
         currency: "USD",
@@ -318,6 +411,7 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
                   : null,
               }
             : undefined,
+        categories: apiCategories.length > 0 ? apiCategories : undefined,
         termsAccepted: true,
       });
       setSaving(false);
@@ -333,6 +427,23 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
         });
       }
     });
+  };
+
+  const stepIndex = STEPS.indexOf(step);
+  const goNext = () => {
+    const err = validateStep(step);
+    if (err) {
+      toast({ icon: "alert-triangle", title: "Revisa el formulario", sub: err });
+      return;
+    }
+    if (step === "preview") {
+      onSubmit();
+      return;
+    }
+    setStep(STEPS[stepIndex + 1]);
+  };
+  const goBack = () => {
+    if (stepIndex > 0) setStep(STEPS[stepIndex - 1]);
   };
 
   return (
@@ -364,38 +475,26 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <Header step={step} onClose={onClose} />
-        <div style={{ padding: 22, overflow: "auto", flex: 1 }}>
+        <Header step={step} stepIndex={stepIndex} onClose={onClose} />
+        <div key={step} className="mp-tournament-step-anim" style={{ padding: 22, overflow: "auto", flex: 1 }}>
           {step === "terms" && (
-            <StepTerms
-              accepted={termsAccepted}
-              setAccepted={setTermsAccepted}
-            />
+            <StepTerms accepted={termsAccepted} setAccepted={setTermsAccepted} />
           )}
-          {step === "form" && (
-            <StepForm
+          {step === "details" && (
+            <StepDetails
               name={name}
               setName={setName}
+              description={description}
+              setDescription={setDescription}
+              clubId={clubId}
+              setClubId={setClubId}
+              clubs={clubs}
               modality={modality}
               setModality={setModality}
               scoringId={scoringId}
               setScoringId={setScoringId}
               format={format}
               setFormat={setFormat}
-              startsAt={startsAt}
-              setStartsAt={setStartsAt}
-              endsAt={endsAt}
-              setEndsAt={setEndsAt}
-              singleDay={singleDay}
-              setSingleDay={setSingleDay}
-              maxParticipants={maxParticipants}
-              setMaxParticipants={setMaxParticipants}
-              entryFee={entryFee}
-              onEntryFeeChange={onEntryFeeChange}
-              prize={prize}
-              setPrize={setPrize}
-              paymentPolicy={paymentPolicy}
-              setPaymentPolicy={setPaymentPolicy}
               groupsCount={groupsCount}
               setGroupsCount={setGroupsCount}
               advancePerGroup={advancePerGroup}
@@ -404,46 +503,63 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
               setFinalBo5={setFinalBo5}
             />
           )}
+          {step === "logistics" && (
+            <StepLogistics
+              startsAt={startsAt}
+              setStartsAt={setStartsAt}
+              endsAt={endsAt}
+              setEndsAt={setEndsAt}
+              singleDay={singleDay}
+              setSingleDay={setSingleDay}
+              regOpensAt={regOpensAt}
+              setRegOpensAt={setRegOpensAt}
+              regClosesAt={regClosesAt}
+              setRegClosesAt={setRegClosesAt}
+              maxParticipants={maxParticipants}
+              setMaxParticipants={setMaxParticipants}
+              entryFee={entryFee}
+              onEntryFeeChange={onEntryFeeChange}
+              prize={prize}
+              setPrize={setPrize}
+              paymentPolicy={paymentPolicy}
+              setPaymentPolicy={setPaymentPolicy}
+            />
+          )}
+          {step === "categories" && (
+            <StepCategories
+              categories={categories}
+              onAdd={addCategory}
+              onRemove={removeCategory}
+              isGroups={format === "groups_to_knockout"}
+            />
+          )}
           {step === "preview" && (
             <StepPreview
               name={name}
+              description={description}
+              clubLabel={clubLabel}
               modalityLabel={modalityLabel}
               scoring={scoring}
               formatLabel={formatLabel}
               startsAt={startsAt}
               endsAt={singleDay ? "" : endsAt}
+              regOpensAt={regOpensAt}
+              regClosesAt={regClosesAt}
               maxParticipants={maxParticipants}
               entryFee={paymentPolicy === "free" ? "0" : entryFee}
               prize={prize}
               policyLabel={policyLabel}
+              categories={categories}
             />
           )}
         </div>
         <Footer
           step={step}
-          canAdvance={
-            step === "terms"
-              ? termsAccepted
-              : step === "form"
-                ? true
-                : !saving
-          }
+          canAdvance={step === "terms" ? termsAccepted : !saving}
           saving={saving}
-          onBack={() => {
-            if (step === "form") setStep("terms");
-            if (step === "preview") setStep("form");
-          }}
-          onNext={() => {
-            if (step === "terms") setStep("form");
-            else if (step === "form") {
-              const err = validateForm();
-              if (err) {
-                toast({ icon: "alert-triangle", title: "Revisa el formulario", sub: err });
-                return;
-              }
-              setStep("preview");
-            } else if (step === "preview") onSubmit();
-          }}
+          showBack={stepIndex > 0}
+          onBack={goBack}
+          onNext={goNext}
           onCancel={onClose}
         />
       </div>
@@ -453,13 +569,23 @@ export function CreateTournamentFlow({ partnerId, open, onClose }: Props) {
 
 // ── Sub-componentes ──────────────────────────────────────────────────
 
-function Header({ step, onClose }: { step: Step; onClose: () => void }) {
-  const titles: Record<Step, string> = {
-    terms: "Reglas del organizador",
-    form: "Datos del torneo",
-    preview: "Confirma y publica",
-  };
-  const stepNum = step === "terms" ? 1 : step === "form" ? 2 : 3;
+const STEP_TITLES: Record<Step, string> = {
+  terms: "Reglas del organizador",
+  details: "Datos del torneo",
+  logistics: "Fechas, cupos y pago",
+  categories: "Categorías",
+  preview: "Confirma y publica",
+};
+
+function Header({
+  step,
+  stepIndex,
+  onClose,
+}: {
+  step: Step;
+  stepIndex: number;
+  onClose: () => void;
+}) {
   return (
     <div
       style={{
@@ -481,7 +607,7 @@ function Header({ step, onClose }: { step: Step; onClose: () => void }) {
             color: "var(--muted-fg)",
           }}
         >
-          Paso {stepNum} de 3
+          Paso {stepIndex + 1} de {STEPS.length}
         </div>
         <h2
           className="font-heading"
@@ -489,12 +615,26 @@ function Header({ step, onClose }: { step: Step; onClose: () => void }) {
             fontSize: 22,
             fontWeight: 900,
             letterSpacing: "-0.02em",
-            margin: "4px 0 0",
+            margin: "4px 0 8px",
           }}
         >
-          {titles[step]}
+          {STEP_TITLES[step]}
           <span style={{ color: "var(--primary)" }}>.</span>
         </h2>
+        <div style={{ display: "flex", gap: 4 }}>
+          {STEPS.map((s, i) => (
+            <span
+              key={s}
+              style={{
+                height: 3,
+                flex: 1,
+                borderRadius: 2,
+                background: i <= stepIndex ? "var(--primary)" : "var(--border)",
+                transition: "background 200ms var(--ease-out)",
+              }}
+            />
+          ))}
+        </div>
       </div>
       <button
         onClick={onClose}
@@ -522,6 +662,7 @@ function Footer({
   step,
   canAdvance,
   saving,
+  showBack,
   onBack,
   onNext,
   onCancel,
@@ -529,6 +670,7 @@ function Footer({
   step: Step;
   canAdvance: boolean;
   saving: boolean;
+  showBack: boolean;
   onBack: () => void;
   onNext: () => void;
   onCancel: () => void;
@@ -536,11 +678,11 @@ function Footer({
   const nextLabel =
     step === "terms"
       ? "Continuar"
-      : step === "form"
-        ? "Revisar"
-        : saving
+      : step === "preview"
+        ? saving
           ? "Creando…"
-          : "Crear torneo";
+          : "Crear torneo"
+        : "Continuar";
   return (
     <div className="mp-tournament-modal-footer">
       <button
@@ -555,7 +697,7 @@ function Footer({
         Cancelar
       </button>
       <div className="mp-tournament-modal-footer-actions">
-        {step !== "terms" && (
+        {showBack && (
           <button
             onClick={onBack}
             disabled={saving}
@@ -574,7 +716,9 @@ function Footer({
         >
           {step === "preview" ? <Icon name="check" size={13} color="#fff" /> : null}
           {nextLabel}
-          {step !== "preview" && !saving ? <Icon name="arrow-right" size={12} color="#fff" /> : null}
+          {step !== "preview" && !saving ? (
+            <Icon name="arrow-right" size={12} color="#fff" />
+          ) : null}
         </button>
       </div>
     </div>
@@ -689,29 +833,20 @@ function StepTerms({
   );
 }
 
-function StepForm(props: {
+function StepDetails(props: {
   name: string;
   setName: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
+  clubId: string;
+  setClubId: (v: string) => void;
+  clubs: ClubOption[];
   modality: "singles" | "doubles" | "mixed_doubles";
   setModality: (v: "singles" | "doubles" | "mixed_doubles") => void;
   scoringId: string;
   setScoringId: (v: string) => void;
   format: string;
   setFormat: (v: string) => void;
-  startsAt: string;
-  setStartsAt: (v: string) => void;
-  endsAt: string;
-  setEndsAt: (v: string) => void;
-  singleDay: boolean;
-  setSingleDay: (v: boolean) => void;
-  maxParticipants: string;
-  setMaxParticipants: (v: string) => void;
-  entryFee: string;
-  onEntryFeeChange: (v: string) => void;
-  prize: string;
-  setPrize: (v: string) => void;
-  paymentPolicy: "free" | "prepay" | "onsite" | "flexible";
-  setPaymentPolicy: (v: "free" | "prepay" | "onsite" | "flexible") => void;
   groupsCount: string;
   setGroupsCount: (v: string) => void;
   advancePerGroup: string;
@@ -729,6 +864,39 @@ function StepForm(props: {
           placeholder="Ej: Copa Verano 2026"
           style={inputStyle}
         />
+      </Field>
+
+      <Field label="Descripción (opcional)">
+        <textarea
+          value={props.description}
+          onChange={(e) => props.setDescription(e.target.value)}
+          placeholder="Cuéntales a los jugadores de qué trata el torneo, premios, reglas especiales, etc."
+          rows={3}
+          maxLength={2000}
+          style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+        />
+      </Field>
+
+      <Field label="Sede (club)">
+        <select
+          value={props.clubId}
+          onChange={(e) => props.setClubId(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">Sin sede · multi-club</option>
+          {props.clubs.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.city ? ` · ${c.city}` : ""}
+            </option>
+          ))}
+        </select>
+        {props.clubs.length === 0 && (
+          <span style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
+            No tienes clubes vinculados. El torneo quedará sin sede; puedes
+            vincular clubes desde la sección Clubes.
+          </span>
+        )}
       </Field>
 
       <Field label="Deporte">
@@ -752,11 +920,7 @@ function StepForm(props: {
 
       <Field label="Modalidad">
         <RadioCards
-          options={MODALITIES.map((m) => ({
-            value: m.value,
-            label: m.label,
-            sub: m.sub,
-          }))}
+          options={MODALITIES.map((m) => ({ value: m.value, label: m.label, sub: m.sub }))}
           value={props.modality}
           onChange={(v) => props.setModality(v as typeof props.modality)}
         />
@@ -764,11 +928,7 @@ function StepForm(props: {
 
       <Field label="Sistema de puntuación">
         <RadioCards
-          options={SCORING_PRESETS.map((s) => ({
-            value: s.id,
-            label: s.label,
-            sub: s.sub,
-          }))}
+          options={SCORING_PRESETS.map((s) => ({ value: s.id, label: s.label, sub: s.sub }))}
           value={props.scoringId}
           onChange={props.setScoringId}
         />
@@ -847,7 +1007,32 @@ function StepForm(props: {
           </label>
         </div>
       )}
+    </div>
+  );
+}
 
+function StepLogistics(props: {
+  startsAt: string;
+  setStartsAt: (v: string) => void;
+  endsAt: string;
+  setEndsAt: (v: string) => void;
+  singleDay: boolean;
+  setSingleDay: (v: boolean) => void;
+  regOpensAt: string;
+  setRegOpensAt: (v: string) => void;
+  regClosesAt: string;
+  setRegClosesAt: (v: string) => void;
+  maxParticipants: string;
+  setMaxParticipants: (v: string) => void;
+  entryFee: string;
+  onEntryFeeChange: (v: string) => void;
+  prize: string;
+  setPrize: (v: string) => void;
+  paymentPolicy: "free" | "prepay" | "onsite" | "flexible";
+  setPaymentPolicy: (v: "free" | "prepay" | "onsite" | "flexible") => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="mp-tournament-form-grid-2">
         <Field label="Inicio">
           <input
@@ -895,6 +1080,42 @@ function StepForm(props: {
         Es de un solo día (sin fecha de fin)
       </label>
 
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 10,
+          border: "1px solid var(--border)",
+          background: "var(--muted)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div className="label-mp">Ventana de inscripción (opcional)</div>
+        <div className="mp-tournament-form-grid-2">
+          <Field label="Abre">
+            <input
+              type="datetime-local"
+              value={props.regOpensAt}
+              onChange={(e) => props.setRegOpensAt(e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Cierra">
+            <input
+              type="datetime-local"
+              value={props.regClosesAt}
+              onChange={(e) => props.setRegClosesAt(e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+          Define cuándo se abren y cierran las inscripciones. Si lo dejas vacío,
+          controlas la apertura manualmente con el botón &quot;Publicar torneo&quot;.
+        </p>
+      </div>
+
       <div className="mp-tournament-form-grid-3">
         <Field label="Cupos">
           <input
@@ -936,11 +1157,7 @@ function StepForm(props: {
 
       <Field label="Método de pago">
         <RadioCards
-          options={PAYMENT_POLICIES.map((p) => ({
-            value: p.value,
-            label: p.label,
-            sub: p.sub,
-          }))}
+          options={PAYMENT_POLICIES.map((p) => ({ value: p.value, label: p.label, sub: p.sub }))}
           value={props.paymentPolicy}
           onChange={(v) => props.setPaymentPolicy(v as typeof props.paymentPolicy)}
         />
@@ -949,17 +1166,304 @@ function StepForm(props: {
   );
 }
 
+// ── Categorías ─────────────────────────────────────────────────────────
+function catSummary(c: WizardCategory): string {
+  const parts: string[] = [];
+  const gLabel = GENDERS.find((g) => g.value === c.gender)?.label;
+  if (gLabel && c.gender !== "open") parts.push(gLabel);
+  if (c.noLevelLimit) parts.push("Open");
+  else if (c.noUpperCap) parts.push(`MPR ${c.mprMin.toFixed(2)}+`);
+  else parts.push(`MPR ${c.mprMin.toFixed(2)}–${c.mprMax.toFixed(2)}`);
+  if (c.ageMin !== "" || c.ageMax !== "")
+    parts.push(`${c.ageMin || "0"}–${c.ageMax || "∞"} años`);
+  if (c.maxTeams !== "") parts.push(`${c.maxTeams} cupos`);
+  return parts.join(" · ");
+}
+
+function StepCategories({
+  categories,
+  onAdd,
+  onRemove,
+  isGroups,
+}: {
+  categories: WizardCategory[];
+  onAdd: (c: CatDraft) => void;
+  onRemove: (key: number) => void;
+  isGroups: boolean;
+}) {
+  const [draft, setDraft] = useState<CatDraft>(EMPTY_CAT);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const commit = () => {
+    if (draft.name.trim().length < 1) return;
+    onAdd(draft);
+    setDraft(EMPTY_CAT);
+    setFormOpen(false);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--muted-fg)", lineHeight: 1.6 }}>
+        Las categorías dividen el torneo por nivel (MPR), género o edad. Son{" "}
+        <b>opcionales</b>: si no agregas ninguna, los jugadores se inscriben sin
+        categoría. Puedes editarlas después desde la gestión del torneo.
+      </p>
+
+      {isGroups && (
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "rgba(251,191,36,0.12)",
+            border: "1px solid rgba(251,191,36,0.4)",
+            fontSize: 11.5,
+            lineHeight: 1.5,
+            color: "#92400e",
+          }}
+        >
+          <Icon name="info" size={12} color="#92400e" /> En &quot;Grupos +
+          eliminación&quot; cada categoría usa la configuración de grupos que
+          definiste. Si no agregas categorías, creamos una con la modalidad.
+        </div>
+      )}
+
+      {categories.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {categories.map((c) => (
+            <div
+              key={c.key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "#fff",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#0a0a0a" }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                  {catSummary(c)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(c.key)}
+                aria-label="Quitar categoría"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#dc2626",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="trash-2" size={12} color="#dc2626" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {formOpen ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: 14,
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--muted)",
+          }}
+        >
+          <Field label="Nombre de la categoría">
+            <input
+              type="text"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder="Ej: Categoría A, +50, Mixto Open"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Género">
+            <select
+              value={draft.gender}
+              onChange={(e) =>
+                setDraft({ ...draft, gender: e.target.value as CatDraft["gender"] })
+              }
+              style={inputStyle}
+            >
+              {GENDERS.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label={
+              draft.noLevelLimit
+                ? "Rango MPR · Open (sin restricción)"
+                : draft.noUpperCap
+                  ? `Rango MPR · ${draft.mprMin.toFixed(2)}+ (sin tope)`
+                  : `Rango MPR · ${draft.mprMin.toFixed(2)} – ${draft.mprMax.toFixed(2)}`
+            }
+          >
+            <MprRangeSlider
+              min={draft.mprMin}
+              max={draft.mprMax}
+              disabled={draft.noLevelLimit}
+              noUpperCap={draft.noUpperCap}
+              onChange={(lo, hi) => setDraft({ ...draft, mprMin: lo, mprMax: hi })}
+            />
+            <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  color: "var(--muted-fg)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.noUpperCap}
+                  disabled={draft.noLevelLimit}
+                  onChange={(e) => setDraft({ ...draft, noUpperCap: e.target.checked })}
+                  style={{ accentColor: "var(--primary)" }}
+                />
+                Sin tope superior (ej. 5.5+)
+              </label>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  color: "var(--muted-fg)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.noLevelLimit}
+                  onChange={(e) => setDraft({ ...draft, noLevelLimit: e.target.checked })}
+                  style={{ accentColor: "var(--primary)" }}
+                />
+                Open (sin filtro de nivel)
+              </label>
+            </div>
+          </Field>
+
+          <div className="mp-tournament-form-grid-3">
+            <Field label="Edad mín.">
+              <input
+                type="number"
+                min={0}
+                max={120}
+                value={draft.ageMin}
+                onChange={(e) => setDraft({ ...draft, ageMin: e.target.value })}
+                placeholder="—"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Edad máx.">
+              <input
+                type="number"
+                min={0}
+                max={120}
+                value={draft.ageMax}
+                onChange={(e) => setDraft({ ...draft, ageMax: e.target.value })}
+                placeholder="—"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Cupos">
+              <input
+                type="number"
+                min={1}
+                value={draft.maxTeams}
+                onChange={(e) => setDraft({ ...draft, maxTeams: e.target.value })}
+                placeholder="Sin límite"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(EMPTY_CAT);
+                setFormOpen(false);
+              }}
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)" }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={commit}
+              disabled={draft.name.trim().length < 1}
+              className="btn btn-primary"
+              style={{ opacity: draft.name.trim().length < 1 ? 0.6 : 1 }}
+            >
+              <Icon name="plus" size={12} color="#fff" />
+              Agregar categoría
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setFormOpen(true)}
+          className="btn"
+          style={{
+            justifyContent: "center",
+            background: "#fff",
+            border: "1px dashed var(--border)",
+            color: "#0a0a0a",
+            padding: "12px",
+          }}
+        >
+          <Icon name="plus" size={13} />
+          {categories.length === 0 ? "Agregar categoría" : "Agregar otra categoría"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function StepPreview(props: {
   name: string;
+  description: string;
+  clubLabel: string;
   modalityLabel: string;
   scoring: { label: string; sub: string; config: ScoringConfig };
   formatLabel: string;
   startsAt: string;
   endsAt: string;
+  regOpensAt: string;
+  regClosesAt: string;
   maxParticipants: string;
   entryFee: string;
   prize: string;
   policyLabel: string;
+  categories: WizardCategory[];
 }) {
   const fmtDate = (s: string) =>
     s
@@ -971,6 +1475,7 @@ function StepPreview(props: {
           minute: "2-digit",
         })
       : "—";
+  const hasRegWindow = props.regOpensAt || props.regClosesAt;
   return (
     <div>
       <div
@@ -1007,16 +1512,27 @@ function StepPreview(props: {
           {props.name || "Sin nombre"}
           <span style={{ color: "var(--primary)" }}>.</span>
         </div>
-        <div
-          style={{
-            fontSize: 11.5,
-            color: "rgba(255,255,255,0.7)",
-            marginTop: 6,
-          }}
-        >
+        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", marginTop: 6 }}>
           {fmtDate(props.startsAt)}
           {props.endsAt ? ` → ${fmtDate(props.endsAt)}` : " · Un solo día"}
         </div>
+        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
+          <Icon name="map-pin" size={11} color="rgba(255,255,255,0.7)" /> {props.clubLabel}
+        </div>
+        {props.description.trim() && (
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "rgba(255,255,255,0.8)",
+              marginTop: 10,
+              lineHeight: 1.5,
+              borderTop: "1px solid rgba(255,255,255,0.12)",
+              paddingTop: 10,
+            }}
+          >
+            {props.description.trim()}
+          </div>
+        )}
       </div>
 
       <div className="mp-tournament-preview-kpis">
@@ -1035,6 +1551,49 @@ function StepPreview(props: {
         <PreviewKV label="Pago" value={props.policyLabel} />
       </div>
 
+      {hasRegWindow && (
+        <div
+          className="card"
+          style={{
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            background: "var(--muted)",
+            marginTop: 12,
+          }}
+        >
+          <div className="label-mp">Ventana de inscripción</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: "#0a0a0a" }}>
+            {props.regOpensAt ? `Abre ${fmtDate(props.regOpensAt)}` : "Apertura manual"}
+            {" · "}
+            {props.regClosesAt ? `Cierra ${fmtDate(props.regClosesAt)}` : "Cierre manual"}
+          </div>
+        </div>
+      )}
+
+      {props.categories.length > 0 && (
+        <div
+          className="card"
+          style={{
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            background: "#fff",
+            marginTop: 12,
+          }}
+        >
+          <div className="label-mp">Categorías · {props.categories.length}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+            {props.categories.map((c) => (
+              <div key={c.key} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                <b style={{ fontSize: 12, color: "#0a0a0a" }}>{c.name}</b>
+                <span style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>{catSummary(c)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div
         className="card"
         style={{
@@ -1042,6 +1601,7 @@ function StepPreview(props: {
           border: "1px solid var(--border)",
           borderRadius: 10,
           background: "var(--muted)",
+          marginTop: 12,
         }}
       >
         <div className="label-mp">Sistema de puntuación</div>
@@ -1049,14 +1609,7 @@ function StepPreview(props: {
         <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.5 }}>
           {props.scoring.sub}
         </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginTop: 10,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <Chip label={`Tipo: ${props.scoring.config.type === "side_out" ? "Side-out" : "Rally"}`} />
           <Chip label={`Game a ${props.scoring.config.points}`} />
           <Chip label={`Gana por ${props.scoring.config.winBy}`} />

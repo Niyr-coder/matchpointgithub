@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { RS_BORDER, RSHeader } from "../widgets/RS";
+import { RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { generateBracket } from "@/server/actions/tournaments";
 import { reportBracketMatch } from "@/server/actions/tournament-group-stage";
+import { BracketView, type BracketNode } from "../brackets/BracketView";
 
 export type BracketMatch = {
   id: string;
@@ -44,82 +45,15 @@ const EMPTY_MATCH: BracketMatch = {
   reportable: false,
 };
 
-function MatchCell({
-  m,
-  placeholder,
-  onReport,
-}: {
-  m: BracketMatch;
-  placeholder?: boolean;
-  onReport?: (matchId: string) => void;
-}) {
-  return (
-    <div
-      style={{
-        padding: 8,
-        background: m.live ? "#fffbeb" : placeholder ? "#fafafa" : "#fff",
-        border: m.live ? "2px solid #fbbf24" : placeholder ? "1px dashed var(--border)" : RS_BORDER,
-        borderRadius: 8,
-        position: "relative",
-        opacity: placeholder ? 0.6 : 1,
-      }}
-    >
-      {m.live && (
-        <span
-          style={{
-            position: "absolute",
-            top: -8,
-            right: 6,
-            padding: "1px 5px",
-            borderRadius: 3,
-            background: "#fbbf24",
-            color: "#0a0a0a",
-            fontSize: 8,
-            fontWeight: 900,
-            letterSpacing: "0.1em",
-          }}
-        >
-          LIVE
-        </span>
-      )}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          padding: "2px 0",
-          opacity: m.w === "b" ? 0.4 : 1,
-        }}
-      >
-        <span style={{ fontSize: 10.5, fontWeight: m.w === "a" ? 900 : 700 }}>{m.a}</span>
-        <span className="font-heading" style={{ fontSize: 12, fontWeight: 900 }}>
-          {m.sa}
-        </span>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          padding: "2px 0",
-          opacity: m.w === "a" ? 0.4 : 1,
-        }}
-      >
-        <span style={{ fontSize: 10.5, fontWeight: m.w === "b" ? 900 : 700 }}>{m.b}</span>
-        <span className="font-heading" style={{ fontSize: 12, fontWeight: 900 }}>
-          {m.sb}
-        </span>
-      </div>
-      {!placeholder && m.reportable && onReport && (
-        <button
-          type="button"
-          className="btn btn-sm"
-          style={{ marginTop: 6, width: "100%", fontSize: 10 }}
-          onClick={() => onReport(m.id)}
-        >
-          Reportar
-        </button>
-      )}
-    </div>
-  );
+function toNode(m: BracketMatch, placeholder: boolean): BracketNode {
+  return {
+    id: m.id,
+    a: { label: m.a, score: m.sa, isWinner: m.w === "a" },
+    b: { label: m.b, score: m.sb, isWinner: m.w === "b" },
+    live: m.live,
+    reportable: !placeholder && m.reportable,
+    dimmed: placeholder,
+  };
 }
 
 export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
@@ -223,106 +157,19 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
         </div>
       )}
 
-      <div className="card mp-partner-bracket-scroll" style={{ padding: 24, overflow: "auto" }}>
-        <div className="mp-partner-bracket-grid">
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 28,
-              justifyContent: "space-around",
-            }}
-          >
-            <div className="label-mp" style={{ textAlign: "center", marginBottom: -16 }}>
-              {data.roundLabels.r1}
-            </div>
-            {r1.map((m, i) => (
-              <MatchCell
-                key={m.id || i}
-                m={m}
-                placeholder={!hasBracket}
-                onReport={hasBracket ? onReport : undefined}
-              />
-            ))}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 80,
-              justifyContent: "space-around",
-            }}
-          >
-            <div className="label-mp" style={{ textAlign: "center", marginBottom: -16 }}>
-              {data.roundLabels.r2}
-            </div>
-            {r2.map((m, i) => (
-              <MatchCell
-                key={m.id || i}
-                m={m}
-                placeholder={!hasBracket}
-                onReport={hasBracket ? onReport : undefined}
-              />
-            ))}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-            }}
-          >
-            <div className="label-mp" style={{ textAlign: "center", marginBottom: 14 }}>
-              {data.roundLabels.r3}
-            </div>
-            <MatchCell
-              m={r3}
-              placeholder={!hasBracket}
-              onReport={hasBracket ? onReport : undefined}
-            />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <div className="label-mp" style={{ textAlign: "center", marginBottom: 14 }}>
-              Campeón
-            </div>
-            <div
-              style={{
-                padding: 16,
-                borderRadius: 10,
-                background: hasBracket
-                  ? "linear-gradient(135deg, #fef3c7, #fde68a)"
-                  : "#fafafa",
-                border: hasBracket ? "2px solid #fbbf24" : "1px dashed var(--border)",
-                textAlign: "center",
-                opacity: hasBracket ? 1 : 0.6,
-              }}
-            >
-              <Icon name="trophy" size={24} color={hasBracket ? "#92400e" : "var(--muted-fg)"} />
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 900,
-                  color: hasBracket ? "#78350f" : "var(--muted-fg)",
-                  letterSpacing: "0.16em",
-                  marginTop: 6,
-                  textTransform: "uppercase",
-                }}
-              >
-                {data.championLabel}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: hasBracket ? "#78350f" : "var(--muted-fg)",
-                  marginTop: 4,
-                }}
-              >
-                {data.championWhen}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <BracketView
+        columns={[
+          { label: data.roundLabels.r1, matches: r1.map((m) => toNode(m, !hasBracket)) },
+          { label: data.roundLabels.r2, matches: r2.map((m) => toNode(m, !hasBracket)) },
+          { label: data.roundLabels.r3, matches: [r3].map((m) => toNode(m, !hasBracket)) },
+        ]}
+        champion={{
+          label: data.championLabel,
+          decided: hasBracket && !!data.rounds.r3[0]?.w,
+          when: data.championWhen,
+        }}
+        onReport={hasBracket ? onReport : undefined}
+      />
 
       {reportId && (
         <div

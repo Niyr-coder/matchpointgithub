@@ -1,17 +1,42 @@
 import type { AdminTournamentDetail } from "@/server/actions/tournaments";
+import { BracketView, type BracketColumn } from "../../brackets/BracketView";
 
 type Bracket = AdminTournamentDetail["brackets"][number];
 
-function scoreLabel(score: unknown): string {
-  if (score == null) return "—";
-  if (typeof score === "string") return score;
-  if (typeof score === "object") {
-    const s = score as { a?: unknown; b?: unknown; sideA?: unknown; sideB?: unknown };
-    const a = s.a ?? s.sideA;
-    const b = s.b ?? s.sideB;
-    if (a != null || b != null) return `${a ?? "—"}-${b ?? "—"}`;
+// Extrae el tanteo por lado de un score jsonb. Soporta {sets:[{a,b}]} (flujo del
+// partner) y {a,b}/{sideA,sideB}. Devuelve null cuando no hay nada registrado.
+function sideScores(score: unknown): { a: number | null; b: number | null } {
+  if (score == null || typeof score !== "object") return { a: null, b: null };
+  const s = score as {
+    sets?: Array<{ a?: number; b?: number }>;
+    a?: unknown;
+    b?: unknown;
+    sideA?: unknown;
+    sideB?: unknown;
+  };
+  if (Array.isArray(s.sets) && s.sets.length > 0) {
+    let a = 0;
+    let b = 0;
+    for (const set of s.sets) {
+      a += set.a ?? 0;
+      b += set.b ?? 0;
+    }
+    return { a, b };
   }
-  return "Registrado";
+  const a = s.a ?? s.sideA;
+  const b = s.b ?? s.sideB;
+  const toNum = (v: unknown): number | null =>
+    typeof v === "number" ? v : v != null && !Number.isNaN(Number(v)) ? Number(v) : null;
+  return { a: toNum(a), b: toNum(b) };
+}
+
+function roundLabel(idx: number, total: number): string {
+  const fromEnd = total - 1 - idx;
+  if (fromEnd === 0) return "Final";
+  if (fromEnd === 1) return "Semifinal";
+  if (fromEnd === 2) return "Cuartos";
+  if (fromEnd === 3) return "Octavos";
+  return `Ronda ${idx + 1}`;
 }
 
 function fmtDate(iso: string | null): string {
@@ -76,10 +101,36 @@ function BracketCard({
   bracket: Bracket;
   registrationLabel: Map<string, string>;
 }) {
-  const rounds = new Map<number, Bracket["matches"]>();
-  for (const match of bracket.matches) {
-    rounds.set(match.round, [...(rounds.get(match.round) ?? []), match]);
-  }
+  const roundNumbers = [...new Set(bracket.matches.map((m) => m.round))].sort((a, b) => a - b);
+  const label = (regId: string | null) => registrationLabel.get(regId ?? "") ?? "Por definir";
+
+  const columns: BracketColumn[] = roundNumbers.map((round, idx) => ({
+    label: roundLabel(idx, roundNumbers.length),
+    matches: bracket.matches
+      .filter((m) => m.round === round)
+      .sort((a, b) => a.position - b.position)
+      .map((m) => {
+        const sc = sideScores(m.score);
+        return {
+          id: m.id,
+          a: { label: label(m.sideARegistrationId), score: sc.a, isWinner: m.winnerSide === "a" },
+          b: { label: label(m.sideBRegistrationId), score: sc.b, isWinner: m.winnerSide === "b" },
+          live: m.status === "live",
+          meta: m.scheduledAt ? fmtDate(m.scheduledAt) : null,
+        };
+      }),
+  }));
+
+  // Campeón: ganador del último partido (ronda más alta, posición 0).
+  const finalMatch = bracket.matches.find(
+    (m) => m.round === roundNumbers[roundNumbers.length - 1] && m.position === 0,
+  );
+  const championRegId =
+    finalMatch?.winnerSide === "a"
+      ? finalMatch.sideARegistrationId
+      : finalMatch?.winnerSide === "b"
+        ? finalMatch.sideBRegistrationId
+        : null;
 
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "#fff" }}>
@@ -97,52 +148,13 @@ function BracketCard({
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-        {Array.from(rounds.entries()).map(([round, matches]) => (
-          <div key={round} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div className="label-mp">Ronda {round}</div>
-            {matches.map((match) => (
-              <div key={match.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--muted-fg)" }}>
-                  <span>Partido {match.position}</span>
-                  <span>{match.status}</span>
-                </div>
-                <SideRow
-                  label={registrationLabel.get(match.sideARegistrationId ?? "") ?? "TBD"}
-                  winner={match.winnerSide === "a"}
-                />
-                <SideRow
-                  label={registrationLabel.get(match.sideBRegistrationId ?? "") ?? "TBD"}
-                  winner={match.winnerSide === "b"}
-                />
-                <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted-fg)" }}>
-                  Score: <strong style={{ color: "#0a0a0a" }}>{scoreLabel(match.score)}</strong> · {fmtDate(match.scheduledAt)}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SideRow({ label, winner }: { label: string; winner: boolean }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        paddingTop: 6,
-        fontSize: 12,
-        fontWeight: winner ? 900 : 650,
-        opacity: winner ? 1 : 0.75,
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-      {winner ? <span style={{ color: "var(--primary)", fontSize: 10 }}>Ganador</span> : null}
+      <BracketView
+        columns={columns}
+        champion={{
+          label: championRegId ? label(championRegId) : "Por definir",
+          decided: !!championRegId,
+        }}
+      />
     </div>
   );
 }

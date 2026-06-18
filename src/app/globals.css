@@ -2238,6 +2238,25 @@ select.mp-input:disabled {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* Transición suave al cambiar de paso del wizard (key={step} remonta el nodo). */
+.mp-tournament-step-anim {
+  animation: mp-tournament-step-in 240ms var(--ease-out) both;
+}
+@keyframes mp-tournament-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-tournament-step-anim {
+    animation: none;
+  }
+}
 .mp-crear-quedada-footer {
   padding: 14px 22px;
   border-top: 1px solid var(--border);
@@ -2973,6 +2992,241 @@ select.mp-input:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
   min-width: 720px;
+}
+
+/* ── BracketView · estética "Apple Sports" (oscuro) ── */
+.mp-bk-scroll {
+  --bk-card: 184px;
+  --bk-gutter: 30px;
+  --bk-line: rgba(255, 255, 255, 0.16);
+  --bk-bg-1: #0b0b0d;
+  --bk-bg-2: #16161a;
+  background: radial-gradient(120% 140% at 0% 0%, var(--bk-bg-2), var(--bk-bg-1));
+  border-radius: 16px;
+  padding: 22px 20px 24px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mp-bk-tree {
+  display: flex;
+  min-width: max-content;
+  align-items: stretch;
+}
+.mp-bk-round {
+  display: flex;
+  flex-direction: column;
+  width: var(--bk-card);
+  flex: none;
+}
+.mp-bk-round:not(:first-child) {
+  width: calc(var(--bk-card) + var(--bk-gutter));
+}
+.mp-bk-round-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  padding-bottom: 14px;
+  height: 14px;
+  box-sizing: content-box;
+}
+.mp-bk-round:not(:first-child) .mp-bk-round-label {
+  padding-left: var(--bk-gutter);
+}
+.mp-bk-cells {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.mp-bk-cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.mp-bk-round:not(:first-child) .mp-bk-cell {
+  padding-left: var(--bk-gutter);
+}
+/* Conector de entrada: stub horizontal hacia la tarjeta (todas las rondas > 0). */
+.mp-bk-round.is-pair .mp-bk-cell::after,
+.mp-bk-round.is-straight .mp-bk-cell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--bk-gutter);
+  height: 2px;
+  background: var(--bk-line);
+}
+/* Conector "par": línea vertical que junta los dos partidos previos (25%–75%). */
+.mp-bk-round.is-pair .mp-bk-cell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 2px;
+  background: var(--bk-line);
+}
+
+/* Tarjeta de partido */
+.mp-bk-match {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 10px 12px;
+  position: relative;
+  transition: border-color 200ms var(--ease-out), background 200ms var(--ease-out);
+}
+.mp-bk-match:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.mp-bk-match.is-dimmed {
+  opacity: 0.4;
+}
+.mp-bk-match.is-live {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.35), 0 8px 24px rgba(251, 191, 36, 0.12);
+}
+.mp-bk-match.is-mine {
+  border-color: rgba(16, 185, 129, 0.55);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+.mp-bk-mine-tag {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--primary);
+  color: #04130d;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.mp-bk-live {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #fbbf24;
+  color: #0a0a0a;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.mp-bk-seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mp-bk-seat-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.42);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-bk-seat.is-winner .mp-bk-seat-name {
+  color: #fff;
+  font-weight: 800;
+}
+.mp-bk-seat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+.mp-bk-seat-score {
+  font-family: var(--font-heading, inherit);
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.42);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.mp-bk-seat.is-winner .mp-bk-seat-score {
+  color: #fff;
+}
+.mp-bk-seat-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 7px 0;
+}
+.mp-bk-meta {
+  margin-top: 8px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.mp-bk-report {
+  margin-top: 10px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 160ms var(--ease-out);
+}
+.mp-bk-report:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Tarjeta de campeón */
+.mp-bk-champion {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  padding: 16px 12px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+}
+.mp-bk-champion.is-decided {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.22), rgba(217, 119, 6, 0.14));
+  border: 1px solid rgba(251, 191, 36, 0.55);
+}
+.mp-bk-champion-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.mp-bk-champion.is-decided .mp-bk-champion-label {
+  color: #fde68a;
+}
+.mp-bk-champion-when {
+  font-size: 11px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-bk-match {
+    transition: none;
+  }
 }
 
 @media (max-width: 767px) {

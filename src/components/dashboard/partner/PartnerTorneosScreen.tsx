@@ -47,11 +47,25 @@ function deriveStatus(dbStatus: string, starts: Date, ends: Date | null, now: Da
 
 async function loadData(): Promise<TorneosData> {
   const partnerId = await resolveActivePartnerId();
-  if (!partnerId) return { partnerId: null, rows: [] };
+  if (!partnerId) return { partnerId: null, rows: [], clubs: [] };
 
   const supabase = await getServerClient();
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Clubes vinculados al partner — alimentan el selector de sede del wizard.
+  const { data: clubLinks } = await supabase
+    .from("partner_club_links")
+    .select("club_id,clubs(id,name,city)")
+    .eq("partner_id", partnerId);
+  const clubs = (clubLinks ?? [])
+    .map((l) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c = (l as any).clubs as { id: string; name: string; city: string | null } | null;
+      if (!c) return null;
+      return { id: c.id, name: c.name, city: c.city ?? null };
+    })
+    .filter((c): c is { id: string; name: string; city: string | null } => !!c);
 
   const { data: tournaments } = await supabase
     .from("tournaments")
@@ -114,7 +128,7 @@ async function loadData(): Promise<TorneosData> {
     };
   });
 
-  return { partnerId, rows };
+  return { partnerId, rows, clubs };
 }
 
 export async function PartnerTorneosScreen() {

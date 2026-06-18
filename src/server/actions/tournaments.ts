@@ -331,6 +331,7 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
         club_id: data.clubId ?? null,
         name: data.name,
         slug: data.slug,
+        description: data.description ?? null,
         sport: data.sport,
         format: data.format,
         starts_at: data.startsAt,
@@ -356,21 +357,51 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
       throw new MpError("TOURNAMENTS.CREATE_FAILED", error.message, 500);
     }
 
-    if (data.format === "groups_to_knockout" && data.groupPlayoffConfig) {
-      const admin = getAdminClient();
-      await setAuditActor(admin, userId, "partner");
+    // Categorías: las que el organizador definió en el wizard. Para
+    // groups_to_knockout cada categoría hereda stage + group_playoff_config
+    // (la config de grupos es por-categoría — ver docs §13.2). Si el wizard no
+    // mandó ninguna y el formato es por grupos, mantenemos el fallback histórico
+    // de auto-crear una categoría con el label de la modalidad para no dejar el
+    // torneo sin la fase de grupos cableada.
+    const isGroups = data.format === "groups_to_knockout";
+    let categoriesToInsert = data.categories ?? [];
+    if (categoriesToInsert.length === 0 && isGroups && data.groupPlayoffConfig) {
       const modalityLabel =
         data.modality === "singles"
           ? "Singles"
           : data.modality === "mixed_doubles"
             ? "Mixto"
             : "Dobles";
-      const { error: catErr } = await admin.from("tournament_categories").insert({
-        tournament_id: row.id,
-        name: modalityLabel,
-        stage: "pending_groups",
-        group_playoff_config: data.groupPlayoffConfig,
-      } as never);
+      categoriesToInsert = [{ name: modalityLabel }];
+    }
+    if (categoriesToInsert.length > 0) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "partner");
+      const groupConfig = data.groupPlayoffConfig ?? {
+        groupsCount: 2,
+        advancePerGroup: 4,
+        finalScoringOverride: null,
+      };
+      const categoryRows = categoriesToInsert.map((c) => {
+        const catRow: Record<string, unknown> = {
+          tournament_id: row.id,
+          name: c.name,
+          gender: c.gender ?? null,
+          mpr_min: c.mprMin ?? null,
+          mpr_max: c.mprMax ?? null,
+          age_min: c.ageMin ?? null,
+          age_max: c.ageMax ?? null,
+          max_teams: c.maxTeams ?? null,
+        };
+        if (isGroups) {
+          catRow.stage = "pending_groups";
+          catRow.group_playoff_config = groupConfig;
+        }
+        return catRow;
+      });
+      const { error: catErr } = await admin
+        .from("tournament_categories")
+        .insert(categoryRows as never);
       if (catErr) {
         throw new MpError("TOURNAMENTS.CATEGORY_FAILED", catErr.message, 500);
       }

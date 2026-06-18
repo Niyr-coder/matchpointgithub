@@ -20,6 +20,7 @@ import {
   type TorneoPlayerShell,
   type TorneoPlayerStatus,
 } from "@/lib/torneos/player-view";
+import { BracketView, type BracketColumn } from "../brackets/BracketView";
 
 export type TorneoPlayerTab = "camino" | "completo" | "detalles" | "resultados";
 
@@ -102,7 +103,7 @@ export function TorneoDetailView({
         />
       )}
       {tab === "completo" && (
-        <CompletoTab tone={tone} format={format} bracketSides={bracketSides} />
+        <CompletoTab format={format} bracketSides={bracketSides} />
       )}
       {tab === "detalles" && (
         <DetallesTab tone={tone} format={format} feeLabel={shell.feeLabel} detail={detail} />
@@ -262,11 +263,9 @@ function TorneoMatchRow({ m, tone }: { m: TournamentPlayerMatchView; tone: Playe
 }
 
 function CompletoTab({
-  tone,
   format,
   bracketSides,
 }: {
-  tone: PlayerTone;
   format: TorneoPlayerFormat;
   bracketSides: TournamentBracketSideView[];
 }) {
@@ -288,82 +287,19 @@ function CompletoTab({
     return `Ronda ${round}`;
   };
 
-  return (
-    <div className="card" style={{ padding: 14, overflow: "auto" }}>
-      <div style={{ display: "flex", gap: 18, minWidth: Math.max(600, rounds.length * 140) }}>
-        {rounds.map((round, idx) => {
-          const matches = bracketSides.filter((m) => m.round === round);
-          return (
-            <div key={round} style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 130 }}>
-              <div className="label-mp" style={{ marginBottom: 8 }}>
-                {roundTitle(round, idx, rounds.length)}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "space-around", flex: 1 }}>
-                {matches.map((m) => (
-                  <BracketMatchReal key={m.id} m={m} tone={tone} />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+  const columns: BracketColumn[] = rounds.map((round, idx) => ({
+    label: roundTitle(round, idx, rounds.length),
+    matches: bracketSides
+      .filter((m) => m.round === round)
+      .map((m) => ({
+        id: m.id,
+        a: { label: m.sideALabel, score: m.sideAScore, isWinner: m.winnerSide === "a" },
+        b: { label: m.sideBLabel, score: m.sideBScore, isWinner: m.winnerSide === "b" },
+        highlight: m.involvesMe,
+      })),
+  }));
 
-function BracketMatchReal({ m, tone }: { m: TournamentBracketSideView; tone: PlayerTone }) {
-  const aWon = m.winnerSide === "a";
-  const bWon = m.winnerSide === "b";
-  const highlight = m.involvesMe;
-
-  return (
-    <div
-      style={{
-        border: `1px solid ${highlight ? tone.accent : "var(--border)"}`,
-        borderRadius: 8,
-        overflow: "hidden",
-        background: highlight ? "#fffbeb" : "#fff",
-      }}
-    >
-      <BracketLineReal name={m.sideALabel} won={aWon} highlight={highlight} tone={tone} />
-      <div style={{ height: 1, background: "var(--border)" }} />
-      <BracketLineReal name={m.sideBLabel} won={bWon} highlight={highlight} tone={tone} />
-    </div>
-  );
-}
-
-function BracketLineReal({
-  name,
-  won,
-  highlight,
-  tone,
-}: {
-  name: string;
-  won: boolean;
-  highlight: boolean;
-  tone: PlayerTone;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 8px",
-        fontSize: 10.5,
-        fontWeight: won || highlight ? 900 : 700,
-        color: won || highlight ? "var(--fg)" : "var(--muted-fg)",
-        background: highlight ? "rgba(251,191,36,0.10)" : "transparent",
-      }}
-    >
-      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-      {highlight && (
-        <span style={{ fontSize: 7.5, fontWeight: 900, padding: "1px 4px", borderRadius: 9999, background: tone.accent, color: "#0a0a0a", letterSpacing: "0.08em" }}>
-          TÚ
-        </span>
-      )}
-    </div>
-  );
+  return <BracketView columns={columns} />;
 }
 
 function DetallesTab({
