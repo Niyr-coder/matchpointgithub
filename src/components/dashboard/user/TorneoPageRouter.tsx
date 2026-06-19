@@ -41,6 +41,7 @@ export function TorneoPageRouter({
       <TorneoDetailView
         shell={shell}
         detail={detail}
+        myRegistration={myRegistration}
         myMatches={myMatches}
         bracketSides={bracketSides}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { PlayerBackBtn } from "./_shared/PlayerBackBtn";
@@ -11,7 +11,11 @@ import { MiniStat } from "./_shared/MiniStat";
 import { PLAYER_TONES } from "./_shared/playerTones";
 import type { PlayerTone } from "./_shared/playerTones";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
+import type { MyRegistration } from "@/components/dashboard/eventos/TournamentDetailView";
 import type { TournamentBracketSideView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
+import { cancelMyRegistration } from "@/server/actions/tournaments";
+import { useToast } from "@/components/dashboard/ToastProvider";
+import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import {
   completoTabIcon,
   formatLabelForPlayerView,
@@ -28,6 +32,7 @@ export type TorneoPlayerTab = "camino" | "completo" | "detalles" | "resultados";
 type Props = {
   shell: TorneoPlayerShell;
   detail: TournamentDetail;
+  myRegistration: MyRegistration;
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
   /** Override status (preview / dev). */
@@ -45,12 +50,16 @@ function tabFromLocation(): TorneoPlayerTab {
 export function TorneoDetailView({
   shell,
   detail,
+  myRegistration,
   myMatches = [],
   bracketSides = [],
   previewStatus,
   backHref = "/dashboard/user/eventos",
 }: Props) {
   const router = useRouter();
+  const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [cancelling, startCancel] = useTransition();
   const tone = PLAYER_TONES.torneo;
   const format = shell.format;
   const status = previewStatus ?? shell.status;
@@ -88,10 +97,50 @@ export function TorneoDetailView({
     [format, shell.dateLabel, shell.locationText],
   );
 
+  const handleCancelRegistration = useCallback(async () => {
+    const ok = await confirm({
+      title: "Abandonar inscripción",
+      body: "¿Seguro que quieres abandonar la inscripción? Liberarás tu cupo.",
+      confirmLabel: "Abandonar",
+      destructive: true,
+    });
+    if (!ok) return;
+    startCancel(async () => {
+      const res = await cancelMyRegistration({ registrationId: myRegistration.id });
+      if (res.ok) {
+        toast({ icon: "check", title: "Inscripción cancelada", sub: "Tu cupo quedó libre." });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  }, [confirm, myRegistration.id, router, toast]);
+
+  const canWithdraw = status === "open";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 18 }}>
       <PlayerBackBtn onClick={() => router.push(backHref)} />
       <PlayerHero tone={tone} statusLabel={shell.statusLabel} title={shell.title} meta={meta} />
+      {canWithdraw ? (
+        <button
+          type="button"
+          className="btn"
+          disabled={cancelling}
+          onClick={handleCancelRegistration}
+          style={{
+            alignSelf: "flex-start",
+            fontSize: 12,
+            padding: "10px 16px",
+            background: "rgba(220,38,38,0.08)",
+            border: "1px solid rgba(220,38,38,0.35)",
+            color: "#dc2626",
+          }}
+        >
+          <Icon name="x" size={13} color="#dc2626" />
+          {cancelling ? "Cancelando…" : "Abandonar inscripción"}
+        </button>
+      ) : null}
       <PlayerTabStrip tabs={tabs} active={tab} onChange={setActiveTab} tone="torneo" ariaLabel="Vista de torneo" />
 
       {tab === "camino" && (

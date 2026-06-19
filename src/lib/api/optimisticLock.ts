@@ -19,7 +19,8 @@ import { MpError } from "./errors";
 export type OptimisticUpdateOpts<T extends Record<string, unknown>> = {
   table: "club_applications" | "reservations" | "clubs";
   id: string;
-  expectedVersion: number;
+  /** Si se omite, actualiza sin chequeo de versión (el trigger sigue bump-eando). */
+  expectedVersion?: number;
   update: T;
 };
 
@@ -28,18 +29,20 @@ export async function runOptimisticUpdate<T extends Record<string, unknown>>(
 ): Promise<Record<string, unknown>> {
   const supabase = await getServerClient();
 
-  const payload = {
-    ...opts.update,
-    version: opts.expectedVersion + 1,
-  } as never;
+  const payload: Record<string, unknown> = { ...opts.update };
+  if (opts.expectedVersion !== undefined) {
+    payload.version = opts.expectedVersion + 1;
+  }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(opts.table)
-    .update(payload)
-    .eq("id", opts.id)
-    .eq("version", opts.expectedVersion)
-    .select()
-    .maybeSingle();
+    .update(payload as never)
+    .eq("id", opts.id);
+  if (opts.expectedVersion !== undefined) {
+    query = query.eq("version", opts.expectedVersion);
+  }
+
+  const { data, error } = await query.select().maybeSingle();
 
   if (error) throw new MpError(`${opts.table.toUpperCase()}.UPDATE_FAILED`, error.message, 500);
 

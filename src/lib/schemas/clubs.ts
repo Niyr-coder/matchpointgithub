@@ -103,6 +103,7 @@ export const ClubUpdateSchema = z
     sports: true,
     latitude: true,
     longitude: true,
+    expectedVersion: true,
   })
   .openapi("ClubUpdate");
 

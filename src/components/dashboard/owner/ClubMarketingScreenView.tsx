@@ -9,8 +9,11 @@ import { RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast, type ToastPayload } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
-import { activateBroadcast, cancelBroadcast, createBroadcast } from "@/server/actions/marketing";
+import { activateBroadcast, cancelBroadcast } from "@/server/actions/marketing";
+import { createClubPromoFromTemplate } from "@/server/actions/club-promo-campaigns";
 import { ClubFeaturingPanel } from "./ClubFeaturingPanel";
+import { CreateClubPromoModal } from "./CreateClubPromoModal";
+import type { ClubPromoTemplateKey } from "@/lib/marketing/club-promo-templates";
 
 export type CampaignCard = {
   id: string;
@@ -36,6 +39,7 @@ export type MarketingData = {
   clubId: string | null;
   clubName: string;
   campaigns: CampaignCard[];
+  existingTemplateKeys: string[];
   reachMonth: number;
   sentCount: number;
   channels: ChannelStat[];
@@ -250,7 +254,7 @@ function PromoCard({
   isPending: boolean;
   toast: (t: ToastPayload) => void;
 }) {
-  const isPaused = p.tag === "PAUSADA";
+  const isPaused = p.tag === "PAUSADA" || p.tag === "BORRADOR";
 
   const sharePromo = async () => {
     const text = `${p.n} · Código: ${p.code}`;
@@ -410,7 +414,7 @@ function PromoCard({
               onClick={() => onActivate(p.id)}
             >
               <Icon name="play" size={11} color="#fff" />
-              Activar
+              {p.tag === "BORRADOR" ? "Activar" : "Activar"}
             </button>
           ) : (
             <button
@@ -569,53 +573,43 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
 
   const toast = useToast();
   const router = useRouter();
-  const { ask } = usePromptModal();
+  const { confirm } = usePromptModal();
   const [isPending, startTransition] = useTransition();
+  const [createOpen, setCreateOpen] = useState(false);
 
-  const handleNewCampaign = async () => {
+  const handleCreateFromTemplate = (templateKey: ClubPromoTemplateKey, maxUses: number) => {
     if (!data.clubId) return;
-    const title = await ask({
-      title: "Nueva campaña · 1/2",
-      label: "Título de la campaña",
-      placeholder: "ej. Promo de invierno",
-      required: true,
-      confirmLabel: "Siguiente",
-    });
-    if (title == null) return;
-    const body = await ask({
-      title: "Nueva campaña · 2/2",
-      label: "Mensaje",
-      placeholder: "Cuerpo de la campaña",
-      multiline: true,
-      required: true,
-      confirmLabel: "Crear campaña",
-    });
-    if (body == null) return;
     startTransition(async () => {
-      const res = await createBroadcast({
-        scope: "club",
+      const res = await createClubPromoFromTemplate({
         clubId: data.clubId!,
-        title: title.trim(),
-        body: body.trim(),
-        channels: ["inapp"],
-        targetFilter: {},
+        templateKey,
+        maxUses,
       });
       if (res.ok) {
-        toast({ icon: "check", title: "Campaña creada" });
-        // broadcasts no está en la realtime publication, así que forzamos
-        // refresh del server component para que aparezca en el listado.
+        toast({
+          icon: "check",
+          title: "Campaña creada",
+          sub: `Código ${res.data.code}. Actívala cuando quieras enviarla.`,
+        });
+        setCreateOpen(false);
         router.refresh();
       } else {
-        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+        toast({ icon: "alert-triangle", title: "No se pudo crear", sub: res.error.message });
       }
     });
   };
 
   const handleActivate = (id: string) => {
     startTransition(async () => {
+      const ok = await confirm({
+        title: "Activar campaña",
+        body: "Enviaremos la promo in-app a tus clientes con reservas en el club.",
+        confirmLabel: "Activar y enviar",
+      });
+      if (!ok) return;
       const res = await activateBroadcast({ id });
       if (res.ok) {
-        toast({ icon: "check", title: "Campaña activada" });
+        toast({ icon: "check", title: "Campaña activada", sub: "Notificación enviada a tu audiencia." });
         router.refresh();
       } else {
         toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
@@ -668,7 +662,11 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
         title="Atrae y retén"
         sub="Tus promociones, audiencia y canales en un solo lugar. Boost los eventos que más te importan."
         right={
-          <button className="btn btn-primary" onClick={handleNewCampaign} disabled={isPending || !data.clubId}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setCreateOpen(true)}
+            disabled={isPending || !data.clubId}
+          >
             <Icon name="plus" size={13} color="#fff" />
             {isPending ? "Creando…" : "Nueva campaña"}
           </button>
@@ -756,18 +754,41 @@ export function ClubMarketingScreenView({ data }: { data: MarketingData }) {
           </span>
         </div>
         <div className="mp-tournament-form-grid-3">
-          {data.campaigns.map((p) => (
-            <PromoCard
-              key={p.id}
-              p={p}
-              onActivate={handleActivate}
-              onCancel={handleCancel}
-              isPending={isPending}
-              toast={toast}
-            />
-          ))}
+          {data.campaigns.length === 0 ? (
+            <div
+              className="card"
+              style={{
+                gridColumn: "1 / -1",
+                padding: 28,
+                textAlign: "center",
+                color: "var(--muted-fg)",
+                fontSize: 13,
+              }}
+            >
+              Aún no tienes campañas. Pulsa <b>Nueva campaña</b> y elige una plantilla predefinida.
+            </div>
+          ) : (
+            data.campaigns.map((p) => (
+              <PromoCard
+                key={p.id}
+                p={p}
+                onActivate={handleActivate}
+                onCancel={handleCancel}
+                isPending={isPending}
+                toast={toast}
+              />
+            ))
+          )}
         </div>
       </div>
+
+      <CreateClubPromoModal
+        open={createOpen}
+        busy={isPending}
+        existingTemplateKeys={data.existingTemplateKeys}
+        onClose={() => setCreateOpen(false)}
+        onCreate={handleCreateFromTemplate}
+      />
 
       <div
         className="card"

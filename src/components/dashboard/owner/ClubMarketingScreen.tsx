@@ -59,6 +59,7 @@ async function loadData(): Promise<MarketingData> {
       clubId: null,
       clubName: "",
       campaigns: [],
+      existingTemplateKeys: [],
       reachMonth: 0,
       sentCount: 0,
       channels: [],
@@ -104,33 +105,44 @@ async function loadData(): Promise<MarketingData> {
     }
   }
 
-  // Sort: defaults seedeadas (payload.default_key presente) van primero
-  // para que el owner vea ejemplos al toque; el resto en orden de creación
-  // descendente.
+  // Orden: borradores/pausadas primero (accionables), luego enviadas por fecha.
   const sorted = [...(broadcasts ?? [])].sort((a, b) => {
-    const aDef = (a.payload as CampaignPayload | null)?.tag != null ? 1 : 0;
-    const bDef = (b.payload as CampaignPayload | null)?.tag != null ? 1 : 0;
-    if (aDef !== bDef) return bDef - aDef;
+    const rank = (s: string) => {
+      if (s === "draft") return 0;
+      if (s === "cancelled") return 1;
+      if (s === "scheduled") return 2;
+      return 3;
+    };
+    const ra = rank((a.status as string) ?? "draft");
+    const rb = rank((b.status as string) ?? "draft");
+    if (ra !== rb) return ra - rb;
     return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
   });
-  const top3 = sorted.slice(0, 3);
-  const campaigns: CampaignCard[] = top3.map((b, i) => {
+
+  const campaigns: CampaignCard[] = sorted.map((b, i) => {
     const status = (b.status as string) ?? "draft";
     const meta = STATUS_TAG[status] ?? STATUS_TAG.draft;
     const channels = (b.channels as string[] | null) ?? ["inapp"];
     const channelKind = CHANNEL_META[channels[0]]?.label ?? "Campaña";
     const reach = reachByBroadcast.get(b.id as string) ?? 0;
     const payload = (b.payload as CampaignPayload | null) ?? {};
+    const maxUses = payload.max ?? 100;
+    const tag =
+      status === "cancelled"
+        ? "PAUSADA"
+        : status === "draft"
+          ? "BORRADOR"
+          : payload.tag ?? meta.tag;
     return {
       id: b.id as string,
       n: (b.title as string) ?? "Sin título",
       kind: payload.kind ?? channelKind,
       code: payload.code ?? (b.id as string).slice(0, 8).toUpperCase(),
-      uses: payload.uses ?? reach,
-      max: payload.max ?? Math.max(reach, 100),
+      uses: reach,
+      max: maxUses,
       end: payload.end ?? fmtDate((b.scheduled_for as string | null) ?? (b.sent_at as string | null)),
       img: payload.bg ?? PROMO_BGS[i % PROMO_BGS.length],
-      tag: payload.tag ?? meta.tag,
+      tag,
       accent: payload.accent ?? meta.accent,
     };
   });
@@ -165,10 +177,21 @@ async function loadData(): Promise<MarketingData> {
 
   const sentCount = (broadcasts ?? []).filter((b) => b.status === "sent").length;
 
+  const existingTemplateKeys = (broadcasts ?? [])
+    .filter((b) => (b.status as string) !== "cancelled")
+    .map((b) => {
+      const payload = (b.payload as CampaignPayload | null) ?? {};
+      return (payload as { template_key?: string; default_key?: string }).template_key
+        ?? (payload as { default_key?: string }).default_key
+        ?? null;
+    })
+    .filter((k): k is string => typeof k === "string");
+
   return {
     clubId,
     clubName,
     campaigns,
+    existingTemplateKeys,
     reachMonth: monthRecipientsCount,
     sentCount,
     channels,

@@ -176,10 +176,8 @@ export async function cancelBroadcast(input: unknown): Promise<ActionResult<Broa
   });
 }
 
-// ── activateBroadcast ──────────────────────────────────────────────────
-// Reanuda una campaña pausada (status=cancelled, típicamente las defaults
-// seedeadas con tag="PAUSADA"): la mueve a status=sent y actualiza el tag
-// visual en payload para que ya no aparezca como pausada.
+// Reanuda una campaña pausada (status=cancelled) o activa un borrador:
+// despacha notificaciones in-app y marca como enviada.
 export async function activateBroadcast(input: unknown): Promise<ActionResult<Broadcast>> {
   return runAction(z.object({ id: UuidSchema }), input, async ({ id }) => {
     const supabase = await getServerClient();
@@ -189,7 +187,7 @@ export async function activateBroadcast(input: unknown): Promise<ActionResult<Br
       .eq("id", id)
       .single();
     if (!current) throw new MpError("BROADCASTS.NOT_FOUND", "Broadcast not found", 404);
-    await assertCanBroadcast(
+    const userId = await assertCanBroadcast(
       current.scope as "platform" | "club" | "partner",
       current.club_id as string | null,
       current.partner_id as string | null,
@@ -197,18 +195,29 @@ export async function activateBroadcast(input: unknown): Promise<ActionResult<Br
     if (!["cancelled", "draft"].includes(current.status as string)) {
       throw new MpError("BROADCASTS.NOT_ACTIVATABLE", `Status is '${current.status}'`, 409);
     }
-    // Sobreescribir payload.tag a "EN VIVO" para que la UI deje de mostrar
-    // la pill PAUSADA. Resto del payload (code, kind, etc) se preserva.
+
+    if (current.status === "cancelled") {
+      const { error: resetErr } = await supabase
+        .from("broadcasts")
+        .update({ status: "draft" } as never)
+        .eq("id", id);
+      if (resetErr) throw new MpError("BROADCASTS.ACTIVATE_FAILED", resetErr.message, 500);
+    }
+
+    const dispatch = await executeBroadcastDispatch(id, userId);
+
     const prevPayload = (current.payload as Record<string, unknown> | null) ?? {};
     const newPayload = { ...prevPayload, tag: "EN VIVO" };
     const { data, error } = await supabase
       .from("broadcasts")
-      .update({ status: "sent", payload: newPayload } as never)
+      .update({ payload: newPayload } as never)
       .eq("id", id)
       .select()
       .single();
     if (error) throw new MpError("BROADCASTS.ACTIVATE_FAILED", error.message, 500);
-    return mapBroadcast(data);
+
+    const row = data ?? { ...current, status: "sent", payload: newPayload };
+    return mapBroadcast({ ...row, status: dispatch.status });
   });
 }
 

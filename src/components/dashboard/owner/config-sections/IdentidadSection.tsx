@@ -1,7 +1,7 @@
 "use client";
 // Sección Identidad del Club Config v2. Texto vía updateClubIdentity;
 // logo, cover y coords vía updateClub + Storage / ClubMapPicker.
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -95,6 +95,18 @@ export function IdentidadSection({
     lat: data?.latitude ?? null,
     lng: data?.longitude ?? null,
   });
+  const [clubVersion, setClubVersion] = useState(data?.version ?? 1);
+
+  useEffect(() => {
+    setClubVersion(data?.version ?? 1);
+  }, [data?.version]);
+
+  useEffect(() => {
+    setCoords({
+      lat: data?.latitude ?? null,
+      lng: data?.longitude ?? null,
+    });
+  }, [data?.latitude, data?.longitude]);
 
   const persistClubAsset = async (kind: "logoUrl" | "coverUrl", url: string) => {
     if (!data?.clubId) return;
@@ -105,6 +117,7 @@ export function IdentidadSection({
     if (res.ok) {
       if (kind === "logoUrl") setLogoUrl(url);
       else setCoverUrl(url);
+      setClubVersion(res.data.version);
       toast({ icon: "check-circle-2", title: kind === "logoUrl" ? "Logo actualizado" : "Portada actualizada" });
       router.refresh();
     } else {
@@ -120,12 +133,13 @@ export function IdentidadSection({
       patch: {
         latitude: lat,
         longitude: lng,
-        expectedVersion: data.version ?? 1,
+        expectedVersion: clubVersion,
       },
     });
     setPickerSaving(false);
     if (res.ok) {
       setCoords({ lat, lng });
+      setClubVersion(res.data.version);
       toast({ icon: "check-circle-2", title: "Ubicación guardada" });
       setPickerOpen(false);
       router.refresh();

@@ -294,7 +294,7 @@ export function AmigosScreenView({
           )}
         </main>
 
-        <aside className="order-1 lg:order-none min-w-0">
+        <aside className="order-1 lg:order-none min-w-0 lg:flex lg:flex-col lg:gap-3">
           <div
             className={`mp-amigos-search-collapse${mobileSearchCollapsed ? " is-collapsed" : ""}`}
           >

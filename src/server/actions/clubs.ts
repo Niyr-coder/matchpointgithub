@@ -983,7 +983,9 @@ export async function updateClub(input: unknown): Promise<ActionResult<Club>> {
     const row = await runOptimisticUpdate({
       table: "clubs",
       id: clubId,
-      expectedVersion: patch.expectedVersion,
+      ...(patch.expectedVersion !== undefined
+        ? { expectedVersion: patch.expectedVersion }
+        : {}),
       update: payload,
     });
     return mapClub(row);
