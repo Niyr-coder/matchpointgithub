@@ -46,6 +46,12 @@ const FLAGS_DETAIL_COLS = "1fr 110px 220px 130px 200px";
 export type FlagsData = {
   rows: FlagRow[];
   clubs: ClubLite[];
+  missingKnownFlags?: Array<{
+    key: string;
+    label: string;
+    description: string;
+    impact: FlagImpact;
+  }>;
   kpis: {
     activeCount: number;
     rolloutCount: number;

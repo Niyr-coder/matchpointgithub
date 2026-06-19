@@ -70,6 +70,7 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
   const criticalCount = data.rows.filter((f) => f.impact === "high").length;
   const rolloutFlags = data.rows.filter((f) => f.state === "rollout");
   const recent = [...data.rows].filter((f) => f.updatedAt).sort((a, b) => (b.updatedAt! > a.updatedAt! ? 1 : -1)).slice(0, 4);
+  const missingKnown = data.missingKnownFlags ?? [];
 
   const run = (fn: () => Promise<{ ok: boolean; error?: { message: string } }>, okMsg: string) =>
     startTransition(async () => {
@@ -107,6 +108,35 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {missingKnown.length > 0 ? (
+        <div
+          className="card"
+          style={{
+            padding: "14px 16px",
+            borderColor: "#fbbf24",
+            background: "rgba(251,191,36,0.08)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 900 }}>
+            Faltan {missingKnown.length} flags conocidos en la base de datos
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+            El código los espera pero no hay fila en{" "}
+            <code style={{ fontSize: 10.5 }}>feature_flags</code>. Créalos con &quot;Nuevo flag →
+            Conocido&quot; o aplica la migración{" "}
+            <code style={{ fontSize: 10.5 }}>20260631180000_restore_core_feature_flags</code>.
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>
+            {missingKnown.map((f) => f.key).join(", ")}
+          </div>
+          <button type="button" className="btn btn-primary" style={{ alignSelf: "flex-start", fontSize: 11 }} onClick={() => setCreating(true)}>
+            Crear flags faltantes
+          </button>
+        </div>
+      ) : null}
       {/* HEADER */}
       <div>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
