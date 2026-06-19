@@ -418,6 +418,7 @@ export async function AdminApplicationDetail({ applicationId }: { applicationId:
                     </span>
                   )}
                   <AdminApplicationDocumentActions
+                    applicationId={data.id}
                     documentId={d.id}
                     status={d.status}
                     applicationStatus={data.status}

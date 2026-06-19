@@ -9,7 +9,7 @@ import "server-only";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
@@ -266,7 +266,7 @@ export async function startFinalReview(input: unknown): Promise<ActionResult<Clu
 export async function quickApproveApplication(
   input: unknown,
 ): Promise<ActionResult<{ application: ClubApplication; clubId: string }>> {
-  return runAction(IdInput, input, async ({ applicationId }) => {
+  return runMutation(IdInput, input, async ({ applicationId }) => {
     const userId = await requireAdmin();
     const supabase = await getServerClient();
     const admin = getAdminClient();
@@ -321,7 +321,7 @@ export async function quickApproveApplication(
 
     const { data: clubIdRaw, error: matErr } = await admin.rpc(
       "fn_materialize_club_from_application",
-      { p_app_id: applicationId },
+      { p_app_id: applicationId, p_actor_id: userId },
     );
     if (matErr) throw new MpError("CLUB_APP.APPROVE_FAILED", matErr.message, 500);
     const clubId = String(clubIdRaw);
@@ -361,14 +361,14 @@ export async function quickApproveApplication(
 export async function approveApplication(
   input: unknown,
 ): Promise<ActionResult<{ application: ClubApplication; clubId: string }>> {
-  return runAction(IdInput, input, async ({ applicationId }) => {
+  return runMutation(IdInput, input, async ({ applicationId }) => {
     const userId = await requireAdmin();
     const admin = getAdminClient();
     await setAuditActor(admin, userId, "admin");
 
     const { data: clubIdRaw, error } = await admin.rpc(
       "fn_materialize_club_from_application",
-      { p_app_id: applicationId },
+      { p_app_id: applicationId, p_actor_id: userId },
     );
     if (error) {
       // Map common shape from Postgres exception messages.

@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { RoleKey } from "@/lib/roles";
+import { MP_ROLES, type RoleKey } from "@/lib/roles";
+import type { RoleSwitchOption } from "./ActiveRoleSwitcher";
 import { Icon } from "@/components/Icon";
 import { NotificationsPanel, type RealNotif } from "./NotificationsPanel";
 import { useToast } from "./ToastProvider";
@@ -436,12 +437,22 @@ function AdminQuickActionSheet({
 export function TopBar({
   role,
   contextLabel,
+  activeClubId,
+  activeClubName,
   homeHref,
+  isAdmin,
+  roleSwitchOptions,
+  onOpenRoleSwitcher,
 }: {
   role: RoleKey;
   contextLabel?: string | null;
+  activeClubId?: string | null;
+  activeClubName?: string | null;
   /** Inicio según rol activo (cookie). Default: /dashboard/[role] del segmento URL. */
   homeHref?: string;
+  isAdmin?: boolean;
+  roleSwitchOptions?: RoleSwitchOption[];
+  onOpenRoleSwitcher?: () => void;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
@@ -458,6 +469,9 @@ export function TopBar({
   const toast = useToast();
   const [, startTransition] = useTransition();
   const roleHomeHref = homeHref ?? `/dashboard/${role}`;
+  const otherRoles = roleSwitchOptions?.filter((o) => o.role !== role).length ?? 0;
+  const canSwitchRoles = Boolean(isAdmin || otherRoles > 0);
+  const roleCfg = MP_ROLES[role];
 
   const unreadN = useMemo(() => items.filter((n) => !n.readAt).length, [items]);
 
@@ -584,6 +598,22 @@ export function TopBar({
       setQuickActionOpen(true);
       return;
     }
+    if (cta.ev === "mp-open-crear-evento") {
+      window.dispatchEvent(
+        new CustomEvent("mp-open-crear-evento", {
+          detail: {
+            role,
+            contextLabel,
+            clubId: activeClubId ?? null,
+            clubName:
+              activeClubName?.trim() ||
+              contextLabel?.split(" · ")[0]?.trim() ||
+              null,
+          },
+        }),
+      );
+      return;
+    }
     if (cta.ev) window.dispatchEvent(new Event(cta.ev));
     else toast({ icon: cta.i, title: cta.l + " — próximamente" });
   };
@@ -648,6 +678,27 @@ export function TopBar({
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {canSwitchRoles && onOpenRoleSwitcher && (
+          <button
+            type="button"
+            className="md:hidden inline-flex items-center justify-center"
+            aria-label="Cambiar rol"
+            onClick={onOpenRoleSwitcher}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 9999,
+              background: roleCfg.color,
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.12)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name={roleCfg.icon} size={15} />
+          </button>
+        )}
         {/* Desktop: CTA con label. Mobile: solo ícono compacto.
            El !important en hidden/inline-flex es necesario porque .btn de
            globals.css define display:inline-flex y se carga después de las

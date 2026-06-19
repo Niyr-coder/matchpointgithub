@@ -14,10 +14,14 @@ import { cancelMyRegistration, registerToTournament } from "@/server/actions/tou
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPanel";
+import { TournamentCategoryJoinModal } from "@/components/dashboard/eventos/TournamentCategoryJoinModal";
+import { TournamentScheduleSection } from "@/components/events/TournamentScheduleSection";
+import type { TournamentScheduleBlockView } from "@/lib/tournaments/schedule-display";
 
 export type MyRegistration = {
   id: string;
   status: string;
+  categoryId: string | null;
 };
 
 export type TournamentInscrito = {
@@ -35,6 +39,8 @@ type Props = {
   myRegistration: MyRegistration | null;
   inscritos?: TournamentInscrito[];
   meUserId: string | null;
+  categoryRegistrationCounts?: Record<string, number>;
+  scheduleBlocks?: TournamentScheduleBlockView[];
 };
 
 const MONTHS_ES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -89,7 +95,7 @@ function levelRange(cats: TournamentDetail["categories"]): string | null {
   return `${levels[0]}–${levels[levels.length - 1]}`;
 }
 
-export function TournamentDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [], meUserId }: Props) {
+export function TournamentDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [], meUserId, categoryRegistrationCounts = {}, scheduleBlocks = [] }: Props) {
   const router = useRouter();
   const toast = useToast();
   const { confirm } = usePromptModal();
@@ -124,21 +130,21 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
       ]
     : [];
 
-  // Cronograma: mock — no tenemos schedule en DB.
-  const schedule = [
-    { d: "Día 1 · acreditación", items: [["18:00", "Acreditación + bienvenida"], ["19:00", "Sorteo de cuadros"]] as [string, string][] },
-    { d: "Día 2 · cuadros", items: [["09:00", "Octavos de final"], ["14:00", "Cuartos de final"], ["18:00", "Coctel de jugadores"]] as [string, string][] },
-    { d: "Día 3 · final", items: [["10:00", "Semifinales"], ["15:00", "Final"], ["17:00", "Premiación"]] as [string, string][] },
-  ];
-
-  // Modal selector de método de pago para torneos con policy='flexible'.
+  // Cronograma real desde tournament_schedule_blocks (ver TournamentScheduleSection). de método de pago para torneos con policy='flexible'.
   const [pickPaymentOpen, setPickPaymentOpen] = useState(false);
+  const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
+  const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
+  const [pendingPaymentMode, setPendingPaymentMode] = useState<"online" | "onsite" | undefined>(undefined);
+
+  const needsCategoryPicker = categories.length > 0;
 
   // Inscripción real — el dashboard es el único lugar donde se ejecuta.
-  // El landing redirige aquí para que la lógica viva en un solo lado.
   const handleRegister = () => {
     if (registering || !meUserId) return;
-    // Si el torneo deja al jugador elegir, abrimos el modal.
+    if (needsCategoryPicker) {
+      setPickCategoryOpen(true);
+      return;
+    }
     if (detail.tournament.paymentPolicy === "flexible") {
       setPickPaymentOpen(true);
       return;
@@ -146,16 +152,28 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
     runRegister();
   };
 
-  const runRegister = (paymentMode?: "online" | "onsite") => {
+  const runRegister = (paymentMode?: "online" | "onsite", categoryId?: string) => {
     if (!meUserId) return;
     startRegister(async () => {
       const res = await registerToTournament({
         tournamentId: detail.tournament.id,
-        body: { playerIds: [meUserId] },
+        body: {
+          playerIds: [meUserId],
+          categoryId: categoryId ?? pendingCategoryId ?? undefined,
+        },
         paymentMode,
       });
       if (!res.ok) {
         const code = res.error.code;
+        if (code === "TOURNAMENTS.CATEGORY_REQUIRED") {
+          setPickCategoryOpen(true);
+          return;
+        }
+        if (code === "TOURNAMENTS.CATEGORY_FULL") {
+          toast({ icon: "alert-triangle", title: "Categoría llena", sub: "Prueba otra categoría." });
+          setPickCategoryOpen(true);
+          return;
+        }
         if (code === "TOURNAMENTS.PAYMENT_MODE_REQUIRED") {
           toast({
             icon: "alert-triangle",
@@ -194,8 +212,14 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
         title: isOnsite ? "Cupo reservado" : "¡Inscrito!",
         sub: isOnsite ? "Pagas en el club al llegar" : undefined,
       });
-      setMyReg({ id: res.data.id, status: res.data.status });
+      setMyReg({
+        id: res.data.id,
+        status: res.data.status,
+        categoryId: res.data.categoryId ?? pendingCategoryId ?? null,
+      });
       setPickPaymentOpen(false);
+      setPickCategoryOpen(false);
+      setPendingCategoryId(null);
       router.refresh();
     });
   };
@@ -510,51 +534,11 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
             />
           </div>
 
-          <div className="label-mp">Cronograma</div>
-          <h2
-            className="font-heading"
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              textTransform: "uppercase",
-              margin: "8px 0 18px",
-            }}
-          >
-            Tres días, una sola corona<span className="dot">.</span>
-          </h2>
-          {schedule.map((day) => (
-            <div key={day.d} style={{ marginBottom: 24 }}>
-              <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 10 }}>
-                {day.d}
-              </div>
-              {day.items.map(([time, evt], i) => (
-                <div
-                  key={time}
-                  style={{
-                    display: "flex",
-                    gap: 18,
-                    padding: "10px 0",
-                    borderTop: i === 0 ? "0" : "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    className="font-heading"
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 900,
-                      color: "var(--primary)",
-                      minWidth: 70,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {time}
-                  </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{evt}</div>
-                </div>
-              ))}
-            </div>
-          ))}
+          <TournamentScheduleSection
+            blocks={scheduleBlocks}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+            myCategoryId={myReg?.categoryId ?? null}
+          />
         </div>
         <div>
           <div className="card mp-event-detail-rail" style={{ padding: 22 }}>
@@ -668,11 +652,37 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
 
       <InscritosList items={inscritos} maxParticipants={t.maxParticipants ?? null} />
 
+      {pickCategoryOpen && (
+        <TournamentCategoryJoinModal
+          open={pickCategoryOpen}
+          tournamentName={t.name}
+          entryFeeCents={t.entryFeeCents ?? 0}
+          categories={categories}
+          registrationCountByCategory={categoryRegistrationCounts}
+          pending={registering}
+          onClose={() => {
+            if (!registering) {
+              setPickCategoryOpen(false);
+              setPendingCategoryId(null);
+            }
+          }}
+          onPick={(categoryId) => {
+            setPendingCategoryId(categoryId);
+            setPickCategoryOpen(false);
+            if (detail.tournament.paymentPolicy === "flexible") {
+              setPickPaymentOpen(true);
+              return;
+            }
+            runRegister(undefined, categoryId);
+          }}
+        />
+      )}
+
       {pickPaymentOpen && (
         <PaymentModePicker
           fee={fee}
           pending={registering}
-          onChoose={(mode) => runRegister(mode)}
+          onChoose={(mode) => runRegister(mode, pendingCategoryId ?? undefined)}
           onClose={() => setPickPaymentOpen(false)}
         />
       )}

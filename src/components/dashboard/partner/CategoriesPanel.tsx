@@ -487,6 +487,7 @@ export function MprRangeSlider({
   noUpperCap?: boolean;
   onChange: (lo: number, hi: number) => void;
 }) {
+  const [focusThumb, setFocusThumb] = useState<"lo" | "hi" | null>(null);
   const lo = Math.max(MPR_MIN, Math.min(min, MPR_MAX - MPR_STEP));
   const hi = Math.max(lo + MPR_STEP, Math.min(max, MPR_MAX));
   const pctLo = ((lo - MPR_MIN) / (MPR_MAX - MPR_MIN)) * 100;
@@ -545,7 +546,10 @@ export function MprRangeSlider({
         value={lo}
         onChange={(e) => handleLo(Number(e.target.value))}
         disabled={disabled}
-        style={{ ...rangeInputStyle, zIndex: 2 }}
+        onPointerDown={() => setFocusThumb("lo")}
+        onPointerUp={() => setFocusThumb(null)}
+        onPointerCancel={() => setFocusThumb(null)}
+        style={{ ...rangeInputStyle, zIndex: focusThumb === "lo" ? 5 : 3 }}
       />
       <input
         type="range"
@@ -555,7 +559,10 @@ export function MprRangeSlider({
         value={hi}
         onChange={(e) => handleHi(Number(e.target.value))}
         disabled={disabled || noUpperCap}
-        style={{ ...rangeInputStyle, zIndex: 3 }}
+        onPointerDown={() => setFocusThumb("hi")}
+        onPointerUp={() => setFocusThumb(null)}
+        onPointerCancel={() => setFocusThumb(null)}
+        style={{ ...rangeInputStyle, zIndex: focusThumb === "hi" ? 5 : 4 }}
       />
       {/* Scale ticks */}
       <div
@@ -588,7 +595,6 @@ const rangeInputStyle: React.CSSProperties = {
   height: 20,
   appearance: "none",
   background: "transparent",
-  pointerEvents: "auto",
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -4,6 +4,7 @@ import { getEvent } from "@/server/actions/events";
 import { getClub } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
 import { getServerClient } from "@/lib/db/client.server";
+import { loadTournamentScheduleBlocks } from "@/server/queries/tournament-schedule";
 import { PublicChrome } from "@/components/landing/PublicChrome";
 import {
   EventDetailView,
@@ -35,7 +36,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     if (sess.authenticated) {
       const { data: regRow } = await supabase
         .from("registrations")
-        .select("id,status")
+        .select("id,status,category_id")
         .eq("tournament_id", detailRes.data.tournament.id)
         .contains("player_ids", [sess.session.userId])
         .not("status", "in", "(withdrawn,rejected,cancelled)")
@@ -45,11 +46,14 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         myRegistration = {
           id: regRow.id as string,
           status: regRow.status as string,
+          categoryId: (regRow.category_id as string | null) ?? null,
         };
       }
     }
 
-    // Lista de inscritos para mostrar abajo del detalle. Resuelve perfiles
+    const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
+
+    // Lista de inscritos
     // de todos los player_ids en una sola query batch.
     const { data: regsRaw } = await supabase
       .from("registrations")
@@ -97,6 +101,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           clubCity={summary?.clubCity ?? null}
           myRegistration={myRegistration}
           inscritos={inscritos}
+          scheduleBlocks={scheduleBlocks}
         />
       </PublicChrome>
     );

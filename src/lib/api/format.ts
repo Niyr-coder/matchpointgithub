@@ -55,6 +55,33 @@ export function fmtShortDateEc(iso: string, now = new Date()): string {
   return `${EC_WEEKDAYS_SHORT[wd]}, ${dd} ${EC_MONTHS_SHORT[p.m - 1]}`;
 }
 
+const EC_MONTHS_LONG = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+] as const;
+
+/** Fecha + hora corta estable SSR/cliente. Ej: «19 jun, 03:37 a. m.» */
+export function fmtDateTimeEc(iso: string): string {
+  const p = ecDateParts(iso);
+  return `${p.d} ${EC_MONTHS_SHORT[p.m - 1]}, ${fmtTimeEc(iso)}`;
+}
+
+/** Fecha larga estable SSR/cliente. Ej: «19 de junio de 2026» */
+export function fmtLongDateEc(iso: string): string {
+  const p = ecDateParts(iso);
+  return `${p.d} de ${EC_MONTHS_LONG[p.m - 1]} de ${p.y}`;
+}
+
 export function fmtPrice(cents: number, currency = "USD"): string {
   const value = cents / 100;
   return new Intl.NumberFormat("es-EC", {

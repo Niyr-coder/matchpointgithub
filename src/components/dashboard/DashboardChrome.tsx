@@ -9,12 +9,15 @@ import { Icon } from "@/components/Icon";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { TopBar } from "./TopBar";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { MobileRoleSwitcherSheet } from "./SidebarRoleMenu";
 import type { RoleSwitchOption } from "./ActiveRoleSwitcher";
 
 type Props = {
   role: RoleKey;
   userName: string;
   contextLabel: string | null;
+  activeClubId?: string | null;
+  activeClubName?: string | null;
   homeHref: string;
   badgeOverrides?: Record<string, number | string>;
   /** Banner global (anuncio activo o mantenimiento). null = sin banner. Lo ven todos los roles. */
@@ -32,6 +35,8 @@ export function DashboardChrome({
   role,
   userName,
   contextLabel,
+  activeClubId,
+  activeClubName,
   homeHref,
   badgeOverrides,
   banner,
@@ -42,8 +47,12 @@ export function DashboardChrome({
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [roleSheetOpen, setRoleSheetOpen] = useState(false);
   const pathname = usePathname();
   const isMessagesRoute = /\/dashboard\/[^/]+\/chat\/?$/.test(pathname ?? "");
+  const otherRoles = roleSwitchOptions?.filter((o) => o.role !== role).length ?? 0;
+  const canSwitchRoles = Boolean(isAdmin || otherRoles > 0);
+  const openRoleSwitcher = canSwitchRoles ? () => setRoleSheetOpen(true) : undefined;
 
   // Cerrar drawer cuando cambia la ruta (user tapeó un link adentro).
   useEffect(() => {
@@ -79,6 +88,7 @@ export function DashboardChrome({
         flags={flags}
         roleSwitchOptions={roleSwitchOptions}
         isAdmin={isAdmin}
+        onOpenRoleSwitcher={openRoleSwitcher}
       />
       <div
         style={{
@@ -88,7 +98,16 @@ export function DashboardChrome({
           minWidth: 0,
         }}
       >
-        <TopBar role={role} contextLabel={contextLabel} homeHref={homeHref} />
+        <TopBar
+          role={role}
+          contextLabel={contextLabel}
+          activeClubId={activeClubId}
+          activeClubName={activeClubName}
+          homeHref={homeHref}
+          isAdmin={isAdmin}
+          roleSwitchOptions={roleSwitchOptions}
+          onOpenRoleSwitcher={openRoleSwitcher}
+        />
         {banner && !bannerDismissed && (() => {
           const lvl = { info: { bg: "#dbeafe", bd: "#93c5fd", fg: "#1e3a8a", ic: "info" }, warn: { bg: "#fef3c7", bd: "#fcd34d", fg: "#78350f", ic: "alert-triangle" }, critical: { bg: "#fee2e2", bd: "#fca5a5", fg: "#7f1d1d", ic: "alert-octagon" } }[banner.level];
           return (
@@ -113,6 +132,15 @@ export function DashboardChrome({
         </main>
       </div>
       <MobileBottomNav role={role} onOpenDrawer={() => setDrawerOpen(true)} drawerOpen={drawerOpen} />
+      {canSwitchRoles && (
+        <MobileRoleSwitcherSheet
+          open={roleSheetOpen}
+          onClose={() => setRoleSheetOpen(false)}
+          current={role}
+          isAdmin={isAdmin}
+          options={roleSwitchOptions}
+        />
+      )}
     </div>
   );
 }

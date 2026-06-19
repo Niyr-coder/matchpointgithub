@@ -3,6 +3,8 @@ import { AdminApplicationDetail } from "@/components/dashboard/admin/AdminApplic
 import { AdminEventDetail } from "@/components/dashboard/admin/AdminEventDetail";
 import { ClubGiveawayOrgScreen } from "@/components/dashboard/club/ClubGiveawayOrgScreen";
 
+export const dynamic = "force-dynamic";
+
 const ORG_ROLES = new Set(["owner", "manager"]);
 
 export default async function RoleSectionDetailPage({

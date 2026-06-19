@@ -20,6 +20,14 @@ import {
   type EventRegistration,
   type EventRow,
 } from "@/lib/schemas/events";
+import {
+  ClubTournamentCreateSchema,
+  DEFAULT_GROUP_PLAYOFF_CONFIG,
+  TournamentSchema,
+  type Tournament,
+} from "@/lib/schemas/tournaments";
+import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
+import type { CreateEventTypeCounts } from "@/lib/events/create-event-wizard";
 import { UuidSchema } from "@/lib/schemas/common";
 
 function mapEvent(row: Record<string, unknown>): EventRow {
@@ -41,6 +49,36 @@ function mapEvent(row: Record<string, unknown>): EventRow {
     currency: (row.currency as string | null) ?? null,
     paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
     visibility: row.visibility,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+function mapTournamentRow(row: Record<string, unknown>): Tournament {
+  return TournamentSchema.parse({
+    id: row.id,
+    leagueId: (row.league_id as string | null) ?? null,
+    partnerId: (row.partner_id as string | null) ?? null,
+    clubId: (row.club_id as string | null) ?? null,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? null,
+    coverUrl: row.cover_url ?? null,
+    sport: row.sport,
+    format: row.format,
+    startsAt: row.starts_at,
+    endsAt: (row.ends_at as string | null) ?? null,
+    registrationOpensAt: (row.registration_opens_at as string | null) ?? null,
+    registrationClosesAt: (row.registration_closes_at as string | null) ?? null,
+    status: row.status,
+    maxParticipants: (row.max_participants as number | null) ?? null,
+    entryFeeCents: row.entry_fee_cents,
+    currency: (row.currency as string | null) ?? null,
+    paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
+    prizePoolCents: (row.prize_pool_cents as number | null) ?? null,
+    rulesUrl: (row.rules_url as string | null) ?? null,
+    modality: (row.modality as Tournament["modality"]) ?? null,
+    scoringConfig: row.scoring_config ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -470,5 +508,232 @@ export async function getEventForAdmin(input: unknown): Promise<ActionResult<Adm
         createdAt: t.created_at as string,
       })),
     };
+  });
+}
+
+export type { CreateEventTypeCounts } from "@/lib/events/create-event-wizard";
+
+function currentMonthRange(): { start: string; end: string } {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { start: monthStart.toISOString(), end: monthEnd.toISOString() };
+}
+
+/** Conteos del mes en curso por tipo — para el wizard Crear evento. */
+export async function getCreateEventTypeCounts(
+  input: unknown,
+): Promise<ActionResult<CreateEventTypeCounts>> {
+  return runAction(z.object({ clubId: UuidSchema }), input, async ({ clubId }) => {
+    await assertCanCreateEvent(clubId);
+    const supabase = await getServerClient();
+    const { start, end } = currentMonthRange();
+
+    const [torneoRes, ligaRes, socialRes, clinicRes] = await Promise.all([
+      supabase
+        .from("tournaments")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .not("status", "in", "(cancelled,draft)")
+        .gte("starts_at", start)
+        .lte("starts_at", end),
+      supabase
+        .from("events")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("kind", "league_meet")
+        .not("status", "eq", "cancelled")
+        .gte("starts_at", start)
+        .lte("starts_at", end),
+      supabase
+        .from("events")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("kind", "social")
+        .not("status", "eq", "cancelled")
+        .gte("starts_at", start)
+        .lte("starts_at", end),
+      supabase
+        .from("events")
+        .select("*", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("kind", "clinic")
+        .not("status", "eq", "cancelled")
+        .gte("starts_at", start)
+        .lte("starts_at", end),
+    ]);
+
+    return {
+      torneo: torneoRes.count ?? 0,
+      liga: ligaRes.count ?? 0,
+      social: socialRes.count ?? 0,
+      clinic: clinicRes.count ?? 0,
+    };
+  });
+}
+
+/** Torneo/liga del club (partner_id null) con categorías — wizard Crear evento. */
+export async function createClubTournament(input: unknown): Promise<ActionResult<Tournament>> {
+  return runAction(ClubTournamentCreateSchema, input, async (data) => {
+    const userId = await assertCanCreateEvent(data.clubId);
+    await assertRateLimit({ key: `tournament:create:${userId}`, ...RATE_LIMITS.tournamentCreate });
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "owner");
+    const resolvedPolicy =
+      data.entryFeeCents === 0
+        ? "free"
+        : data.paymentPolicy && data.paymentPolicy !== "free"
+          ? data.paymentPolicy
+          : "prepay";
+    const initialStatus = data.publish ? "registration_open" : "draft";
+    const { data: row, error } = await admin
+      .from("tournaments")
+      .insert({
+        partner_id: null,
+        league_id: null,
+        club_id: data.clubId,
+        name: data.name,
+        slug: data.slug,
+        description: data.description ?? null,
+        sport: data.sport,
+        format: data.format,
+        starts_at: data.startsAt,
+        ends_at: data.endsAt ?? null,
+        registration_opens_at: data.registrationOpensAt ?? null,
+        registration_closes_at: data.registrationClosesAt ?? null,
+        status: initialStatus,
+        max_participants: data.maxParticipants ?? null,
+        entry_fee_cents: data.entryFeeCents,
+        currency: data.currency ?? null,
+        payment_policy: resolvedPolicy,
+        prize_pool_cents: data.prizePoolCents ?? null,
+        created_by: userId,
+        modality: data.modality,
+        scoring_config: data.scoringConfig,
+      } as never)
+      .select()
+      .single();
+    if (error) {
+      if (error.code === "23505") {
+        throw new MpError("TOURNAMENTS.SLUG_TAKEN", "Ya existe un torneo con ese slug", 409);
+      }
+      throw new MpError("TOURNAMENTS.CREATE_FAILED", error.message, 500);
+    }
+
+    const isGroups = data.format === "groups_to_knockout";
+    const groupConfig = data.groupPlayoffConfig ?? DEFAULT_GROUP_PLAYOFF_CONFIG;
+    const categoryRows = data.categories.map((c) => {
+      const catRow: Record<string, unknown> = {
+        tournament_id: row.id,
+        name: c.name,
+        gender: c.gender ?? null,
+        mpr_min: c.mprMin ?? null,
+        mpr_max: c.mprMax ?? null,
+        age_min: c.ageMin ?? null,
+        age_max: c.ageMax ?? null,
+        max_teams: c.maxTeams ?? null,
+        modality: c.modality ?? data.modality,
+      };
+      if (isGroups) {
+        catRow.stage = "pending_groups";
+        catRow.group_playoff_config = groupConfig;
+      }
+      return catRow;
+    });
+    const { error: catErr } = await admin
+      .from("tournament_categories")
+      .insert(categoryRows as never);
+    if (catErr) {
+      throw new MpError("TOURNAMENTS.CATEGORY_FAILED", catErr.message, 500);
+    }
+
+    if (data.prizes?.length) {
+      const prizeRows = data.prizes.map((p) => ({
+        tournament_id: row.id,
+        position: p.position,
+        place_label: p.placeLabel,
+        prize_label: p.prizeLabel,
+        value_cents: p.valueCents ?? null,
+      }));
+      const { error: prizeErr } = await admin
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from("tournament_prizes" as any)
+        .insert(prizeRows as never);
+      if (prizeErr) {
+        throw new MpError("TOURNAMENTS.PRIZE_FAILED", prizeErr.message, 500);
+      }
+    }
+
+    return mapTournamentRow(row);
+  });
+}
+
+const AssignClubTournamentPartnerSchema = z.object({
+  clubId: UuidSchema,
+  tournamentId: UuidSchema,
+  partnerId: UuidSchema,
+});
+
+/** Asigna la gestión del torneo a un partner verificado vinculado al club. */
+export async function assignClubTournamentPartner(
+  input: unknown,
+): Promise<ActionResult<{ tournamentId: string; partnerId: string }>> {
+  return runAction(AssignClubTournamentPartnerSchema, input, async (data) => {
+    const userId = await assertCanCreateEvent(data.clubId);
+    const supabase = await getServerClient();
+    const admin = getAdminClient();
+
+    const { data: tournament, error: loadErr } = await supabase
+      .from("tournaments")
+      .select("id,club_id,partner_id,status")
+      .eq("id", data.tournamentId)
+      .maybeSingle();
+    if (loadErr) throw new MpError("TOURNAMENTS.LOAD_FAILED", loadErr.message, 500);
+    if (!tournament) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+    if (tournament.club_id !== data.clubId) {
+      throw new MpError("TOURNAMENTS.CLUB_MISMATCH", "Este torneo no pertenece a tu club", 403);
+    }
+    if (tournament.partner_id) {
+      throw new MpError("TOURNAMENTS.PARTNER_ASSIGNED", "Este torneo ya tiene partner asignado", 409);
+    }
+    if (tournament.status === "cancelled" || tournament.status === "finished") {
+      throw new MpError("TOURNAMENTS.CLOSED", "No puedes asignar un torneo cerrado", 409);
+    }
+
+    const { data: link, error: linkErr } = await admin
+      .from("partner_club_links")
+      .select("partner_id,partner_orgs!inner(id,status,name)")
+      .eq("club_id", data.clubId)
+      .eq("partner_id", data.partnerId)
+      .maybeSingle();
+    if (linkErr) throw new MpError("PARTNERS.LINK_LOOKUP_FAILED", linkErr.message, 500);
+    if (!link) {
+      throw new MpError(
+        "PARTNERS.NOT_LINKED",
+        "Ese partner no está vinculado a tu club",
+        422,
+      );
+    }
+    const partner = link.partner_orgs as { id: string; status: string; name: string } | null;
+    if (!partner || partner.status !== "active") {
+      throw new MpError(
+        "PARTNERS.NOT_VERIFIED",
+        "Solo puedes asignar partners verificados (activos)",
+        422,
+      );
+    }
+
+    await setAuditActor(admin, userId, "owner");
+    const { error: updateErr } = await admin
+      .from("tournaments")
+      .update({ partner_id: data.partnerId } as never)
+      .eq("id", data.tournamentId)
+      .is("partner_id", null);
+    if (updateErr) {
+      throw new MpError("TOURNAMENTS.ASSIGN_PARTNER_FAILED", updateErr.message, 500);
+    }
+
+    return { tournamentId: data.tournamentId, partnerId: data.partnerId };
   });
 }

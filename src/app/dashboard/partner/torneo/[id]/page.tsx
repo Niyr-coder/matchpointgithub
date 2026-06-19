@@ -99,17 +99,32 @@ export default async function PartnerTorneoPage({
     .maybeSingle();
   const isAdmin = !!adminRow;
   if (!isAdmin) {
-    if (!partnerId) notFound();
-    const activePartnerId = await resolveActivePartnerId();
-    if (!activePartnerId || activePartnerId !== partnerId) notFound();
-    const { data: member } = await admin
-      .from("partner_members")
-      .select("role")
-      .eq("partner_id", partnerId)
-      .eq("user_id", session.session.userId)
-      .in("role", ["owner", "admin"])
-      .maybeSingle();
-    if (!member) notFound();
+    if (partnerId) {
+      const activePartnerId = await resolveActivePartnerId();
+      if (!activePartnerId || activePartnerId !== partnerId) notFound();
+      const { data: member } = await admin
+        .from("partner_members")
+        .select("role")
+        .eq("partner_id", partnerId)
+        .eq("user_id", session.session.userId)
+        .in("role", ["owner", "admin"])
+        .maybeSingle();
+      if (!member) notFound();
+    } else {
+      const clubId = (t.club_id as string | null) ?? null;
+      if (!clubId) notFound();
+      const { data: roles } = await supabase
+        .from("role_assignments")
+        .select("role,club_id")
+        .eq("user_id", session.session.userId)
+        .is("revoked_at", null);
+      const ok = (roles ?? []).some(
+        (r) =>
+          r.role === "admin" ||
+          (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
+      );
+      if (!ok) notFound();
+    }
   }
 
   // Inscritos del torneo. Columnas reales: player_ids (array), team_id,
@@ -265,7 +280,7 @@ export default async function PartnerTorneoPage({
   const { data: prizesRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from("tournament_prizes" as any)
-    .select("id,position,place_label,prize_label,value_cents,sponsor")
+    .select("id,position,place_label,prize_label,value_cents,sponsor,category_id")
     .eq("tournament_id", id)
     .order("position", { ascending: true });
   type PrizeRowRaw = {
@@ -275,6 +290,7 @@ export default async function PartnerTorneoPage({
     prize_label: string;
     value_cents: number | null;
     sponsor: string | null;
+    category_id: string | null;
   };
   const { data: bracketRow } = await admin
     .from("brackets")
@@ -291,6 +307,7 @@ export default async function PartnerTorneoPage({
     prizeLabel: p.prize_label,
     valueCents: p.value_cents ?? null,
     sponsor: p.sponsor ?? null,
+    categoryId: p.category_id ?? null,
   }));
 
   const tournamentFormat = (t.format as string) ?? "single_elim";
@@ -316,6 +333,24 @@ export default async function PartnerTorneoPage({
   const isFinished = dbStatus === "finished" || dbStatus === "completed";
   const isClosed = isCancelled || isFinished;
   const isDraft = dbStatus === "draft";
+  const isClubTorneo = !partnerId && !!(t.club_id as string | null);
+  let clubDashboardRole: "owner" | "manager" = "owner";
+  if (isClubTorneo) {
+    const clubId = t.club_id as string;
+    const { data: clubStaffRole } = await supabase
+      .from("role_assignments")
+      .select("role")
+      .eq("user_id", session.session.userId)
+      .eq("club_id", clubId)
+      .is("revoked_at", null)
+      .in("role", ["owner", "manager"])
+      .maybeSingle();
+    if (clubStaffRole?.role === "manager") clubDashboardRole = "manager";
+  }
+  const backHref = isClubTorneo
+    ? `/dashboard/${clubDashboardRole}/club-eventos`
+    : "/dashboard/partner/p-torneos";
+  const gestionLabel = isClubTorneo ? "Club · Gestión de torneo" : "Partner · Gestión de torneo";
 
   return (
     <main className="mp-partner-torneo-main">
@@ -396,7 +431,7 @@ export default async function PartnerTorneoPage({
           )}
           <div>
             <Link
-              href="/dashboard/partner/p-torneos"
+              href={backHref}
               style={{
                 fontSize: 11,
                 fontWeight: 900,
@@ -413,7 +448,7 @@ export default async function PartnerTorneoPage({
               <Icon name="arrow-left" size={12} color="var(--muted-fg)" />
               Volver a torneos
             </Link>
-            <div className="label-mp">Partner · Gestión de torneo</div>
+            <div className="label-mp">{gestionLabel}</div>
             <div
               style={{
                 display: "flex",
@@ -619,6 +654,7 @@ export default async function PartnerTorneoPage({
           <PrizesPanel
             tournamentId={t.id as string}
             initialPrizes={prizes}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
             readOnly={isClosed}
           />
 
@@ -793,6 +829,9 @@ export default async function PartnerTorneoPage({
                 prizeLabel: p.prizeLabel,
                 valueCents: p.valueCents,
                 sponsor: p.sponsor,
+                categoryName: p.categoryId
+                  ? (categories.find((c) => c.id === p.categoryId)?.name ?? null)
+                  : null,
               }))}
             />
             <Link

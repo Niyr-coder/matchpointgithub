@@ -1,21 +1,11 @@
 "use client";
-import { useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
-import {
-  addReviewerNote,
-  approveApplication,
-  approveApplicationDocument,
-  markFieldVerified,
-  rejectApplicationDocument,
-  quickApproveApplication,
-  rejectApplication,
-  scheduleFieldVerification,
-  startDocsReview,
-  startFinalReview,
-} from "@/server/actions/clubApplicationsAdmin";
+import { adminClubAppApi } from "@/lib/api/adminClubApplications";
+import type { ActionResult } from "@/lib/api/action";
 
 export function AdminApplicationDetailActions({
   applicationId,
@@ -29,22 +19,37 @@ export function AdminApplicationDetailActions({
   const toast = useToast();
   const router = useRouter();
   const { ask, confirm } = usePromptModal();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
-  const runStep = (
-    fn: () => Promise<{ ok: boolean; error?: { message: string } }>,
+  const runMutation = async <T,>(
+    fn: () => Promise<ActionResult<T>>,
     okTitle: string,
     okSub?: string,
+    onSuccess?: () => void,
   ) => {
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const r = await fn();
       if (r.ok) {
         toast({ icon: "check", title: okTitle, sub: okSub });
-        router.refresh();
+        if (onSuccess) onSuccess();
+        else router.refresh();
       } else {
-        toast({ icon: "alert-triangle", title: "No se pudo avanzar", sub: r.error?.message ?? "Error" });
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo avanzar",
+          sub: r.error?.message ?? "Error desconocido",
+        });
       }
-    });
+    } catch (err) {
+      toast({
+        icon: "alert-triangle",
+        title: "Error de conexión",
+        sub: err instanceof Error ? err.message : "Intenta de nuevo.",
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   const doStartDocs = async () => {
@@ -54,7 +59,10 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Iniciar revisión",
     });
     if (!ok) return;
-    runStep(() => startDocsReview({ applicationId }), "Revisión documental iniciada");
+    void runMutation(
+      () => adminClubAppApi.startDocsReview(applicationId),
+      "Revisión documental iniciada",
+    );
   };
 
   const doScheduleField = async () => {
@@ -77,13 +85,13 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Continuar",
     });
     if (notes == null) return;
-    runStep(
+    void runMutation(
       () =>
-        scheduleFieldVerification({
+        adminClubAppApi.scheduleFieldVerification(
           applicationId,
           scheduledAt,
-          notes: notes.trim() || undefined,
-        }),
+          notes.trim() || undefined,
+        ),
       "Verificación de campo agendada",
     );
   };
@@ -98,8 +106,8 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Marcar verificado",
     });
     if (notes == null) return;
-    runStep(
-      () => markFieldVerified({ applicationId, notes: notes.trim() || undefined }),
+    void runMutation(
+      () => adminClubAppApi.markFieldVerified(applicationId, notes.trim() || undefined),
       "Campo verificado",
     );
   };
@@ -111,7 +119,10 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Pasar a revisión final",
     });
     if (!ok) return;
-    runStep(() => startFinalReview({ applicationId }), "Solicitud en revisión final");
+    void runMutation(
+      () => adminClubAppApi.startFinalReview(applicationId),
+      "Solicitud en revisión final",
+    );
   };
 
   const doApproveFinal = async () => {
@@ -121,16 +132,12 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Aprobar y crear club",
     });
     if (!ok) return;
-    startTransition(async () => {
-      const r = await approveApplication({ applicationId });
-      if (r.ok) {
-        toast({ icon: "check", title: `Club "${name}" aprobado` });
-        router.push("/dashboard/admin/admin-clubs");
-        router.refresh();
-      } else {
-        toast({ icon: "alert-triangle", title: "Error al aprobar", sub: r.error.message });
-      }
-    });
+    void runMutation(
+      () => adminClubAppApi.approve(applicationId),
+      `Club "${name}" aprobado`,
+      undefined,
+      () => router.push("/dashboard/admin/admin-clubs"),
+    );
   };
 
   const doQuickApprove = async () => {
@@ -140,16 +147,12 @@ export function AdminApplicationDetailActions({
       confirmLabel: "Aprobación rápida",
     });
     if (!ok) return;
-    startTransition(async () => {
-      const r = await quickApproveApplication({ applicationId });
-      if (r.ok) {
-        toast({ icon: "check", title: `Club "${name}" aprobado` });
-        router.push("/dashboard/admin/admin-clubs");
-        router.refresh();
-      } else {
-        toast({ icon: "alert-triangle", title: "Error al aprobar", sub: r.error.message });
-      }
-    });
+    void runMutation(
+      () => adminClubAppApi.quickApprove(applicationId),
+      `Club "${name}" aprobado`,
+      undefined,
+      () => router.push("/dashboard/admin/admin-clubs"),
+    );
   };
 
   const doReject = async () => {
@@ -163,16 +166,12 @@ export function AdminApplicationDetailActions({
       destructive: true,
     });
     if (reason == null) return;
-    startTransition(async () => {
-      const r = await rejectApplication({ applicationId, reason });
-      if (r.ok) {
-        toast({ icon: "check", title: "Solicitud rechazada" });
-        router.push("/dashboard/admin/admin-clubs");
-        router.refresh();
-      } else {
-        toast({ icon: "alert-triangle", title: "Error al rechazar", sub: r.error.message });
-      }
-    });
+    void runMutation(
+      () => adminClubAppApi.reject(applicationId, reason),
+      "Solicitud rechazada",
+      undefined,
+      () => router.push("/dashboard/admin/admin-clubs"),
+    );
   };
 
   const doAddNote = async () => {
@@ -186,7 +185,10 @@ export function AdminApplicationDetailActions({
       validate: (v) => (v.trim().length < 1 ? "Escribe una nota." : null),
     });
     if (note == null) return;
-    runStep(() => addReviewerNote({ applicationId, note: note.trim() }), "Nota agregada");
+    void runMutation(
+      () => adminClubAppApi.addNote(applicationId, note.trim()),
+      "Nota agregada",
+    );
   };
 
   return (
@@ -288,10 +290,12 @@ export function AdminApplicationDetailActions({
 }
 
 export function AdminApplicationDocumentActions({
+  applicationId,
   documentId,
   status,
   applicationStatus,
 }: {
+  applicationId: string;
   documentId: string;
   status: string;
   applicationStatus: string;
@@ -299,7 +303,7 @@ export function AdminApplicationDocumentActions({
   const toast = useToast();
   const router = useRouter();
   const { ask, confirm } = usePromptModal();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const canReview =
     status !== "pending" &&
     ["docs_review", "field_verification", "final_review"].includes(applicationStatus);
@@ -311,15 +315,24 @@ export function AdminApplicationDocumentActions({
       confirmLabel: "Aprobar documento",
     });
     if (!ok) return;
-    startTransition(async () => {
-      const r = await approveApplicationDocument({ documentId });
+    setIsPending(true);
+    try {
+      const r = await adminClubAppApi.approveDocument(applicationId, documentId);
       if (r.ok) {
         toast({ icon: "check", title: "Documento aprobado" });
         router.refresh();
       } else {
-        toast({ icon: "alert-triangle", title: "No se pudo aprobar", sub: r.error.message });
+        toast({ icon: "alert-triangle", title: "No se pudo aprobar", sub: r.error?.message });
       }
-    });
+    } catch (err) {
+      toast({
+        icon: "alert-triangle",
+        title: "Error de conexión",
+        sub: err instanceof Error ? err.message : "Intenta de nuevo.",
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   const rejectDoc = async () => {
@@ -334,15 +347,24 @@ export function AdminApplicationDocumentActions({
       validate: (v) => (v.trim().length < 2 ? "Escribe un motivo." : null),
     });
     if (reason == null) return;
-    startTransition(async () => {
-      const r = await rejectApplicationDocument({ documentId, reason: reason.trim() });
+    setIsPending(true);
+    try {
+      const r = await adminClubAppApi.rejectDocument(applicationId, documentId, reason.trim());
       if (r.ok) {
         toast({ icon: "x", title: "Documento rechazado" });
         router.refresh();
       } else {
-        toast({ icon: "alert-triangle", title: "No se pudo rechazar", sub: r.error.message });
+        toast({ icon: "alert-triangle", title: "No se pudo rechazar", sub: r.error?.message });
       }
-    });
+    } catch (err) {
+      toast({
+        icon: "alert-triangle",
+        title: "Error de conexión",
+        sub: err instanceof Error ? err.message : "Intenta de nuevo.",
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   if (!canReview) return null;

@@ -14,6 +14,30 @@ type Props = {
   drawerOpen?: boolean;
 };
 
+/** Etiqueta corta solo en la pill mobile (sidebar sigue con el label completo). */
+function mobileNavLabel(label: string, key: string): string {
+  const short: Record<string, string> = {
+    home: "Inicio",
+    "p-ligas": "Ligas",
+    "p-torneos": "Torneos",
+    "p-brackets": "Brackets",
+    "p-inscritos": "Inscritos",
+    "p-clubes": "Clubes",
+    "p-finanzas": "Finanzas",
+    "p-marketing": "Marketing",
+    "c-clases": "Clases",
+    "c-alumnos": "Alumnos",
+    "c-calendar": "Agenda",
+    "e-checkin": "Check-in",
+    "e-walkins": "Walk-ins",
+    "e-calendario": "Hoy",
+    "e-reservas": "Semana",
+  };
+  if (short[key]) return short[key];
+  if (label.startsWith("Mis ")) return label.slice(4);
+  return label;
+}
+
 export function MobileBottomNav({ role, onOpenDrawer, drawerOpen = false }: Props) {
   const cfg = MP_ROLES[role];
   const items = cfg.sidebar[0]?.items.slice(0, 3) ?? [];
@@ -27,24 +51,20 @@ export function MobileBottomNav({ role, onOpenDrawer, drawerOpen = false }: Prop
 
   return (
     <nav
-      className="mp-mobile-bottom-nav md:hidden fixed bottom-4 left-1/2 z-20"
+      className="mp-mobile-bottom-nav md:hidden fixed z-20"
       aria-label="Navegación rápida"
       aria-hidden={suppressed}
       style={{
-        transform: suppressed ? "translate(-50%, calc(100% + 24px))" : "translateX(-50%)",
+        left: "max(12px, env(safe-area-inset-left, 0px))",
+        right: "max(12px, env(safe-area-inset-right, 0px))",
+        bottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+        transform: suppressed ? "translateY(calc(100% + 24px))" : "none",
         opacity: suppressed ? 0 : 1,
         pointerEvents: suppressed ? "none" : "auto",
         transition: "transform 200ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), opacity 160ms ease",
       }}
     >
-      <div
-        className="flex items-center gap-1 px-2 py-2 rounded-2xl backdrop-blur-md"
-        style={{
-          background: "rgba(10,10,10,0.78)",
-          boxShadow:
-            "0 12px 32px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.08) inset",
-        }}
-      >
+      <div className="mp-mobile-bottom-nav-inner">
         {items.map((it) => {
           const href = it.k === "home" ? prefix : `${prefix}/${it.k}`;
           const active = activeKey === it.k;
@@ -52,54 +72,23 @@ export function MobileBottomNav({ role, onOpenDrawer, drawerOpen = false }: Prop
             <Link
               key={it.k}
               href={href}
-              className="flex flex-col items-center justify-center w-14 h-12 rounded-xl"
-              style={{
-                background: active ? "var(--primary)" : "transparent",
-                color: active ? "#fff" : "rgba(255,255,255,0.72)",
-                textDecoration: "none",
-                transition: "background 120ms ease, color 120ms ease",
-              }}
+              className={`mp-mobile-bottom-nav-item${active ? " is-active" : ""}`}
               aria-label={it.label}
+              aria-current={active ? "page" : undefined}
             >
               <Icon name={it.icon} size={18} />
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  marginTop: 2,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {it.label}
-              </span>
+              <span className="mp-mobile-bottom-nav-label">{mobileNavLabel(it.label, it.k)}</span>
             </Link>
           );
         })}
         <button
           type="button"
           onClick={onOpenDrawer}
-          className="flex flex-col items-center justify-center w-14 h-12 rounded-full"
-          style={{
-            background: "transparent",
-            color: "rgba(255,255,255,0.72)",
-            border: 0,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            transition: "background 120ms ease, color 120ms ease",
-          }}
+          className="mp-mobile-bottom-nav-item mp-mobile-bottom-nav-more"
           aria-label="Más opciones"
         >
           <Icon name="menu" size={18} />
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 800,
-              marginTop: 2,
-              letterSpacing: "0.04em",
-            }}
-          >
-            Más
-          </span>
+          <span className="mp-mobile-bottom-nav-label">Más</span>
         </button>
       </div>
     </nav>

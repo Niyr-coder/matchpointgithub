@@ -20,7 +20,10 @@ export type PrizeRow = {
   prizeLabel: string;
   valueCents: number | null;
   sponsor: string | null;
+  categoryId: string | null;
 };
+
+type CategoryLite = { id: string; name: string };
 
 type FormState = {
   id: string | null;
@@ -28,6 +31,7 @@ type FormState = {
   prizeLabel: string;
   value: string;
   sponsor: string;
+  categoryId: string | null;
 };
 
 const EMPTY: FormState = {
@@ -36,6 +40,7 @@ const EMPTY: FormState = {
   prizeLabel: "",
   value: "",
   sponsor: "",
+  categoryId: null,
 };
 
 // Sugerencias de puestos para el quick-pick.
@@ -44,10 +49,12 @@ const PLACE_SUGGESTIONS = ["1°", "2°", "3°", "4°", "Mejor remontada", "Fair 
 export function PrizesPanel({
   tournamentId,
   initialPrizes,
+  categories = [],
   readOnly,
 }: {
   tournamentId: string;
   initialPrizes: PrizeRow[];
+  categories?: CategoryLite[];
   readOnly?: boolean;
 }) {
   const router = useRouter();
@@ -63,11 +70,17 @@ export function PrizesPanel({
     [initialPrizes],
   );
 
+  const categoryName = (id: string | null) =>
+    id ? (categories.find((c) => c.id === id)?.name ?? "Categoría") : "General";
+
   const openCreate = () => {
-    // Próximo puesto sugerido según los ya existentes.
     const usedPlaces = new Set(initialPrizes.map((p) => p.placeLabel));
     const suggested = PLACE_SUGGESTIONS.find((s) => !usedPlaces.has(s)) ?? "1°";
-    setForm({ ...EMPTY, placeLabel: suggested });
+    setForm({
+      ...EMPTY,
+      placeLabel: suggested,
+      categoryId: categories.length === 1 ? categories[0]!.id : null,
+    });
     setOpen(true);
   };
   const openEdit = (p: PrizeRow) => {
@@ -77,6 +90,7 @@ export function PrizesPanel({
       prizeLabel: p.prizeLabel,
       value: p.valueCents != null ? String(Math.round(p.valueCents / 100)) : "",
       sponsor: p.sponsor ?? "",
+      categoryId: p.categoryId,
     });
     setOpen(true);
   };
@@ -101,6 +115,7 @@ export function PrizesPanel({
       prizeLabel: form.prizeLabel.trim(),
       valueCents: valueNum != null ? Math.round(valueNum * 100) : null,
       sponsor: form.sponsor.trim() === "" ? null : form.sponsor.trim(),
+      categoryId: form.categoryId,
     };
     setSaving(true);
     startTx(async () => {
@@ -197,6 +212,11 @@ export function PrizesPanel({
                   <div style={{ fontSize: 13, fontWeight: 800, color: "#0a0a0a" }}>
                     {p.prizeLabel}
                   </div>
+                  {categories.length > 0 && (
+                    <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 3 }}>
+                      {categoryName(p.categoryId)}
+                    </div>
+                  )}
                   {p.sponsor && (
                     <div
                       style={{
@@ -297,7 +317,29 @@ export function PrizesPanel({
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-              <Field label="Puesto / categoría">
+              {categories.length > 0 && (
+                <Field label="Categoría del torneo">
+                  <select
+                    value={form.categoryId ?? ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        categoryId: e.target.value === "" ? null : e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">General (todo el torneo)</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+
+              <Field label="Puesto">
                 <input
                   type="text"
                   value={form.placeLabel}

@@ -14,9 +14,11 @@ const buckets = [
   { id: "avatars", public: true, fileSizeLimit: 2 * 1024 * 1024 },
   { id: "club-covers", public: false, fileSizeLimit: 8 * 1024 * 1024 },
   { id: "club-courts", public: true, fileSizeLimit: 8 * 1024 * 1024 },
+  { id: "clubs", public: true, fileSizeLimit: 8 * 1024 * 1024 },
   { id: "resources", public: false, fileSizeLimit: 50 * 1024 * 1024 },
   { id: "tickets-attachments", public: false, fileSizeLimit: 10 * 1024 * 1024 },
   { id: "kyc-docs", public: false, fileSizeLimit: 10 * 1024 * 1024 },
+  { id: "payment_proofs", public: false, fileSizeLimit: 8 * 1024 * 1024 },
 ];
 
 async function main() {

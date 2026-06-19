@@ -26,6 +26,7 @@ import {
   uploadApplicationPhoto,
   removeApplicationPhoto,
 } from "@/server/actions/clubApplicationUploads";
+import { fmtDateTimeEc, fmtLongDateEc } from "@/lib/api/format";
 
 type StepKey = 1 | 2 | 3 | 4 | 5;
 type ViewMode = StepKey | "submitted" | "approved" | "rejected";
@@ -120,6 +121,30 @@ const EMPTY_WEEKLY_HOURS: WeeklyHours = {
   sat: { open: "07:00", close: "22:00" },
   sun: { open: "07:00", close: "21:00" },
 };
+
+const WEEK_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
+/** Resumen legible del horario semanal para las cards de cancha. */
+function formatWeeklyHoursSummary(weeklyHours: WeeklyHours): string {
+  const slots = WEEK_DAY_KEYS.map((k) => weeklyHours[k]).filter(
+    (s): s is { open: string; close: string } => s != null,
+  );
+  if (slots.length === 0) return "Cerrado";
+
+  const uniqueRanges: { open: string; close: string }[] = [];
+  for (const s of slots) {
+    if (!uniqueRanges.some((u) => u.open === s.open && u.close === s.close)) {
+      uniqueRanges.push(s);
+    }
+  }
+  if (uniqueRanges.length === 1) {
+    return `${uniqueRanges[0]!.open} – ${uniqueRanges[0]!.close}`;
+  }
+  return uniqueRanges
+    .map((r) => `${r.open} – ${r.close}`)
+    .slice(0, 3)
+    .join(" · ");
+}
 
 const EMPTY_DRAFT: ClubDraft = {
   applicationId: null,
@@ -565,15 +590,9 @@ function Frame({
   nextDisabled?: boolean;
 }) {
   return (
-    <div
-      className="mp-solicitar-club-frame"
-      style={{
-        background: "#fafafa",
-        alignItems: "start",
-      }}
-    >
-      {/* Columna izquierda: título + form card (gana todo el ancho del form interno) */}
-      <div className="mp-solicitar-club-main" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+    <div className="mp-solicitar-club-frame">
+      {/* Columna izquierda: título + form card */}
+      <div className="mp-solicitar-club-main" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="mp-solicitar-club-intro">
           <div className="label-mp">Solicitar Club · Listing oficial</div>
           <h1 className="font-heading display-md mp-solicitar-club-title" style={{ margin: "6px 0 0" }}>
@@ -642,8 +661,8 @@ function Frame({
         </div>
       </div>
 
-      {/* Rail derecho sticky: estado + preview consolidados */}
-      <aside className="mp-solicitar-club-aside" style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      {/* Rail derecho sticky: estado + preview */}
+      <aside className="mp-solicitar-club-aside">
         <div className="card" style={{ padding: 14 }}>
           <div className="label-mp" style={{ marginBottom: 4 }}>
             Estado
@@ -1565,6 +1584,7 @@ function Step2({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
 function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void }) {
   const { draft, set, addCourt, updateCourt, removeCourt, saveStep3 } = useClubDraft();
   const courts = draft.courts;
+  const hoursLabel = formatWeeklyHoursSummary(draft.weeklyHours);
 
   const updatePrice = (id: string, price: number) => {
     updateCourt(id, { price });
@@ -1654,9 +1674,6 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
                       PICKLEBALL
                     </span>
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-                    {c.surf}
-                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button
@@ -1706,10 +1723,10 @@ function Step3({ onBack, onNext }: { onBack?: () => void; onNext?: () => void })
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <Icon name="clock" size={11} />
-                  {c.hours}
+                  {hoursLabel}
                 </span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Icon name="dollar-sign" size={11} />$
+                  <Icon name="dollar-sign" size={11} />
                   <input
                     type="number"
                     min={1}
@@ -2832,15 +2849,7 @@ function buildReviewTimeline(review: ApplicationReviewState): {
   sub: string;
   s: "done" | "now" | "wait";
 }[] {
-  const fmt = (iso: string | null) =>
-    iso
-      ? new Date(iso).toLocaleString("es-EC", {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "Pendiente";
+  const fmt = (iso: string | null) => (iso ? fmtDateTimeEc(iso) : "Pendiente");
   const s = review.status;
   const reachedDocs = ["docs_review", "field_verification", "final_review", "approved"].includes(s);
   const reachedField = ["field_verification", "final_review", "approved"].includes(s);
@@ -2881,14 +2890,7 @@ function buildReviewTimeline(review: ApplicationReviewState): {
 // (la primera vez que recarga después de un rejected, el server creará un draft nuevo).
 function RejectedView({ review }: { review: ApplicationReviewState }) {
   const router = useRouter();
-  const fmt = (iso: string | null) =>
-    iso
-      ? new Date(iso).toLocaleString("es-EC", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })
-      : "—";
+  const fmt = (iso: string | null) => (iso ? fmtLongDateEc(iso) : "—");
   return (
     <div style={{ background: "#fafafa" }}>
       <div className="card" style={{ padding: 0, overflow: "hidden", maxWidth: 760 }}>

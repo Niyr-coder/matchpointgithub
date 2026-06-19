@@ -7,6 +7,10 @@ import {
   type BracketsData,
   type BracketMatch,
 } from "./PartnerBracketsScreenView";
+import {
+  knockoutRoundLabel,
+  knockoutRoundMatchCounts,
+} from "@/lib/torneos/bracket-labels";
 
 function formatSetScore(score: unknown): { sa: number | string; sb: number | string } {
   const s = score as { sets?: Array<{ a?: number; b?: number }> } | null;
@@ -63,6 +67,35 @@ async function registrationLabels(
   return out;
 }
 
+const PLACEHOLDER_MATCH: BracketMatch = {
+  id: "",
+  a: "TBD",
+  b: "TBD",
+  sa: "-",
+  sb: "-",
+  status: "scheduled",
+  reportable: false,
+};
+
+function placeholderColumns(entryCount: number): BracketsData["columns"] {
+  const counts = knockoutRoundMatchCounts(entryCount);
+  return counts.map((matchCount, idx) => ({
+    label: knockoutRoundLabel(idx, counts.length),
+    matches: Array.from({ length: matchCount }, () => ({ ...PLACEHOLDER_MATCH })),
+  }));
+}
+
+async function countAcceptedRegistrations(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+  tournamentId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("registrations")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId)
+    .eq("status", "accepted");
+  return count ?? 0;
+}
 async function loadData(): Promise<BracketsData> {
   const empty: BracketsData = {
     partnerId: null,
@@ -70,8 +103,8 @@ async function loadData(): Promise<BracketsData> {
     tournamentName: null,
     tournamentFormat: "single_elim",
     canGenerateRandomBracket: true,
-    rounds: { r1: [], r2: [], r3: [] },
-    roundLabels: { r1: "Cuartos", r2: "Semis", r3: "Final" },
+    columns: placeholderColumns(8),
+    hasBracket: false,
     championLabel: "Por decidir",
     championWhen: "—",
   };
@@ -126,14 +159,15 @@ async function loadData(): Promise<BracketsData> {
     .limit(1);
   const bracketId = brackets?.[0]?.id as string | undefined;
   if (!bracketId) {
+    const regCount = await countAcceptedRegistrations(supabase, chosen.id);
     return {
       partnerId,
       tournamentId: chosen.id,
       tournamentName: chosen.name,
       tournamentFormat: chosen.format,
       canGenerateRandomBracket,
-      rounds: { r1: [], r2: [], r3: [] },
-      roundLabels: { r1: "Cuartos", r2: "Semis", r3: "Final" },
+      columns: placeholderColumns(Math.max(regCount, 2)),
+      hasBracket: false,
       championLabel: "Por decidir",
       championWhen: canGenerateRandomBracket
         ? "—"
@@ -198,24 +232,19 @@ async function loadData(): Promise<BracketsData> {
     byRound.get(r)!.push(m);
   }
   const sortedRounds = Array.from(byRound.keys()).sort((a, b) => a - b);
-  const r1raw = sortedRounds[0] != null ? byRound.get(sortedRounds[0]) ?? [] : [];
-  const r2raw = sortedRounds[1] != null ? byRound.get(sortedRounds[1]) ?? [] : [];
-  const r3raw = sortedRounds[2] != null ? byRound.get(sortedRounds[2]) ?? [] : [];
-
-  const r1 = r1raw.map(mkMatch);
-  const r2 = r2raw.map(mkMatch);
-  const r3 = r3raw.map(mkMatch);
-
-  const roundLabels = {
-    r1:
-      r1.length >= 4 ? "Cuartos" : r1.length === 2 ? "Semis" : r1.length === 1 ? "Final" : "Ronda 1",
-    r2: r2.length === 2 ? "Semis" : r2.length === 1 ? "Final" : "Ronda 2",
-    r3: "Final",
-  };
+  const totalRounds = sortedRounds.length;
+  const columns = sortedRounds.map((roundNum, idx) => ({
+    label: knockoutRoundLabel(idx, totalRounds),
+    matches: (byRound.get(roundNum) ?? [])
+      .sort((a, b) => (a.position as number) - (b.position as number))
+      .map(mkMatch),
+  }));
 
   let championLabel = "Por decidir";
   let championWhen = "—";
-  const finalRaw = sortedRounds.length > 0 ? byRound.get(sortedRounds[sortedRounds.length - 1])?.[0] : null;
+  const finalRaw =
+    sortedRounds.length > 0 ? byRound.get(sortedRounds[sortedRounds.length - 1])?.[0] : null;
+  const finalMatch = columns[columns.length - 1]?.matches[0];
   if (finalRaw) {
     if (finalRaw.winner_side === "a" && finalRaw.side_a_registration_id) {
       championLabel = nameByReg.get(finalRaw.side_a_registration_id as string) ?? "Por decidir";
@@ -234,10 +263,11 @@ async function loadData(): Promise<BracketsData> {
     tournamentName: chosen.name,
     tournamentFormat: chosen.format,
     canGenerateRandomBracket,
-    rounds: { r1, r2, r3 },
-    roundLabels,
+    columns,
+    hasBracket: columns.some((c) => c.matches.length > 0),
     championLabel,
     championWhen,
+    finalHasWinner: !!finalMatch?.w,
   };
 }
 

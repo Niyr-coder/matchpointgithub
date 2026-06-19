@@ -43,6 +43,13 @@ export const GroupPlayoffConfigSchema = z
   })
   .openapi("GroupPlayoffConfig");
 
+/** Default al crear torneo grupos + playoffs sin UI de config (club wizard). */
+export const DEFAULT_GROUP_PLAYOFF_CONFIG = {
+  groupsCount: 2,
+  advancePerGroup: 4,
+  finalScoringOverride: null,
+} satisfies z.infer<typeof GroupPlayoffConfigSchema>;
+
 export const EventStatusSchema = z
   .enum(["draft", "published", "registration_open", "registration_closed", "live", "finished", "cancelled"])
   .openapi("EventStatus");
@@ -179,6 +186,7 @@ export const TournamentCreateCategorySchema = z
   .object({
     name: z.string().min(1).max(80),
     gender: z.enum(["m", "f", "mixed", "open"]).nullable().optional(),
+    modality: TournamentModalitySchema.optional(),
     mprMin: z.number().min(2.0).max(8.0).nullable().optional(),
     mprMax: z.number().min(2.0).max(8.0).nullable().optional(),
     ageMin: z.number().int().min(0).max(120).nullable().optional(),
@@ -238,6 +246,47 @@ export const TournamentCreateSchema = z
     }
   })
   .openapi("TournamentCreate");
+
+export const ClubTournamentPrizeDraftSchema = z
+  .object({
+    position: z.number().int().min(0),
+    placeLabel: z.string().min(1).max(40),
+    prizeLabel: z.string().max(200),
+    valueCents: z.number().int().min(0).optional(),
+  })
+  .openapi("ClubTournamentPrizeDraft");
+
+/** Creación de torneo desde el club (owner/manager) sin partner_org. */
+export const ClubTournamentCreateSchema = z
+  .object({
+    clubId: UuidSchema,
+    name: z.string().min(2).max(120),
+    slug: SlugSchema,
+    description: z.string().max(2000).optional(),
+    sport: MpSportSchema.default("pickleball"),
+    format: TournamentFormatSchema,
+    startsAt: IsoDateTimeSchema,
+    endsAt: IsoDateTimeSchema.nullable().optional(),
+    registrationOpensAt: IsoDateTimeSchema.optional(),
+    registrationClosesAt: IsoDateTimeSchema.optional(),
+    maxParticipants: z.number().int().positive().optional(),
+    entryFeeCents: z.number().int().min(0).default(0),
+    currency: MpCurrencySchema.optional(),
+    paymentPolicy: TournamentPaymentPolicySchema.optional(),
+    prizePoolCents: z.number().int().min(0).optional(),
+    prizes: z.array(ClubTournamentPrizeDraftSchema).max(20).optional(),
+    modality: TournamentModalitySchema.default("doubles"),
+    scoringConfig: ScoringConfigSchema.default({
+      type: "side_out",
+      points: 11,
+      winBy: 2,
+      bestOf: 3,
+    }),
+    groupPlayoffConfig: GroupPlayoffConfigSchema.optional(),
+    categories: z.array(TournamentCreateCategorySchema).min(1).max(20),
+    publish: z.boolean().optional(),
+  })
+  .openapi("ClubTournamentCreate");
 
 export const TournamentRegisterSchema = z
   .object({

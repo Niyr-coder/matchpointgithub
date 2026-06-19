@@ -32,6 +32,7 @@ type PrizeLite = {
   prizeLabel: string;
   valueCents: number | null;
   sponsor: string | null;
+  categoryName?: string | null;
 };
 
 export function PublicPreviewModal({
@@ -349,6 +350,11 @@ export function PublicPreviewModal({
                           <div style={{ fontSize: 12.5, fontWeight: 800 }}>
                             {p.prizeLabel}
                           </div>
+                          {p.categoryName && (
+                            <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
+                              {p.categoryName}
+                            </div>
+                          )}
                           {p.sponsor && (
                             <div
                               style={{

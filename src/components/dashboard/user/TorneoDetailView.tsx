@@ -20,6 +20,7 @@ import {
   type TorneoPlayerShell,
   type TorneoPlayerStatus,
 } from "@/lib/torneos/player-view";
+import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
 import { BracketView, type BracketColumn } from "../brackets/BracketView";
 
 export type TorneoPlayerTab = "camino" | "completo" | "detalles" | "resultados";
@@ -280,15 +281,10 @@ function CompletoTab({
   }
 
   const rounds = [...new Set(bracketSides.map((m) => m.round))].sort((a, b) => a - b);
-  const roundTitle = (round: number, idx: number, total: number) => {
-    if (format === "bracket" && total === 4) {
-      return ["Octavos", "Cuartos", "Semifinal", "Final"][idx] ?? `Ronda ${round}`;
-    }
-    return `Ronda ${round}`;
-  };
+  const totalRounds = rounds.length;
 
   const columns: BracketColumn[] = rounds.map((round, idx) => ({
-    label: roundTitle(round, idx, rounds.length),
+    label: knockoutRoundLabel(idx, totalRounds),
     matches: bracketSides
       .filter((m) => m.round === round)
       .map((m) => ({

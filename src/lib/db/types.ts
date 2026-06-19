@@ -10671,7 +10671,7 @@ export type Database = {
         Returns: boolean
       }
       fn_materialize_club_from_application: {
-        Args: { p_app_id: string }
+        Args: { p_app_id: string; p_actor_id?: string }
         Returns: string
       }
       fn_multisport_enabled: { Args: never; Returns: boolean }

@@ -7,11 +7,14 @@ import { usePaywall, useLandingAuth } from "@/components/landing/PublicChromeCli
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { cancelMyRegistration } from "@/server/actions/tournaments";
 import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPanel";
+import { TournamentScheduleSection } from "@/components/events/TournamentScheduleSection";
+import type { TournamentScheduleBlockView } from "@/lib/tournaments/schedule-display";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 
 export type MyRegistration = {
   id: string;
   status: string;
+  categoryId: string | null;
 };
 
 export type TournamentInscrito = {
@@ -28,6 +31,7 @@ type Props = {
   clubCity: string | null;
   myRegistration?: MyRegistration | null;
   inscritos?: TournamentInscrito[];
+  scheduleBlocks?: TournamentScheduleBlockView[];
 };
 
 const MONTHS_ES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -320,7 +324,14 @@ function CancelConfirmModal({
   );
 }
 
-export function EventDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [] }: Props) {
+export function EventDetailView({
+  detail,
+  clubName,
+  clubCity,
+  myRegistration: initialReg,
+  inscritos = [],
+  scheduleBlocks = [],
+}: Props) {
   const onPaywall = usePaywall();
   const auth = useLandingAuth();
   const router = useRouter();
@@ -396,12 +407,7 @@ export function EventDetailView({ detail, clubName, clubCity, myRegistration: in
       ]
     : [];
 
-  // Cronograma: mock por ahora (no tenemos schedule en DB).
-  const schedule = [
-    { d: "Día 1 · acreditación", items: [["18:00", "Acreditación + bienvenida"], ["19:00", "Sorteo de cuadros"]] as [string, string][] },
-    { d: "Día 2 · cuadros", items: [["09:00", "Octavos de final"], ["14:00", "Cuartos de final"], ["18:00", "Coctel de jugadores"]] as [string, string][] },
-    { d: "Día 3 · final", items: [["10:00", "Semifinales"], ["15:00", "Final"], ["17:00", "Premiación"]] as [string, string][] },
-  ];
+  // Cronograma real (tournament_schedule_blocks).
 
   return (
     <>
@@ -683,51 +689,11 @@ export function EventDetailView({ detail, clubName, clubCity, myRegistration: in
             />
           </div>
 
-          <div className="label-mp">Cronograma</div>
-          <h2
-            className="font-heading"
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              textTransform: "uppercase",
-              margin: "8px 0 18px",
-            }}
-          >
-            Tres días, una sola corona<span className="dot">.</span>
-          </h2>
-          {schedule.map((day) => (
-            <div key={day.d} style={{ marginBottom: 24 }}>
-              <div className="label-mp" style={{ color: "var(--primary)", marginBottom: 10 }}>
-                {day.d}
-              </div>
-              {day.items.map(([time, evt], i) => (
-                <div
-                  key={time}
-                  style={{
-                    display: "flex",
-                    gap: 18,
-                    padding: "10px 0",
-                    borderTop: i === 0 ? "0" : "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    className="font-heading"
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 900,
-                      color: "var(--primary)",
-                      minWidth: 70,
-                      letterSpacing: "-0.01em",
-                    }}
-                  >
-                    {time}
-                  </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{evt}</div>
-                </div>
-              ))}
-            </div>
-          ))}
+          <TournamentScheduleSection
+            blocks={scheduleBlocks}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+            myCategoryId={myReg?.categoryId ?? null}
+          />
         </div>
         <div>
           <div className="card mp-event-detail-rail" style={{ padding: 22 }}>

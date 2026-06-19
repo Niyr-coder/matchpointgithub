@@ -20,6 +20,8 @@ export default async function TorneoPlayerPage({
         myRegistration={data.myRegistration}
         inscritos={data.inscritos}
         meUserId={data.meUserId}
+        categoryRegistrationCounts={data.categoryRegistrationCounts}
+        scheduleBlocks={data.scheduleBlocks}
         myMatches={data.myMatches}
         bracketSides={data.bracketSides}
       />

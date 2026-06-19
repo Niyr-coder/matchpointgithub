@@ -29,20 +29,11 @@ export type BracketsData = {
   tournamentName: string | null;
   tournamentFormat: string;
   canGenerateRandomBracket: boolean;
-  rounds: { r1: BracketMatch[]; r2: BracketMatch[]; r3: BracketMatch[] };
-  roundLabels: { r1: string; r2: string; r3: string };
+  columns: { label: string; matches: BracketMatch[] }[];
+  hasBracket: boolean;
   championLabel: string;
   championWhen: string;
-};
-
-const EMPTY_MATCH: BracketMatch = {
-  id: "",
-  a: "TBD",
-  b: "TBD",
-  sa: "-",
-  sb: "-",
-  status: "scheduled",
-  reportable: false,
+  finalHasWinner?: boolean;
 };
 
 function toNode(m: BracketMatch, placeholder: boolean): BracketNode {
@@ -72,11 +63,11 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
     { enabled: !!data.partnerId },
   );
 
-  const hasBracket =
-    data.rounds.r1.length > 0 || data.rounds.r2.length > 0 || data.rounds.r3.length > 0;
-  const r1 = hasBracket ? data.rounds.r1 : [EMPTY_MATCH, EMPTY_MATCH, EMPTY_MATCH, EMPTY_MATCH];
-  const r2 = hasBracket ? data.rounds.r2 : [EMPTY_MATCH, EMPTY_MATCH];
-  const r3 = hasBracket && data.rounds.r3[0] ? data.rounds.r3[0] : EMPTY_MATCH;
+  const hasBracket = data.hasBracket;
+  const bracketColumns = data.columns.map((col) => ({
+    label: col.label,
+    matches: col.matches.map((m) => toNode(m, !hasBracket)),
+  }));
 
   const labelTag = data.tournamentName
     ? `Partner · Brackets · ${data.tournamentName}`
@@ -158,14 +149,10 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
       )}
 
       <BracketView
-        columns={[
-          { label: data.roundLabels.r1, matches: r1.map((m) => toNode(m, !hasBracket)) },
-          { label: data.roundLabels.r2, matches: r2.map((m) => toNode(m, !hasBracket)) },
-          { label: data.roundLabels.r3, matches: [r3].map((m) => toNode(m, !hasBracket)) },
-        ]}
+        columns={bracketColumns}
         champion={{
           label: data.championLabel,
-          decided: hasBracket && !!data.rounds.r3[0]?.w,
+          decided: hasBracket && !!data.finalHasWinner,
           when: data.championWhen,
         }}
         onReport={hasBracket ? onReport : undefined}

@@ -17,6 +17,8 @@ type Props = {
   myRegistration: MyRegistration | null;
   inscritos?: TournamentInscrito[];
   meUserId: string | null;
+  categoryRegistrationCounts?: Record<string, number>;
+  scheduleBlocks?: import("@/lib/tournaments/schedule-display").TournamentScheduleBlockView[];
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
 };
@@ -28,6 +30,8 @@ export function TorneoPageRouter({
   myRegistration,
   inscritos = [],
   meUserId,
+  categoryRegistrationCounts = {},
+  scheduleBlocks = [],
   myMatches = [],
   bracketSides = [],
 }: Props) {
@@ -51,6 +55,8 @@ export function TorneoPageRouter({
       myRegistration={myRegistration}
       inscritos={inscritos}
       meUserId={meUserId}
+      categoryRegistrationCounts={categoryRegistrationCounts}
+      scheduleBlocks={scheduleBlocks}
     />
   );
 }

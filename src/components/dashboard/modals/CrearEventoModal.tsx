@@ -2,10 +2,41 @@
 // Wizard 4 pasos (Tipo → Básicos → Cupos+Premios → Publicar). Escucha 'mp-open-crear-evento'
 // con CustomEvent.detail = { clubId, clubName? } para resolver la sede.
 "use client";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, useCallback, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { MprRangeSlider } from "@/components/dashboard/partner/CategoriesPanel";
+import { MP_ROLES, type RoleKey } from "@/lib/roles";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
-import { createEvent, publishEvent } from "@/server/actions/events";
+import { createEvent, createClubTournament, publishEvent, getCreateEventTypeCounts } from "@/server/actions/events";
+import { DEFAULT_GROUP_PLAYOFF_CONFIG } from "@/lib/schemas/tournaments";
+import { formatActionError } from "@/lib/user-facing/errors";
+import {
+  readCreateEventWizardDraft,
+  writeCreateEventWizardDraft,
+  clearCreateEventWizardDraft,
+  createEventWizardDraftHasProgress,
+  type CreateEventTypeCounts,
+} from "@/lib/events/create-event-wizard";
+import {
+  EVENT_LEVEL_OPTIONS,
+  GENDER_OPTIONS,
+  CATEGORY_MODALITY_OPTIONS,
+  emptyTournamentCategory,
+  patchTournamentCategoryDraft,
+  categoryDraftsToCreatePayload,
+  categoryDraftCupoLabel,
+  totalCategoryTeams,
+  validateTournamentCategoryDrafts,
+  categoryDraftSummary,
+  clubEventFormatToTournament,
+  clampMpr,
+  mprPresetRange,
+  normalizeTournamentCategoryDraft,
+  categoryDraftMprRange,
+  formatMprRange,
+  type TournamentCategoryDraft,
+} from "@/lib/tournaments/event-level-categories";
 
 type EvType = "torneo" | "liga" | "social" | "clinic";
 type Sport = "pickleball" | "padel" | "tenis" | "futbol";
@@ -39,14 +70,16 @@ type Form = {
   clubId: string | null;
   venue: string;
   format: string;
-  level: string;
+  categoryLevels: string[];
+  categories: TournamentCategoryDraft[];
   desc: string;
   slots: number;
   fee: number;
   paymentPolicy: PaymentPolicy;
   prize: number;
+  prizeDetails: string[];
+  prizeShares: number[];
   waitlist: boolean;
-  levelGate: boolean;
   pairTogether: boolean;
   membersOnly: boolean;
   visibility: Visibility;
@@ -61,6 +94,16 @@ function defaultDateTime(daysFromNow: number, hour = 18): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const PRIZE_PLACE_LABELS = ["1°", "2°", "3°"] as const;
+
+const DEFAULT_PRIZE_SHARES = [50, 30, 20];
+
+const DEFAULT_PRIZE_DETAILS = [
+  "Trofeo + kit Wilson · gold",
+  "Medalla + kit",
+  "Medalla",
+];
+
 const INITIAL: Form = {
   type: "torneo",
   sport: "pickleball",
@@ -69,15 +112,17 @@ const INITIAL: Form = {
   end: defaultDateTime(9),
   clubId: null,
   venue: "",
-  format: "Eliminación directa · mejor de 3",
-  level: "3.0–4.5",
+  format: "",
+  categoryLevels: ["3.0"],
+  categories: [emptyTournamentCategory()],
   desc: "",
   slots: 16,
   fee: 0,
   paymentPolicy: "prepay",
   prize: 0,
+  prizeDetails: [...DEFAULT_PRIZE_DETAILS],
+  prizeShares: [...DEFAULT_PRIZE_SHARES],
   waitlist: true,
-  levelGate: false,
   pairTogether: false,
   membersOnly: false,
   visibility: "public",
@@ -107,33 +152,168 @@ function slugify(name: string): string {
 
 const STEPS = ["Tipo", "Básicos", "Cupos & Premios", "Publicar"];
 
+type CrearEventoOpenDetail = {
+  clubId?: string | null;
+  clubName?: string | null;
+  role?: RoleKey;
+  contextLabel?: string | null;
+};
+
+function roleFromPathname(pathname: string): RoleKey {
+  const match = pathname.match(/^\/dashboard\/([^/]+)/);
+  const key = match?.[1];
+  if (key && key in MP_ROLES) return key as RoleKey;
+  return "user";
+}
+
+function headerBadgeText(
+  role: RoleKey,
+  venue: string,
+  detail?: CrearEventoOpenDetail | null,
+): string | null {
+  if (role === "user") return null;
+  const badge = MP_ROLES[role]?.badge;
+  if (!badge) return null;
+  const raw =
+    venue.trim() ||
+    detail?.clubName?.trim() ||
+    detail?.contextLabel?.trim() ||
+    "";
+  if (!raw) return badge;
+  const place = raw.includes(" · ") ? raw.split(" · ")[0]!.trim() : raw;
+  return `${badge} · ${place}`;
+}
+
 export function CrearEventoModal() {
+  const pathname = usePathname() || "";
+  const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
-  const [pub, setPub] = useState<{ id: string; slug: string } | false>(false);
+  const [pub, setPub] = useState<
+    | false
+    | { id: string; slug: string; kind: "event" | "tournament" }
+  >(false);
   const [form, setForm] = useState<Form>(INITIAL);
+  const [openDetail, setOpenDetail] = useState<CrearEventoOpenDetail | null>(null);
+  const [openRole, setOpenRole] = useState<RoleKey>("owner");
+  const [typeCounts, setTypeCounts] = useState<CreateEventTypeCounts | null>(null);
+  const [typeCountsLoading, setTypeCountsLoading] = useState(false);
   const [submitting, startSubmit] = useTransition();
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const contextBadge = headerBadgeText(openRole, form.venue, openDetail);
+
+  const handleClose = useCallback(() => {
+    if (pub) {
+      clearCreateEventWizardDraft(form.clubId);
+      setDraftSavedAt(null);
+      setOpen(false);
+      return;
+    }
+    if (createEventWizardDraftHasProgress(form, step)) {
+      const ok = writeCreateEventWizardDraft(form.clubId, step, form);
+      if (ok) setDraftSavedAt(new Date().toISOString());
+      toast({
+        icon: "save",
+        title: "Borrador guardado",
+        sub: "Lo retomas al volver a abrir Crear evento.",
+      });
+    } else {
+      clearCreateEventWizardDraft(form.clubId);
+      setDraftSavedAt(null);
+    }
+    setOpen(false);
+  }, [form, step, pub, toast]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ clubId?: string; clubName?: string }>).detail;
+      const detail = (e as CustomEvent<CrearEventoOpenDetail>).detail;
+      const role = detail?.role ?? roleFromPathname(pathname);
+      const clubId = detail?.clubId ?? null;
+      const venue =
+        detail?.clubName?.trim() ||
+        detail?.contextLabel?.split(" · ")[0]?.trim() ||
+        "";
+      const draft = readCreateEventWizardDraft(clubId);
+
+      setOpenDetail(detail ?? null);
+      setOpenRole(role);
       setOpen(true);
-      setStep(0);
       setPub(false);
-      setForm({
-        ...INITIAL,
-        clubId: detail?.clubId ?? null,
-        venue: detail?.clubName ?? "",
-      });
+
+      if (draft) {
+        setForm({
+          ...INITIAL,
+          ...draft.form,
+          clubId,
+          venue: venue || draft.form.venue,
+          categories: draft.form.categories.map(normalizeTournamentCategoryDraft),
+        });
+        setStep(Math.min(Math.max(0, draft.step), STEPS.length - 1));
+        setDraftSavedAt(draft.savedAt);
+        if (createEventWizardDraftHasProgress(draft.form, draft.step)) {
+          toast({
+            icon: "save",
+            title: "Borrador recuperado",
+            sub: "Continúa donde lo dejaste.",
+          });
+        }
+      } else {
+        setForm({
+          ...INITIAL,
+          clubId,
+          venue,
+        });
+        setStep(0);
+        setDraftSavedAt(null);
+      }
     };
     window.addEventListener("mp-open-crear-evento", handler);
     return () => window.removeEventListener("mp-open-crear-evento", handler);
-  }, []);
+  }, [pathname, toast]);
+
+  useEffect(() => {
+    if (!open || pub) return;
+    if (!createEventWizardDraftHasProgress(form, step)) return;
+    const timer = window.setTimeout(() => {
+      const ok = writeCreateEventWizardDraft(form.clubId, step, form);
+      if (ok) setDraftSavedAt(new Date().toISOString());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [open, pub, step, form]);
+
+  useEffect(() => {
+    if (!open || pub) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, pub, handleClose]);
+
+  useEffect(() => {
+    if (!open || !form.clubId) {
+      setTypeCounts(null);
+      setTypeCountsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setTypeCountsLoading(true);
+    void getCreateEventTypeCounts({ clubId: form.clubId }).then((res) => {
+      if (cancelled) return;
+      setTypeCountsLoading(false);
+      setTypeCounts(res.ok ? res.data : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, form.clubId]);
 
   if (!open) return null;
-  const close = () => setOpen(false);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  const isCompetitive = form.type === "torneo" || form.type === "liga";
+  const bracketTeams = isCompetitive ? totalCategoryTeams(form.categories) : form.slots;
 
   const validate = (): string | null => {
     if (!form.clubId) return "Falta el club anfitrión. Abre el modal desde la pantalla del club.";
@@ -143,6 +323,18 @@ export function CrearEventoModal() {
     const e = new Date(form.end);
     if (isNaN(s.getTime()) || isNaN(e.getTime())) return "Fechas inválidas.";
     if (e <= s) return "La fecha de fin debe ser posterior a la de inicio.";
+    if (isCompetitive) {
+      if (!form.format.trim()) return "Elige un formato de competencia.";
+      const catErr = validateTournamentCategoryDrafts(form.categories);
+      if (catErr) return catErr;
+    }
+    return null;
+  };
+
+  const validateStep = (s: number): string | null => {
+    if (s === 1 && isCompetitive && !form.format.trim()) {
+      return "Elige un formato de competencia.";
+    }
     return null;
   };
 
@@ -153,6 +345,55 @@ export function CrearEventoModal() {
       return;
     }
     startSubmit(async () => {
+      if (isCompetitive) {
+        const tournamentCategories = categoryDraftsToCreatePayload(form.categories);
+        const tournamentFormat = clubEventFormatToTournament(form.format);
+        const created = await createClubTournament({
+          clubId: form.clubId!,
+          name: form.name.trim(),
+          slug: slugify(form.name),
+          description: form.desc.trim() || undefined,
+          sport: form.sport === "pickleball" ? "pickleball" : "pickleball",
+          format: tournamentFormat,
+          startsAt: new Date(form.start).toISOString(),
+          endsAt: new Date(form.end).toISOString(),
+          maxParticipants: bracketTeams > 0 ? bracketTeams : undefined,
+          entryFeeCents: Math.round((form.fee || 0) * 100),
+          currency: "USD",
+          paymentPolicy: form.fee > 0 ? form.paymentPolicy : "free",
+          prizePoolCents: form.prize > 0 ? Math.round(form.prize * 100) : undefined,
+          prizes:
+            form.prize > 0
+              ? PRIZE_PLACE_LABELS.map((place, i) => ({
+                  position: i,
+                  placeLabel: place,
+                  prizeLabel: form.prizeDetails[i]?.trim() || DEFAULT_PRIZE_DETAILS[i],
+                  valueCents: Math.round(
+                    (form.prize * Math.max(0, form.prizeShares[i] ?? 0)) / 100 * 100,
+                  ),
+                }))
+              : undefined,
+          groupPlayoffConfig:
+            tournamentFormat === "groups_to_knockout" ? DEFAULT_GROUP_PLAYOFF_CONFIG : undefined,
+          modality: tournamentCategories[0]?.modality ?? "doubles",
+          categories: tournamentCategories,
+          publish: true,
+        });
+        if (!created.ok) {
+          toast({
+            icon: "alert-triangle",
+            title: "Error al crear",
+            sub: formatActionError(created.error),
+          });
+          return;
+        }
+        toast({ icon: "rocket", title: "Torneo publicado", sub: form.name });
+        clearCreateEventWizardDraft(form.clubId);
+        setDraftSavedAt(null);
+        setPub({ id: created.data.id, slug: created.data.slug, kind: "tournament" });
+        return;
+      }
+
       const created = await createEvent({
         clubId: form.clubId!,
         name: form.name.trim(),
@@ -180,16 +421,22 @@ export function CrearEventoModal() {
           title: "Evento creado pero no publicado",
           sub: published.error.message,
         });
-        setPub({ id: ev.id, slug: ev.slug });
+        setPub({ id: ev.id, slug: ev.slug, kind: "event" });
+        clearCreateEventWizardDraft(form.clubId);
+        setDraftSavedAt(null);
         return;
       }
       toast({ icon: "rocket", title: "Evento publicado", sub: ev.name });
-      setPub({ id: ev.id, slug: ev.slug });
+      clearCreateEventWizardDraft(form.clubId);
+      setDraftSavedAt(null);
+      setPub({ id: ev.id, slug: ev.slug, kind: "event" });
     });
   };
 
   return (
     <div
+      className="mp-crear-evento-overlay"
+      onClick={handleClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -205,7 +452,7 @@ export function CrearEventoModal() {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card"
+        className="card mp-crear-evento-modal"
         style={{
           width: "100%",
           maxWidth: 980,
@@ -214,40 +461,54 @@ export function CrearEventoModal() {
           display: "flex",
           flexDirection: "column",
           padding: 0,
+          minWidth: 0,
           background: "#fff",
           boxShadow: "0 32px 64px rgba(0,0,0,0.4)",
         }}
       >
         <div
+          className="mp-crear-evento-header"
           style={{
             padding: "14px 24px",
             borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
             background: "#0a0a0a",
             color: "#fff",
           }}
         >
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <span style={{ color: "var(--primary)", fontSize: 16, fontWeight: 900 }}>●</span>
+          <div
+            className="mp-crear-evento-header-brand"
+            style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}
+          >
+            <span style={{ color: "var(--primary)", fontSize: 16, fontWeight: 900, flexShrink: 0 }}>●</span>
             <span
-              className="font-heading"
+              className="font-heading mp-crear-evento-header-logo"
               style={{
                 fontSize: 12,
                 fontWeight: 900,
                 letterSpacing: "0.04em",
                 textTransform: "uppercase",
+                flexShrink: 0,
               }}
             >
               MATCHPOINT
             </span>
-            <span style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
+            <span
+              className="mp-crear-evento-header-sep"
+              style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)", flexShrink: 0 }}
+            />
+            <span
+              className="mp-crear-evento-header-title"
+              style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap" }}
+            >
               {pub ? "Evento publicado" : "Crear evento"}
             </span>
-            {!pub && (
+            {!pub && contextBadge && (
               <span
+                className="mp-crear-evento-owner-badge"
                 style={{
                   marginLeft: 6,
                   padding: "3px 8px",
@@ -258,15 +519,24 @@ export function CrearEventoModal() {
                   fontWeight: 900,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: 140,
                 }}
+                title={contextBadge}
               >
-                ● OWNER · Club Norte
+                ● {contextBadge}
               </span>
             )}
           </div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            {!pub && (
+          <div
+            className="mp-crear-evento-header-meta"
+            style={{ display: "inline-flex", alignItems: "center", gap: 10, flexShrink: 0 }}
+          >
+            {!pub && draftSavedAt && (
               <span
+                className="mp-crear-evento-draft-label"
                 style={{
                   fontSize: 10.5,
                   color: "rgba(255,255,255,0.7)",
@@ -276,11 +546,12 @@ export function CrearEventoModal() {
                 }}
               >
                 <Icon name="save" size={11} color="rgba(255,255,255,0.7)" />
-                Borrador guardado
+                Borrador guardado ✓
               </span>
             )}
             <button
-              onClick={close}
+              onClick={handleClose}
+              aria-label="Cerrar"
               style={{
                 width: 30,
                 height: 30,
@@ -292,6 +563,7 @@ export function CrearEventoModal() {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
+                flexShrink: 0,
               }}
             >
               <Icon name="x" size={14} color="#fff" />
@@ -300,111 +572,144 @@ export function CrearEventoModal() {
         </div>
 
         {!pub && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "12px 24px",
-              borderBottom: "1px solid var(--border)",
-              background: "#fff",
-            }}
-          >
-            {STEPS.map((s, i) => {
-              const done = i < step;
-              const cur = i === step;
-              return (
-                <div key={s} style={{ display: "contents" }}>
+          <div className="mp-crear-match-steps mp-crear-evento-steps">
+            <div className="mp-crear-match-steps-compact">
+              <div className="mp-crear-match-steps-bar">
+                {STEPS.map((_, i) => (
                   <div
+                    key={i}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      opacity: done || cur ? 1 : 0.45,
+                      flex: 1,
+                      height: 4,
+                      borderRadius: 9999,
+                      background: i <= step ? "var(--primary)" : "var(--border)",
                     }}
-                  >
+                  />
+                ))}
+              </div>
+              <p className="mp-crear-match-step-caption">
+                Paso {step + 1} de {STEPS.length} · {STEPS[step]}
+              </p>
+            </div>
+            <div className="mp-crear-match-steps-full">
+              {STEPS.map((s, i) => {
+                const done = i < step;
+                const cur = i === step;
+                return (
+                  <div key={s} style={{ display: "contents" }}>
                     <div
                       style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        background: done ? "var(--primary)" : cur ? "#0a0a0a" : "#fff",
-                        border: done || cur ? "0" : "1px solid var(--border)",
-                        color: done || cur ? "#fff" : "#0a0a0a",
-                        display: "inline-flex",
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 10.5,
-                        fontWeight: 900,
-                        fontFamily: "Plus Jakarta Sans",
+                        gap: 8,
+                        opacity: done || cur ? 1 : 0.45,
+                        minWidth: 0,
+                        flexShrink: cur || done ? 0 : 1,
                       }}
                     >
-                      {done ? "✓" : i + 1}
+                      <div
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: "50%",
+                          background: done ? "var(--primary)" : cur ? "#0a0a0a" : "#fff",
+                          border: done || cur ? "0" : "1px solid var(--border)",
+                          color: done || cur ? "#fff" : "#0a0a0a",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10.5,
+                          fontWeight: 900,
+                          fontFamily: "Plus Jakarta Sans",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {done ? "✓" : i + 1}
+                      </div>
+                      <div
+                        className="mp-crear-evento-step-label"
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: cur ? 900 : 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                          color: cur ? "#0a0a0a" : "var(--muted-fg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {s}
+                      </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: 10.5,
-                        fontWeight: cur ? 900 : 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                        color: cur ? "#0a0a0a" : "var(--muted-fg)",
-                      }}
-                    >
-                      {s}
-                    </div>
+                    {i < STEPS.length - 1 && (
+                      <div
+                        style={{
+                          flex: 1,
+                          minWidth: 8,
+                          height: 1,
+                          background: i < step ? "var(--primary)" : "var(--border)",
+                          margin: "0 12px",
+                        }}
+                      />
+                    )}
                   </div>
-                  {i < STEPS.length - 1 && (
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 1,
-                        background: i < step ? "var(--primary)" : "var(--border)",
-                        margin: "0 12px",
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
-        <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+        <div className="mp-crear-evento-body">
           {pub ? (
-            <CEDone form={form} eventId={pub.id} eventSlug={pub.slug} close={close} />
+            <CEDone
+              form={form}
+              eventId={pub.id}
+              eventSlug={pub.slug}
+              kind={pub.kind}
+              role={openRole}
+              close={handleClose}
+              onManage={() => {
+                handleClose();
+                const clubRole = openRole === "manager" ? "manager" : "owner";
+                router.push(`/dashboard/${clubRole}/club-torneo/${pub.id}`);
+              }}
+            />
           ) : step === 0 ? (
-            <CEStep1 form={form} set={set} />
+            <CEStep1 form={form} set={set} typeCounts={typeCounts} typeCountsLoading={typeCountsLoading} />
           ) : step === 1 ? (
             <CEStep2 form={form} set={set} />
           ) : step === 2 ? (
-            <CEStep3 form={form} set={set} />
+            <CEStep3 form={form} set={set} bracketTeams={bracketTeams} isCompetitive={isCompetitive} />
           ) : (
-            <CEStep4 form={form} set={set} />
+            <CEStep4 form={form} set={set} bracketTeams={bracketTeams} isCompetitive={isCompetitive} />
           )}
         </div>
 
         {!pub && (
-          <div
-            style={{
-              padding: "12px 24px",
-              borderTop: "1px solid var(--border)",
-              display: "flex",
-              justifyContent: "space-between",
-              background: "#fafafa",
-            }}
-          >
+          <div className="mp-crear-match-footer mp-crear-evento-footer">
             <button
-              className="btn"
+              className="btn mp-crear-match-footer-btn mp-crear-match-footer-back"
               style={{ background: "#fff", border: "1px solid var(--border)" }}
-              onClick={() => (step === 0 ? close() : setStep((s) => s - 1))}
+              onClick={() => (step === 0 ? handleClose() : setStep((s) => s - 1))}
               disabled={submitting}
             >
               <Icon name="arrow-left" size={13} />
               {step === 0 ? "Cancelar" : "Atrás"}
             </button>
             <button
-              className="btn btn-primary"
+              className="btn btn-primary mp-crear-match-footer-btn mp-crear-match-footer-primary"
               disabled={submitting}
-              onClick={() => (step === 3 ? handlePublish() : setStep((s) => s + 1))}
+              onClick={() => {
+                if (step === 3) {
+                  handlePublish();
+                  return;
+                }
+                const stepErr = validateStep(step);
+                if (stepErr) {
+                  toast({ icon: "alert-triangle", title: "Completa el paso", sub: stepErr });
+                  return;
+                }
+                setStep((s) => s + 1);
+              }}
             >
               {step === 3 ? (
                 <>
@@ -432,26 +737,126 @@ export function CrearEventoModal() {
 
 type Setter = <K extends keyof Form>(k: K, v: Form[K]) => void;
 
-const TYPES: { k: EvType; t: string; sub: string; d: string; i: string; tag?: string; n?: string; dimmed?: boolean }[] = [
-  { k: "torneo", t: "Torneo", sub: "Eliminación directa o mejor de N", d: "Cuadro, llaves, premios. Lo más común — fin de semana intensivo.", tag: "POPULAR", i: "trophy", n: "124 al mes" },
-  { k: "liga", t: "Liga", sub: "Round-robin · varias fechas", d: "Múltiples jornadas, tabla de posiciones, ascensos / descensos.", i: "list-ordered", n: "38 al mes" },
-  { k: "social", t: "Social", sub: "Mixto sorteado · sin tabla", d: "Mezcla niveles, conoce gente, snacks y música. Sin presión.", i: "sparkles", n: "92 al mes" },
-  { k: "clinic", t: "Clinic / clase", sub: "Entreno grupal con coach", d: "Sesión técnica de 1–3 horas. Cupos cerrados, sin premios.", i: "graduation-cap", n: "COACH", dimmed: true },
+const TYPES: { k: EvType; t: string; sub: string; d: string; i: string; dimmed?: boolean }[] = [
+  { k: "torneo", t: "Torneo", sub: "Eliminación directa o mejor de N", d: "Cuadro, llaves, premios. Lo más común — fin de semana intensivo.", i: "trophy" },
+  { k: "liga", t: "Liga", sub: "Round-robin · varias fechas", d: "Múltiples jornadas, tabla de posiciones, ascensos / descensos.", i: "list-ordered" },
+  { k: "social", t: "Social", sub: "Mixto sorteado · sin tabla", d: "Mezcla niveles, conoce gente, snacks y música. Sin presión.", i: "sparkles" },
+  { k: "clinic", t: "Clinic / clase", sub: "Entreno grupal con coach", d: "Sesión técnica de 1–3 horas. Cupos cerrados, sin premios.", i: "graduation-cap", dimmed: true },
 ];
 
-const SPORTS: { k: Sport; t: string; i: string; disabled?: boolean }[] = [
-  { k: "pickleball", t: "Pickleball", i: "🏓" },
-  { k: "padel", t: "Pádel", i: "🎾" },
-  { k: "tenis", t: "Tenis", i: "🏸" },
-  { k: "futbol", t: "Fútbol", i: "⚽", disabled: true },
+function typeCountLabel(
+  type: EvType,
+  counts: CreateEventTypeCounts | null,
+  loading: boolean,
+  dimmed?: boolean,
+): string {
+  if (dimmed) return "Solo rol coach";
+  if (loading) return "Cargando…";
+  if (!counts) return "Abre desde tu club";
+  const n = counts[type];
+  if (n === 0) return "Ninguno este mes";
+  return n === 1 ? "1 este mes en tu club" : `${n} este mes en tu club`;
+}
+
+function popularType(counts: CreateEventTypeCounts | null): EvType | null {
+  if (!counts) return null;
+  let best: EvType | null = null;
+  let max = 0;
+  for (const t of TYPES) {
+    if (t.dimmed) continue;
+    const n = counts[t.k];
+    if (n > max) {
+      max = n;
+      best = t.k;
+    }
+  }
+  return max > 0 ? best : null;
+}
+
+const SPORTS: { k: Sport; t: string; icon: string }[] = [
+  { k: "pickleball", t: "Pickleball", icon: "activity" },
 ];
 
-function CEStep1({ form, set }: { form: Form; set: Setter }) {
+function CESportField({ form, set }: { form: Form; set: Setter }) {
+  if (SPORTS.length === 1) {
+    const sport = SPORTS[0]!;
+    return (
+      <CEField label="Deporte">
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: "10px 12px",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "#fafafa",
+          }}
+        >
+          <div
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: "linear-gradient(135deg,#10b981,#064e3b)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name={sport.icon} size={13} color="#fff" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>{sport.t}</div>
+            <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
+              Deporte fijo por ahora en MATCHPOINT
+            </div>
+          </div>
+        </div>
+      </CEField>
+    );
+  }
+
+  return (
+    <CEField label="Deporte">
+      <div className="mp-crear-evento-sports">
+        {SPORTS.map((s) => {
+          const active = form.sport === s.k;
+          return (
+            <button
+              key={s.k}
+              type="button"
+              onClick={() => set("sport", s.k)}
+              className={`mp-crear-evento-sport-chip${active ? " is-active" : ""}`}
+            >
+              <Icon name={s.icon} size={13} color={active ? "var(--primary)" : "var(--muted-fg)"} />
+              {s.t}
+            </button>
+          );
+        })}
+      </div>
+    </CEField>
+  );
+}
+
+function CEStep1({
+  form,
+  set,
+  typeCounts,
+  typeCountsLoading,
+}: {
+  form: Form;
+  set: Setter;
+  typeCounts: CreateEventTypeCounts | null;
+  typeCountsLoading: boolean;
+}) {
+  const popular = popularType(typeCounts);
   return (
     <div>
       <div className="label-mp">Paso 1 de 4</div>
       <h2
-        className="font-heading"
+        className="font-heading mp-crear-evento-title"
         style={{
           fontSize: 26,
           fontWeight: 900,
@@ -466,154 +871,34 @@ function CEStep1({ form, set }: { form: Form; set: Setter }) {
         Cada tipo trae plantilla de cronograma, formato y reglas. Puedes ajustar todo en el paso 2.
       </div>
 
-      <div className="mp-grid-form-4 gap-2.5" style={{ marginBottom: 22 }}>
+      <div className="mp-crear-evento-types gap-2.5" style={{ marginBottom: 22 }}>
         {TYPES.map((t) => {
           const active = form.type === t.k;
+          const showPopular = popular === t.k;
           return (
             <button
               key={t.k}
+              type="button"
               disabled={t.dimmed}
               onClick={() => !t.dimmed && set("type", t.k)}
-              style={{
-                textAlign: "left",
-                padding: 14,
-                borderRadius: 12,
-                fontFamily: "inherit",
-                cursor: t.dimmed ? "not-allowed" : "pointer",
-                background: active ? "#ecfdf5" : "#fff",
-                border: active ? "2px solid var(--primary)" : "1px solid var(--border)",
-                opacity: t.dimmed ? 0.55 : 1,
-                position: "relative",
-                overflow: "hidden",
-              }}
+              className={`mp-crear-evento-type-card${active ? " is-active" : ""}${t.dimmed ? " is-disabled" : ""}`}
             >
-              {t.tag && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    right: 8,
-                    padding: "2px 7px",
-                    borderRadius: 4,
-                    background: "#fbbf24",
-                    color: "#0a0a0a",
-                    fontSize: 8.5,
-                    fontWeight: 900,
-                    letterSpacing: "0.14em",
-                  }}
-                >
-                  {t.tag}
-                </span>
-              )}
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: active ? "var(--primary)" : "#0a0a0a",
-                  color: "#fff",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 8,
-                }}
-              >
+              {showPopular && <span className="mp-crear-evento-type-tag">POPULAR</span>}
+              <div className="mp-crear-evento-type-icon">
                 <Icon name={t.i} size={15} color="#fff" />
               </div>
-              <div
-                className="font-heading"
-                style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.02em" }}
-              >
-                {t.t}
-              </div>
-              <div
-                style={{
-                  fontSize: 9.5,
-                  color: "var(--primary)",
-                  fontWeight: 800,
-                  marginTop: 2,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                {t.sub}
-              </div>
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--muted-fg)",
-                  marginTop: 8,
-                  lineHeight: 1.4,
-                  minHeight: 42,
-                }}
-              >
-                {t.d}
-              </div>
-              <div
-                style={{
-                  fontSize: 9,
-                  color: "var(--muted-fg)",
-                  marginTop: 6,
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                {t.dimmed ? "○ Solo rol coach" : "● " + t.n}
+              <div className="mp-crear-evento-type-title font-heading">{t.t}</div>
+              <div className="mp-crear-evento-type-sub">{t.sub}</div>
+              <div className="mp-crear-evento-type-desc">{t.d}</div>
+              <div className="mp-crear-evento-type-foot">
+                ● {typeCountLabel(t.k, typeCounts, typeCountsLoading, t.dimmed)}
               </div>
             </button>
           );
         })}
       </div>
 
-      <div className="label-mp" style={{ marginBottom: 8 }}>
-        Deporte
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {SPORTS.map((s) => {
-          const active = form.sport === s.k;
-          return (
-            <button
-              key={s.k}
-              disabled={s.disabled}
-              onClick={() => !s.disabled && set("sport", s.k)}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 9999,
-                fontFamily: "inherit",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                background: active ? "#0a0a0a" : "#fff",
-                color: active ? "#fff" : s.disabled ? "var(--muted-fg)" : "#0a0a0a",
-                border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
-                cursor: s.disabled ? "not-allowed" : "pointer",
-                opacity: s.disabled ? 0.55 : 1,
-              }}
-            >
-              <span style={{ fontSize: 14 }}>{s.i}</span>
-              {s.t}
-              {s.disabled && (
-                <span
-                  style={{
-                    fontSize: 8.5,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: "var(--muted)",
-                    color: "var(--muted-fg)",
-                  }}
-                >
-                  Pronto
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <CESportField form={form} set={set} />
     </div>
   );
 }
@@ -648,7 +933,294 @@ const ceInputStyle = {
   background: "#fff",
 } as const;
 
+function CEMprRangeControl({
+  mprMin,
+  mprMax,
+  onChange,
+}: {
+  mprMin: number;
+  mprMax: number | null;
+  onChange: (patch: Partial<TournamentCategoryDraft>) => void;
+}) {
+  const openTop = mprMax == null;
+  const sliderMax = mprMax ?? 8.0;
+
+  return (
+    <div>
+      <MprRangeSlider
+        min={mprMin}
+        max={sliderMax}
+        noUpperCap={openTop}
+        onChange={(lo, hi) =>
+          onChange({
+            mprMin: lo,
+            mprMax: openTop ? null : hi,
+            levelLabel: null,
+          })
+        }
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 8 }}>
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "var(--muted-fg)",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={openTop}
+            onChange={(e) => {
+              onChange({
+                mprMax: e.target.checked ? null : clampMpr(Math.max(mprMin + 0.25, mprMin + 1)),
+                levelLabel: null,
+              });
+            }}
+            style={{ accentColor: "var(--primary)" }}
+          />
+          Sin tope superior (ej. 5.0+)
+        </label>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <span className="label-mp" style={{ display: "block", marginBottom: 6 }}>
+          Atajos
+        </span>
+        <div className="mp-crear-evento-level-presets">
+          {EVENT_LEVEL_OPTIONS.map((level) => {
+            const preset = mprPresetRange(level.label);
+            const active =
+              (openTop &&
+                preset.mprMax == null &&
+                Math.abs(mprMin - preset.mprMin) < 0.13) ||
+              (!openTop &&
+                preset.mprMax != null &&
+                mprMax != null &&
+                Math.abs(mprMin - preset.mprMin) < 0.13 &&
+                Math.abs(mprMax - preset.mprMax) < 0.13);
+            return (
+              <button
+                key={level.label}
+                type="button"
+                onClick={() =>
+                  onChange({
+                    levelLabel: level.label,
+                    mprMin: preset.mprMin,
+                    mprMax: preset.mprMax,
+                  })
+                }
+                className={`mp-crear-evento-level-preset${active ? " is-active" : ""}`}
+              >
+                {level.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CETournamentCategoriesEditor({
+  categories,
+  onChange,
+}: {
+  categories: TournamentCategoryDraft[];
+  onChange: (next: TournamentCategoryDraft[]) => void;
+}) {
+  const patchAt = (index: number, patch: Partial<TournamentCategoryDraft>) => {
+    onChange(
+      categories.map((c, i) => (i === index ? patchTournamentCategoryDraft(c, patch) : c)),
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 11.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+        Define al menos una categoría (ej. Categoría 3.5 · Masculino). El cupo es{" "}
+        <strong>por categoría</strong>; el cronograma y los cuadros los afinas después en{" "}
+        <strong>Gestionar</strong>.
+      </div>
+      {categories.map((c, i) => (
+        <div
+          key={i}
+          className="mp-crear-evento-cat-card"
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            minWidth: 0,
+            background: "#fff",
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+            <input
+              value={c.name}
+              placeholder="Nombre (ej. Categoría 4.0, Open Mixto)"
+              style={{ ...ceInputStyle, flex: 1, minWidth: 0 }}
+              onChange={(e) => patchAt(i, { name: e.target.value })}
+            />
+            <button
+              type="button"
+              onClick={() => onChange(categories.filter((_, j) => j !== i))}
+              disabled={categories.length <= 1}
+              className="btn mp-crear-quedada-cat-del"
+              style={{
+                background: "#fff",
+                border: "1px solid var(--destructive-border)",
+                color: "var(--destructive-fg)",
+                padding: "0 12px",
+                opacity: categories.length <= 1 ? 0.4 : 1,
+                flexShrink: 0,
+              }}
+              aria-label="Quitar categoría"
+              title={categories.length <= 1 ? "Debe quedar al menos una categoría" : undefined}
+            >
+              <Icon name="trash-2" size={14} />
+            </button>
+          </div>
+
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: c.noLevel ? "var(--muted-fg)" : "var(--fg)",
+                }}
+              >
+                Nivel MPR
+                {!c.noLevel ? (
+                  (() => {
+                    const range = categoryDraftMprRange(c);
+                    return (
+                      <span style={{ color: "var(--primary)", marginLeft: 6 }}>
+                        {formatMprRange(range.mprMin, range.mprMax)}
+                      </span>
+                    );
+                  })()
+                ) : null}
+              </span>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11.5,
+                  color: "var(--muted-fg)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={c.noLevel}
+                  onChange={(e) => patchAt(i, { noLevel: e.target.checked })}
+                  style={{ accentColor: "var(--primary)" }}
+                />
+                Sin nivel (Open)
+              </label>
+            </div>
+            {!c.noLevel && (
+              <CEMprRangeControl
+                mprMin={c.mprMin}
+                mprMax={c.mprMax}
+                onChange={(patch) => patchAt(i, patch)}
+              />
+            )}
+          </div>
+
+          <div>
+            <div className="label-mp" style={{ marginBottom: 6 }}>
+              Modalidad
+            </div>
+            <div className="mp-crear-evento-level-presets">
+              {CATEGORY_MODALITY_OPTIONS.map((mod) => {
+                const active = c.modality === mod.value;
+                return (
+                  <button
+                    key={mod.value}
+                    type="button"
+                    onClick={() => patchAt(i, { modality: mod.value })}
+                    className={`mp-crear-evento-level-preset${active ? " is-active" : ""}`}
+                  >
+                    {mod.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mp-grid-form-2 gap-2.5">
+            <div>
+              <div className="label-mp" style={{ marginBottom: 5 }}>
+                Género
+              </div>
+              <select
+                value={c.gender}
+                onChange={(e) =>
+                  patchAt(i, { gender: e.target.value as TournamentCategoryDraft["gender"] })
+                }
+                style={ceInputStyle}
+              >
+                {GENDER_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="label-mp" style={{ marginBottom: 5 }}>
+                {categoryDraftCupoLabel(c.modality)}
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={128}
+                required
+                value={c.maxTeams}
+                placeholder="Ej. 8"
+                style={ceInputStyle}
+                onChange={(e) => patchAt(i, { maxTeams: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ fontSize: 10.5, color: "var(--muted-fg)" }}>{categoryDraftSummary(c)}</div>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...categories, emptyTournamentCategory()])}
+        className="btn btn-outline"
+        style={{ alignSelf: "flex-start" }}
+      >
+        <Icon name="plus" size={13} /> Agregar categoría
+      </button>
+    </div>
+  );
+}
+
+const EVENT_FORMAT_OPTIONS = [
+  "Eliminación directa · mejor de 3",
+  "Round-robin",
+  "Grupos + playoffs",
+] as const;
+
 function CEStep2({ form, set }: { form: Form; set: Setter }) {
+  const clubResolved = Boolean(form.clubId || form.venue.trim());
   const inp = (val: string, k: keyof Form) => (
     <input value={val} onChange={(e) => set(k, e.target.value as never)} style={ceInputStyle} />
   );
@@ -700,8 +1272,8 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
                 padding: 10,
                 border: "1px solid var(--border)",
                 borderRadius: 8,
-                background: form.clubId ? "#fff" : "#fafafa",
-                opacity: form.clubId ? 1 : 0.7,
+                background: clubResolved ? "#fff" : "#fafafa",
+                opacity: clubResolved ? 1 : 0.7,
               }}
             >
               <div
@@ -709,7 +1281,7 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
                   width: 30,
                   height: 30,
                   borderRadius: 8,
-                  background: form.clubId
+                  background: clubResolved
                     ? "linear-gradient(135deg,#10b981,#064e3b)"
                     : "var(--muted)",
                   display: "inline-flex",
@@ -718,55 +1290,69 @@ function CEStep2({ form, set }: { form: Form; set: Setter }) {
                   color: "#fff",
                 }}
               >
-                <Icon name="building-2" size={13} color={form.clubId ? "#fff" : "var(--muted-fg)"} />
+                <Icon name="building-2" size={13} color={clubResolved ? "#fff" : "var(--muted-fg)"} />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 900 }}>
-                  {form.venue || "Sin club resuelto"}
+                  {form.venue.trim() || "Sin club resuelto"}
                 </div>
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-                  {form.clubId ? "Club activo del owner" : "Abre el modal desde la pantalla del club"}
-                </div>
+                {!clubResolved ? (
+                  <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
+                    Abre el modal desde la pantalla del club
+                  </div>
+                ) : null}
               </div>
             </div>
           </CEField>
-          <div className="mp-grid-form-2 gap-2.5">
-            <CEField label="Formato">
-              <select
-                value={form.format}
-                onChange={(e) => set("format", e.target.value)}
-                style={ceInputStyle}
-              >
-                <option>Eliminación directa · mejor de 3</option>
-                <option>Round-robin</option>
-                <option>Grupos + playoffs</option>
-              </select>
-            </CEField>
-            <CEField label="Nivel">
-              <div style={{ display: "flex", gap: 4 }}>
-                {["2.0", "3.0", "3.5", "4.0", "4.5", "5.0"].map((n, i) => (
-                  <span
-                    key={n}
-                    style={{
-                      flex: 1,
-                      padding: "8px 0",
-                      textAlign: "center",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 900,
-                      fontFamily: "Plus Jakarta Sans",
-                      background: i >= 1 && i <= 4 ? "var(--primary)" : "#fff",
-                      color: i >= 1 && i <= 4 ? "#fff" : "#0a0a0a",
-                      border:
-                        "1px solid " + (i >= 1 && i <= 4 ? "var(--primary)" : "var(--border)"),
-                    }}
-                  >
-                    {n}
-                  </span>
-                ))}
+          <CEField label="Formato">
+            <select
+              value={form.format}
+              onChange={(e) => set("format", e.target.value)}
+              style={{
+                ...ceInputStyle,
+                color: form.format ? "inherit" : "var(--muted-fg)",
+              }}
+            >
+              <option value="" disabled>
+                Elige un formato…
+              </option>
+              {EVENT_FORMAT_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </CEField>
+          {form.type !== "torneo" && form.type !== "liga" ? (
+            <CEField label="Nivel sugerido">
+              <div className="mp-crear-evento-level-presets">
+                {EVENT_LEVEL_OPTIONS.map((level) => {
+                  const active = form.categoryLevels.includes(level.label);
+                  return (
+                    <button
+                      key={level.label}
+                      type="button"
+                      onClick={() => set("categoryLevels", active ? [] : [level.label])}
+                      className={`mp-crear-evento-level-preset${active ? " is-active" : ""}`}
+                    >
+                      {level.label}
+                    </button>
+                  );
+                })}
               </div>
             </CEField>
-          </div>
+          ) : null}
+          {(form.type === "torneo" || form.type === "liga") && (
+            <CEField
+              label="Categorías"
+              hint="Al menos una · cupo por categoría"
+            >
+              <CETournamentCategoriesEditor
+                categories={form.categories}
+                onChange={(categories) => set("categories", categories)}
+              />
+            </CEField>
+          )}
           <CEField label="Descripción corta" hint="Máx 180 caracteres">
             <textarea
               value={form.desc}
@@ -964,7 +1550,18 @@ function CEToggle({
   );
 }
 
-function CEStep3({ form, set }: { form: Form; set: Setter }) {
+function CEStep3({
+  form,
+  set,
+  bracketTeams,
+  isCompetitive,
+}: {
+  form: Form;
+  set: Setter;
+  bracketTeams: number;
+  isCompetitive: boolean;
+}) {
+  const slots = isCompetitive ? bracketTeams : form.slots;
   return (
     <div>
       <div className="label-mp">Paso 3 de 4</div>
@@ -996,7 +1593,9 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
                 marginBottom: 8,
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 800 }}>Tamaño del cuadro</span>
+              <span style={{ fontSize: 12, fontWeight: 800 }}>
+                {isCompetitive ? "Total del cuadro" : "Tamaño del cuadro"}
+              </span>
               <span
                 className="font-heading"
                 style={{
@@ -1006,31 +1605,49 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
                   color: "var(--primary)",
                 }}
               >
-                {form.slots} parejas
+                {slots} parejas
               </span>
             </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              {[8, 16, 24, 32, 48, 64].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => set("slots", n)}
-                  style={{
-                    flex: 1,
-                    padding: "7px 0",
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 900,
-                    fontFamily: "Plus Jakarta Sans",
-                    background: form.slots === n ? "#0a0a0a" : "#fff",
-                    color: form.slots === n ? "#fff" : "#0a0a0a",
-                    border: "1px solid " + (form.slots === n ? "#0a0a0a" : "var(--border)"),
-                    cursor: "pointer",
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+            {isCompetitive ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--muted-fg)",
+                  lineHeight: 1.45,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "var(--muted)",
+                  border: "1px dashed var(--border)",
+                }}
+              >
+                Suma de cupos por categoría ({form.categories.filter((c) => c.name.trim()).length}{" "}
+                {form.categories.filter((c) => c.name.trim()).length === 1 ? "categoría" : "categorías"}).
+                Edítalo en el paso 2.
+              </div>
+            ) : (
+              <div className="mp-crear-evento-slots-row" style={{ display: "flex", gap: 4 }}>
+                {[8, 16, 24, 32, 48, 64].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => set("slots", n)}
+                    style={{
+                      flex: 1,
+                      padding: "7px 0",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 900,
+                      fontFamily: "Plus Jakarta Sans",
+                      background: form.slots === n ? "#0a0a0a" : "#fff",
+                      color: form.slots === n ? "#fff" : "#0a0a0a",
+                      border: "1px solid " + (form.slots === n ? "#0a0a0a" : "var(--border)"),
+                      cursor: "pointer",
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div
@@ -1142,7 +1759,6 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
             }}
           >
             <CEToggle on={form.waitlist} onClick={() => set("waitlist", !form.waitlist)} l="Permitir lista de espera" s="Si se llena, los siguientes entran si alguien cancela" />
-            <CEToggle on={form.levelGate} onClick={() => set("levelGate", !form.levelGate)} l="Validar nivel mínimo (3.0+)" s="Bloquea jugadores con ranking < 3.0" />
             <CEToggle on={form.pairTogether} onClick={() => set("pairTogether", !form.pairTogether)} l="Pareja inscribe junta" s="No se puede inscribir sin compañero/a" />
             <CEToggle on={form.membersOnly} onClick={() => set("membersOnly", !form.membersOnly)} l="Solo socios del club" s="Limita a jugadores afiliados a tu club" />
           </div>
@@ -1173,8 +1789,8 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
                 Bolsa total
               </span>
               <span style={{ fontSize: 10, color: "#78350f", fontWeight: 800 }}>
-                {form.slots} × ${form.fee} × 0.6 = $
-                {(form.slots * form.fee * 0.6).toFixed(0)}
+                {slots} × ${form.fee} × 0.6 = $
+                {(slots * form.fee * 0.6).toFixed(0)}
               </span>
             </div>
             <div
@@ -1191,18 +1807,14 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
             </div>
             <div style={{ fontSize: 10.5, color: "#78350f", marginTop: 2 }}>
               Tu club añade $
-              {Math.max(0, form.prize - form.slots * form.fee * 0.6).toFixed(0)} al pozo
+              {Math.max(0, form.prize - slots * form.fee * 0.6).toFixed(0)} al pozo
             </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {[
-              { p: "1°", l: "50%", amt: (form.prize * 0.5).toFixed(0), extra: "Trofeo + kit Wilson · gold" },
-              { p: "2°", l: "30%", amt: (form.prize * 0.3).toFixed(0), extra: "Medalla + kit" },
-              { p: "3°", l: "20%", amt: (form.prize * 0.2).toFixed(0), extra: "Medalla" },
-            ].map((p, i) => (
+            {PRIZE_PLACE_LABELS.map((place, i) => (
               <div
-                key={p.p}
+                key={place}
                 style={{
                   display: "flex",
                   gap: 10,
@@ -1229,25 +1841,66 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
                     flexShrink: 0,
                   }}
                 >
-                  {p.p}
+                  {place}
                 </div>
-                <div
-                  style={{
-                    width: 40,
-                    fontFamily: "Plus Jakarta Sans",
-                    fontWeight: 900,
-                    fontSize: 12,
-                    letterSpacing: "-0.01em",
+                <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={form.prizeShares[i] ?? 0}
+                    onChange={(e) => {
+                      const next = [...form.prizeShares];
+                      next[i] = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                      set("prizeShares", next);
+                    }}
+                    aria-label={`Porcentaje ${place}`}
+                    style={{
+                      ...ceInputStyle,
+                      width: 44,
+                      padding: "6px 4px",
+                      fontSize: 12,
+                      fontFamily: "Plus Jakarta Sans",
+                      fontWeight: 900,
+                      textAlign: "center",
+                      letterSpacing: "-0.01em",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: "Plus Jakarta Sans",
+                      fontWeight: 900,
+                      fontSize: 12,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    %
+                  </span>
+                </div>
+                <input
+                  value={form.prizeDetails[i] ?? ""}
+                  onChange={(e) => {
+                    const next = [...form.prizeDetails];
+                    next[i] = e.target.value;
+                    set("prizeDetails", next);
                   }}
-                >
-                  {p.l}
-                </div>
-                <div style={{ flex: 1, fontSize: 11, color: "var(--muted-fg)" }}>{p.extra}</div>
+                  placeholder="Ej. Trofeo + kit"
+                  aria-label={`Premio ${place}`}
+                  style={{
+                    ...ceInputStyle,
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 11,
+                    padding: "6px 8px",
+                    color: "var(--muted-fg)",
+                  }}
+                />
                 <div
                   className="font-heading"
-                  style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em" }}
+                  style={{ fontSize: 14, fontWeight: 900, letterSpacing: "-0.02em", flexShrink: 0 }}
                 >
-                  ${p.amt}
+                  ${((form.prize * Math.max(0, form.prizeShares[i] ?? 0)) / 100).toFixed(0)}
                 </div>
               </div>
             ))}
@@ -1257,7 +1910,7 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
             <input
               type="range"
               min="500"
-              max="3000"
+              max="10000"
               step="100"
               value={form.prize}
               onChange={(e) => set("prize", +e.target.value)}
@@ -1274,7 +1927,7 @@ function CEStep3({ form, set }: { form: Form; set: Setter }) {
             }}
           >
             <span>Min $500</span>
-            <span>Max $3000</span>
+            <span>Max $10,000</span>
           </div>
         </div>
       </div>
@@ -1288,7 +1941,22 @@ const VISIBILITY_OPTS: { k: Visibility; l: string; s: string; i: string }[] = [
   { k: "private", l: "Privado", s: "Solo con link directo", i: "lock" },
 ];
 
-function CEStep4({ form, set }: { form: Form; set: Setter }) {
+function CEStep4({
+  form,
+  set,
+  bracketTeams,
+  isCompetitive,
+}: {
+  form: Form;
+  set: Setter;
+  bracketTeams: number;
+  isCompetitive: boolean;
+}) {
+  const slots = isCompetitive ? bracketTeams : form.slots;
+  const namedCategories = isCompetitive
+    ? form.categories.filter((c) => c.name.trim())
+    : [];
+  const levelLabel = form.categoryLevels.join(" · ") || "Open";
   const check = [
     { l: "Tipo, deporte y nivel", ok: true },
     { l: "Fechas y sede confirmadas", ok: true },
@@ -1342,7 +2010,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
             OPEN
           </div>
           <div style={{ position: "relative", padding: 22 }}>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <span
                 style={{
                   padding: "3px 10px",
@@ -1352,6 +2020,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
                   fontWeight: 900,
                   textTransform: "uppercase",
                   letterSpacing: "0.18em",
+                  flexShrink: 0,
                 }}
               >
                 {form.type}
@@ -1365,6 +2034,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
                   fontWeight: 900,
                   textTransform: "uppercase",
                   letterSpacing: "0.18em",
+                  flexShrink: 0,
                 }}
               >
                 {form.sport}
@@ -1378,9 +2048,14 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
                   fontWeight: 900,
                   textTransform: "uppercase",
                   letterSpacing: "0.18em",
+                  flexShrink: 0,
                 }}
               >
-                Nivel {form.level}
+                {isCompetitive
+                  ? namedCategories.length === 0
+                    ? "Sin categorías"
+                    : `${namedCategories.length} ${namedCategories.length === 1 ? "categoría" : "categorías"}`
+                  : `Nivel ${levelLabel}`}
               </span>
             </div>
             <h3
@@ -1397,6 +2072,41 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
               {form.name}
               <span style={{ color: "#10b981" }}>.</span>
             </h3>
+            {isCompetitive && namedCategories.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginBottom: 10,
+                  maxHeight: 72,
+                  overflowY: "auto",
+                  paddingRight: 2,
+                }}
+              >
+                {namedCategories.map((c, i) => (
+                  <span
+                    key={`${c.name}-${i}`}
+                    title={c.name.trim()}
+                    style={{
+                      padding: "4px 8px",
+                      background: "rgba(255,255,255,0.1)",
+                      border: "1px solid rgba(255,255,255,0.16)",
+                      borderRadius: 6,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      lineHeight: 1.3,
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.name.trim()}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div
               style={{
                 display: "flex",
@@ -1413,7 +2123,7 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
                 <Icon name="trophy" size={11} color="#fff" /> ${form.prize} premio
               </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <Icon name="users" size={11} color="#fff" /> {form.slots} parejas · ${form.fee}
+                <Icon name="users" size={11} color="#fff" /> {slots} parejas · ${form.fee}
               </span>
             </div>
           </div>
@@ -1509,14 +2219,19 @@ function CEStep4({ form, set }: { form: Form; set: Setter }) {
           </div>
           {(
             [
-              ["Cuadro", form.slots + " parejas · mixto"],
+              [
+                "Cuadro",
+                isCompetitive
+                  ? `${slots} parejas · ${form.categories.filter((c) => c.name.trim()).length} cat.`
+                  : `${slots} parejas · mixto`,
+              ],
               ["Inscripción", "$" + form.fee + " / pareja"],
-              ["Ingresos brutos", "$" + (form.slots * form.fee).toFixed(0)],
-              ["Comisión MP (10%)", "–$" + (form.slots * form.fee * 0.1).toFixed(0)],
-              ["Premio (60% pozo)", "–$" + (form.slots * form.fee * 0.6).toFixed(0)],
+              ["Ingresos brutos", "$" + (slots * form.fee).toFixed(0)],
+              ["Comisión MP (10%)", "–$" + (slots * form.fee * 0.1).toFixed(0)],
+              ["Premio (60% pozo)", "–$" + (slots * form.fee * 0.6).toFixed(0)],
               [
                 "Club aporta",
-                "–$" + Math.max(0, form.prize - form.slots * form.fee * 0.6).toFixed(0),
+                "–$" + Math.max(0, form.prize - slots * form.fee * 0.6).toFixed(0),
               ],
             ] as [string, string][]
           ).map(([k, v]) => (
@@ -1544,12 +2259,18 @@ function CEDone({
   form,
   eventId,
   eventSlug,
+  kind,
+  role,
   close,
+  onManage,
 }: {
   form: Form;
   eventId: string;
   eventSlug: string;
+  kind: "event" | "tournament";
+  role: RoleKey;
   close: () => void;
+  onManage?: () => void;
 }) {
   const toast = useToast();
   const shortId = eventId.slice(0, 8).toUpperCase();
@@ -1600,7 +2321,7 @@ function CEDone({
           </div>
           <div>
             <div className="label-mp" style={{ color: "rgba(255,255,255,0.7)" }}>
-              Evento #{shortId} · Publicado
+              {kind === "tournament" ? "Torneo" : "Evento"} #{shortId} · Publicado
             </div>
             <h2
               className="font-heading"
@@ -1612,10 +2333,11 @@ function CEDone({
                 margin: "4px 0 0",
               }}
             >
-              ¡Tu evento está vivo!<span style={{ color: "#fbbf24" }}>.</span>
+              {kind === "tournament" ? "¡Tu torneo está vivo!" : "¡Tu evento está vivo!"}
+              <span style={{ color: "#fbbf24" }}>.</span>
             </h2>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 5 }}>
-              {form.name} ya aparece en /eventos · los jugadores pueden inscribirse
+              {form.name} ya aparece en el listado · los jugadores eligen categoría al inscribirse
             </div>
           </div>
         </div>
@@ -1647,11 +2369,12 @@ function CEDone({
             color: "var(--muted-fg)",
           }}
         >
-          matchpoint.top/e/{eventSlug}
+          matchpoint.top/{kind === "tournament" ? "eventos" : "e"}/{eventSlug}
         </span>
         <button
           onClick={() => {
-            navigator.clipboard?.writeText(`https://matchpoint.top/e/${eventSlug}`).catch(() => {});
+            const url = `https://matchpoint.top/${kind === "tournament" ? "eventos" : "e"}/${eventSlug}`;
+            navigator.clipboard?.writeText(url).catch(() => {});
             toast({ icon: "copy", title: "Link copiado", sub: "Listo para compartir" });
           }}
           className="btn"
@@ -1664,7 +2387,7 @@ function CEDone({
       <div className="label-mp" style={{ marginBottom: 8 }}>
         Próximos pasos
       </div>
-      <div className="mp-grid-form-4 gap-2">
+      <div className="mp-crear-evento-types gap-2">
         {[
           { i: "message-circle", l: "Avisar a socios", sub: "Push a 142 socios del club", primary: true },
           { i: "instagram", l: "Compartir IG", sub: "Story con plantilla MP" },
@@ -1712,27 +2435,39 @@ function CEDone({
         ))}
       </div>
 
-      <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
+      <div style={{ marginTop: 18, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
           className="btn"
           style={{
             background: "#fff",
             border: "1px solid var(--border)",
             flex: 1,
+            minWidth: 120,
             justifyContent: "center",
           }}
           onClick={close}
         >
           Cerrar
         </button>
-        <button
-          className="btn btn-primary"
-          style={{ flex: 1, justifyContent: "center" }}
-          onClick={close}
-        >
-          <Icon name="external-link" size={13} color="#fff" />
-          Ver evento publicado
-        </button>
+        {kind === "tournament" && onManage && (role === "owner" || role === "manager") ? (
+          <button
+            className="btn btn-primary"
+            style={{ flex: 1, minWidth: 160, justifyContent: "center" }}
+            onClick={onManage}
+          >
+            <Icon name="settings" size={13} color="#fff" />
+            Gestionar torneo
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary"
+            style={{ flex: 1, minWidth: 120, justifyContent: "center" }}
+            onClick={close}
+          >
+            <Icon name="external-link" size={13} color="#fff" />
+            Listo
+          </button>
+        )}
       </div>
     </div>
   );

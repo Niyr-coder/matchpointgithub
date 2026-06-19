@@ -1,5 +1,6 @@
 import type { AdminTournamentDetail } from "@/server/actions/tournaments";
 import { BracketView, type BracketColumn } from "../../brackets/BracketView";
+import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
 
 type Bracket = AdminTournamentDetail["brackets"][number];
 
@@ -31,12 +32,7 @@ function sideScores(score: unknown): { a: number | null; b: number | null } {
 }
 
 function roundLabel(idx: number, total: number): string {
-  const fromEnd = total - 1 - idx;
-  if (fromEnd === 0) return "Final";
-  if (fromEnd === 1) return "Semifinal";
-  if (fromEnd === 2) return "Cuartos";
-  if (fromEnd === 3) return "Octavos";
-  return `Ronda ${idx + 1}`;
+  return knockoutRoundLabel(idx, total);
 }
 
 function fmtDate(iso: string | null): string {

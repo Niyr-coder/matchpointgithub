@@ -13,6 +13,9 @@ export type DashboardChromeProps = {
   role: RoleKey;
   userName: string;
   contextLabel: string | null;
+  /** Club activo del rol owner/manager (cookie o asignación). */
+  activeClubId?: string | null;
+  activeClubName?: string | null;
   /** Inicio del rol activo (cookie mp_active_role). */
   homeHref: string;
   badgeOverrides?: Record<string, number | string>;
@@ -300,6 +303,8 @@ export async function loadDashboardChromeProps(opts: {
     role,
     userName,
     contextLabel,
+    activeClubId: clubId ?? null,
+    activeClubName: ownerClub?.name ?? null,
     homeHref,
     badgeOverrides,
     banner,

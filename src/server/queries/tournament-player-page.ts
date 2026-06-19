@@ -9,6 +9,8 @@ import {
   type TournamentBracketSideView,
   type TournamentPlayerMatchView,
 } from "@/lib/torneos/player-matches";
+import { loadTournamentScheduleBlocks } from "@/server/queries/tournament-schedule";
+import type { TournamentScheduleBlockView } from "@/lib/tournaments/schedule-display";
 
 export type TournamentDashboardPageData = {
   detail: TournamentDetail;
@@ -17,6 +19,8 @@ export type TournamentDashboardPageData = {
   myRegistration: MyRegistration | null;
   inscritos: TournamentInscrito[];
   meUserId: string | null;
+  categoryRegistrationCounts: Record<string, number>;
+  scheduleBlocks: TournamentScheduleBlockView[];
   myMatches: TournamentPlayerMatchView[];
   bracketSides: TournamentBracketSideView[];
 };
@@ -42,7 +46,7 @@ export async function loadTournamentDashboardPageData(
   if (sess.authenticated) {
     const { data: regRow } = await supabase
       .from("registrations")
-      .select("id,status")
+      .select("id,status,category_id")
       .eq("tournament_id", detailRes.data.tournament.id)
       .contains("player_ids", [sess.session.userId])
       .not("status", "in", "(withdrawn,rejected,cancelled)")
@@ -53,17 +57,24 @@ export async function loadTournamentDashboardPageData(
       myRegistration = {
         id: regRow.id as string,
         status: regRow.status as string,
+        categoryId: (regRow.category_id as string | null) ?? null,
       };
     }
   }
 
   const { data: regsRaw } = await supabase
     .from("registrations")
-    .select("id,player_ids,created_at")
+    .select("id,player_ids,category_id,created_at")
     .eq("tournament_id", detailRes.data.tournament.id)
     .not("status", "in", "(withdrawn,rejected,cancelled)")
     .order("created_at", { ascending: true })
     .limit(64);
+
+  const categoryRegistrationCounts: Record<string, number> = {};
+  for (const r of regsRaw ?? []) {
+    const cid = r.category_id as string | null;
+    if (cid) categoryRegistrationCounts[cid] = (categoryRegistrationCounts[cid] ?? 0) + 1;
+  }
 
   const allIds = new Set<string>();
   for (const r of regsRaw ?? []) {
@@ -102,6 +113,7 @@ export async function loadTournamentDashboardPageData(
     detailRes.data.tournament.id,
     myRegistration?.id ?? null,
   );
+  const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
   return {
     detail: detailRes.data,
@@ -110,6 +122,8 @@ export async function loadTournamentDashboardPageData(
     myRegistration,
     inscritos,
     meUserId: sess.authenticated ? sess.session.userId : null,
+    categoryRegistrationCounts,
+    scheduleBlocks,
     myMatches: bracketData.myMatches,
     bracketSides: bracketData.bracketSides,
   };

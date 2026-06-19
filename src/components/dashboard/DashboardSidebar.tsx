@@ -26,6 +26,8 @@ type Props = {
   roleSwitchOptions?: RoleSwitchOption[];
   /** Admin puede cambiar a cualquier rol demo desde el footer. */
   isAdmin?: boolean;
+  /** Abre el sheet mobile de cambio de rol (TopBar y footer del drawer). */
+  onOpenRoleSwitcher?: () => void;
 };
 
 // Deriva la sección activa del pathname:
@@ -49,6 +51,7 @@ export function DashboardSidebar({
   flags,
   roleSwitchOptions,
   isAdmin,
+  onOpenRoleSwitcher,
 }: Props) {
   const cfg = MP_ROLES[role];
   const itemVisible = (flag?: string) => !(flag && flags?.[flag] === false);
@@ -191,7 +194,7 @@ export function DashboardSidebar({
           );
         })}
       </nav>
-      <div ref={footerRef} style={{ position: "relative" }}>
+      <div ref={footerRef} style={{ position: "relative", flexShrink: 0 }}>
         {roleMenuOpen && canSwitchRoles && (
           <SidebarRoleMenu
             current={role}
@@ -215,6 +218,7 @@ export function DashboardSidebar({
         >
           <button
             type="button"
+            className="hidden md:flex"
             onClick={() => canSwitchRoles && setRoleMenuOpen((v) => !v)}
             disabled={!canSwitchRoles}
             aria-expanded={canSwitchRoles ? roleMenuOpen : undefined}
@@ -287,6 +291,76 @@ export function DashboardSidebar({
               color="#71717a"
               style={{ flexShrink: 0 }}
             />
+          )}
+        </button>
+        {/* Mobile: abre el mismo sheet que el botón del TopBar. */}
+        <button
+          type="button"
+          className="md:hidden flex"
+          onClick={() => canSwitchRoles && onOpenRoleSwitcher?.()}
+          disabled={!canSwitchRoles}
+          aria-label={canSwitchRoles ? "Cambiar rol" : undefined}
+          title={canSwitchRoles ? "Cambiar rol" : undefined}
+          style={{
+            flex: 1,
+            alignItems: "center",
+            gap: 10,
+            padding: 8,
+            borderRadius: 8,
+            minWidth: 0,
+            border: 0,
+            background: "transparent",
+            cursor: canSwitchRoles ? "pointer" : "default",
+            fontFamily: "inherit",
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              background:
+                cfg.k !== "user" ? cfg.color : "linear-gradient(135deg, #10b981, #047857)",
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              fontFamily: "Plus Jakarta Sans",
+              fontWeight: 900,
+              fontSize: 11,
+            }}
+          >
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#fff",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {displayName}
+            </div>
+            <div
+              style={{
+                fontSize: 10.5,
+                color: "#a1a1aa",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {contextSub}
+            </div>
+          </div>
+          {canSwitchRoles && (
+            <Icon name="chevron-up" size={14} color="#71717a" style={{ flexShrink: 0 }} />
           )}
         </button>
         <button

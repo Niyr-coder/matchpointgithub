@@ -1,13 +1,7 @@
 "use client";
-// Bracket compartido entre partner, jugador y admin. Estética "Apple Sports":
-// panel oscuro, tarjetas con aire, score grande a la derecha, ganador resaltado
-// y perdedor atenuado, líneas que conectan rondas.
-//
-// El modelo es normalizado (columns/matches/seats) para que cada superficie
-// adapte su shape propio sin duplicar visual. Los conectores se dibujan en CSS
-// (.mp-bk-*) asumiendo árbol de halving limpio (cada ronda tiene la mitad de
-// partidos que la anterior); para transiciones 1→1 (final → campeón) se usa una
-// línea recta.
+// Bracket compartido entre partner, jugador y admin. Tarjetas claras sobre fondo
+// suave del dashboard, score grande a la derecha, ganador resaltado y líneas que
+// conectan rondas.
 import { Icon } from "@/components/Icon";
 
 export type BracketSeat = {
@@ -64,7 +58,8 @@ export function BracketView({ columns, champion, onReport }: Props) {
   };
 
   return (
-    <div className="mp-bk-scroll">
+    <div className="mp-bk-scroll mp-subtle-hscroll">
+      <p className="mp-bk-scroll-hint">Desliza horizontalmente para ver todo el cuadro</p>
       <div className="mp-bk-tree">
         {columns.map((col, i) => {
           const conn = connectorClass(i, counts[i - 1] ?? 0, counts[i]);
@@ -122,7 +117,7 @@ function MatchCard({
       {node.meta && <div className="mp-bk-meta">{node.meta}</div>}
       {node.reportable && onReport && (
         <button type="button" className="mp-bk-report" onClick={() => onReport(node.id)}>
-          <Icon name="pencil" size={11} color="rgba(255,255,255,0.9)" />
+          <Icon name="pencil" size={11} color="var(--fg)" />
           Reportar
         </button>
       )}
@@ -149,7 +144,7 @@ function ChampionCard({ champion }: { champion: BracketChampion }) {
       <Icon
         name="trophy"
         size={22}
-        color={champion.decided ? "#fde68a" : "rgba(255,255,255,0.35)"}
+        color={champion.decided ? "#d97706" : "var(--muted-fg)"}
       />
       <div className="mp-bk-champion-label">{champion.label}</div>
       {champion.when && <div className="mp-bk-champion-when">{champion.when}</div>}

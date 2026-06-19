@@ -23,6 +23,7 @@ import {
   LeagueSchema,
   RegistrationSchema,
   TournamentCategorySchema,
+  ClubTournamentCreateSchema,
   TournamentCreateSchema,
   TournamentDetailSchema,
   TournamentFeaturedSchema,
@@ -106,6 +107,65 @@ async function requireUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
   return user.id;
+}
+
+async function assertCanManageClub(clubId: string, userId: string): Promise<boolean> {
+  const supabase = await getServerClient();
+  const { data: roles } = await supabase
+    .from("role_assignments")
+    .select("role,club_id")
+    .eq("user_id", userId)
+    .is("revoked_at", null);
+  return (roles ?? []).some(
+    (r) =>
+      r.role === "admin" ||
+      (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
+  );
+}
+
+async function assertCanManageTournament(tournamentId: string): Promise<{
+  userId: string;
+  isAdmin: boolean;
+  partnerId: string | null;
+  clubId: string | null;
+  actorRole: "admin" | "partner" | "club";
+}> {
+  const userId = await requireUserId();
+  const supabase = await getServerClient();
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("partner_id,club_id")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+  const partnerId = (t.partner_id as string | null) ?? null;
+  const clubId = (t.club_id as string | null) ?? null;
+  const { data: adminRow } = await supabase
+    .from("role_assignments")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (adminRow) return { userId, isAdmin: true, partnerId, clubId, actorRole: "admin" };
+  if (partnerId) {
+    const { data: member } = await supabase
+      .from("partner_members")
+      .select("user_id")
+      .eq("partner_id", partnerId)
+      .eq("user_id", userId)
+      .in("role", ["owner", "admin"])
+      .maybeSingle();
+    if (member) return { userId, isAdmin: false, partnerId, clubId, actorRole: "partner" };
+  }
+  if (clubId && (await assertCanManageClub(clubId, userId))) {
+    return { userId, isAdmin: false, partnerId, clubId, actorRole: "club" };
+  }
+  throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o staff del club puede editar este torneo");
+}
+
+function auditActorRole(role: "admin" | "partner" | "club"): "admin" | "partner" | "owner" {
+  return role === "club" ? "owner" : role;
 }
 
 async function requirePartnerAdmin(partnerId: string): Promise<string> {
@@ -479,6 +539,40 @@ export async function registerToTournament(
           );
         }
 
+        const { data: catRows } = await supabase
+          .from("tournament_categories")
+          .select("id,max_teams,mpr_min,mpr_max")
+          .eq("tournament_id", tournamentId);
+        const categories = (catRows ?? []) as Array<{
+          id: string;
+          max_teams: number | null;
+          mpr_min: number | null;
+          mpr_max: number | null;
+        }>;
+
+        if (categories.length > 0) {
+          if (!body.categoryId) {
+            throw new MpError("TOURNAMENTS.CATEGORY_REQUIRED", "Elige una categoría", 400);
+          }
+          const cat = categories.find((c) => c.id === body.categoryId);
+          if (!cat) {
+            throw new MpError("TOURNAMENTS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
+          }
+          if (cat.max_teams != null && cat.max_teams > 0) {
+            const { count: catCount } = await supabase
+              .from("registrations")
+              .select("*", { count: "exact", head: true })
+              .eq("tournament_id", tournamentId)
+              .eq("category_id", body.categoryId)
+              .not("status", "in", "(withdrawn,rejected,cancelled)");
+            if ((catCount ?? 0) >= cat.max_teams) {
+              throw new MpError("TOURNAMENTS.CATEGORY_FULL", "Esa categoría está llena", 409);
+            }
+          }
+        } else if (body.categoryId) {
+          throw new MpError("TOURNAMENTS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
+        }
+
         const policy = (t.payment_policy as string) ?? "prepay";
         const feeCents = (t.entry_fee_cents as number) ?? 0;
 
@@ -618,7 +712,6 @@ export async function setTournamentStatus(
   input: unknown,
 ): Promise<ActionResult<{ id: string; status: string }>> {
   return runAction(SetStatusSchema, input, async ({ tournamentId, status }) => {
-    const userId = await requireUserId();
     const supabase = await getServerClient();
     const { data: t } = await supabase
       .from("tournaments")
@@ -627,30 +720,9 @@ export async function setTournamentStatus(
       .maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
     const previousStatus = t.status as string;
-    // Admin global o partner del torneo.
-    const { data: isAdmin } = await supabase
-      .from("role_assignments")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "admin")
-      .is("revoked_at", null)
-      .maybeSingle();
-    if (!isAdmin) {
-      const partnerId = t.partner_id as string | null;
-      if (!partnerId) {
-        throw new AuthError("AUTH.ROLE_REQUIRED", "Tournament has no partner — admin only");
-      }
-      const { data: member } = await supabase
-        .from("partner_members")
-        .select("user_id")
-        .eq("partner_id", partnerId)
-        .eq("user_id", userId)
-        .in("role", ["owner", "admin"])
-        .maybeSingle();
-      if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo partner/admin");
-    }
+    const editor = await assertCanManageTournament(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, userId, isAdmin ? "admin" : "partner");
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data: updated, error } = await admin
       .from("tournaments")
       .update({ status } as never)
@@ -1572,46 +1644,20 @@ export async function updateTournamentByOrganizer(
 }
 
 // ── Categorías del torneo (partner OR admin) ───────────────────────────
-// Helper auth: el caller debe ser admin global o partner_member (owner/admin)
-// del partner_org del torneo. Reusado por create/update/delete.
+// Helper auth: admin, partner del torneo o staff del club anfitrión.
 async function requireTournamentEditor(tournamentId: string): Promise<{
   userId: string;
   isAdmin: boolean;
   partnerId: string | null;
-  actorRole: "admin" | "partner";
+  actorRole: "admin" | "partner" | "club";
 }> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data: t } = await supabase
-    .from("tournaments")
-    .select("partner_id")
-    .eq("id", tournamentId)
-    .maybeSingle();
-  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
-  const partnerId = (t.partner_id as string | null) ?? null;
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  const isAdmin = !!adminRow;
-  if (isAdmin) return { userId, isAdmin, partnerId, actorRole: "admin" };
-  if (!partnerId) {
-    throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-  }
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", userId)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) {
-    throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el partner organizador o un admin");
-  }
-  return { userId, isAdmin, partnerId, actorRole: "partner" };
+  const editor = await assertCanManageTournament(tournamentId);
+  return {
+    userId: editor.userId,
+    isAdmin: editor.isAdmin,
+    partnerId: editor.partnerId,
+    actorRole: editor.actorRole,
+  };
 }
 
 const CategoryBodySchema = z.object({
@@ -1664,7 +1710,7 @@ export async function createTournamentCategory(
   return runAction(CreateCategorySchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
 
     const { data: tRow } = await admin
       .from("tournaments")
@@ -1725,7 +1771,7 @@ export async function updateTournamentCategory(
     if (Object.keys(update).length === 0) {
       throw new MpError("CATEGORY.EMPTY_PATCH", "Nada que actualizar", 422);
     }
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
       .from("tournament_categories")
       .update(update as never)
@@ -1762,7 +1808,7 @@ export async function deleteTournamentCategory(
         409,
       );
     }
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
       .from("tournament_categories")
       .delete()
@@ -1812,7 +1858,7 @@ export async function createScheduleBlock(
   return runAction(CreateBlockSchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
       .from("tournament_schedule_blocks" as never)
       .insert({
@@ -1850,7 +1896,7 @@ export async function updateScheduleBlock(
     if (Object.keys(update).length === 0) {
       throw new MpError("SCHEDULE.EMPTY_PATCH", "Nada que actualizar", 422);
     }
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
       .from("tournament_schedule_blocks" as never)
       .update(update as never)
@@ -1874,7 +1920,7 @@ export async function deleteScheduleBlock(
   return runAction(DeleteBlockSchema, input, async ({ tournamentId, blockId }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
       .from("tournament_schedule_blocks" as never)
       .delete()
@@ -1892,6 +1938,7 @@ const PrizeBodySchema = z.object({
   valueCents: z.number().int().min(0).nullable().optional(),
   sponsor: z.string().max(120).nullable().optional(),
   position: z.number().int().min(0).optional(),
+  categoryId: UuidSchema.nullable().optional(),
 });
 
 export type TournamentPrizeRow = {
@@ -1901,6 +1948,7 @@ export type TournamentPrizeRow = {
   prizeLabel: string;
   valueCents: number | null;
   sponsor: string | null;
+  categoryId: string | null;
 };
 
 function mapPrize(row: Record<string, unknown>): TournamentPrizeRow {
@@ -1911,7 +1959,25 @@ function mapPrize(row: Record<string, unknown>): TournamentPrizeRow {
     prizeLabel: row.prize_label as string,
     valueCents: (row.value_cents as number | null) ?? null,
     sponsor: (row.sponsor as string | null) ?? null,
+    categoryId: (row.category_id as string | null) ?? null,
   };
+}
+
+async function assertPrizeCategory(
+  admin: ReturnType<typeof getAdminClient>,
+  tournamentId: string,
+  categoryId: string | null | undefined,
+): Promise<void> {
+  if (!categoryId) return;
+  const { data: cat } = await admin
+    .from("tournament_categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!cat) {
+    throw new MpError("PRIZE.CATEGORY_NOT_FOUND", "Categoría inválida para este torneo", 400);
+  }
 }
 
 const CreatePrizeSchema = z.object({
@@ -1925,12 +1991,14 @@ export async function createTournamentPrize(
   return runAction(CreatePrizeSchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await assertPrizeCategory(admin, tournamentId, body.categoryId);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)
       .insert({
         tournament_id: tournamentId,
+        category_id: body.categoryId ?? null,
         position: body.position ?? 0,
         place_label: body.placeLabel,
         prize_label: body.prizeLabel,
@@ -1956,16 +2024,20 @@ export async function updateTournamentPrize(
   return runAction(UpdatePrizeSchema, input, async ({ tournamentId, prizeId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
+    if (body.categoryId !== undefined) {
+      await assertPrizeCategory(admin, tournamentId, body.categoryId);
+    }
     const update: Record<string, unknown> = {};
     if (body.placeLabel !== undefined) update.place_label = body.placeLabel;
     if (body.prizeLabel !== undefined) update.prize_label = body.prizeLabel;
     if (body.valueCents !== undefined) update.value_cents = body.valueCents;
     if (body.sponsor !== undefined) update.sponsor = body.sponsor;
     if (body.position !== undefined) update.position = body.position;
+    if (body.categoryId !== undefined) update.category_id = body.categoryId;
     if (Object.keys(update).length === 0) {
       throw new MpError("PRIZE.EMPTY_PATCH", "Nada que actualizar", 422);
     }
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)
@@ -1990,7 +2062,7 @@ export async function deleteTournamentPrize(
   return runAction(DeletePrizeSchema, input, async ({ tournamentId, prizeId }) => {
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from("tournament_prizes" as any)

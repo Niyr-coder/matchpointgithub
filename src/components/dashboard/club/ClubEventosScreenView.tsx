@@ -1,12 +1,18 @@
 // Client view de ClubEventosScreen — layout del mock 1:1 (RoleScreens2.jsx 149-178).
 "use client";
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import {
+  AssignTournamentPartnerModal,
+  type VerifiedPartnerOption,
+} from "./AssignTournamentPartnerModal";
 
 export type EvStatus = "HOY" | "PRÓXIMO" | "ABIERTO" | "BORRADOR";
 export type EventRow = {
   id: string;
+  kind: "event" | "tournament";
   d: string;
   m: string;
   n: string;
@@ -14,8 +20,16 @@ export type EventRow = {
   insc: string;
   revenue: string;
   st: EvStatus;
+  startsAt: string;
+  partnerId?: string | null;
+  partnerName?: string | null;
 };
-export type EventosData = { clubId: string | null; events: EventRow[] };
+export type EventosData = {
+  clubId: string | null;
+  clubName: string | null;
+  events: EventRow[];
+  verifiedPartners: VerifiedPartnerOption[];
+};
 
 const ST_COLOR: Record<EvStatus, string> = {
   HOY: "#dc2626",
@@ -26,7 +40,18 @@ const ST_COLOR: Record<EvStatus, string> = {
 
 const PLACEHOLDER_COUNT = 4;
 
-function EventRowCard({ e }: { e: EventRow }) {
+function EventRowCard({
+  e,
+  clubId,
+  onAssign,
+}: {
+  e: EventRow;
+  clubId: string | null;
+  onAssign: (tournament: { id: string; name: string }) => void;
+}) {
+  const isTournament = e.kind === "tournament";
+  const hasPartner = isTournament && !!e.partnerId;
+
   return (
     <div className="card mp-club-event-row">
       <div
@@ -101,9 +126,35 @@ function EventRowCard({ e }: { e: EventRow }) {
         <RSPill bg={ST_COLOR[e.st]}>{e.st}</RSPill>
       </div>
       <div style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-        <button className="btn btn-primary" style={{ fontSize: 10.5 }}>
-          Gestionar
-        </button>
+        {isTournament && hasPartner ? (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: "var(--muted-fg)",
+              textAlign: "right",
+              lineHeight: 1.35,
+              maxWidth: 120,
+            }}
+          >
+            Asignado
+            <br />
+            <span style={{ color: "var(--fg)", fontWeight: 900 }}>{e.partnerName ?? "Partner"}</span>
+          </span>
+        ) : isTournament && clubId ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ fontSize: 10.5 }}
+            onClick={() => onAssign({ id: e.id, name: e.n })}
+          >
+            Asignar
+          </button>
+        ) : (
+          <button className="btn btn-primary" style={{ fontSize: 10.5 }} disabled title="Próximamente">
+            Gestionar
+          </button>
+        )}
       </div>
     </div>
   );
@@ -193,11 +244,15 @@ function EventPlaceholderCard({ k }: { k: number }) {
 }
 
 export function ClubEventosScreenView({ data }: { data: EventosData }) {
+  const [assignTarget, setAssignTarget] = useState<{ id: string; name: string } | null>(null);
+
   useRealtimeRefresh(
     data.clubId
       ? [
           { table: "events", filter: `club_id=eq.${data.clubId}` },
+          { table: "tournaments", filter: `club_id=eq.${data.clubId}` },
           { table: "event_registrations" },
+          { table: "registrations" },
         ]
       : [],
     { enabled: !!data.clubId },
@@ -221,7 +276,7 @@ export function ClubEventosScreenView({ data }: { data: EventosData }) {
             onClick={() =>
               window.dispatchEvent(
                 new CustomEvent("mp-open-crear-evento", {
-                  detail: { clubId: data.clubId },
+                  detail: { clubId: data.clubId, clubName: data.clubName },
                 }),
               )
             }
@@ -235,12 +290,28 @@ export function ClubEventosScreenView({ data }: { data: EventosData }) {
       <div className="mp-table-scroll">
         <div style={{ minWidth: 620, display: "flex", flexDirection: "column", gap: 8 }}>
         {hasReal
-          ? data.events.map((e) => <EventRowCard key={e.id} e={e} />)
+          ? data.events.map((e) => (
+              <EventRowCard
+                key={e.id}
+                e={e}
+                clubId={data.clubId}
+                onAssign={setAssignTarget}
+              />
+            ))
           : Array.from({ length: PLACEHOLDER_COUNT }).map((_, k) => (
               <EventPlaceholderCard key={k} k={k} />
             ))}
         </div>
       </div>
+      {assignTarget && data.clubId ? (
+        <AssignTournamentPartnerModal
+          clubId={data.clubId}
+          tournamentId={assignTarget.id}
+          tournamentName={assignTarget.name}
+          partners={data.verifiedPartners}
+          onClose={() => setAssignTarget(null)}
+        />
+      ) : null}
     </>
   );
 }

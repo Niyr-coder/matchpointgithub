@@ -15,11 +15,7 @@ import {
   grantClubPlanAdmin,
   revokeClubPlanAdmin,
 } from "@/server/actions/admin/club-plans";
-import {
-  quickApproveApplication,
-  rejectApplication,
-} from "@/server/actions/clubApplicationsAdmin";
-import { getApplicationDetail } from "@/server/actions/clubApplications";
+import { adminClubAppApi } from "@/lib/api/adminClubApplications";
 import { downloadCsv } from "@/lib/export/csv";
 
 export type Status = "verified" | "pending" | "rejected";
@@ -477,7 +473,7 @@ function PhaseChip({
 function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const [phaseFilter, setPhaseFilter] = useState<string>("all");
 
   const doApprove = async (app: PendingApplication) => {
@@ -487,11 +483,20 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
       confirmLabel: "Aprobar",
     });
     if (!ok) return;
-    startTransition(async () => {
-      const r = await quickApproveApplication({ applicationId: app.id });
+    setIsPending(true);
+    try {
+      const r = await adminClubAppApi.quickApprove(app.id);
       if (r.ok) toast({ icon: "check", title: `Club "${app.name}" aprobado` });
-      else toast({ icon: "alert-triangle", title: "Error", sub: r.error.message });
-    });
+      else toast({ icon: "alert-triangle", title: "Error", sub: r.error?.message ?? "Error" });
+    } catch (err) {
+      toast({
+        icon: "alert-triangle",
+        title: "Error de conexión",
+        sub: err instanceof Error ? err.message : "Intenta de nuevo.",
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   const doReject = async (app: PendingApplication) => {
@@ -505,11 +510,20 @@ function PendingAppsBanner({ apps }: { apps: PendingApplication[] }) {
       destructive: true,
     });
     if (reason == null) return;
-    startTransition(async () => {
-      const r = await rejectApplication({ applicationId: app.id, reason });
+    setIsPending(true);
+    try {
+      const r = await adminClubAppApi.reject(app.id, reason);
       if (r.ok) toast({ icon: "check", title: "Solicitud rechazada" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: r.error.message });
-    });
+      else toast({ icon: "alert-triangle", title: "Error", sub: r.error?.message ?? "Error" });
+    } catch (err) {
+      toast({
+        icon: "alert-triangle",
+        title: "Error de conexión",
+        sub: err instanceof Error ? err.message : "Intenta de nuevo.",
+      });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   if (apps.length === 0) return null;
