@@ -130,6 +130,8 @@ export async function GET(req: NextRequest) {
 
   if (isNewUser) {
     await sendWelcomeIfNew(user);
+    const { tryGrantMatchPointPlusOnSignup } = await import("@/server/plan/grant-matchpoint-plus");
+    await tryGrantMatchPointPlusOnSignup(user.id);
   }
 
   const destination = buildPostAuthRedirect(next || DEFAULT_NEXT, needsOnboarding);

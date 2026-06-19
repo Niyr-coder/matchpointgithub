@@ -241,6 +241,9 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     c.set(ACTIVE_ROLE_COOKIE, "user", COOKIE_OPTS);
     c.delete(ACTIVE_CLUB_COOKIE);
 
+    const { tryGrantMatchPointPlusOnSignup } = await import("@/server/plan/grant-matchpoint-plus");
+    await tryGrantMatchPointPlusOnSignup(signUpData.user.id);
+
     // Welcome DM del perfil MATCHPOINT. Fire-and-forget; si falla NO rompe
     // el signup. El killswitch system_messages_enabled lo apaga global.
     try {

@@ -18,6 +18,7 @@ import { requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
 import { notify } from "@/server/notifications/dispatch";
+import { grantMatchPointPlusInternal } from "@/server/plan/grant-matchpoint-plus";
 
 // Precio por mes en centavos. MATCHPOINT+ = USD 6.99/mes.
 const PREMIUM_PRICE_CENTS_PER_MONTH = 699;
@@ -348,96 +349,16 @@ export async function grantMatchPointPlusAdmin(
 ): Promise<ActionResult<{ subscriptionId: string; userId: string; expiresAt: string }>> {
   return runAction(GrantSchema, input, async ({ userId, durationMonths, reason }) => {
     const adminId = await requireAdminUserId();
-    // RLS de player_subscriptions/profiles bloquea al admin (solo el dueño
-    // puede escribir). Después de validar rol con requireAdminUserId, usamos
-    // service role para hacer el grant.
-    const admin = getAdminClient();
-    await setAuditActor(admin, adminId, "admin");
-
-    // Calcular nuevo expiry extendiendo desde el vigente.
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("plan_expires_at")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!profile) {
-      throw new MpError("PLAN.USER_NOT_FOUND", "Usuario no encontrado", 404);
-    }
-    const now = new Date();
-    const currentExpiry = profile.plan_expires_at
-      ? new Date(profile.plan_expires_at as string)
-      : null;
-    const startsAt = currentExpiry && currentExpiry > now ? currentExpiry : now;
-    const newExpiry = new Date(startsAt);
-    newExpiry.setMonth(newExpiry.getMonth() + durationMonths);
-
-    // Crear la subscription en estado 'active' directamente.
-    const { data: sub, error: subErr } = await admin
-      .from("player_subscriptions")
-      .insert({
-        user_id: userId,
-        tier: "premium",
-        status: "active",
-        starts_at: startsAt.toISOString(),
-        expires_at: newExpiry.toISOString(),
-        duration_months: durationMonths,
-        transaction_id: null,
-        cancelled_reason: reason ?? null,
-      } as never)
-      .select("id")
-      .single();
-    if (subErr || !sub) {
-      throw new MpError(
-        "PLAN.SUB_CREATE_FAILED",
-        subErr?.message ?? "No se pudo crear la suscripción",
-        500,
-      );
-    }
-
-    // Actualizar profile.
-    const { error: profUpdErr } = await admin
-      .from("profiles")
-      .update({
-        plan_tier: "premium",
-        plan_expires_at: newExpiry.toISOString(),
-      } as never)
-      .eq("id", userId);
-    if (profUpdErr) {
-      throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
-    }
-
-    // Audit log (best-effort).
-    const { error: auditErr } = await admin.rpc("fn_admin_audit_log", {
-      p_entity: "player_subscriptions",
-      p_entity_id: sub.id as string,
-      p_action: "plan_subscription.admin_grant",
-      p_diff: {
-        granted_to: userId,
-        granted_by: adminId,
-        duration_months: durationMonths,
-        expires_at: newExpiry.toISOString(),
-        reason: reason ?? null,
-      } as Json,
-    });
-    if (auditErr) {
-      console.error(
-        "[grantMatchPointPlus] [ok=false] audit_log_failed (action=plan_subscription.admin_grant):",
-        auditErr.message,
-      );
-    }
-
-    await notifyPremiumActivated({
+    const result = await grantMatchPointPlusInternal({
       userId,
-      subscriptionId: sub.id as string,
-      expiresAt: newExpiry.toISOString(),
-      source: "admin_grant",
+      durationMonths,
+      reason: reason ?? null,
+      auditAction: "plan_subscription.admin_grant",
+      actorId: adminId,
+      actorRole: "admin",
+      notifySource: "admin_grant",
     });
-
-    return {
-      subscriptionId: sub.id as string,
-      userId,
-      expiresAt: newExpiry.toISOString(),
-    };
+    return result;
   });
 }
 

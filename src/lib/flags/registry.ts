@@ -103,6 +103,19 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: true,
   },
   {
+    key: "signup_auto_mp_plus",
+    label: "MP+ automático al registrarse",
+    description:
+      "Otorga MATCHPOINT+ (1 mes) a cada usuario nuevo al registrarse por email u OAuth. Apagado = registro sin premium automático.",
+    surfaces: [
+      "signUp (auth.ts)",
+      "OAuth callback (/auth/callback)",
+      "src/server/plan/grant-matchpoint-plus.ts",
+    ],
+    impact: "high",
+    wired: true,
+  },
+  {
     key: "maintenance_banner",
     label: "Banner de mantenimiento",
     description: "Muestra un aviso de mantenimiento en la parte superior del dashboard para todos los roles. El texto del aviso es la descripción de este flag.",
