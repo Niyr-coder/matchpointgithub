@@ -782,11 +782,9 @@ function CRFull({
       </div>
 
       <div
+        className="mp-grid-split-wide gap-5.5"
         style={{
           padding: 22,
-          display: "grid",
-          gridTemplateColumns: "1.7fr 1fr",
-          gap: 22,
           overflow: "auto",
           flex: 1,
         }}
@@ -797,6 +795,7 @@ function CRFull({
         >
           <div style={{ minWidth: 470 }}>
           <div
+            className="mp-table-row"
             style={{
               padding: "10px 16px",
               display: "grid",
@@ -822,6 +821,7 @@ function CRFull({
           {items.map((it, idx) => (
             <div
               key={it.sku}
+              className="mp-table-row"
               style={{
                 padding: 14,
                 display: "grid",
@@ -1129,18 +1129,16 @@ function CRCheckout({
       </div>
 
       <div
+        className="mp-grid-split-cart gap-5.5"
         style={{
           padding: 22,
-          display: "grid",
-          gridTemplateColumns: "1.5fr 1fr",
-          gap: 22,
           overflow: "auto",
           flex: 1,
         }}
       >
         <div>
           <CheckoutSection num="1" title="Dirección de envío" right="Cambiar">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="mp-grid-form-2 gap-2.5">
               <CKField label="Nombre" val="Camila Aguilar" />
               <CKField label="Teléfono" val="+593 99 244 1208" />
               <CKField label="Dirección" val="Calle de los Tulipanes N32-12" hint="Cumbayá" />
@@ -1149,7 +1147,7 @@ function CRCheckout({
           </CheckoutSection>
 
           <CheckoutSection num="2" title="Envío">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            <div className="mp-grid-form-3 gap-2">
               {[
                 { l: "Estándar", s: "2–3 días", p: "$4.50", on: true, i: "truck" },
                 { l: "Express", s: "Mañana", p: "$8.90", on: false, i: "zap" },
@@ -1194,14 +1192,7 @@ function CRCheckout({
           </CheckoutSection>
 
           <CheckoutSection num="3" title="Método de pago" darkNum>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-                marginBottom: 12,
-              }}
-            >
+            <div className="mp-grid-form-4 gap-1.5" style={{ marginBottom: 12 }}>
               {[
                 { l: "Tarjeta", i: "credit-card", on: true },
                 { l: "PayPhone", i: "smartphone", on: false },
@@ -1233,8 +1224,7 @@ function CRCheckout({
                 </button>
               ))}
             </div>
-            <div className="mp-table-scroll">
-            <div style={{ minWidth: 356, display: "grid", gridTemplateColumns: "1fr 110px 110px", gap: 8 }}>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_110px] gap-2">
               <CKField
                 label="Número de tarjeta"
                 val="•••• •••• •••• 4886"
@@ -1242,7 +1232,6 @@ function CRCheckout({
               />
               <CKField label="Vencimiento" val="09 / 28" />
               <CKField label="CVV" val="•••" />
-            </div>
             </div>
           </CheckoutSection>
         </div>
@@ -1618,14 +1607,7 @@ function CRSuccess({ close }: { close: () => void }) {
         <div className="label-mp" style={{ marginBottom: 8 }}>
           Mientras esperas
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 8,
-            marginBottom: 14,
-          }}
-        >
+        <div className="mp-grid-form-3 gap-2" style={{ marginBottom: 14 }}>
           {[
             { i: "calendar-plus", l: "Reservar cancha", sub: "Estrena tu paleta en Cumbayá", primary: true },
             { i: "file-text", l: "Recibo / factura", sub: "PDF · email" },

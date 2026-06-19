@@ -239,9 +239,9 @@ async function loadData() {
   let suggestions: FriendLite[] = [];
   if (myCity) {
     const { data: candidatesRaw } = await supabase
-      .from("profiles")
+      .from("v_public_profiles")
       .select(
-        "id,display_name,username,avatar_url,city,preferred_sport,is_system,plan_tier,plan_expires_at" as never,
+        "id,display_name,username,avatar_url,city,preferred_sport,is_system" as never,
       )
       .eq("city", myCity)
       .eq("is_system" as never, false as never)
@@ -274,7 +274,7 @@ async function loadData() {
           sport: sportLabel(c.preferred_sport as string | null),
           level: levelFromRating(candRatingMap.get(c.id as string)),
           isOfficial: false,
-          isPremium: deriveIsPremium(c),
+          isPremium: false,
         };
       });
   }

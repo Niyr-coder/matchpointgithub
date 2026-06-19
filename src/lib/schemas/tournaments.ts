@@ -172,6 +172,21 @@ export const LeagueCreateSchema = z
   })
   .openapi("LeagueCreate");
 
+// Categoría que el organizador puede definir desde el wizard de creación.
+// Espejo de CategoryBodySchema (server action) pero sin `level` (el wizard
+// usa solo el rango MPR). Se inserta en tournament_categories al crear.
+export const TournamentCreateCategorySchema = z
+  .object({
+    name: z.string().min(1).max(80),
+    gender: z.enum(["m", "f", "mixed", "open"]).nullable().optional(),
+    mprMin: z.number().min(2.0).max(8.0).nullable().optional(),
+    mprMax: z.number().min(2.0).max(8.0).nullable().optional(),
+    ageMin: z.number().int().min(0).max(120).nullable().optional(),
+    ageMax: z.number().int().min(0).max(120).nullable().optional(),
+    maxTeams: z.number().int().positive().nullable().optional(),
+  })
+  .openapi("TournamentCreateCategory");
+
 export const TournamentCreateSchema = z
   .object({
     partnerId: UuidSchema,
@@ -179,6 +194,7 @@ export const TournamentCreateSchema = z
     clubId: UuidSchema.optional(),
     name: z.string().min(2).max(120),
     slug: SlugSchema,
+    description: z.string().max(2000).optional(),
     sport: MpSportSchema,
     format: TournamentFormatSchema,
     startsAt: IsoDateTimeSchema,
@@ -198,6 +214,7 @@ export const TournamentCreateSchema = z
       bestOf: 3,
     }),
     groupPlayoffConfig: GroupPlayoffConfigSchema.optional(),
+    categories: z.array(TournamentCreateCategorySchema).max(20).optional(),
     termsAccepted: z.literal(true, {
       message: "Debes aceptar los términos del torneo",
     }),
@@ -209,6 +226,15 @@ export const TournamentCreateSchema = z
         message: "Configura grupos y clasificados para Grupos + eliminación",
         path: ["groupPlayoffConfig"],
       });
+    }
+    if (data.registrationOpensAt && data.registrationClosesAt) {
+      if (new Date(data.registrationOpensAt) >= new Date(data.registrationClosesAt)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "La apertura de inscripciones debe ser anterior al cierre",
+          path: ["registrationClosesAt"],
+        });
+      }
     }
   })
   .openapi("TournamentCreate");
@@ -257,6 +283,7 @@ export const TournamentFeaturedSchema = z
 
 export type League = z.infer<typeof LeagueSchema>;
 export type Tournament = z.infer<typeof TournamentSchema>;
+export type TournamentCreateCategory = z.infer<typeof TournamentCreateCategorySchema>;
 export type ScoringConfig = z.infer<typeof ScoringConfigSchema>;
 export type TournamentDetail = z.infer<typeof TournamentDetailSchema>;
 export type Bracket = z.infer<typeof BracketSchema>;

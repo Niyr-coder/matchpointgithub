@@ -20,6 +20,8 @@ import {
 import type { ClubGiveawaysOrgOverview } from "@/server/actions/giveaways";
 import { orgGiveawayPath } from "./giveaways/org-path";
 
+const SORTEOS_TABLE_COLS = "minmax(180px,1fr) 100px 90px 140px 120px 120px";
+
 type Props = {
   roleSegment: "owner" | "manager";
   clubId: string;
@@ -495,7 +497,7 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
 
       <div className="card mp-club-sorteos-table-scroll" style={{ padding: 0 }}>
         <div className="mp-club-sorteos-table-inner">
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) 100px 90px 140px 120px 120px", padding: "10px 16px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: SORTEOS_TABLE_COLS, padding: "10px 16px", borderBottom: "1px solid var(--border)" }}>
           {["Sorteo", "Estado", "Entradas", "Cierre / Sorteo", "Mecánica", ""].map((h) => (
             <div key={h} className="label-mp">
               {h}
@@ -517,7 +519,7 @@ export function ClubSorteosScreenView({ roleSegment, clubId, overview, giveaways
                 key={g.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(180px,1fr) 100px 90px 140px 120px 120px",
+                  gridTemplateColumns: SORTEOS_TABLE_COLS,
                   padding: "14px 16px",
                   borderTop: i > 0 ? "1px solid var(--border)" : "none",
                   alignItems: "center",

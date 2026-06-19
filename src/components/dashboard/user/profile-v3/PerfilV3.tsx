@@ -522,7 +522,7 @@ export function V3CommunityBand() {
             text="Las insignias se desbloquean al cumplir logros en torneos y partidos."
           />
         ) : (
-        <div className="pv3-kpi-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        <div className="pv3-kpi-strip mp-grid-form-4 gap-2">
           {me.badges.map(b => {
             const isGold = b.rarity === 'Legendaria' || b.rarity === 'Épica';
             return (

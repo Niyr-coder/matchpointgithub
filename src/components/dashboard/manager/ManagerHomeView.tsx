@@ -94,7 +94,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
     <>
       <RHWelcome role="manager" userName={data.userName} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+      <div className="mp-grid-form-4 gap-4">
         <RHKpi
           label="Reservas hoy"
           value={String(data.reservasHoyCount)}
@@ -123,7 +123,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+      <div className="mp-grid-split gap-4">
         <RHPanel
           title="Reservas · hoy"
           action={
@@ -319,7 +319,7 @@ export function ManagerHomeView({ data }: { data: ManagerHomeData }) {
             )}
           </RHPanel>
           <RHPanel title="Acción rápida">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <div className="mp-grid-form-2 gap-1.5">
               {QUICK_ACTIONS.map((a) => (
                 <button
                   key={a.l}

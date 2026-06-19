@@ -146,6 +146,38 @@ export async function requireUserId(): Promise<string> {
   return r.userId;
 }
 
+/** true si el usuario tiene un role_assignment admin vigente. */
+export async function userHasAdminRole(userId?: string): Promise<boolean> {
+  let uid = userId;
+  if (!uid) {
+    const auth = await getClaimsAuth();
+    if (!auth.authenticated) return false;
+    uid = auth.userId;
+  }
+
+  const supabase = await getServerClient();
+  const { data, error } = await supabase
+    .from("role_assignments")
+    .select("id")
+    .eq("user_id", uid)
+    .eq("role", "admin")
+    .is("revoked_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return false;
+  return Boolean(data);
+}
+
+/** Exige rol admin global. Usa limit(1) — tolera histórico sin dedupe. */
+export async function requireAdminUserId(): Promise<string> {
+  const userId = await requireUserId();
+  if (!(await userHasAdminRole(userId))) {
+    throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere rol admin");
+  }
+  return userId;
+}
+
 export async function requireRole(role: RoleKey): Promise<SessionShape> {
   const s = await requireSession();
   if (s.activeRole !== role) {

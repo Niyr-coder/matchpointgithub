@@ -99,8 +99,8 @@ Dos puertas para mutar:
 | Privilege escalation | RLS bloquea cross-tenant; service role solo en server | ✅ |
 | Service role leak | `import "server-only"` en `client.admin.ts` | ✅ |
 | Session hijack | httpOnly cookie + Supabase refresh + HTTPS prod | ✅ |
-| Rate-limit abuse | `withIdempotency` (no es rate limit, evita duplicados) | ⚠️ gap |
-| Brute force login | Supabase Auth tiene rate limit propio | ✅ |
+| Rate-limit abuse | Token bucket Postgres + fail-closed en auth/sales/proofs | ✅ (P0/P1) |
+| Brute force login | Supabase Auth + assertRateLimit signup/signin | ✅ |
 | Comprobante falso | `proof_rejection_reason` flow + audit log | 🟡 manual |
 | Data scraping de profiles | `profiles_authn_select_limited` deja leer todos | 🟠 ver privacy/01 |
 
@@ -116,15 +116,14 @@ Dos puertas para mutar:
   correcto.
 
 🟠 **Pendiente**:
-- **Profiles RLS** muy permisiva — `profiles_authn_select_limited` deja a
-  cualquier user autenticado leer todos los perfiles (bio, ciudad, foto).
-  Permite enumeración. Ver `privacy/01-data-sharing.md`.
-- **Rate limits** ausentes en endpoints críticos (signup, register,
-  comprobante). `withIdempotency` no es rate limit.
-- **Cron secret** del dispatcher usa string-compare simple. HMAC sería
-  más robusto.
+- **Profiles RLS** — flag `profiles_rls_strict` (default OFF); encender tras staging.
+- **Cron secret** — compare timing-safe vía `authorizeCron` (P3).
+- **CSP enforce** — hoy report-only en `next.config.ts` (P3).
 
-🔴 **Bugs fixeados** (no volver a romper):
+🔴 **Resuelto reciente** (P0–P1):
+- Vistas SECURITY DEFINER → `security_invoker` + drop `v_unread_notifications`.
+- Rate limit RPC solo service_role; `/api/v1/contact/sales` limitado.
+- `/api/health` requiere `HEALTH_SECRET` en prod.
 - `AdminApplicationDetail` aislado en `src/server/queries/admin-applications.ts`
   con `server-only` para que `getAdminClient` no pueda llegar al cliente
   por accidente de refactor.
@@ -177,11 +176,36 @@ Dos puertas para mutar:
 
 ## 9. Próximas tareas de seguridad (TODO)
 
-- [ ] Profiles RLS — restringir SELECT a friends/teammates/staff de club
-- [ ] Rate limiting real en signup, register, submit_proof
-- [ ] HMAC en cron secret (no string compare)
-- [ ] CSP headers (Content Security Policy)
+- [ ] Activar `profiles_rls_strict` en staging → prod (ver migración P2)
+- [ ] PostGIS manual: `scripts/ops/apply-postgis-rls.sql`
+- [ ] CSP enforce (quitar report-only)
 - [ ] Subresource Integrity en scripts CDN (Scalar de /docs)
-- [ ] 2FA opcional (TOTP) — Supabase lo soporta nativo, falta UI
+- [x] 2FA staff (TOTP) — infra lista (`staff_mfa_required` off; ver §10)
+- [ ] 2FA staff — UI enroll/verify + encender flag en staging
 - [ ] Audit log de logins (hoy solo loguea mutaciones)
 - [ ] Penetration test profesional pre-launch público
+
+## 10. 2FA staff (TOTP) — infraestructura
+
+Política acordada: **todos los roles excepto jugador** (`user`) exigen TOTP cuando
+el flag `staff_mfa_required` está encendido. Jugadores siguen con Google /
+email sin segundo factor.
+
+| Pieza | Ubicación | Estado |
+|---|---|---|
+| Política / constantes | `src/lib/auth/mfa-policy.ts` | ✅ |
+| Gate dashboard | `src/app/dashboard/[role]/layout.tsx` | ✅ (solo si flag on) |
+| Lectura AAL + factores | `src/lib/auth/mfa.ts` | ✅ |
+| Flag reader | `src/server/flags/staff-mfa.ts` | ✅ |
+| Server actions | `src/server/actions/mfa.ts` | ✅ |
+| Rutas stub | `/auth/mfa/enroll`, `/auth/mfa/verify` | ✅ placeholder |
+| UI QR + código | `MfaEnrollPlaceholder`, `MfaVerifyPlaceholder` | ⏳ conectar |
+
+**Activación (cuando la UI esté lista):**
+
+1. Supabase Dashboard → Authentication → Multi-Factor → **App Authenticator ON**
+2. Admin panel → flag `staff_mfa_required` → ON (o migración / SQL)
+3. Smoke: staff sin factor → `/auth/mfa/enroll`; con factor → `/auth/mfa/verify` → `aal2`
+
+**Server actions sensibles:** importar `requireStaffMfaAal2({ activeRole, supabase })`
+después de validar sesión.

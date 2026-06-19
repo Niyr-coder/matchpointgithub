@@ -6,7 +6,7 @@ import "server-only";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
@@ -114,7 +114,7 @@ export async function listCashSessions(input: unknown): Promise<ActionResult<Cas
 
 // ── openCashSession ────────────────────────────────────────────────────
 export async function openCashSession(input: unknown): Promise<ActionResult<CashSession>> {
-  return runAction(CashSessionOpenSchema, input, async (data) => {
+  return runMutation(CashSessionOpenSchema, input, async (data) => {
     const userId = await requireClubStaff(data.clubId);
     const supabase = await getServerClient();
 
@@ -155,7 +155,7 @@ const CloseInputSchema = z.object({
 });
 
 export async function closeCashSession(input: unknown): Promise<ActionResult<CashSession>> {
-  return runAction(CloseInputSchema, input, async ({ id, body }) => {
+  return runMutation(CloseInputSchema, input, async ({ id, body }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
 
@@ -234,7 +234,7 @@ export async function listTransactions(input: unknown): Promise<ActionResult<Tra
 
 // ── createTransaction ──────────────────────────────────────────────────
 export async function createTransaction(input: unknown): Promise<ActionResult<Transaction>> {
-  return runAction(TransactionCreateSchema, input, async (data) => {
+  return runMutation(TransactionCreateSchema, input, async (data) => {
     const userId = await requireClubStaff(data.clubId);
     await assertRateLimit({ key: `cash:tx:${userId}`, ...RATE_LIMITS.mutationsAuthn });
     const idemKey = (await headers()).get("idempotency-key") ?? undefined;

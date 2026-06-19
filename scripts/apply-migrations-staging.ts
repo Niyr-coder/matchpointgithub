@@ -38,6 +38,8 @@ async function main() {
       filename text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE _matchpoint_migrations ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON _matchpoint_migrations FROM anon, authenticated;
   `);
 
   let applied = 0;

@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 
 export type BroadcastTemplate = {
   id: string;
@@ -21,17 +21,6 @@ export type BroadcastTemplate = {
   targetFilter: Record<string, unknown>;
   uses: number;
 };
-
-async function requireAdminId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  const { data } = await supabase.from("role_assignments").select("role").eq("user_id", user.id).eq("role", "admin").is("revoked_at", null).maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return user.id;
-}
 
 export async function saveBroadcastTemplate(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(
@@ -45,7 +34,7 @@ export async function saveBroadcastTemplate(input: unknown): Promise<ActionResul
     }),
     input,
     async ({ name, channel, title, body, ctaLabel, targetFilter }) => {
-      const adminId = await requireAdminId();
+      const adminId = await requireAdminUserId();
       const supabase = await getServerClient();
       const { data, error } = await supabase
         .from("broadcast_templates")
@@ -61,7 +50,7 @@ export async function saveBroadcastTemplate(input: unknown): Promise<ActionResul
 
 export async function deleteBroadcastTemplate(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(z.object({ id: z.string().uuid() }), input, async ({ id }) => {
-    await requireAdminId();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { error } = await supabase.from("broadcast_templates").delete().eq("id", id);
     if (error) throw new MpError("TEMPLATES.DELETE_FAILED", error.message, 500);

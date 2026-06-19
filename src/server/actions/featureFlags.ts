@@ -7,25 +7,8 @@ import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { FeatureFlagSchema, FeatureFlagUpsertSchema, type FeatureFlag } from "@/lib/schemas/ops";
-
-async function requireAdmin(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return user.id;
-}
 
 function mapFlag(row: Record<string, unknown>): FeatureFlag {
   return FeatureFlagSchema.parse({
@@ -45,7 +28,7 @@ function mapFlag(row: Record<string, unknown>): FeatureFlag {
 
 export async function listFlags(): Promise<ActionResult<FeatureFlag[]>> {
   return runAction(z.undefined(), undefined, async () => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("feature_flags")
@@ -58,7 +41,7 @@ export async function listFlags(): Promise<ActionResult<FeatureFlag[]>> {
 
 export async function upsertFlag(input: unknown): Promise<ActionResult<FeatureFlag>> {
   return runAction(FeatureFlagUpsertSchema, input, async (data) => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     // Solo incluye env/impact/owner/segment si vinieron en el input — así un
     // toggle o cambio de rollout (que no los manda) no los pisa con defaults.
@@ -87,7 +70,7 @@ export async function upsertFlag(input: unknown): Promise<ActionResult<FeatureFl
 // Pone rollout a 0 y enabled_default false. Cada update queda en audit.
 export async function killSwitchNonCritical(input: unknown): Promise<ActionResult<{ affected: number }>> {
   return runAction(z.undefined(), input, async () => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("feature_flags")
@@ -108,7 +91,7 @@ export type FlagHistoryEntry = { id: number; action: string; actorRole: string |
 // en INSERT/DELETE, o `diff.after` en UPDATE. Por eso filtramos por el key en JS.
 export async function listFlagHistory(input: unknown): Promise<ActionResult<FlagHistoryEntry[]>> {
   return runAction(z.object({ key: z.string().min(1).max(80) }), input, async ({ key }) => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("audit_log")
@@ -143,7 +126,7 @@ export async function listFlagHistory(input: unknown): Promise<ActionResult<Flag
 
 export async function deleteFlag(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(z.object({ key: z.string().min(1).max(80) }), input, async ({ key }) => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { error } = await supabase.from("feature_flags").delete().eq("key", key);
     if (error) throw new MpError("FLAGS.DELETE_FAILED", error.message, 500);
@@ -164,7 +147,7 @@ export async function upsertFlagAssignment(input: unknown): Promise<ActionResult
     }),
     input,
     async ({ flagKey, scope, scopeId, enabled, reason }) => {
-      await requireAdmin();
+      await requireAdminUserId();
       const supabase = await getServerClient();
       const { error } = await supabase
         .from("feature_flag_assignments")
@@ -187,7 +170,7 @@ export async function deleteFlagAssignment(input: unknown): Promise<ActionResult
     }),
     input,
     async ({ flagKey, scope, scopeId }) => {
-      await requireAdmin();
+      await requireAdminUserId();
       const supabase = await getServerClient();
       const { error } = await supabase
         .from("feature_flag_assignments")
@@ -203,7 +186,7 @@ export async function deleteFlagAssignment(input: unknown): Promise<ActionResult
 
 export async function listFlagAssignments(input: unknown): Promise<ActionResult<{ flag_key: string; scope: string; scope_id: string; enabled: boolean; reason: string | null }[]>> {
   return runAction(z.object({ flagKey: z.string().min(1) }), input, async ({ flagKey }) => {
-    await requireAdmin();
+    await requireAdminUserId();
     const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("feature_flag_assignments")

@@ -9,9 +9,10 @@ import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { getActiveClubDiscountPct, applyDiscount } from "@/server/queries/club-membership";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
+import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
@@ -314,6 +315,7 @@ export async function getTournament(input: unknown): Promise<ActionResult<Tourna
 export async function createTournament(input: unknown): Promise<ActionResult<Tournament>> {
   return runAction(TournamentCreateSchema, input, async (data) => {
     const userId = await requirePartnerAdmin(data.partnerId);
+    await assertRateLimit({ key: `tournament:create:${userId}`, ...RATE_LIMITS.tournamentCreate });
     const supabase = await getServerClient();
     const resolvedPolicy =
       data.entryFeeCents === 0
@@ -329,6 +331,7 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
         club_id: data.clubId ?? null,
         name: data.name,
         slug: data.slug,
+        description: data.description ?? null,
         sport: data.sport,
         format: data.format,
         starts_at: data.startsAt,
@@ -354,21 +357,51 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
       throw new MpError("TOURNAMENTS.CREATE_FAILED", error.message, 500);
     }
 
-    if (data.format === "groups_to_knockout" && data.groupPlayoffConfig) {
-      const admin = getAdminClient();
-      await setAuditActor(admin, userId, "partner");
+    // Categorías: las que el organizador definió en el wizard. Para
+    // groups_to_knockout cada categoría hereda stage + group_playoff_config
+    // (la config de grupos es por-categoría — ver docs §13.2). Si el wizard no
+    // mandó ninguna y el formato es por grupos, mantenemos el fallback histórico
+    // de auto-crear una categoría con el label de la modalidad para no dejar el
+    // torneo sin la fase de grupos cableada.
+    const isGroups = data.format === "groups_to_knockout";
+    let categoriesToInsert = data.categories ?? [];
+    if (categoriesToInsert.length === 0 && isGroups && data.groupPlayoffConfig) {
       const modalityLabel =
         data.modality === "singles"
           ? "Singles"
           : data.modality === "mixed_doubles"
             ? "Mixto"
             : "Dobles";
-      const { error: catErr } = await admin.from("tournament_categories").insert({
-        tournament_id: row.id,
-        name: modalityLabel,
-        stage: "pending_groups",
-        group_playoff_config: data.groupPlayoffConfig,
-      } as never);
+      categoriesToInsert = [{ name: modalityLabel }];
+    }
+    if (categoriesToInsert.length > 0) {
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, "partner");
+      const groupConfig = data.groupPlayoffConfig ?? {
+        groupsCount: 2,
+        advancePerGroup: 4,
+        finalScoringOverride: null,
+      };
+      const categoryRows = categoriesToInsert.map((c) => {
+        const catRow: Record<string, unknown> = {
+          tournament_id: row.id,
+          name: c.name,
+          gender: c.gender ?? null,
+          mpr_min: c.mprMin ?? null,
+          mpr_max: c.mprMax ?? null,
+          age_min: c.ageMin ?? null,
+          age_max: c.ageMax ?? null,
+          max_teams: c.maxTeams ?? null,
+        };
+        if (isGroups) {
+          catRow.stage = "pending_groups";
+          catRow.group_playoff_config = groupConfig;
+        }
+        return catRow;
+      });
+      const { error: catErr } = await admin
+        .from("tournament_categories")
+        .insert(categoryRows as never);
       if (catErr) {
         throw new MpError("TOURNAMENTS.CATEGORY_FAILED", catErr.message, 500);
       }
@@ -398,8 +431,9 @@ const RegisterInputSchema = z.object({
 export async function registerToTournament(
   input: unknown,
 ): Promise<ActionResult<Registration>> {
-  return runAction(RegisterInputSchema, input, async ({ tournamentId, body, paymentMode }) => {
+  return runMutation(RegisterInputSchema, input, async ({ tournamentId, body, paymentMode }) => {
     const userId = await requireUserId();
+    await assertRateLimit({ key: `tournament:register:${userId}`, ...RATE_LIMITS.tournamentRegister });
     if (!body.playerIds.includes(userId)) {
       throw new AuthError("AUTH.ROLE_REQUIRED", "You must be in the registered playerIds");
     }
@@ -818,7 +852,7 @@ const CancelMyRegSchema = z.object({ registrationId: UuidSchema });
 export async function cancelMyRegistration(
   input: unknown,
 ): Promise<ActionResult<{ id: string; status: string }>> {
-  return runAction(CancelMyRegSchema, input, async ({ registrationId }) => {
+  return runMutation(CancelMyRegSchema, input, async ({ registrationId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
     const { data: reg } = await supabase
@@ -1100,19 +1134,6 @@ export async function getBracket(input: unknown): Promise<ActionResult<Bracket>>
 }
 
 // ── Admin-only: cancelar torneo + leer detalle ─────────────────────────
-async function requireAdminUserId(): Promise<string> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return userId;
-}
 
 // ── setTournamentFeatured (admin) ──────────────────────────────────────
 // Marca / desmarca un torneo como "evento estelar" para portada.

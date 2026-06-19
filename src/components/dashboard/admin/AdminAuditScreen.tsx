@@ -2,6 +2,7 @@
 // Resuelve actores, deriva categoría/severidad desde entity+action (no son
 // columnas), y arma el shape AuditEvent. Ver docs/security/03-audit-log.md.
 import { getServerClient } from "@/lib/db/client.server";
+import { summarizeAuditEvent } from "@/lib/audit/labels";
 import { AdminAuditView, type AuditEvent } from "./AdminAuditView";
 
 // entity → categoría del pill (auth/mod/pagos/config/club). Default 'config'.
@@ -99,6 +100,7 @@ async function loadEvents(): Promise<{ events: AuditEvent[]; now: number; chaine
       avBg: avBgFor(who),
       actorType: ((l.actor_role as string | null) ?? (l.actor_id ? "admin" : "system")).toLowerCase(),
       action: `${entity}.${op.toLowerCase()}`,
+      actionLabel: summarizeAuditEvent(entity, op),
       cat: categoryOf(entity),
       target: (l.entity_id as string | null) ?? "—",
       sev: severityOf(entity, op),

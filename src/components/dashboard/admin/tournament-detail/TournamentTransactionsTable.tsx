@@ -18,6 +18,8 @@ import { markTransactionRefundedAdmin } from "@/server/actions/admin-refunds";
 import { useToast } from "../../ToastProvider";
 import { SectionTitle, fmtDate, fmtMoney } from "../event-detail/primitives";
 
+const TOURNAMENT_TXN_COLS = "1fr 100px 80px 110px 140px 150px";
+
 type Tx = AdminTournamentDetail["transactions"][number];
 
 export function TournamentTransactionsTable({
@@ -39,7 +41,7 @@ export function TournamentTransactionsTable({
             className="mp-admin-event-txn-row"
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 100px 80px 110px 140px 150px",
+              gridTemplateColumns: TOURNAMENT_TXN_COLS,
               gap: 10,
               padding: "12px 16px",
               alignItems: "center",

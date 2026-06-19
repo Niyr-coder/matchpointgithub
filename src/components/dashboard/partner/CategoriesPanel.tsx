@@ -24,7 +24,7 @@ export type CategoryRow = {
   maxTeams: number | null;
 };
 
-const GENDERS = [
+export const GENDERS = [
   { value: "open", label: "Open" },
   { value: "m", label: "Masculino" },
   { value: "f", label: "Femenino" },
@@ -473,7 +473,8 @@ const inputStyle: React.CSSProperties = {
 // ── MprRangeSlider ────────────────────────────────────────────────────
 // Dos thumbs sobre el rango MPR 2.0-8.0 step 0.25. Implementación nativa
 // usando dos <input type="range"> superpuestos + visualización de la barra.
-function MprRangeSlider({
+// Exportado para reuso en el wizard de creación (CreateTournamentFlow).
+export function MprRangeSlider({
   min,
   max,
   disabled,

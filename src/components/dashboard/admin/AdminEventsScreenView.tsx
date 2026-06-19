@@ -48,13 +48,14 @@ function fmtCompactUSD(cents: number): string {
 }
 
 const PLACEHOLDER_COUNT = 4;
+const EV_PLACEHOLDER_COLS = "1fr 120px 110px 110px 110px";
 
 function EvPlaceholderRow() {
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 120px 110px 110px 110px",
+        gridTemplateColumns: EV_PLACEHOLDER_COLS,
         alignItems: "center",
         padding: "14px 16px",
         background: "#fafafa",

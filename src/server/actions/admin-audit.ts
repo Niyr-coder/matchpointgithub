@@ -11,7 +11,7 @@ import { summarizeAuditEvent } from "@/lib/audit/labels";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 
 // ── Shape público ──────────────────────────────────────────────────────
@@ -30,28 +30,8 @@ export type AuditEntry = {
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  return user.id;
-}
-
-async function requireAdminUserId(): Promise<string> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (!data) throw new AuthError("AUTH.ROLE_REQUIRED", "Admin required");
-  return userId;
-}
+// Autenticación admin (`requireAdminUserId`) y los labels legibles
+// (`summarizeAuditEvent`) viven en módulos compartidos: ver imports arriba.
 
 type AuditRow = {
   id: number | string;

@@ -95,7 +95,7 @@ export function ReglasSection({
           </div>
         </div>
       ) : (
-        <div className="mp-ccfg-reglas" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div className="mp-ccfg-reglas mp-grid-form-3 gap-3">
           {rules.map((r) => (
             <div
               key={r.id}

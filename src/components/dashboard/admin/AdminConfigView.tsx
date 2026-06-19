@@ -209,7 +209,7 @@ export function AdminConfigView({ real }: { real: RealConfig }) {
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div className="label-mp" style={{ color: "#dc2626" }}>● Settings · pisa con cuidado</div>
-            <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+            <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 0" }}>
               Configuración<span className="dot">.</span>
             </h1>
             <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>Valores que afectan a toda la plataforma en producción · todos los cambios quedan en audit</p>

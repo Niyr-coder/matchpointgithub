@@ -901,7 +901,7 @@ function InscritosList({
       </div>
 
       {items.length === 0 ? (
-        <div style={{ padding: "40px 22px", textAlign: "center", color: "var(--muted-fg)", fontSize: 13 }}>
+        <div className="px-5 py-10 text-center md:px-6" style={{ color: "var(--muted-fg)", fontSize: 13 }}>
           <Icon name="users" size={28} color="var(--muted-fg)" />
           <div style={{ marginTop: 10 }}>Sé el primero en inscribirte.</div>
         </div>

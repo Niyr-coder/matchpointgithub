@@ -9,18 +9,10 @@ import {
   getGiveawayCreatedBy,
   listDueGiveawayDraws,
 } from "@/server/giveaways/execute-draw";
+import { authorizeCron } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function authorize(req: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return false;
-  const header = req.headers.get("authorization") ?? "";
-  if (header === `Bearer ${expected}`) return true;
-  const token = req.nextUrl.searchParams.get("token");
-  return Boolean(token && token === expected);
-}
 
 async function handle(): Promise<NextResponse> {
   const closed = await closeExpiredGiveaways();
@@ -51,7 +43,7 @@ async function handle(): Promise<NextResponse> {
 }
 
 export async function GET(req: NextRequest) {
-  if (!authorize(req)) {
+  if (!authorizeCron(req)) {
     return NextResponse.json(
       { ok: false, error: { code: "AUTH.UNAUTHORIZED", message: "Token inválido o ausente." } },
       { status: 401 },
@@ -61,7 +53,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!authorize(req)) {
+  if (!authorizeCron(req)) {
     return NextResponse.json(
       { ok: false, error: { code: "AUTH.UNAUTHORIZED", message: "Token inválido o ausente." } },
       { status: 401 },

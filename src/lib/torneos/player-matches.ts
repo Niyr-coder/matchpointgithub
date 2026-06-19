@@ -18,6 +18,8 @@ export type TournamentBracketSideView = {
   position: number;
   sideALabel: string;
   sideBLabel: string;
+  sideAScore: number | null;
+  sideBScore: number | null;
   status: string;
   winnerSide: string | null;
   involvesMe: boolean;
@@ -28,6 +30,21 @@ function formatSetScore(score: unknown): string | null {
   if (!s?.sets?.length) return null;
   const parts = s.sets.map((set) => `${set.a ?? 0}–${set.b ?? 0}`);
   return parts.join(", ");
+}
+
+// Suma por lado de los sets reportados. El flujo del partner registra una sola
+// entrada con los sets ganados ({a:2,b:0}), así que la suma refleja ese tanteo.
+// Devuelve null si no hay score registrado.
+function sideScores(score: unknown): { a: number | null; b: number | null } {
+  const s = score as { sets?: Array<{ a?: number; b?: number }> } | null;
+  if (!s?.sets?.length) return { a: null, b: null };
+  let a = 0;
+  let b = 0;
+  for (const set of s.sets) {
+    a += set.a ?? 0;
+    b += set.b ?? 0;
+  }
+  return { a, b };
 }
 
 function whenLabel(iso: string | null): string | null {
@@ -132,19 +149,24 @@ export async function loadTournamentPlayerBracketData(
   const labelFor = (regId: string | null) =>
     regId ? (labels.get(regId) ?? "Por definir") : "Por definir";
 
-  const bracketSides: TournamentBracketSideView[] = rows.map((m) => ({
+  const bracketSides: TournamentBracketSideView[] = rows.map((m) => {
+    const sc = sideScores(m.score);
+    return {
     id: m.id,
     round: m.round,
     position: m.position,
     sideALabel: labelFor(m.side_a_registration_id),
     sideBLabel: labelFor(m.side_b_registration_id),
+    sideAScore: sc.a,
+    sideBScore: sc.b,
     status: m.status,
     winnerSide: m.winner_side,
     involvesMe:
       !!myRegistrationId &&
       (m.side_a_registration_id === myRegistrationId ||
         m.side_b_registration_id === myRegistrationId),
-  }));
+    };
+  });
 
   if (!myRegistrationId) return { myMatches: [], bracketSides };
 

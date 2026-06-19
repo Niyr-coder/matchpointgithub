@@ -332,7 +332,7 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+      <div className="mp-admin-kpis-5">
         <KpiCard label="Partners activos" value={`${data.totals.activePartners}`} hint="Organizadores con estado active." icon="handshake" />
         <KpiCard label="Clubes linkeados" value={`${data.totals.clubs}`} hint="Vía partner_club_links." icon="building-2" />
         <KpiCard label="Torneos activos" value={`${data.totals.activeTournaments}`} hint={`${data.totals.tournaments} torneos totales.`} icon="trophy" />

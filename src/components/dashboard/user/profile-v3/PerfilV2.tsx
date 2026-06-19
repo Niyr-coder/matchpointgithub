@@ -210,7 +210,7 @@ function V2HeroKpisStrip() {
         padding: '14px 28px 20px',
       }}
     >
-      <div className="pv3-stack-sm pv3-kpi-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="pv3-stack-sm pv3-kpi-strip mp-grid-form-4 gap-3">
         {items.map((it) => (
           <div
             key={it.l}
@@ -414,7 +414,7 @@ export function V2Showcase({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' |
           </button>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: 12 }}>
+      <div className="mp-grid-form-3 gap-3">
         <PinMatch />
         <PinPartner />
         <PinBadge />
@@ -598,7 +598,7 @@ function V2Tabs({ active, setActive, isMine }) {
 function V2Activity({ sub }) {
   const ms = usePerfilV3Data().recentMatches;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
+    <div className="mp-grid-split-wide gap-4">
       <div style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 14, padding: '4px 22px 18px' }}>
         {ms.map((m, i) => (
           <div key={i} style={{

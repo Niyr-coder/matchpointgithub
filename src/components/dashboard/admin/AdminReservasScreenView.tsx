@@ -21,6 +21,8 @@ export type AdminReservationRow = {
   cancellationReason: string | null;
 };
 
+const RESERVAS_COLS = "1.2fr 1.1fr 1.2fr 1fr 110px 120px";
+
 const STATUS: Record<string, { label: string; color: string }> = {
   booked: { label: "Reservada", color: "#f59e0b" },
   confirmed: { label: "Confirmada", color: "var(--primary)" },
@@ -109,12 +111,12 @@ export function AdminReservasScreenView({ rows }: { rows: AdminReservationRow[] 
       </header>
 
       <div className="card mp-table-scroll" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ minWidth: 720 }}>
+        <div className="mp-admin-subs-inner">
         <div
-          className="mp-admin-reservas-list-head"
+          className="mp-admin-reservas-list-head mp-table-row"
           style={{
             display: "grid",
-            gridTemplateColumns: "1.2fr 1.1fr 1.2fr 1fr 110px 120px",
+            gridTemplateColumns: RESERVAS_COLS,
             gap: 12,
             padding: "11px 14px",
             borderBottom: "1px solid var(--border)",
@@ -142,9 +144,10 @@ export function AdminReservasScreenView({ rows }: { rows: AdminReservationRow[] 
             return (
               <div
                 key={row.id}
+                className="mp-table-row"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1.2fr 1.1fr 1.2fr 1fr 110px 120px",
+                  gridTemplateColumns: RESERVAS_COLS,
                   gap: 12,
                   alignItems: "center",
                   padding: "12px 14px",

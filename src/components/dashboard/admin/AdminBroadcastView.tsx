@@ -27,6 +27,8 @@ type Campaign = {
 };
 export type BroadcastData = { campaigns: Campaign[]; templates: BroadcastTemplate[]; totalUsers: number };
 
+const BCAST_HISTORY_COLS = "40px 1.6fr 1.1fr 120px 130px 120px 36px";
+
 // Reconstruye chips de audiencia desde un target_filter guardado.
 function chipsFromFilter(tf: Record<string, unknown>): Chip[] {
   const out: Chip[] = [];
@@ -143,8 +145,8 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
 
   // Envío REAL in-app (banner va por otro flujo). Push/email todavía no tienen
   // dispatcher externo; se mantienen visibles como próximos canales.
-  // Programar deja la campaña en status=scheduled; el cron
-  // fn_dispatch_scheduled_broadcasts (cada 5 min) la despacha a su hora.
+  // Programar deja la campaña en status=scheduled; el cron HTTP
+  // /api/cron/dispatch-broadcasts la despacha a su hora.
   const CHANNEL_MAP: Record<string, string[]> = { "in-app": ["inapp"] };
   const sendCampaign = (mode: "now" | "time" | "draft") =>
     startTransition(async () => {
@@ -253,7 +255,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <div className="label-mp" style={{ color: "#fbbf24" }}>● Mensajería masiva</div>
-          <h1 className="font-heading" style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", lineHeight: 1, margin: "8px 0 0" }}>
+          <h1 className="font-heading mp-admin-page-title" style={{ fontWeight: 900, letterSpacing: "-0.03em", textTransform: "uppercase", margin: "8px 0 0" }}>
             Comunicaciones<span className="dot">.</span>
           </h1>
           <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
@@ -271,7 +273,7 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
       </div>
 
       {/* KPIs */}
-      <div className="mp-bcast-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+      <div className="mp-bcast-kpis mp-grid-form-5 gap-3">
         {kpis.map((k) => (
           <div key={k.l} className="card" style={{ padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -301,13 +303,13 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
           </button>
         </div>
 
-        <div className="mp-bcast-composer" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 0 }}>
+        <div className="mp-bcast-composer mp-grid-split gap-0">
           {/* LEFT: form */}
           <div className="mp-bcast-form" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 18, borderRight: "1px solid var(--border)" }}>
             {/* Channel */}
             <div>
               <div className="label-mp" style={{ marginBottom: 8 }}>Canal</div>
-              <div className="mp-bcast-channels" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              <div className="mp-bcast-channels mp-grid-form-4 gap-2">
                 {([
                   { k: "push", l: "Push", i: "smartphone", sub: "pendiente", disabled: true },
                   { k: "email", l: "Email", i: "mail", sub: "pendiente", disabled: true },
@@ -539,9 +541,9 @@ export function AdminBroadcastView({ data }: { data: BroadcastData }) {
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <div className="mp-table-scroll">
           <div style={{ minWidth: 760 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "40px 1.6fr 1.1fr 120px 130px 120px 36px", gap: 12, padding: "10px 22px", background: "#fafafa", borderBottom: "1px solid var(--border)", alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+            <div className="mp-table-row" style={{ display: "grid", gridTemplateColumns: BCAST_HISTORY_COLS, gap: 12, padding: "10px 22px", background: "#fafafa", borderBottom: "1px solid var(--border)", alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
               <div />
               <div>Mensaje</div>
               <div>Audiencia</div>
@@ -627,7 +629,7 @@ function BannerPreview({ title, body, cta }: { title: string; body: string; cta:
       <div style={{ padding: 16 }}>
         <div style={{ height: 8, background: "var(--muted)", borderRadius: 4, marginBottom: 8 }} />
         <div style={{ height: 8, background: "var(--muted)", borderRadius: 4, width: "70%", marginBottom: 14 }} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="mp-grid-form-2 gap-2">
           <div style={{ height: 50, background: "var(--muted)", borderRadius: 6 }} />
           <div style={{ height: 50, background: "var(--muted)", borderRadius: 6 }} />
         </div>
@@ -687,7 +689,7 @@ function CampaignRow({ c, last, onOpen }: { c: Campaign; last: boolean; onOpen: 
   const openRate = c.opened !== null && c.sent ? (c.opened / c.sent) * 100 : null;
   const clickRate = c.clicked && c.sent ? (c.clicked / c.sent) * 100 : null;
   return (
-    <button onClick={onOpen} className="mp-bcast-row" style={{ display: "grid", gridTemplateColumns: "40px 1.6fr 1.1fr 120px 130px 120px 36px", gap: 12, padding: "14px 22px", borderBottom: last ? 0 : "1px solid var(--border)", alignItems: "center", cursor: "pointer", background: "#fff", width: "100%", border: 0, borderRadius: 0, fontFamily: "inherit", textAlign: "left" }}>
+    <button onClick={onOpen} className="mp-bcast-row mp-table-row" style={{ display: "grid", gridTemplateColumns: BCAST_HISTORY_COLS, gap: 12, padding: "14px 22px", borderBottom: last ? 0 : "1px solid var(--border)", alignItems: "center", cursor: "pointer", background: "#fff", width: "100%", border: 0, borderRadius: 0, fontFamily: "inherit", textAlign: "left" }}>
       <span style={{ width: 32, height: 32, borderRadius: 8, background: km.c + "18", color: km.c, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
         <Icon name={km.i} size={14} color={km.c} />
       </span>
@@ -799,7 +801,7 @@ function CampaignDrawer({ c, close, onDuplicate, onExport, onResend }: { c: Camp
           <div style={{ padding: 22, textAlign: "center", color: "var(--muted-fg)", fontSize: 12.5 }}>Campaña sin datos de envío todavía.</div>
         )}
 
-        <div style={{ padding: "22px 22px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="mp-grid-form-2 gap-2" style={{ padding: 22, borderBottom: "1px solid var(--border)" }}>
           <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onDuplicate(c)}><Icon name="copy" size={12} />Duplicar</button>
           <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={showAudience}><Icon name="users" size={12} />Ver audiencia</button>
           <button className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }} onClick={() => onExport(c)}><Icon name="download" size={12} />Exportar CSV</button>

@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
-import { runAction, type ActionResult } from "@/lib/api/action";
+import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { assertCapability } from "@/lib/auth/capabilities";
@@ -139,7 +139,7 @@ async function notifyRoleEvent(kind: "role_assigned" | "role_revoked", userId: s
 }
 
 export async function assignRole(input: unknown): Promise<ActionResult<{ id: string }>> {
-  return runAction(
+  return runMutation(
     z.object({
       userId: z.string().uuid(),
       role: ROLE,
@@ -235,7 +235,7 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
 }
 
 export async function revokeRole(input: unknown): Promise<ActionResult<{ ok: true }>> {
-  return runAction(z.object({ assignmentId: z.string().uuid() }), input, async ({ assignmentId }) => {
+  return runMutation(z.object({ assignmentId: z.string().uuid() }), input, async ({ assignmentId }) => {
     const supabase = await getServerClient();
     // Simetría con assignRole: admin global, o owner del club para roles
     // club-scoped de SU club (con capacidad sys.roles). Mig 158/159.

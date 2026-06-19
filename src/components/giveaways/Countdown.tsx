@@ -5,10 +5,12 @@ type Props = {
   hours: number;
   /** Cuando queda poco tiempo (p. ej. cierra hoy). */
   urgent?: boolean;
+  /** En filas estrechas: oculta el sufijo "CIERRA HOY". */
+  compact?: boolean;
   className?: string;
 };
 
-export function Countdown({ days, hours, urgent = false, className }: Props) {
+export function Countdown({ days, hours, urgent = false, compact = false, className }: Props) {
   const label = days > 0 ? `${days}d ${hours}h` : `${hours}h`;
 
   return (
@@ -27,11 +29,12 @@ export function Countdown({ days, hours, urgent = false, className }: Props) {
         fontWeight: 900,
         fontFamily: "var(--font-mono, ui-monospace, monospace)",
         letterSpacing: "0.04em",
+        flexShrink: 0,
       }}
     >
       <Icon name="clock" size={10} />
       <span className="tabular">{label}</span>
-      {urgent ? (
+      {urgent && !compact ? (
         <span style={{ fontSize: 8.5, letterSpacing: "0.12em" }}>· CIERRA HOY</span>
       ) : null}
     </div>
