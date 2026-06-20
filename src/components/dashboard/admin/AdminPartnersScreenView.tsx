@@ -2,8 +2,10 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { CreatePartnerModal } from "./CreatePartnerModal";
 import type { AdminPartnerRow, AdminPartnersData } from "@/server/actions/admin/partners";
 
 const STATUS: Record<string, { label: string; bg: string; color?: string }> = {
@@ -197,6 +199,7 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | string>("all");
   const [selectedId, setSelectedId] = useState(data.rows[0]?.id ?? "");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -281,7 +284,45 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
     },
   ];
 
+  const isEmpty = data.rows.length === 0;
+
+  if (isEmpty) {
+    return (
+      <>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <RSHeader
+            label="Plataforma · Partners"
+            title={
+              <>
+                Partners <span className="dot">●</span> 0
+              </>
+            }
+            action={
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icon name="plus" size={13} color="#fff" />
+                Nuevo partner
+              </button>
+            }
+          />
+          <EmptyState
+            icon="handshake"
+            title="Sin partners registrados"
+            hint="Crea el primer organizador externo. Busca al owner entre usuarios registrados y asigna nombre + slug."
+            action={
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icon name="user-plus" size={13} color="#fff" />
+                Añadir partner
+              </button>
+            }
+          />
+        </div>
+        {createOpen ? <CreatePartnerModal onClose={() => setCreateOpen(false)} /> : null}
+      </>
+    );
+  }
+
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <RSHeader
         label="Plataforma · Partners"
@@ -292,6 +333,10 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
         }
         action={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+              <Icon name="plus" size={13} color="#fff" />
+              Nuevo partner
+            </button>
             <div style={{ position: "relative" }}>
               <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
                 <Icon name="search" size={13} />
@@ -348,5 +393,7 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
 
       {selected ? <PartnerDetail row={selected} /> : null}
     </div>
+    {createOpen ? <CreatePartnerModal onClose={() => setCreateOpen(false)} /> : null}
+    </>
   );
 }

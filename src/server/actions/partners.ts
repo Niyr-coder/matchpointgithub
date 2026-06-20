@@ -5,6 +5,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
@@ -145,7 +146,7 @@ export async function unlinkClubFromPartner(
 
 export async function createPartner(input: unknown): Promise<ActionResult<PartnerOrg>> {
   return runAction(PartnerCreateSchema, input, async (data) => {
-    await requireAdminUserId();
+    const adminUserId = await requireAdminUserId();
     const supabase = await getServerClient();
     const { data: row, error } = await supabase
       .from("partner_orgs")
@@ -165,13 +166,22 @@ export async function createPartner(input: unknown): Promise<ActionResult<Partne
       }
       throw new MpError("PARTNERS.CREATE_FAILED", error.message, 500);
     }
-    // Add the requested owner.
-    await supabase
-      .from("partner_members")
-      .insert(
-        { partner_id: row.id, user_id: data.ownerUserId, role: "owner" } as never,
-        { defaultToNull: false },
-      );
+    await supabase.from("partner_members").insert(
+      { partner_id: row.id, user_id: data.ownerUserId, role: "owner" } as never,
+    );
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminUserId, "admin");
+    const { error: roleErr } = await admin.from("role_assignments").insert({
+      user_id: data.ownerUserId,
+      role: "partner",
+      partner_id: row.id,
+      granted_by: adminUserId,
+    } as never);
+    if (roleErr && roleErr.code !== "23505") {
+      throw new MpError("PARTNERS.ROLE_ASSIGN_FAILED", roleErr.message, 500);
+    }
+
     return mapPartner(row);
   });
 }
