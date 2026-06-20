@@ -560,6 +560,7 @@ export async function signUpFromForm(prevState: unknown, formData: FormData) {
     username: formData.get("username"),
     displayName: formData.get("displayName"),
     locale: formData.get("locale") ?? undefined,
+    acceptTerms: formData.get("acceptTerms"),
   });
   if (result.ok) {
     const next = (formData.get("next") as string) || "/dashboard/user";

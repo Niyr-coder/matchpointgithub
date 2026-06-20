@@ -64,6 +64,10 @@ export const SignUpSchema = z
     username: UsernameSchema,
     displayName: z.string().min(2).max(80),
     locale: LocaleSchema.optional(),
+    acceptTerms: z.preprocess(
+      (v) => v === true || v === "on" || v === "true",
+      z.literal(true, { message: "Debes aceptar los Términos y la Política de Privacidad" }),
+    ),
   })
   .openapi("SignUp");
 

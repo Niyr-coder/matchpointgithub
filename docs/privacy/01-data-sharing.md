@@ -61,8 +61,8 @@ solo él ve. Nunca el alumno.
 | Contenido de mensajes | ❌ | ✅ | 🟠 técnicamente sí (sin E2E) |
 
 ⚠️ **No tenemos E2E encryption** en chats. Admin con service role puede
-leer cualquier mensaje. Esto debería comunicarse al user en la política
-de privacidad pública. Hoy no está explicitado en UI.
+leer cualquier mensaje. Esto **sí está** en la política pública
+(`/legal/privacidad` §9).
 
 ### Documentos KYC (aprobación de club)
 | Dato | El aplicante | Otros users | Admin |

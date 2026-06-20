@@ -1,9 +1,8 @@
 # Retención y eliminación de datos
 
 > Política de cuánto guardamos, qué pasa al borrar (soft vs hard) y qué
-> ocurre cuando un user pide cerrar su cuenta. Pendiente formalizar y
-> exponer públicamente — hoy es **estado actual del código**, no
-> compromiso legal.
+> ocurre cuando un user pide cerrar su cuenta. Alineado con `/legal/privacidad`
+> y la UI en Mi perfil → Privacidad.
 
 ## 1. Patrones de delete por tabla
 
@@ -57,61 +56,57 @@ filtro está.
 | (TODO) `cleanup-old-notif-jobs` | daily | Borrar jobs sent + 30d |
 | (TODO) `cleanup-old-payment-proofs` | daily | Borrar archivos Storage de tx captured + 90d |
 
-## 4. Qué pasa al cerrar cuenta (TODO — hoy no hay UI)
+## 4. Qué pasa al cerrar cuenta
 
-Hoy NO hay UI para que el user cierre su cuenta. Cuando se implemente,
-flujo propuesto:
+**Implementado** en Mi perfil → Privacidad (`AccountPrivacyPanel`) y server actions
+`requestAccountClosure` / `cancelAccountClosure`.
 
 ```
-[User en /dashboard/user/perfil → "Cerrar cuenta"]
+[User en /dashboard/user/perfil → Privacidad → "Cerrar mi cuenta"]
    │
    ▼
-[Modal confirma: "Esto borrará tu data en 30 días"]
+[Modal confirma + escribe @username]
    │
    ▼
-< closeAccount({ reason }) >
+< requestAccountClosure({ confirmUsername, reason? }) >
    │
    ├── profiles.scheduled_deletion_at = now() + 30 days
    ├── revoke todas role_assignments
-   ├── cancel todas player_subscriptions activas
-   ├── notify admin (TODO: notif `account_closure_requested`)
-   └── audit log: 'account.closure_requested'
+   ├── cancel player_subscriptions activas/pending
+   └── audit vía setAuditActor(user)
         │
         ▼
-[Cron diario, day +30]
+[Cron diario /api/cron/process-account-deletions]
    │
-   ├── auth.users.delete() → cascade a profiles, etc
-   ├── messages del user → marker `deleted_at`, contenido reemplazado por "[user removed]"
-   ├── transactions → quedan (compliance), customer_user_id → null
-   ├── matches/registrations → quedan (histórico público)
-   ├── Storage avatars/payment_proofs del user → borrar archivos
-   └── audit log: 'account.deleted'
+   ├── transactions.customer_user_id → null
+   ├── auth.admin.deleteUser() → cascade profiles, etc
+   └── matches/registrations → quedan (histórico); perfil borrado
 ```
 
+**Bloqueos**:
+- Owner de club `active`/`pending` debe transferir propiedad antes.
+
 **Decisión pendiente**:
-- ¿Borrar matches/registrations al cerrar cuenta? Lo que rompe el
-  histórico público.
-- ¿Anonimizar (reemplazar nombre por "Jugador eliminado") o eliminar?
-- ¿Período de gracia 30d o 7d?
+- ¿Anonimizar display_name en matches públicos antes del delete? Hoy cascade borra profile.
 
 ## 5. GDPR / ley Ecuador (LOPDP)
 
 Ecuador tiene Ley Orgánica de Protección de Datos Personales (LOPDP)
 desde 2021. Aplica si guardamos datos de personas en Ecuador.
 
-### Derechos a soportar (TODO)
-- **Acceso**: export de todos los datos del user en formato legible.
-- **Rectificación**: editar datos incorrectos (parcial: profile editable,
-  matches no).
-- **Cancelación**: borrar datos al cerrar cuenta (§4).
+### Derechos a soportar
+- **Acceso / portabilidad**: `GET /api/v1/me/export` + botón en perfil ✅
+- **Rectificación**: editar perfil en preferencias ✅
+- **Cancelación**: `POST /api/v1/me/close-account` + UI en perfil ✅
 - **Oposición**: opt-out de procesamientos no esenciales (ranking público,
-  notifs de marketing).
-- **Portabilidad**: export en formato estándar (JSON/CSV).
+  notifs de marketing) — parcial vía preferencias de notif.
+- **Portabilidad**: JSON vía export ✅
 
-### Endpoints sugeridos (TODO)
-- `GET /api/me/export` — JSON con todo del user
-- `POST /api/me/close-account` — schedule deletion
-- `POST /api/me/object-to-ranking` — opt-out de ranking público
+### Endpoints
+- `GET /api/v1/me/export` — JSON con datos del titular ✅
+- `POST /api/v1/me/close-account` — programar eliminación ✅
+- `DELETE /api/v1/me/close-account` — cancelar cierre programado ✅
+- `POST /api/me/object-to-ranking` — opt-out ranking público (TODO)
 
 ## 6. Backups
 
@@ -162,8 +157,8 @@ desde 2021. Aplica si guardamos datos de personas en Ecuador.
 
 ## 10. TODOs
 
-- [ ] UI cerrar cuenta + flow 30d
-- [ ] Endpoints GDPR (export, close, opt-out)
+- [x] UI cerrar cuenta + flow 30d
+- [x] Endpoints LOPDP (export, close, cancel close)
 - [ ] Cron de cleanup `notification_jobs` viejos
 - [ ] Cron de cleanup `payment_proofs` aprobados >90d
 - [ ] Política pública en `/privacy` con retenciones explícitas

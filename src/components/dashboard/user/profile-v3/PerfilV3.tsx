@@ -14,6 +14,7 @@ import { useProfileV3Actions } from "./ProfileV3ActionsContext";
 import { AnalyticsUpdatedLabel } from "./AnalyticsUpdatedLabel";
 import { ProfileEmptyState, openCrearMatchModal } from "./ProfileEmptyState";
 import { QuedadaPlayerStatsPanel } from "../QuedadaPlayerStatsPanel";
+import { AccountPrivacyPanel } from "../AccountPrivacyPanel";
 // PerfilV3 — fusión profile-first (V2) + dashboard analítico (V1).
 // Un solo scroll, sin tabs: identidad arriba, análisis embebido como bandas.
 // Reutiliza componentes V2 (hero, showcase, kpis, h2h) y agrega bandas analíticas.
@@ -578,6 +579,12 @@ export function PerfilV3Board({ sub = 'plus', view = 'mine' }: { sub?: 'free' | 
 
       {/* BANDA COMUNIDAD + COLECCIÓN — siempre visible */}
       <V3CommunityBand />
+
+      {isMine ? (
+        <div className="pv3-stack-sm">
+          <AccountPrivacyPanel />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -355,6 +355,36 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
 
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
 
+      <label
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-start",
+          fontSize: 11.5,
+          lineHeight: 1.45,
+          color: "var(--muted-fg)",
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          name="acceptTerms"
+          required
+          style={{ marginTop: 3, flexShrink: 0 }}
+        />
+        <span>
+          Acepto los{" "}
+          <a href="/legal/terminos" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", fontWeight: 700 }}>
+            Términos
+          </a>{" "}
+          y la{" "}
+          <a href="/legal/privacidad" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", fontWeight: 700 }}>
+            Política de Privacidad
+          </a>
+          .
+        </span>
+      </label>
+
       <button
         type="submit"
         disabled={pending}
@@ -370,8 +400,6 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
         <Icon name="mail" size={14} color="#fff" />
         {pending ? "Creando cuenta..." : "Crear cuenta gratis"}
       </button>
-
-      <SignupLegalConsent />
 
       <div
         style={{
@@ -576,6 +604,12 @@ function GoogleOAuthSection({
         </button>
       </form>
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
+      {intent === "signup" ? (
+        <LegalDocLinks
+          prefix="Al continuar con Google aceptas nuestros"
+          style={{ fontSize: 10.5, lineHeight: 1.5, color: "var(--muted-fg)", textAlign: "center" }}
+        />
+      ) : null}
       <AuthDivider label="o usa tu email" />
     </div>
   );
