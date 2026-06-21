@@ -16,10 +16,7 @@ const OVERLAY_SELECTOR = [
 ].join(",");
 
 function hasBlockingOverlay(): boolean {
-  if (document.querySelector(OVERLAY_SELECTOR)) return true;
-  // Muchos modales bloquean scroll del body al abrir.
-  if (document.body.style.overflow === "hidden") return true;
-  return false;
+  return !!document.querySelector(OVERLAY_SELECTOR);
 }
 
 /** Oculta la pill mobile cuando hay drawer, modal u overlay encima del dashboard. */

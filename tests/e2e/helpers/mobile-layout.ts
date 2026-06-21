@@ -36,7 +36,10 @@ export async function probeMobileLayout(page: Page): Promise<LayoutProbe> {
 }
 
 export async function assertMobileChrome(page: Page) {
-  await expect(page.getByRole("navigation", { name: "Navegación rápida" })).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Navegación rápida" });
+  await expect(nav).toBeAttached({ timeout: 15_000 });
+  await expect.poll(async () => nav.getAttribute("aria-hidden")).toBe("false");
+  await expect(nav).toBeVisible();
 }
 
 export async function assertNoHorizontalOverflow(

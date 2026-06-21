@@ -132,7 +132,7 @@ test.describe.serial("roles de club · flujos E2E por rol", () => {
       } as never);
       expect(pricing.error, pricing.error?.message).toBeNull();
 
-      const staffGrant = await ownerClient.from("role_assignments").insert({
+      const staffGrant = await admin.from("role_assignments").insert({
         user_id: manager.id,
         role: "manager",
         club_id: seed.clubId,

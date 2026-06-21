@@ -27,6 +27,7 @@ import {
   assertNoHorizontalOverflow,
   probeMobileLayout,
 } from "./helpers/mobile-layout";
+import { dismissCookieConsent } from "./helpers/cookie-consent";
 import { ensureSeed } from "./helpers/setup";
 import { ensureDemoMobileRoles } from "./helpers/ensure-demo-mobile";
 
@@ -130,6 +131,7 @@ function authFileFor(roleId: string) {
 async function gotoDashboardRoute(page: import("@playwright/test").Page, route: RoleRoute) {
   for (let attempt = 0; attempt < 2; attempt++) {
     await page.goto(route.path);
+    await dismissCookieConsent(page);
     await page.waitForLoadState("networkidle");
     const crashed = page.getByRole("heading", { name: /Algo se rompió/i });
     if (await crashed.isVisible().catch(() => false)) {
@@ -173,6 +175,7 @@ for (const suite of ROLE_SUITES) {
 
     test("chrome móvil: bottom nav y drawer cerrado", async ({ page }) => {
       await page.goto(suite.loginPath);
+      await dismissCookieConsent(page);
       await assertMobileChrome(page);
       const sidebarVisible = await page.locator("aside.w-64.fixed").first().evaluate((el) => {
         const r = el.getBoundingClientRect();

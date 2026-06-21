@@ -23,6 +23,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getServiceClient } from "./helpers/supabase";
 import { getRequiredEnv } from "./helpers/env";
 import { writeArtifact } from "./helpers/setup";
+import { dismissCookieConsent } from "./helpers/cookie-consent";
+import { signInWithCredentials } from "./helpers/auth-credentials";
+import { ensureMatchpointSystemProfile } from "./helpers/ensure-system-profile";
 
 const RUN_STAMP = Date.now().toString(36);
 const ADMIN_EMAIL = `mat13-admin-${RUN_STAMP}@matchpoint.demo`;
@@ -246,14 +249,10 @@ async function cleanupAll(sb: SupabaseClient, ids: ProvisionedIds | null) {
 }
 
 async function signInAsAdmin(page: Page) {
-  const next = "/dashboard/admin/admin-plans";
-  await page.goto(`/?auth=signin&next=${encodeURIComponent(next)}`);
-  await page.getByPlaceholder("tu@email.com").fill(ADMIN_EMAIL);
-  await page.getByPlaceholder("••••••••").fill(PASSWORD);
-  await Promise.all([
-    page.waitForURL((url) => url.pathname.startsWith("/dashboard"), { timeout: 25_000 }),
-    page.getByRole("button", { name: /Ingresar/ }).click(),
-  ]);
+  await page.context().clearCookies();
+  await signInWithCredentials(page, ADMIN_EMAIL, PASSWORD, "/dashboard/admin/admin-plans");
+  await page.goto("/dashboard/admin/admin-plans");
+  await page.waitForURL(/\/dashboard\/admin\/admin-plans/, { timeout: 25_000 });
 }
 
 test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
@@ -261,6 +260,7 @@ test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
 
   test.beforeAll(async () => {
     const sb = getServiceClient();
+    await ensureMatchpointSystemProfile(sb as never);
     ids = await provisionAll(sb);
     // Persist IDs as artifact for postmortem cleanup.
     await writeArtifact(
@@ -287,6 +287,7 @@ test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
   test("approve · row 1 → player_subscriptions active + profile expires_at + audit log", async ({ page }) => {
     if (!ids) throw new Error("ids not provisioned");
     await signInAsAdmin(page);
+    await dismissCookieConsent(page);
     await page.waitForURL(/\/dashboard\/admin\/admin-plans/, { timeout: 20_000 });
 
     // La tab "Cola de aprobación" debería ser default por haber pendientes.
@@ -355,6 +356,7 @@ test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
   test("reject · row 2 → status rejected + DM plan_subscription_rejected + audit log", async ({ page }) => {
     if (!ids) throw new Error("ids not provisioned");
     await signInAsAdmin(page);
+    await dismissCookieConsent(page);
     await page.waitForURL(/\/dashboard\/admin\/admin-plans/, { timeout: 20_000 });
 
     const row = page.locator("tr", { hasText: "MAT-13 Player Two" }).first();
@@ -362,9 +364,10 @@ test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
 
     // El botón Rechazar solo está en el drawer; abrimos con "Ver".
     await row.getByRole("button", { name: /Ver/ }).click();
+    await dismissCookieConsent(page);
 
-    // Drawer footer Rechazar.
-    const drawer = page.getByRole("dialog");
+    // Drawer footer Rechazar (excluir banner de cookies).
+    const drawer = page.getByRole("dialog").filter({ hasText: "MAT-13 Player Two" });
     await drawer.getByRole("button", { name: /Rechazar/ }).click();
 
     // Reject dialog: textarea + Rechazar.
@@ -412,7 +415,18 @@ test.describe.serial("MAT-13 MP+ approval queue smoke (prod)", () => {
       .order("created_at", { ascending: false })
       .limit(1);
     expect(dm.error, dm.error?.message).toBeNull();
-    expect(dm.data?.length, "expected plan_subscription_rejected DM").toBeGreaterThan(0);
+    await expect
+      .poll(async () => {
+        const retry = await sb
+          .from("messages")
+          .select("id")
+          .eq("kind", "system")
+          .filter("payload->>kind", "eq", "plan_subscription_rejected")
+          .filter("payload->>subscriptionId", "eq", ids!.sub2Id)
+          .limit(1);
+        return retry.data?.length ?? 0;
+      }, { timeout: 10_000 })
+      .toBeGreaterThan(0);
 
     await writeArtifact(
       `mat13-${RUN_STAMP}-reject-verification.json`,

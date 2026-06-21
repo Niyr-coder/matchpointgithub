@@ -15,6 +15,17 @@
     "icons:generate": "tsx scripts/generate-app-icons.ts",
     "db:wipe": "tsx --env-file=.env.local scripts/wipe-db.ts --confirm",
     "seed:qa-roles": "tsx --env-file=.env.local scripts/seed-qa-role-accounts.ts",
+    "test:unit": "vitest run",
+    "test:smoke": "tsx --env-file=.env.local tests/smoke/run.ts",
+    "test:integration": "tsx --env-file=.env.local tests/integration/api.ts",
+    "test:contract": "tsx tests/contract/openapi.ts",
+    "test:db": "tsx --env-file=.env.local tests/db/schema.ts",
+    "test:load": "tsx tests/load/run.ts",
+    "test:security": "tsx --env-file=.env.local tests/security/run.ts",
+    "test:sanity": "tsx tests/regression/sanity.ts",
+    "test:matrix": "tsx --env-file=.env.local scripts/test-matrix.ts",
+    "test:matrix:e2e": "tsx --env-file=.env.local scripts/test-matrix.ts -- --e2e",
+    "test:matrix:quick": "tsx scripts/test-matrix.ts -- --quick",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chrome",
     "test:e2e:install": "playwright install chromium"
@@ -46,6 +57,7 @@
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "tsx": "^4.22.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   }
 }

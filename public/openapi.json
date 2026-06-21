@@ -149,6 +149,9 @@
             "format": "uuid",
             "example": "550e8400-e29b-41d4-a716-446655440000"
           },
+          "partnerStatus": {
+            "$ref": "#/components/schemas/MatchSeekPartnerStatus"
+          },
           "city": {
             "type": [
               "string",
@@ -237,6 +240,7 @@
           "sport",
           "mode",
           "partnerId",
+          "partnerStatus",
           "city",
           "clubId",
           "skillMin",
@@ -266,6 +270,18 @@
         "enum": [
           "singles",
           "doubles"
+        ]
+      },
+      "MatchSeekPartnerStatus": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected",
+          null
         ]
       },
       "MatchSeekStatus": {
@@ -521,7 +537,7 @@
               "boolean",
               "null"
             ],
-            "default": false
+            "default": true
           },
           "limit": {
             "type": "integer",
@@ -854,13 +870,20 @@
               "pt"
             ],
             "default": "es"
+          },
+          "acceptTerms": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
           }
         },
         "required": [
           "email",
           "password",
           "username",
-          "displayName"
+          "displayName",
+          "acceptTerms"
         ]
       },
       "SignIn": {
@@ -2161,10 +2184,7 @@
           "expectedVersion": {
             "type": "integer"
           }
-        },
-        "required": [
-          "expectedVersion"
-        ]
+        }
       },
       "Court": {
         "type": "object",
@@ -4173,7 +4193,8 @@
           "dm",
           "group",
           "support",
-          "club_channel"
+          "club_channel",
+          "club_announcements"
         ]
       },
       "Message": {
@@ -4263,7 +4284,10 @@
           "image",
           "file",
           "system",
-          "reservation_invite"
+          "reservation_invite",
+          "announcement_post",
+          "giveaway_post",
+          "giveaway_result"
         ]
       },
       "StartConversation": {
@@ -5312,6 +5336,12 @@
               "null"
             ]
           },
+          "modality": {
+            "$ref": "#/components/schemas/TournamentModality"
+          },
+          "scoringConfig": {
+            "$ref": "#/components/schemas/ScoringConfig"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -5380,6 +5410,52 @@
           "flexible"
         ]
       },
+      "TournamentModality": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "singles",
+          "doubles",
+          "mixed_doubles",
+          null
+        ]
+      },
+      "ScoringConfig": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "side_out",
+              "rally"
+            ]
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 31
+          },
+          "winBy": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "bestOf": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "type",
+          "points",
+          "winBy",
+          "bestOf"
+        ]
+      },
       "TournamentCreate": {
         "type": "object",
         "properties": {
@@ -5409,6 +5485,10 @@
             "maxLength": 80,
             "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
             "example": "club-norte-pickleball"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
           },
           "sport": {
             "$ref": "#/components/schemas/MpSport"
@@ -5464,6 +5544,16 @@
           "scoringConfig": {
             "$ref": "#/components/schemas/ScoringConfig"
           },
+          "groupPlayoffConfig": {
+            "$ref": "#/components/schemas/GroupPlayoffConfig"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TournamentCreateCategory"
+            },
+            "maxItems": 20
+          },
           "termsAccepted": {
             "type": "boolean",
             "enum": [
@@ -5481,50 +5571,137 @@
           "termsAccepted"
         ]
       },
-      "TournamentModality": {
-        "type": "string",
-        "enum": [
-          "singles",
-          "doubles",
-          "mixed_doubles"
-        ],
-        "default": "doubles"
-      },
-      "ScoringConfig": {
+      "GroupPlayoffConfig": {
         "type": "object",
         "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "side_out",
-              "rally"
-            ]
-          },
-          "points": {
-            "type": "integer",
-            "minimum": 7,
-            "maximum": 31
-          },
-          "winBy": {
+          "groupsCount": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 5
+            "maximum": 16
           },
-          "bestOf": {
-            "type": "integer"
+          "advancePerGroup": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "finalScoringOverride": {
+            "$ref": "#/components/schemas/ScoringConfig"
+          },
+          "scheduling": {
+            "$ref": "#/components/schemas/GroupSchedulingConfig"
           }
         },
-        "default": {
-          "type": "side_out",
-          "points": 11,
-          "winBy": 2,
-          "bestOf": 3
+        "required": [
+          "groupsCount",
+          "advancePerGroup"
+        ]
+      },
+      "GroupSchedulingConfig": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "courtIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "550e8400-e29b-41d4-a716-446655440000"
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "slotDurationMin": {
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 240,
+            "default": 50
+          },
+          "roundOneStartsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "example": "2026-05-16T15:30:00Z"
+          },
+          "fechaGapHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168
+          }
         },
         "required": [
-          "type",
-          "points",
-          "winBy",
-          "bestOf"
+          "courtIds"
+        ]
+      },
+      "TournamentCreateCategory": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "gender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "m",
+              "f",
+              "mixed",
+              "open",
+              null
+            ]
+          },
+          "modality": {
+            "$ref": "#/components/schemas/TournamentModality"
+          },
+          "mprMin": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 2,
+            "maximum": 8
+          },
+          "mprMax": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 2,
+            "maximum": 8
+          },
+          "ageMin": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 120
+          },
+          "ageMax": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 120
+          },
+          "maxTeams": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "name"
         ]
       },
       "TournamentDetail": {
@@ -5592,6 +5769,45 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "mprMin": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mprMax": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending_groups",
+              "group_stage",
+              "group_complete",
+              "knockout",
+              "complete",
+              null
+            ]
+          },
+          "groupPlayoffConfig": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GroupPlayoffConfig"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
             ]
           }
         },

@@ -1,5 +1,6 @@
 // Login E2E genérico vía modal ?auth=signin (mismo flujo que jugador/owner).
 import type { Page } from "@playwright/test";
+import { dismissCookieConsent } from "./cookie-consent";
 
 export async function signInWithCredentials(
   page: Page,
@@ -11,6 +12,7 @@ export async function signInWithCredentials(
   if (page.url().includes("/dashboard")) return;
 
   await page.goto(`/?auth=signin&next=${encodeURIComponent(nextPath)}`);
+  await dismissCookieConsent(page);
   await page.getByPlaceholder("tu@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(password);
 

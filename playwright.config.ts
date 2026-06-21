@@ -52,6 +52,7 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      testIgnore: /(user|roles)-mobile-responsive\.spec\.ts/,
     },
     {
       name: "mobile-chrome",

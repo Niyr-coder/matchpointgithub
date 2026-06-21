@@ -33,6 +33,7 @@ import {
   type ClubSocialView,
 } from "@/lib/schemas/clubs";
 import { isClubMembershipActive } from "@/lib/clubs/membership";
+import { normalizeClubSlugForRead } from "@/lib/clubs/slug-read";
 import { loadCourtOccupancy } from "@/server/queries/court-occupancy";
 import type { PageMeta } from "@/lib/api/response";
 import { UuidSchema } from "@/lib/schemas/common";
@@ -40,7 +41,7 @@ import { UuidSchema } from "@/lib/schemas/common";
 function mapClub(row: Record<string, unknown>): Club {
   return ClubSchema.parse({
     id: row.id,
-    slug: row.slug,
+    slug: normalizeClubSlugForRead(row.slug),
     name: row.name,
     description: row.description ?? null,
     logoUrl: row.logo_url ?? null,

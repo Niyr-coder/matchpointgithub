@@ -23,6 +23,7 @@
 
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { dismissCookieConsent } from "./helpers/cookie-consent";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -43,14 +44,16 @@ test("signup + signin via UI lands authenticated user at /dashboard/user", async
   try {
     // 1. Landing → open AuthModal in signup mode.
     await page.goto("/");
+    await dismissCookieConsent(page);
     await page.getByRole("button", { name: /Crear cuenta/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Crea tu cuenta/i })).toBeVisible();
 
     // 2. Fill signup form (mirrors AuthModal field names).
     await page.locator('input[name="displayName"]').fill(displayName);
     await page.locator('input[name="username"]').fill(username);
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill(password);
+    await page.getByRole("checkbox", { name: /Acepto los Términos/i }).check();
     await page.getByRole("button", { name: /Crear cuenta gratis/i }).click();
 
     // 3. Accept either /onboarding (correct for new user) or /dashboard/user
@@ -92,11 +95,12 @@ test("signup + signin via UI lands authenticated user at /dashboard/user", async
     // 5. Sign out via signOutAndRedirect server action surface
     //    (POST /api/v1/auth/sign-out clears the cookie session).
     await page.request.post("/api/v1/auth/sign-out");
-    await page.goto("/");
+    await page.context().clearCookies();
 
-    // 6. Open AuthModal in signin mode and submit.
-    await page.getByRole("button", { name: /Iniciar sesión/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    // 6. AuthModal en modo signin (mismo flujo que otros E2E).
+    await page.goto("/?auth=signin&next=%2Fdashboard%2Fuser");
+    await dismissCookieConsent(page);
+    await expect(page.getByRole("dialog", { name: /Bienvenido/i })).toBeVisible();
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill(password);
     await page.getByRole("button", { name: /^Ingresar$/i }).click();

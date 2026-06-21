@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getRequiredEnv } from "./helpers/env";
 import { getServiceClient } from "./helpers/supabase";
+import { ensureMatchpointSystemProfile } from "./helpers/ensure-system-profile";
 
 type TestUser = {
   id: string;
@@ -193,19 +194,11 @@ test.describe("P3-B · chat/unread/realtime/notificaciones", () => {
       const user = await createTestUser(admin, "official");
       users.push(user);
 
-      const systemProfile = await admin
-        .from("profiles")
-        .select("id")
-        .eq("is_system", true)
-        .limit(1)
-        .maybeSingle();
-      if (systemProfile.error || !systemProfile.data?.id) {
-        throw new Error(`No existe perfil oficial MATCHPOINT: ${systemProfile.error?.message ?? "sin fila"}`);
-      }
+      const systemProfileId = await ensureMatchpointSystemProfile(admin);
 
       const conv = await admin
         .from("conversations")
-        .insert({ kind: "dm", created_by: systemProfile.data.id } as never)
+        .insert({ kind: "dm", created_by: systemProfileId } as never)
         .select("id")
         .single();
       if (conv.error || !conv.data) throw new Error(`No se pudo crear DM oficial: ${conv.error?.message}`);
@@ -214,7 +207,7 @@ test.describe("P3-B · chat/unread/realtime/notificaciones", () => {
 
       await admin.from("conversation_members").insert([
         { conversation_id: conversationId, user_id: user.id, role: "member" },
-        { conversation_id: conversationId, user_id: systemProfile.data.id, role: "admin" },
+        { conversation_id: conversationId, user_id: systemProfileId, role: "admin" },
       ] as never);
 
       await signInApi(request, user);
