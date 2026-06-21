@@ -15,8 +15,17 @@ const OVERLAY_SELECTOR = [
   ".mp-notif-backdrop",
 ].join(",");
 
+function isVisibleOverlay(el: Element): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.classList.contains("mp-mobile-bottom-nav")) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
 function hasBlockingOverlay(): boolean {
-  return !!document.querySelector(OVERLAY_SELECTOR);
+  return Array.from(document.querySelectorAll(OVERLAY_SELECTOR)).some(isVisibleOverlay);
 }
 
 /** Oculta la pill mobile cuando hay drawer, modal u overlay encima del dashboard. */

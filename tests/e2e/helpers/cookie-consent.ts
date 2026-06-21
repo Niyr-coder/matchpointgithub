@@ -7,3 +7,10 @@ export async function dismissCookieConsent(page: Page): Promise<void> {
   await dialog.getByRole("button", { name: /Entendido/i }).click({ force: true });
   await dialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => undefined);
 }
+
+/** Evita que el banner de cookies oculte la bottom nav en dashboards móvil. */
+export async function bypassCookieConsent(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem("mp_cookie_consent_v1", "accepted");
+  });
+}

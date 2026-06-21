@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { dismissCookieConsent } from "./cookie-consent";
 
 export const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
 
@@ -36,8 +37,10 @@ export async function probeMobileLayout(page: Page): Promise<LayoutProbe> {
 }
 
 export async function assertMobileChrome(page: Page) {
-  const nav = page.getByRole("navigation", { name: "Navegación rápida" });
-  await expect(nav).toBeAttached({ timeout: 15_000 });
+  await dismissCookieConsent(page);
+  const nav = page.locator(".mp-mobile-bottom-nav");
+  await expect(nav).toBeAttached({ timeout: 20_000 });
+  await expect(nav).toHaveAttribute("aria-label", "Navegación rápida");
   await expect.poll(async () => nav.getAttribute("aria-hidden")).toBe("false");
   await expect(nav).toBeVisible();
 }

@@ -27,7 +27,7 @@ import {
   assertNoHorizontalOverflow,
   probeMobileLayout,
 } from "./helpers/mobile-layout";
-import { dismissCookieConsent } from "./helpers/cookie-consent";
+import { dismissCookieConsent, bypassCookieConsent } from "./helpers/cookie-consent";
 import { ensureSeed } from "./helpers/setup";
 import { ensureDemoMobileRoles } from "./helpers/ensure-demo-mobile";
 
@@ -132,7 +132,8 @@ async function gotoDashboardRoute(page: import("@playwright/test").Page, route: 
   for (let attempt = 0; attempt < 2; attempt++) {
     await page.goto(route.path);
     await dismissCookieConsent(page);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
+    await page.locator(".mp-mobile-bottom-nav").waitFor({ state: "attached", timeout: 20_000 }).catch(() => undefined);
     const crashed = page.getByRole("heading", { name: /Algo se rompió/i });
     if (await crashed.isVisible().catch(() => false)) {
       if (attempt === 0) continue;
@@ -157,6 +158,10 @@ for (const suite of ROLE_SUITES) {
       hasTouch: true,
       isMobile: true,
       storageState: AUTH_FILE,
+    });
+
+    test.beforeEach(async ({ page }) => {
+      await bypassCookieConsent(page);
     });
 
     test.beforeAll(async ({ browser }) => {

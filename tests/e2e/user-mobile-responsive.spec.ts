@@ -18,6 +18,7 @@ import {
   assertNoHorizontalOverflow,
   probeMobileLayout,
 } from "./helpers/mobile-layout";
+import { dismissCookieConsent, bypassCookieConsent } from "./helpers/cookie-consent";
 
 test.describe.configure({ mode: "serial" });
 
@@ -33,6 +34,10 @@ test.use({
   hasTouch: true,
   isMobile: true,
   storageState: USER_AUTH_FILE,
+});
+
+test.beforeEach(async ({ page }) => {
+  await bypassCookieConsent(page);
 });
 
 type UserRoute = {
@@ -82,7 +87,9 @@ test("chrome móvil: bottom nav y drawer cerrado", async ({ page }) => {
 for (const route of USER_ROUTES) {
   test(`carga ${route.slug} (${route.path})`, async ({ page }) => {
     await page.goto(route.path);
-    await page.waitForLoadState("networkidle");
+    await dismissCookieConsent(page);
+    await page.waitForLoadState("domcontentloaded");
+    await page.locator(".mp-mobile-bottom-nav").waitFor({ state: "attached", timeout: 20_000 }).catch(() => undefined);
     await expect(page.getByText(route.heading).first()).toBeVisible({ timeout: 15_000 });
     await assertMobileChrome(page);
   });
