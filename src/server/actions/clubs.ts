@@ -1099,14 +1099,17 @@ export async function getClubPartnerLinkCode(
     const supabase = await getServerClient();
     const { data, error } = await supabase
       .from("clubs")
-      .select("partner_link_code")
+      // partner_link_code: migración 20260701000000 — types DB pendientes de regen
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("partner_link_code" as any)
       .eq("id", clubId)
       .maybeSingle();
     if (error) throw new MpError("CLUBS.READ_FAILED", error.message, 500);
-    if (!data?.partner_link_code) {
+    const linkCode = (data as { partner_link_code?: string } | null)?.partner_link_code;
+    if (!linkCode) {
       throw new MpError("CLUBS.CODE_MISSING", "No hay código de vinculación.", 500);
     }
-    return { linkCode: data.partner_link_code as string };
+    return { linkCode };
   });
 }
 
@@ -1116,7 +1119,8 @@ export async function regenerateClubPartnerLinkCode(
   return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
     await requireClubStaff(clubId);
     const admin = getAdminClient();
-    const { data: code, error: rpcErr } = await admin.rpc("gen_club_partner_link_code");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: code, error: rpcErr } = await (admin as any).rpc("gen_club_partner_link_code");
     if (rpcErr || !code) {
       throw new MpError("CLUBS.CODE_REGEN_FAILED", rpcErr?.message ?? "No se pudo generar el código", 500);
     }

@@ -116,7 +116,8 @@ export async function linkClubToPartner(
     const { data: club, error: clubErr } = await supabase
       .from("clubs")
       .select("id,status")
-      .eq("partner_link_code", normalized)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .eq("partner_link_code" as any, normalized)
       .maybeSingle();
     if (clubErr) throw new MpError("PARTNERS.DB_ERROR", clubErr.message, 500);
     if (!club) {
