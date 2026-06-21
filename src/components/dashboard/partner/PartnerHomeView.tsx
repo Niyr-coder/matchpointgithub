@@ -1,5 +1,6 @@
 // Client view de PartnerHome — layout 1:1 (RoleHomes.jsx 314-376).
 "use client";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { TorneoHomeRow, TorneoStat } from "./_TorneoHomeRow";
 import { RHKpi, RHPanel, RHWelcome } from "../widgets/RH";
@@ -164,13 +165,14 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
         <RHPanel
           title="Torneos en curso"
           action={
-            <button
+            <Link
+              href="/dashboard/partner/p-torneos"
               className="btn"
               style={{ background: "#fff", border: "1px solid var(--border)", fontSize: 10.5 }}
             >
               <Icon name="plus" size={11} />
               Nuevo
-            </button>
+            </Link>
           }
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -179,6 +181,7 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
                   <TorneoHomeRow
                     key={t.id}
                     accent={t.color}
+                    href={`/dashboard/partner/torneo/${t.id}`}
                     info={
                       <>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3, flexWrap: "wrap" }}>

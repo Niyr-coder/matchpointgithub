@@ -19,7 +19,14 @@ function relTime(iso: string, now: Date): string {
 async function loadData(): Promise<InscritosData> {
   const partnerId = await resolveActivePartnerId();
   if (!partnerId) {
-    return { partnerId: null, tournamentName: null, capacity: 0, rows: [] };
+    return {
+      partnerId: null,
+      tournamentId: null,
+      tournamentStatus: null,
+      tournamentName: null,
+      capacity: 0,
+      rows: [],
+    };
   }
 
   const supabase = await getServerClient();
@@ -27,7 +34,7 @@ async function loadData(): Promise<InscritosData> {
 
   const { data: tours } = await supabase
     .from("tournaments")
-    .select("id,name,starts_at,ends_at,max_participants,entry_fee_cents")
+    .select("id,name,starts_at,ends_at,max_participants,entry_fee_cents,status")
     .eq("partner_id", partnerId)
     .neq("status", "draft")
     .neq("status", "cancelled")
@@ -35,7 +42,7 @@ async function loadData(): Promise<InscritosData> {
     .limit(20);
 
   // Prioridad: torneo en curso > próximo más cercano.
-  let chosen: { id: string; name: string; cap: number; fee: number } | null = null;
+  let chosen: { id: string; name: string; cap: number; fee: number; status: string } | null = null;
   for (const t of tours ?? []) {
     const s = new Date(t.starts_at as string);
     const e = new Date((t.ends_at as string | null) ?? (t.starts_at as string));
@@ -45,6 +52,7 @@ async function loadData(): Promise<InscritosData> {
         name: (t.name as string) ?? "—",
         cap: (t.max_participants as number | null) ?? 0,
         fee: (t.entry_fee_cents as number | null) ?? 0,
+        status: t.status as string,
       };
       break;
     }
@@ -55,11 +63,19 @@ async function loadData(): Promise<InscritosData> {
       name: (tours[0].name as string) ?? "—",
       cap: (tours[0].max_participants as number | null) ?? 0,
       fee: (tours[0].entry_fee_cents as number | null) ?? 0,
+      status: tours[0].status as string,
     };
   }
 
   if (!chosen) {
-    return { partnerId, tournamentName: null, capacity: 0, rows: [] };
+    return {
+      partnerId,
+      tournamentId: null,
+      tournamentStatus: null,
+      tournamentName: null,
+      capacity: 0,
+      rows: [],
+    };
   }
 
   const { data: regs } = await supabase
@@ -149,6 +165,8 @@ async function loadData(): Promise<InscritosData> {
 
   return {
     partnerId,
+    tournamentId: chosen.id,
+    tournamentStatus: chosen.status,
     tournamentName: chosen.name,
     capacity: chosen.cap,
     rows,

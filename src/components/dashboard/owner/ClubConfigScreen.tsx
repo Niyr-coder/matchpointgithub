@@ -21,6 +21,7 @@ async function loadData(): Promise<ConfigData> {
       latitude: null,
       longitude: null,
       version: null,
+      partnerLinkCode: null,
     };
 
   const supabase = await getServerClient();
@@ -28,7 +29,7 @@ async function loadData(): Promise<ConfigData> {
     supabase
       .from("clubs")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("name,address,phone,email,slug,city,country,logo_url,cover_url,latitude,longitude,version" as any)
+      .select("name,address,phone,email,slug,city,country,logo_url,cover_url,latitude,longitude,version,partner_link_code" as any)
       .eq("id", clubId)
       .maybeSingle(),
     supabase
@@ -115,6 +116,7 @@ async function loadData(): Promise<ConfigData> {
     latitude: number | string | null;
     longitude: number | string | null;
     version: number | null;
+    partner_link_code: string | null;
   } | null;
 
   const lat = club?.latitude != null ? Number(club.latitude as unknown as string) : null;
@@ -171,6 +173,7 @@ async function loadData(): Promise<ConfigData> {
     latitude: lat,
     longitude: lng,
     version: club?.version ?? 1,
+    partnerLinkCode: club?.partner_link_code ?? null,
   };
 }
 

@@ -17,6 +17,26 @@ import { PublicPreviewModal } from "@/components/dashboard/partner/PublicPreview
 import { AdminOverridesPanel } from "@/components/dashboard/partner/AdminOverridesPanel";
 import { PrizesPanel, type PrizeRow } from "@/components/dashboard/partner/PrizesPanel";
 import { TournamentGestionRealtime } from "@/components/dashboard/partner/TournamentGestionRealtime";
+import { formatPaymentPolicy, formatTournamentFormat } from "@/lib/events/player-event-config";
+import {
+  isTournamentSetupLocked,
+  tournamentSetupLockMessage,
+} from "@/lib/tournaments/setup-lock";
+
+function formatSportLabel(sport: string): string {
+  if (!sport) return "—";
+  return sport.charAt(0).toUpperCase() + sport.slice(1);
+}
+
+function formatTorneoDateRange(startsAt: string, endsAt: string | null): string {
+  const start = new Date(startsAt);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric" });
+  if (!endsAt) return fmt(start);
+  const end = new Date(endsAt);
+  if (start.toDateString() === end.toDateString()) return fmt(start);
+  return `${fmt(start)} → ${fmt(end)}`;
+}
 
 type RegRow = {
   id: string;
@@ -56,6 +76,12 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "#0a0a0a",
   cancelled: "#dc2626",
 };
+
+function hasGroupPlayoffConfig(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const cfg = raw as { groupsCount?: number; advancePerGroup?: number };
+  return (cfg.groupsCount ?? 0) > 0 && (cfg.advancePerGroup ?? 0) > 0;
+}
 
 export default async function PartnerTorneoPage({
   params,
@@ -131,7 +157,7 @@ export default async function PartnerTorneoPage({
   // paid_transaction_id. Datos de pago vienen de transactions.
   const { data: regsRaw } = await admin
     .from("registrations")
-    .select("id,team_id,player_ids,status,paid_transaction_id,created_at,teams(name)")
+    .select("id,team_id,player_ids,status,category_id,paid_transaction_id,created_at,teams(name)")
     .eq("tournament_id", id)
     .not("status", "in", "(withdrawn,rejected,cancelled)")
     .order("created_at", { ascending: false });
@@ -228,7 +254,7 @@ export default async function PartnerTorneoPage({
   const { data: catsRaw } = await admin
     .from("tournament_categories")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select("id,name,gender,level,mpr_min,mpr_max,age_min,age_max,max_teams" as any)
+    .select("id,name,gender,level,mpr_min,mpr_max,age_min,age_max,max_teams,stage,group_playoff_config" as any)
     .eq("tournament_id", id)
     .order("name", { ascending: true });
   type CatRow = {
@@ -241,6 +267,8 @@ export default async function PartnerTorneoPage({
     age_min: number | null;
     age_max: number | null;
     max_teams: number | null;
+    stage: string | null;
+    group_playoff_config: unknown;
   };
   const categories: CategoryRow[] = ((catsRaw ?? []) as unknown as CatRow[]).map((c) => ({
     id: c.id,
@@ -253,8 +281,38 @@ export default async function PartnerTorneoPage({
     ageMax: c.age_max ?? null,
     maxTeams: c.max_teams ?? null,
   }));
+  const acceptedByCategory = new Map<string, number>();
+  for (const r of regsRaw ?? []) {
+    if ((r.status as string) !== "accepted") continue;
+    const cid = r.category_id as string | null;
+    if (!cid) continue;
+    acceptedByCategory.set(cid, (acceptedByCategory.get(cid) ?? 0) + 1);
+  }
 
-  // tournament_schedule_blocks aún no está en los types generados.
+  const groupStageCategories = ((catsRaw ?? []) as unknown as CatRow[])
+    .filter((c) => hasGroupPlayoffConfig(c.group_playoff_config))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      stage: c.stage ?? "pending_groups",
+      acceptedCount: acceptedByCategory.get(c.id) ?? 0,
+    }));
+
+  let clubCourts: Array<{ id: string; label: string }> = [];
+  const tournamentClubId = (t.club_id as string | null) ?? null;
+  if (tournamentClubId) {
+    const { data: courtsRaw } = await admin
+      .from("courts")
+      .select("id,code,name,ordinal")
+      .eq("club_id", tournamentClubId)
+      .eq("active", true)
+      .order("ordinal", { ascending: true });
+    clubCourts = (courtsRaw ?? []).map((c) => ({
+      id: c.id as string,
+      label: ((c.code as string | null) || (c.name as string | null) || "Cancha") as string,
+    }));
+  }
+
   const { data: blocksRaw } = await admin
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from("tournament_schedule_blocks" as any)
@@ -314,11 +372,12 @@ export default async function PartnerTorneoPage({
   const club = t.clubs as { name?: string; city?: string } | null;
   const registrationLabels = Object.fromEntries(regs.map((r) => [r.id, r.label]));
 
+  const initialGroupCategoryId = groupStageCategories[0]?.id ?? null;
   let groupStageInitial = null;
-  if (tournamentFormat === "groups_to_knockout" && categories.length > 0) {
+  if (tournamentFormat === "groups_to_knockout" && initialGroupCategoryId) {
     const gs = await getGroupStageSummary({
       tournamentId: id,
-      categoryId: categories[0].id,
+      categoryId: initialGroupCategoryId,
     });
     if (gs.ok) groupStageInitial = gs.data;
   }
@@ -332,6 +391,18 @@ export default async function PartnerTorneoPage({
   const isCancelled = dbStatus === "cancelled";
   const isFinished = dbStatus === "finished" || dbStatus === "completed";
   const isClosed = isCancelled || isFinished;
+  const categoryStages = ((catsRaw ?? []) as unknown as CatRow[]).map((c) => c.stage);
+  const setupLocked = isTournamentSetupLocked({
+    status: dbStatus,
+    hasBracket,
+    categoryStages,
+  });
+  const setupLockMessage = tournamentSetupLockMessage({
+    status: dbStatus,
+    hasBracket,
+    categoryStages,
+  });
+  const configReadOnly = isClosed || setupLocked;
   const isDraft = dbStatus === "draft";
   const isClubTorneo = !partnerId && !!(t.club_id as string | null);
   let clubDashboardRole: "owner" | "manager" = "owner";
@@ -351,9 +422,13 @@ export default async function PartnerTorneoPage({
     ? `/dashboard/${clubDashboardRole}/club-eventos`
     : "/dashboard/partner/p-torneos";
   const gestionLabel = isClubTorneo ? "Club · Gestión de torneo" : "Partner · Gestión de torneo";
+  const sportLabel = formatSportLabel(String(t.sport ?? ""));
+  const formatLabel = formatTournamentFormat(tournamentFormat);
+  const paymentLabel = formatPaymentPolicy(t.payment_policy as string | null);
+  const dateLabel = formatTorneoDateRange(t.starts_at as string, (t.ends_at as string | null) ?? null);
 
   return (
-    <main className="mp-partner-torneo-main">
+    <main className="mp-partner-torneo-page-main">
       <TournamentGestionRealtime tournamentId={t.id as string} />
           {isDraft && (
             <div
@@ -507,34 +582,27 @@ export default async function PartnerTorneoPage({
                 {statusLabel}
               </span>
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 14,
-                fontSize: 12,
-                color: "var(--muted-fg)",
-                flexWrap: "wrap",
-                marginTop: 10,
-              }}
-            >
-              <span>
-                <Icon name="trophy" size={11} /> {String(t.sport)} · {String(t.format)}
+            <div className="mp-partner-torneo-meta">
+              <span className="mp-partner-torneo-meta-item">
+                <Icon name="trophy" size={11} color="currentColor" />
+                <span className="mp-partner-torneo-meta-tags">
+                  <span className="mp-partner-torneo-meta-tag">{sportLabel}</span>
+                  <span className="mp-partner-torneo-meta-tag">{formatLabel}</span>
+                </span>
               </span>
-              <span>
-                <Icon name="calendar" size={11} />{" "}
-                {new Date(t.starts_at as string).toLocaleDateString("es-EC")}
-                {t.ends_at
-                  ? ` → ${new Date(t.ends_at as string).toLocaleDateString("es-EC")}`
-                  : " · Un solo día"}
+              <span className="mp-partner-torneo-meta-item">
+                <Icon name="calendar" size={11} color="currentColor" />
+                <span>{dateLabel}</span>
               </span>
               {club?.name && (
-                <span>
-                  <Icon name="building-2" size={11} /> {club.name}
+                <span className="mp-partner-torneo-meta-item">
+                  <Icon name="building-2" size={11} color="currentColor" />
+                  <span>{club.name}</span>
                 </span>
               )}
-              <span>
-                <Icon name="dollar-sign" size={11} /> Política:{" "}
-                <b>{String(t.payment_policy ?? "—")}</b>
+              <span className="mp-partner-torneo-meta-item">
+                <Icon name="dollar-sign" size={11} color="currentColor" />
+                <span className="mp-partner-torneo-meta-tag">{paymentLabel}</span>
               </span>
             </div>
           </div>
@@ -604,6 +672,8 @@ export default async function PartnerTorneoPage({
               isAdmin={isAdmin}
               acceptedCount={acceptedCount}
               hasBracket={hasBracket}
+              setupLocked={setupLocked}
+              setupLockMessage={setupLockMessage}
               editable={{
                 id: t.id as string,
                 name: t.name as string,
@@ -622,11 +692,13 @@ export default async function PartnerTorneoPage({
             />
           )}
 
-          {tournamentFormat === "groups_to_knockout" && !isClosed && (
+          {tournamentFormat === "groups_to_knockout" && !isClosed && groupStageCategories.length > 0 && (
             <GroupStagePanel
               tournamentId={t.id as string}
-              acceptedCount={acceptedCount}
+              categories={groupStageCategories}
+              clubCourts={clubCourts}
               registrationLabels={registrationLabels}
+              initialCategoryId={initialGroupCategoryId}
               initial={groupStageInitial}
             />
           )}
@@ -641,21 +713,21 @@ export default async function PartnerTorneoPage({
           <CategoriesPanel
             tournamentId={t.id as string}
             initialCategories={categories}
-            readOnly={isClosed}
+            readOnly={configReadOnly}
           />
 
           <SchedulePanel
             tournamentId={t.id as string}
             initialBlocks={blocks}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            readOnly={isClosed}
+            readOnly={configReadOnly}
           />
 
           <PrizesPanel
             tournamentId={t.id as string}
             initialPrizes={prizes}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            readOnly={isClosed}
+            readOnly={configReadOnly}
           />
 
           <div className="card" style={{ padding: 18 }}>

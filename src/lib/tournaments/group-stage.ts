@@ -5,10 +5,22 @@
 
 import type { ScoringConfig } from "@/lib/schemas/tournaments";
 
+export type GroupSchedulingConfig = {
+  /** Canchas del club seleccionadas para esta categoría. */
+  courtIds: string[];
+  /** Duración estimada por partido (minutos). */
+  slotDurationMin: number;
+  /** Inicio de la fecha 1 (ISO). Las fechas siguientes avanzan con fechaGapHours. */
+  roundOneStartsAt?: string | null;
+  /** Horas entre fechas (round_no). Default 24. */
+  fechaGapHours?: number;
+};
+
 export type GroupPlayoffConfig = {
   groupsCount: number;
   advancePerGroup: number;
   finalScoringOverride?: ScoringConfig | null;
+  scheduling?: GroupSchedulingConfig | null;
 };
 
 export type MatchScore = {

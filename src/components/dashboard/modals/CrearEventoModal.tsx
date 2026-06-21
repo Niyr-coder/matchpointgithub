@@ -737,10 +737,10 @@ export function CrearEventoModal() {
 
 type Setter = <K extends keyof Form>(k: K, v: Form[K]) => void;
 
-const TYPES: { k: EvType; t: string; sub: string; d: string; i: string; dimmed?: boolean }[] = [
+const TYPES: { k: EvType; t: string; sub: string; d: string; i: string; dimmed?: boolean; soon?: boolean }[] = [
   { k: "torneo", t: "Torneo", sub: "Eliminación directa o mejor de N", d: "Cuadro, llaves, premios. Lo más común — fin de semana intensivo.", i: "trophy" },
-  { k: "liga", t: "Liga", sub: "Round-robin · varias fechas", d: "Múltiples jornadas, tabla de posiciones, ascensos / descensos.", i: "list-ordered" },
-  { k: "social", t: "Social", sub: "Mixto sorteado · sin tabla", d: "Mezcla niveles, conoce gente, snacks y música. Sin presión.", i: "sparkles" },
+  { k: "liga", t: "Liga", sub: "Round-robin · varias fechas", d: "Múltiples jornadas, tabla de posiciones, ascensos / descensos.", i: "list-ordered", soon: true },
+  { k: "social", t: "Social", sub: "Mixto sorteado · sin tabla", d: "Mezcla niveles, conoce gente, snacks y música. Sin presión.", i: "sparkles", soon: true },
   { k: "clinic", t: "Clinic / clase", sub: "Entreno grupal con coach", d: "Sesión técnica de 1–3 horas. Cupos cerrados, sin premios.", i: "graduation-cap", dimmed: true },
 ];
 
@@ -749,7 +749,9 @@ function typeCountLabel(
   counts: CreateEventTypeCounts | null,
   loading: boolean,
   dimmed?: boolean,
+  soon?: boolean,
 ): string {
+  if (soon) return "Próximamente";
   if (dimmed) return "Solo rol coach";
   if (loading) return "Cargando…";
   if (!counts) return "Abre desde tu club";
@@ -763,7 +765,7 @@ function popularType(counts: CreateEventTypeCounts | null): EvType | null {
   let best: EvType | null = null;
   let max = 0;
   for (const t of TYPES) {
-    if (t.dimmed) continue;
+    if (t.dimmed || t.soon) continue;
     const n = counts[t.k];
     if (n > max) {
       max = n;
@@ -874,16 +876,20 @@ function CEStep1({
       <div className="mp-crear-evento-types gap-2.5" style={{ marginBottom: 22 }}>
         {TYPES.map((t) => {
           const active = form.type === t.k;
+          const disabled = t.dimmed || t.soon;
           const showPopular = popular === t.k;
           return (
             <button
               key={t.k}
               type="button"
-              disabled={t.dimmed}
-              onClick={() => !t.dimmed && set("type", t.k)}
-              className={`mp-crear-evento-type-card${active ? " is-active" : ""}${t.dimmed ? " is-disabled" : ""}`}
+              disabled={disabled}
+              onClick={() => !disabled && set("type", t.k)}
+              className={`mp-crear-evento-type-card${active ? " is-active" : ""}${disabled ? " is-disabled" : ""}`}
             >
               {showPopular && <span className="mp-crear-evento-type-tag">POPULAR</span>}
+              {t.soon && (
+                <span className="mp-crear-evento-type-tag mp-crear-evento-type-tag--soon">PRÓXIMAMENTE</span>
+              )}
               <div className="mp-crear-evento-type-icon">
                 <Icon name={t.i} size={15} color="#fff" />
               </div>
@@ -891,7 +897,7 @@ function CEStep1({
               <div className="mp-crear-evento-type-sub">{t.sub}</div>
               <div className="mp-crear-evento-type-desc">{t.d}</div>
               <div className="mp-crear-evento-type-foot">
-                ● {typeCountLabel(t.k, typeCounts, typeCountsLoading, t.dimmed)}
+                ● {typeCountLabel(t.k, typeCounts, typeCountsLoading, t.dimmed, t.soon)}
               </div>
             </button>
           );

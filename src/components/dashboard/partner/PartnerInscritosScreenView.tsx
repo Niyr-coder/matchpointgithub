@@ -7,7 +7,7 @@ import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import { markRegistrationPaidByPartner } from "@/server/actions/tournaments";
+import { markRegistrationPaidByPartner, setTournamentStatus } from "@/server/actions/tournaments";
 
 export type PaymentMode = "online" | "onsite" | "free";
 export type PayStatus =
@@ -31,6 +31,8 @@ export type InscritoRow = {
 
 export type InscritosData = {
   partnerId: string | null;
+  tournamentId: string | null;
+  tournamentStatus: string | null;
   tournamentName: string | null;
   capacity: number;
   rows: InscritoRow[];
@@ -75,6 +77,15 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
   const toast = useToast();
   const [, startTransition] = useTransition();
   const [marking, setMarking] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+
+  const registrationsClosed =
+    data.tournamentStatus === "registration_closed" ||
+    data.tournamentStatus === "cancelled" ||
+    data.tournamentStatus === "finished" ||
+    data.tournamentStatus === "completed";
+  const canCloseRegistrations =
+    !!data.tournamentId && !!data.tournamentStatus && !registrationsClosed;
 
   useRealtimeRefresh(
     data.partnerId
@@ -100,6 +111,28 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
         toast({
           icon: "alert-triangle",
           title: "No se pudo marcar",
+          sub: res.error.message,
+        });
+      }
+    });
+  };
+
+  const handleCloseRegistrations = () => {
+    if (!data.tournamentId || closing || !canCloseRegistrations) return;
+    setClosing(true);
+    startTransition(async () => {
+      const res = await setTournamentStatus({
+        tournamentId: data.tournamentId!,
+        status: "registration_closed",
+      });
+      setClosing(false);
+      if (res.ok) {
+        toast({ icon: "lock", title: "Inscripciones cerradas" });
+        router.refresh();
+      } else {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo cerrar",
           sub: res.error.message,
         });
       }
@@ -242,12 +275,17 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
               CSV
             </button>
             <button
+              type="button"
               className="btn btn-primary"
-              disabled={!hasReal}
-              style={{ opacity: hasReal ? 1 : 0.5 }}
+              disabled={!canCloseRegistrations || closing}
+              onClick={handleCloseRegistrations}
             >
-              <Icon name="users" size={13} color="#fff" />
-              Cerrar inscripciones
+              <Icon name="lock" size={13} color="#fff" />
+              {closing
+                ? "Cerrando…"
+                : registrationsClosed
+                  ? "Inscripciones cerradas"
+                  : "Cerrar inscripciones"}
             </button>
           </div>
         }

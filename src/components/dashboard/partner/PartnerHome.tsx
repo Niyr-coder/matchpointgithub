@@ -3,6 +3,8 @@ import { getServerClient } from "@/lib/db/client.server";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary } from "@/lib/auth/profile";
+import { formatTournamentFormat } from "@/lib/events/player-event-config";
+import { sportLabel } from "@/lib/sports";
 import { PartnerHomeView, type PartnerHomeData, type TorneoCard, type MatchItem } from "./PartnerHomeView";
 
 async function loadUserName(): Promise<string | null> {
@@ -213,12 +215,13 @@ async function loadData(): Promise<PartnerHomeData> {
       const regs = regsByTour.get(t.id as string) ?? 0;
       const cap = (t.max_participants as number | null) ?? 0;
       const rev = monthRevenueByTour.get(t.id as string) ?? 0;
-      const sportLabel = String(t.sport ?? "—");
-      const formatLabel = String(t.format ?? "");
+      const sport = sportLabel(String(t.sport ?? ""));
+      const formatKey = String(t.format ?? "");
+      const format = formatKey ? formatTournamentFormat(formatKey) : "";
       return {
         id: t.id as string,
         n: (t.name as string) ?? "—",
-        s: `${sportLabel}${formatLabel ? ` · ${formatLabel}` : ""}`,
+        s: format ? `${sport} · ${format}` : sport,
         date: fmtDateRange(t.starts_at as string, (t.ends_at as string | null) ?? null),
         cupos: cap > 0 ? `${regs} / ${cap}` : `${regs} / —`,
         revenue: fmtUSD(rev),

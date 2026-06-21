@@ -15,6 +15,11 @@ import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { ScoringConfigSchema } from "@/lib/schemas/tournaments";
 import {
+  buildGroupCourtSchedule,
+  normalizeSchedulingConfig,
+  type MatchToSchedule,
+} from "@/lib/tournaments/group-court-schedule";
+import {
   buildRoundRobinRounds,
   computeGroupStandings,
   crossGroupFirstRound,
@@ -27,13 +32,16 @@ import {
   validateGroupPlayoffConfig,
   type GroupMatchResult,
   type GroupPlayoffConfig,
+  type GroupSchedulingConfig,
   type GroupStandingRow,
 } from "@/lib/tournaments/group-stage";
+import { GroupSchedulingConfigSchema } from "@/lib/schemas/tournaments";
 
 const GroupPlayoffConfigSchema = z.object({
   groupsCount: z.number().int().min(1).max(16),
   advancePerGroup: z.number().int().min(1).max(16),
   finalScoringOverride: ScoringConfigSchema.nullable().optional(),
+  scheduling: GroupSchedulingConfigSchema.nullable().optional(),
 });
 
 const MatchScoreSchema = z.object({
@@ -121,7 +129,88 @@ async function acceptedRegistrationIds(
     .eq("tournament_id", tournamentId)
     .eq("category_id", categoryId)
     .eq("status", "accepted");
-  return (regs ?? []).map((r) => r.id);
+  return (regs ?? []).map((r) => r.id as string);
+}
+
+async function loadClubCourts(
+  admin: ReturnType<typeof groupDb>,
+  tournamentId: string,
+): Promise<Array<{ id: string; label: string }>> {
+  const { data: t } = await admin
+    .from("tournaments")
+    .select("club_id")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  const clubId = (t?.club_id as string | null) ?? null;
+  if (!clubId) return [];
+  const { data: courts } = await admin
+    .from("courts")
+    .select("id,code,name,ordinal")
+    .eq("club_id", clubId)
+    .eq("active", true)
+    .order("ordinal", { ascending: true });
+  return (courts ?? []).map((c) => ({
+    id: c.id as string,
+    label: ((c.code as string | null) || (c.name as string | null) || "Cancha") as string,
+  }));
+}
+
+function waveMapFromSchedule(
+  groups: GroupStageSummary["groups"],
+  scheduling: ReturnType<typeof normalizeSchedulingConfig>,
+): Map<string, number> {
+  if (!scheduling) return new Map();
+  const toSchedule: MatchToSchedule[] = [];
+  for (const g of groups) {
+    for (const m of g.matches) {
+      toSchedule.push({
+        id: m.id,
+        roundNo: m.roundNo,
+        groupSortOrder: g.sortOrder,
+        matchNo: m.matchNo,
+      });
+    }
+  }
+  return new Map(buildGroupCourtSchedule(toSchedule, scheduling).map((s) => [s.id, s.waveNo]));
+}
+
+async function applyCourtSchedule(
+  db: ReturnType<typeof groupDb>,
+  groups: Array<{ id: string; sortOrder: number }>,
+  scheduling: GroupSchedulingConfig,
+): Promise<number> {
+  const normalized = normalizeSchedulingConfig(scheduling);
+  if (!normalized) return 0;
+
+  const toSchedule: MatchToSchedule[] = [];
+  for (const g of groups) {
+    const { data: matches } = await db
+      .from("tournament_group_matches")
+      .select("id,round_no,match_no")
+      .eq("group_id", g.id);
+    for (const m of matches ?? []) {
+      toSchedule.push({
+        id: m.id as string,
+        roundNo: m.round_no as number,
+        groupSortOrder: g.sortOrder,
+        matchNo: m.match_no as number,
+      });
+    }
+  }
+
+  const slots = buildGroupCourtSchedule(toSchedule, normalized);
+  const waveById = new Map(slots.map((s) => [s.id, s.waveNo]));
+
+  await Promise.all(
+    slots.map((slot) =>
+      db
+        .from("tournament_group_matches")
+        .update({ court_id: slot.courtId, scheduled_at: slot.scheduledAt } as never)
+        .eq("id", slot.id),
+    ),
+  );
+
+  return waveById.size;
 }
 
 function mapGroupMatch(row: Record<string, unknown>): GroupMatchResult {
@@ -138,7 +227,9 @@ export type GroupStageSummary = {
   categoryId: string;
   categoryName: string;
   stage: string;
+  acceptedCount: number;
   config: GroupPlayoffConfig;
+  courts: Array<{ id: string; label: string }>;
   groups: Array<{
     id: string;
     name: string;
@@ -154,6 +245,9 @@ export type GroupStageSummary = {
       status: string;
       winnerSide: string | null;
       score: unknown;
+      courtId: string | null;
+      scheduledAt: string | null;
+      waveNo: number | null;
     }>;
   }>;
 };
@@ -182,8 +276,12 @@ export async function getGroupStageSummary(
     }
 
     const groups: GroupStageSummary["groups"] = [];
+    const regIds = await acceptedRegistrationIds(db, tournamentId, categoryId);
+    const courts = await loadClubCourts(db, tournamentId);
+
     for (const g of groupsRaw ?? []) {
       const groupId = g.id as string;
+      const sortOrder = g.sort_order as number;
       const [{ data: members }, { data: matches }] = await Promise.all([
         db
           .from("tournament_group_members")
@@ -202,7 +300,7 @@ export async function getGroupStageSummary(
       groups.push({
         id: groupId,
         name: g.name as string,
-        sortOrder: g.sort_order as number,
+        sortOrder,
         members: (members ?? []).map((m) => ({
           registrationId: m.registration_id as string,
           sortOrder: m.sort_order as number,
@@ -217,15 +315,29 @@ export async function getGroupStageSummary(
           status: m.status as string,
           winnerSide: (m.winner_side as string | null) ?? null,
           score: m.score,
+          courtId: (m.court_id as string | null) ?? null,
+          scheduledAt: (m.scheduled_at as string | null) ?? null,
+          waveNo: null,
         })),
       });
+    }
+
+    const scheduling = normalizeSchedulingConfig(config.scheduling);
+    const waves = waveMapFromSchedule(groups, scheduling);
+    for (const g of groups) {
+      g.matches = g.matches.map((m) => ({
+        ...m,
+        waveNo: waves.get(m.id) ?? null,
+      }));
     }
 
     return {
       categoryId,
       categoryName: cat.name as string,
       stage: (cat.stage as string) ?? "pending_groups",
+      acceptedCount: regIds.length,
       config,
+      courts,
       groups,
     };
   });
@@ -260,6 +372,7 @@ export async function drawTournamentGroups(
     await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
 
     let matchesCreated = 0;
+    const createdGroups: Array<{ id: string; sortOrder: number }> = [];
     for (let i = 0; i < buckets.length; i++) {
       const memberIds = buckets[i];
       if (memberIds.length === 0) continue;
@@ -275,6 +388,7 @@ export async function drawTournamentGroups(
         .single();
       if (gErr) throw new MpError("GROUPS.CREATE_FAILED", gErr.message, 500);
       const groupId = groupRow.id as string;
+      createdGroups.push({ id: groupId, sortOrder: i });
 
       const memberRows = memberIds.map((registrationId, sortOrder) => ({
         group_id: groupId,
@@ -303,6 +417,10 @@ export async function drawTournamentGroups(
         if (gmErr) throw new MpError("GROUPS.MATCHES_FAILED", gmErr.message, 500);
         matchesCreated += matchRows.length;
       }
+    }
+
+    if (config.scheduling?.courtIds?.length) {
+      await applyCourtSchedule(db, createdGroups, config.scheduling);
     }
 
     const { error: stErr } = await db
@@ -656,4 +774,62 @@ export async function updateCategoryGroupConfig(
       return { categoryId };
     },
   );
+}
+
+const SaveSchedulingSchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema,
+  scheduling: GroupSchedulingConfigSchema,
+});
+
+/** Guarda canchas activas + tiempos y reprograma partidos de la categoría. */
+export async function saveGroupStageScheduling(
+  input: unknown,
+): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SaveSchedulingSchema, input, async ({ tournamentId, categoryId, scheduling }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const { cat, config } = await loadCategoryContext(categoryId, { requireConfig: false });
+    if ((cat.tournament_id as string) !== tournamentId) {
+      throw new MpError("CATEGORY.NOT_FOUND", "Categoría no pertenece al torneo", 404);
+    }
+
+    const clubCourts = await loadClubCourts(groupDb(getAdminClient()), tournamentId);
+    const validIds = new Set(clubCourts.map((c) => c.id));
+    for (const cid of scheduling.courtIds) {
+      if (!validIds.has(cid)) {
+        throw new MpError("GROUPS.INVALID_COURT", "Una cancha no pertenece al club del torneo", 422);
+      }
+    }
+
+    const nextConfig: GroupPlayoffConfig = {
+      ...config,
+      scheduling,
+    };
+
+    const db = groupDb(getAdminClient());
+    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+
+    const { error: cfgErr } = await db
+      .from("tournament_categories")
+      .update({ group_playoff_config: nextConfig } as never)
+      .eq("id", categoryId);
+    if (cfgErr) throw new MpError("GROUPS.CONFIG_FAILED", cfgErr.message, 500);
+
+    const stage = cat.stage as string;
+    if (stage !== "pending_groups") {
+      const { data: groupsRaw } = await db
+        .from("tournament_groups")
+        .select("id,sort_order")
+        .eq("category_id", categoryId);
+      const groups = (groupsRaw ?? []).map((g) => ({
+        id: g.id as string,
+        sortOrder: g.sort_order as number,
+      }));
+      if (groups.length > 0) {
+        await applyCourtSchedule(db, groups, scheduling);
+      }
+    }
+
+    return { ok: true as const };
+  });
 }

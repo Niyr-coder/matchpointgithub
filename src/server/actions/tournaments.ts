@@ -5,6 +5,7 @@
 import "server-only";
 
 import { z } from "zod";
+import { tournamentSetupLockMessage } from "@/lib/tournaments/setup-lock";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
@@ -1484,13 +1485,7 @@ export async function updateTournamentByOrganizer(
     if (readErr || !existing) {
       throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     }
-    if (existing.status === "finished" || existing.status === "cancelled") {
-      throw new MpError(
-        "TOURNAMENTS.NOT_EDITABLE",
-        `No se puede editar un torneo '${existing.status}'`,
-        409,
-      );
-    }
+    await assertTournamentSetupEditable(tournamentId);
 
     // Authz: admin global o partner_member (owner/admin) del partner_org.
     const { data: adminRow } = await supabase
@@ -1644,6 +1639,35 @@ export async function updateTournamentByOrganizer(
 }
 
 // ── Categorías del torneo (partner OR admin) ───────────────────────────
+async function assertTournamentSetupEditable(tournamentId: string): Promise<void> {
+  const admin = getAdminClient();
+  const { data: t, error } = await admin
+    .from("tournaments")
+    .select("status")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (error || !t) {
+    throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+  }
+  const { count } = await admin
+    .from("brackets")
+    .select("*", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId);
+  const { data: cats } = await admin
+    .from("tournament_categories")
+    .select("stage")
+    .eq("tournament_id", tournamentId);
+
+  const message = tournamentSetupLockMessage({
+    status: t.status as string,
+    hasBracket: (count ?? 0) > 0,
+    categoryStages: (cats ?? []).map((c) => c.stage as string),
+  });
+  if (message) {
+    throw new MpError("TOURNAMENTS.NOT_EDITABLE", message, 409);
+  }
+}
+
 // Helper auth: admin, partner del torneo o staff del club anfitrión.
 async function requireTournamentEditor(tournamentId: string): Promise<{
   userId: string;
@@ -1709,6 +1733,7 @@ export async function createTournamentCategory(
 ): Promise<ActionResult<TournamentCategoryRow>> {
   return runAction(CreateCategorySchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
 
@@ -1758,6 +1783,7 @@ export async function updateTournamentCategory(
 ): Promise<ActionResult<TournamentCategoryRow>> {
   return runAction(UpdateCategorySchema, input, async ({ tournamentId, categoryId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     const update: Record<string, unknown> = {};
     if (body.name !== undefined) update.name = body.name;
@@ -1794,6 +1820,7 @@ export async function deleteTournamentCategory(
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeleteCategorySchema, input, async ({ tournamentId, categoryId }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     // Bloqueamos delete si ya hay inscripciones que la usan, para evitar
     // huérfanos. El partner debería mover/cancelar inscripciones primero.
@@ -1857,6 +1884,7 @@ export async function createScheduleBlock(
 ): Promise<ActionResult<TournamentScheduleBlockRow>> {
   return runAction(CreateBlockSchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { data, error } = await admin
@@ -1887,6 +1915,7 @@ export async function updateScheduleBlock(
 ): Promise<ActionResult<TournamentScheduleBlockRow>> {
   return runAction(UpdateBlockSchema, input, async ({ tournamentId, blockId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     const update: Record<string, unknown> = {};
     if (body.startsAt !== undefined) update.starts_at = body.startsAt;
@@ -1919,6 +1948,7 @@ export async function deleteScheduleBlock(
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeleteBlockSchema, input, async ({ tournamentId, blockId }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
@@ -1990,6 +2020,7 @@ export async function createTournamentPrize(
 ): Promise<ActionResult<TournamentPrizeRow>> {
   return runAction(CreatePrizeSchema, input, async ({ tournamentId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     await assertPrizeCategory(admin, tournamentId, body.categoryId);
     await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
@@ -2023,6 +2054,7 @@ export async function updateTournamentPrize(
 ): Promise<ActionResult<TournamentPrizeRow>> {
   return runAction(UpdatePrizeSchema, input, async ({ tournamentId, prizeId, body }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     if (body.categoryId !== undefined) {
       await assertPrizeCategory(admin, tournamentId, body.categoryId);
@@ -2061,6 +2093,7 @@ export async function deleteTournamentPrize(
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(DeletePrizeSchema, input, async ({ tournamentId, prizeId }) => {
     const editor = await requireTournamentEditor(tournamentId);
+    await assertTournamentSetupEditable(tournamentId);
     const admin = getAdminClient();
     await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin

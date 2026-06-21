@@ -1,6 +1,7 @@
 // Server: torneos del partner con cupos, premio, revenue del mes.
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
+import { formatTournamentFormat } from "@/lib/events/player-event-config";
 import {
   PartnerTorneosScreenView,
   type TorneosData,
@@ -26,8 +27,6 @@ function fmtDateRange(starts: string, ends: string | null): string {
   return `${a.getDate()} ${MONTHS_SHORT[a.getMonth()]} - ${b.getDate()} ${MONTHS_SHORT[b.getMonth()]} ${b.getFullYear()}`;
 }
 
-const COLORS = ["#10b981", "#0a0a0a", "#0c4a6e", "#7c3aed", "#db2777", "#0ea5e9", "#fbbf24"];
-
 function endOfDay(d: Date): Date {
   const e = new Date(d);
   e.setHours(23, 59, 59, 999);
@@ -45,9 +44,14 @@ function deriveStatus(dbStatus: string, starts: Date, ends: Date | null, now: Da
   return "OPEN";
 }
 
-async function loadData(): Promise<TorneosData> {
+function formatSportLabel(sport: string): string {
+  if (!sport) return "—";
+  return sport.charAt(0).toUpperCase() + sport.slice(1);
+}
+
+async function loadData(clubFilterId?: string): Promise<TorneosData> {
   const partnerId = await resolveActivePartnerId();
-  if (!partnerId) return { partnerId: null, rows: [], clubs: [] };
+  if (!partnerId) return { partnerId: null, rows: [], clubs: [], filterClub: null };
 
   const supabase = await getServerClient();
   const now = new Date();
@@ -67,11 +71,18 @@ async function loadData(): Promise<TorneosData> {
     })
     .filter((c): c is { id: string; name: string; city: string | null } => !!c);
 
-  const { data: tournaments } = await supabase
+  const linkedClubIds = new Set(clubs.map((c) => c.id));
+  const effectiveClubFilter =
+    clubFilterId && linkedClubIds.has(clubFilterId) ? clubFilterId : undefined;
+
+  let tourQuery = supabase
     .from("tournaments")
-    .select("id,slug,name,sport,format,starts_at,ends_at,status,max_participants,prize_pool_cents")
+    .select("id,slug,name,sport,format,starts_at,ends_at,status,max_participants,prize_pool_cents,club_id")
     .eq("partner_id", partnerId)
     .order("starts_at", { ascending: true });
+  if (effectiveClubFilter) tourQuery = tourQuery.eq("club_id", effectiveClubFilter);
+
+  const { data: tournaments } = await tourQuery;
 
   const tourIds = (tournaments ?? []).map((t) => t.id as string);
   const regsByTour = new Map<string, number>();
@@ -111,27 +122,39 @@ async function loadData(): Promise<TorneosData> {
     const regs = regsByTour.get(t.id as string) ?? 0;
     const prize = (t.prize_pool_cents as number | null) ?? 0;
     const rev = revByTour.get(t.id as string) ?? 0;
-    const sportLabel = String(t.sport ?? "—");
-    const formatLabel = String(t.format ?? "");
+    const sportLabel = formatSportLabel(String(t.sport ?? ""));
+    const formatKey = String(t.format ?? "");
+    const formatLabel = formatKey ? formatTournamentFormat(formatKey) : "";
     return {
       id: t.id as string,
       slug: (t.slug as string) ?? (t.id as string),
       n: (t.name as string) ?? "—",
-      sport: `${sportLabel}${formatLabel ? ` · ${formatLabel}` : ""}`,
+      sport: formatLabel ? `${sportLabel} · ${formatLabel}` : sportLabel,
       date: fmtDateRange(startsRaw, endsRaw),
       cupos: cap > 0 ? `${regs} / ${cap}` : `${regs} / —`,
       revenue: `$${Math.round(rev / 100).toLocaleString("en-US")}`,
       prize: prize > 0 ? `$${Math.round(prize / 100).toLocaleString("en-US")}` : "$—",
       st: deriveStatus(t.status as string, starts, ends, now),
-      color: COLORS[i % COLORS.length],
       dbStatus: t.status as string,
     };
   });
 
-  return { partnerId, rows, clubs };
+  const filterClub =
+    effectiveClubFilter != null
+      ? { id: effectiveClubFilter, name: clubs.find((c) => c.id === effectiveClubFilter)!.name }
+      : null;
+
+  return { partnerId, rows, clubs, filterClub };
 }
 
-export async function PartnerTorneosScreen() {
-  const data = await loadData();
+export async function PartnerTorneosScreen({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = searchParams ? await searchParams : {};
+  const clubRaw = sp.club;
+  const clubFilterId = typeof clubRaw === "string" && clubRaw.trim() ? clubRaw.trim() : undefined;
+  const data = await loadData(clubFilterId);
   return <PartnerTorneosScreenView data={data} />;
 }

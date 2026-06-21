@@ -154,6 +154,7 @@ type Props = {
   clubs: ClubOption[];
   open: boolean;
   onClose: () => void;
+  initialClubId?: string;
 };
 
 const STEPS = ["terms", "details", "logistics", "categories", "preview"] as const;
@@ -203,7 +204,7 @@ function localInputToIso(local: string): string {
   return new Date(local).toISOString();
 }
 
-export function CreateTournamentFlow({ partnerId, clubs, open, onClose }: Props) {
+export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialClubId }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [, startTx] = useTransition();
@@ -258,7 +259,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose }: Props)
     setTermsAccepted(false);
     setName("");
     setDescription("");
-    setClubId("");
+    setClubId(initialClubId ?? "");
     setModality("doubles");
     setScoringId("trad_11_bo3");
     setFormat("single_elim");
@@ -275,7 +276,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose }: Props)
     setPrize("");
     setPaymentPolicyRaw("prepay");
     setCategories([]);
-  }, [open]);
+  }, [open, initialClubId]);
 
   const scoring = useMemo(
     () => SCORING_PRESETS.find((s) => s.id === scoringId) ?? SCORING_PRESETS[0],

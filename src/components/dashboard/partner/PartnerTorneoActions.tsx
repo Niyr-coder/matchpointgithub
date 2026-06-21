@@ -2,7 +2,7 @@
 // Panel de acciones para la página de gestión del torneo del partner.
 // Maneja: estelar (admin-only mostrado pero pega contra setTournamentFeatured),
 // cerrar inscripciones, cancelar torneo, generar bracket.
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
@@ -25,6 +25,8 @@ type Props = {
   isAdmin: boolean;
   acceptedCount: number;
   hasBracket: boolean;
+  setupLocked: boolean;
+  setupLockMessage?: string | null;
   editable: EditableTournament;
 };
 
@@ -36,6 +38,8 @@ export function PartnerTorneoActions({
   isAdmin,
   acceptedCount,
   hasBracket,
+  setupLocked,
+  setupLockMessage,
   editable,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
@@ -44,6 +48,12 @@ export function PartnerTorneoActions({
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
+  const [featuredOptimistic, setFeaturedOptimistic] = useState<boolean | null>(null);
+  const shownFeatured = featuredOptimistic ?? isFeatured;
+
+  useEffect(() => {
+    setFeaturedOptimistic(null);
+  }, [isFeatured]);
 
   const wrap = (key: string, fn: () => Promise<unknown>, okMsg: string, okIcon = "check") => {
     if (busy) return;
@@ -53,27 +63,42 @@ export function PartnerTorneoActions({
         const res = (await fn()) as { ok: boolean; error?: { message: string } };
         if (res.ok) {
           toast({ icon: okIcon, title: okMsg });
-          router.refresh();
+          await router.refresh();
         } else {
+          if (key === "estelar") setFeaturedOptimistic(null);
           toast({
             icon: "alert-triangle",
             title: "No se pudo",
             sub: res.error?.message ?? "Error",
           });
         }
+      } catch {
+        if (key === "estelar") setFeaturedOptimistic(null);
       } finally {
         setBusy(null);
       }
     });
   };
 
-  const onEstelar = () =>
+  const onEstelar = async () => {
+    if (busy) return;
+    if (shownFeatured) {
+      const ok = await confirm({
+        title: "Quitar de estelares",
+        body: "Este torneo dejará de aparecer destacado en portada y eventos. ¿Quieres continuar?",
+        confirmLabel: "Quitar estelar",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    setFeaturedOptimistic(!shownFeatured);
     wrap(
       "estelar",
-      () => setTournamentFeatured({ tournamentId, featured: !isFeatured }),
-      isFeatured ? "Quitado de estelares" : "Marcado como estelar",
+      () => setTournamentFeatured({ tournamentId, featured: !shownFeatured }),
+      shownFeatured ? "Quitado de estelares" : "Marcado como estelar",
       "star",
     );
+  };
 
   const onCerrar = () =>
     wrap(
@@ -133,6 +158,11 @@ export function PartnerTorneoActions({
   return (
     <div className="card" style={{ padding: 18 }}>
       <div className="label-mp">Acciones del torneo</div>
+      {setupLocked && setupLockMessage && (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+          {setupLockMessage}
+        </p>
+      )}
       <div className="mp-partner-torneo-actions-grid">
         {isDraft && (
           <ActionBtn
@@ -147,15 +177,16 @@ export function PartnerTorneoActions({
           icon="pencil"
           label="Editar torneo"
           onClick={() => setEditOpen(true)}
-          disabled={cancelled}
+          disabled={cancelled || setupLocked}
+          title={setupLocked ? setupLockMessage ?? undefined : undefined}
         />
         {isAdmin && (
           <ActionBtn
             icon="star"
-            label={isFeatured ? "Quitar estelar" : "Marcar estelar"}
+            label={shownFeatured ? "Quitar estelar" : "Marcar estelar"}
             onClick={onEstelar}
             loading={busy === "estelar"}
-            accent={isFeatured ? "#fbbf24" : undefined}
+            accent={shownFeatured ? "#fbbf24" : undefined}
           />
         )}
         <ActionBtn
@@ -201,6 +232,7 @@ function ActionBtn({
   danger,
   primary,
   accent,
+  title,
 }: {
   icon: string;
   label: string;
@@ -210,8 +242,10 @@ function ActionBtn({
   danger?: boolean;
   primary?: boolean;
   accent?: string;
+  title?: string;
 }) {
-  const fg = disabled
+  const isInactive = !!disabled || !!loading;
+  const fg = isInactive
     ? "var(--muted-fg)"
     : danger
       ? "#dc2626"
@@ -220,15 +254,18 @@ function ActionBtn({
         : accent ?? "#0a0a0a";
   const bg = primary
     ? "var(--primary)"
-    : accent
+    : accent && !isInactive
       ? `${accent}1a`
       : "#fff";
   const border = primary ? "transparent" : danger ? "#fecaca" : "var(--border)";
   return (
     <button
+      type="button"
       onClick={onClick}
-      disabled={!!disabled || !!loading}
-      className="mp-action-tile"
+      disabled={isInactive}
+      aria-busy={loading || undefined}
+      title={title}
+      className={`mp-action-tile${loading ? " is-loading" : ""}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -237,14 +274,14 @@ function ActionBtn({
         borderRadius: 10,
         background: bg,
         border: `1px solid ${border}`,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
+        cursor: isInactive ? "not-allowed" : "pointer",
+        opacity: isInactive ? 0.55 : 1,
         textAlign: "left",
         fontFamily: "inherit",
         fontSize: 12.5,
         fontWeight: 800,
         color: fg,
-        transition: "transform 160ms var(--ease-out), background 160ms var(--ease-out)",
+        transition: "transform 160ms var(--ease-out), background 160ms var(--ease-out), opacity 160ms var(--ease-out)",
       }}
     >
       <Icon name={icon} size={14} color={fg} />

@@ -21,7 +21,6 @@ export type TorneoRow = {
   revenue: string;
   prize: string;
   st: TorneoStatus;
-  color: string;
   dbStatus: string;
 };
 export type ClubOption = { id: string; name: string; city: string | null };
@@ -29,15 +28,22 @@ export type TorneosData = {
   partnerId: string | null;
   rows: TorneoRow[];
   clubs: ClubOption[];
+  filterClub: { id: string; name: string } | null;
 };
 
 const PLACEHOLDER_COUNT = 4;
 
 const ST_STYLES: Record<TorneoStatus, { bg: string; l: string }> = {
   LIVE: { bg: "#dc2626", l: "● LIVE" },
-  "IN PROGRESS": { bg: "#fbbf24", l: "EN CURSO" },
+  "IN PROGRESS": { bg: "var(--torneo-accent, #fbbf24)", l: "EN CURSO" },
   OPEN: { bg: "var(--primary)", l: "ABIERTO" },
   CLOSED: { bg: "var(--muted-fg)", l: "CERRADO" },
+};
+
+const METRIC_CLASS: Record<string, string> = {
+  Cupos: "",
+  Premio: "is-prize",
+  Revenue: "is-revenue",
 };
 
 function TorneoCard({ t }: { t: TorneoRow }) {
@@ -56,8 +62,15 @@ function TorneoCard({ t }: { t: TorneoRow }) {
         setMenuOpen(false);
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [menuOpen]);
 
   const onGestionar = () => router.push(`/dashboard/partner/torneo/${t.id}`);
@@ -102,49 +115,29 @@ function TorneoCard({ t }: { t: TorneoRow }) {
   };
 
   return (
-    <div className="card mp-partner-torneo-card" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+    <div className={`card mp-partner-torneo-card${menuOpen ? " is-menu-open" : ""}`}>
       <div className="mp-partner-torneo-card-inner">
-        <div className="mp-partner-torneo-card-accent" style={{ background: t.color }} />
         <div className="mp-partner-torneo-card-main">
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+          <div className="mp-partner-torneo-card-kicker">
             <RSPill bg={ST_STYLES[t.st].bg}>{ST_STYLES[t.st].l}</RSPill>
-            <span
-              style={{
-                fontSize: 9.5,
-                color: "var(--muted-fg)",
-                fontWeight: 800,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-              }}
-            >
-              {t.sport}
-            </span>
+            <span className="label-mp mp-partner-torneo-card-sport">{t.sport}</span>
           </div>
-          <div
-            className="font-heading mp-partner-torneo-card-title"
-            style={{
-              fontSize: 17,
-              fontWeight: 900,
-              letterSpacing: "-0.02em",
-              textTransform: "uppercase",
-            }}
-          >
+          <h3 className="font-heading mp-partner-torneo-card-title">
             {t.n}
-            <span style={{ color: "var(--primary)" }}>.</span>
-          </div>
-          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>{t.date}</div>
+            <span className="dot">.</span>
+          </h3>
+          <p className="mp-partner-torneo-card-date">{t.date}</p>
         </div>
         <div className="mp-partner-torneo-card-metrics">
           {[
-            { l: "Cupos", v: t.cupos, c: "#0a0a0a" },
-            { l: "Premio", v: t.prize, c: "#fbbf24" },
-            { l: "Revenue", v: t.revenue, c: "var(--primary)" },
+            { l: "Cupos", v: t.cupos },
+            { l: "Premio", v: t.prize },
+            { l: "Revenue", v: t.revenue },
           ].map((s) => (
             <div key={s.l} className="mp-partner-torneo-card-metric">
               <div className="mp-partner-torneo-stat-label">{s.l}</div>
               <div
-                className="font-heading mp-partner-torneo-stat-value"
-                style={{ color: s.c, marginTop: 4 }}
+                className={`font-heading mp-partner-torneo-card-metric-value${METRIC_CLASS[s.l] ? ` ${METRIC_CLASS[s.l]}` : ""}`}
               >
                 {s.v}
               </div>
@@ -152,67 +145,39 @@ function TorneoCard({ t }: { t: TorneoRow }) {
           ))}
         </div>
         <div ref={menuRef} className="mp-partner-torneo-card-actions">
-        <button
-          className="btn btn-primary"
-          onClick={onGestionar}
-          style={{ fontSize: 10.5, padding: "6px 12px" }}
-        >
-          Gestionar
-        </button>
-        <button
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Más acciones"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            background: menuOpen ? "#0a0a0a" : "var(--muted)",
-            color: menuOpen ? "#fff" : "#0a0a0a",
-            border: 0,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            lineHeight: 1,
-          }}
-        >
-          <Icon name="more-horizontal" size={12} color={menuOpen ? "#fff" : "#0a0a0a"} />
-        </button>
-        {menuOpen && (
-          <div
-            className="mp-modal-panel"
-            style={{
-              position: "absolute",
-              top: "100%",
-              right: 12,
-              marginTop: 6,
-              width: 240,
-              background: "#fff",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
-              zIndex: 50,
-              fontSize: 12,
+          <button type="button" className="btn btn-primary" onClick={onGestionar}>
+            Gestionar
+          </button>
+          <button
+            type="button"
+            className={`mp-partner-torneo-card-menu-btn${menuOpen ? " is-open" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((o) => !o);
             }}
+            aria-label="Más acciones"
+            aria-expanded={menuOpen}
           >
-            <KebabItem icon="pencil" label="Editar torneo" onClick={onEditar} />
-            <KebabItem
-              icon="lock"
-              label="Cerrar inscripciones"
-              onClick={onCerrar}
-              disabled={t.dbStatus === "registration_closed" || t.dbStatus === "cancelled"}
-            />
-            <KebabItem
-              icon="x"
-              label="Cancelar torneo"
-              onClick={onCancelar}
-              danger
-              disabled={t.dbStatus === "cancelled" || t.dbStatus === "finished"}
-            />
-          </div>
-        )}
+            <Icon name="more-horizontal" size={13} color="currentColor" />
+          </button>
+          {menuOpen && (
+            <div className="mp-partner-torneo-card-menu mp-modal-panel">
+              <KebabItem icon="pencil" label="Editar torneo" onClick={onEditar} />
+              <KebabItem
+                icon="lock"
+                label="Cerrar inscripciones"
+                onClick={onCerrar}
+                disabled={t.dbStatus === "registration_closed" || t.dbStatus === "cancelled"}
+              />
+              <KebabItem
+                icon="x"
+                label="Cancelar torneo"
+                onClick={onCancelar}
+                danger
+                disabled={t.dbStatus === "cancelled" || t.dbStatus === "finished"}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -232,34 +197,14 @@ function KebabItem({
   danger?: boolean;
   disabled?: boolean;
 }) {
-  const color = disabled ? "var(--muted-fg)" : danger ? "#dc2626" : "#0a0a0a";
   return (
     <button
+      type="button"
+      className={`mp-partner-torneo-card-menu-item${danger ? " is-danger" : ""}`}
       onClick={onClick}
       disabled={disabled}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "9px 14px",
-        background: "transparent",
-        border: 0,
-        cursor: disabled ? "not-allowed" : "pointer",
-        fontSize: 12,
-        color,
-        textAlign: "left",
-        fontFamily: "inherit",
-        transition: "background 160ms var(--ease-out)",
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.background = "var(--muted)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "transparent";
-      }}
     >
-      <Icon name={icon} size={13} color={color} />
+      <Icon name={icon} size={13} color="currentColor" />
       {label}
     </button>
   );
@@ -267,21 +212,17 @@ function KebabItem({
 
 function TorneoPlaceholder() {
   return (
-    <div
-      className="card mp-partner-torneo-card mp-partner-torneo-card--ph"
-      style={{ padding: 0, overflow: "hidden", background: "#fafafa", border: "1px dashed var(--border)", opacity: 0.6 }}
-    >
+    <div className="card mp-partner-torneo-card mp-partner-torneo-card--ph">
       <div className="mp-partner-torneo-card-inner">
-        <div className="mp-partner-torneo-card-accent" style={{ background: "var(--muted-fg)" }} />
         <div className="mp-partner-torneo-card-main">
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+          <div className="mp-partner-torneo-card-kicker">
             <RSPill bg="var(--muted-fg)">—</RSPill>
-            <span style={{ fontSize: 9.5, color: "var(--muted-fg)", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>—</span>
+            <span className="label-mp mp-partner-torneo-card-sport">—</span>
           </div>
-          <div className="font-heading mp-partner-torneo-card-title" style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
+          <h3 className="font-heading mp-partner-torneo-card-title" style={{ color: "var(--muted-fg)" }}>
             Sin torneos
-          </div>
-          <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>—</div>
+          </h3>
+          <p className="mp-partner-torneo-card-date">—</p>
         </div>
         <div className="mp-partner-torneo-card-metrics">
           {[
@@ -291,12 +232,14 @@ function TorneoPlaceholder() {
           ].map((s) => (
             <div key={s.l} className="mp-partner-torneo-card-metric">
               <div className="mp-partner-torneo-stat-label">{s.l}</div>
-              <div className="font-heading mp-partner-torneo-stat-value" style={{ color: "var(--muted-fg)", marginTop: 4 }}>{s.v}</div>
+              <div className="font-heading mp-partner-torneo-card-metric-value" style={{ color: "var(--muted-fg)" }}>
+                {s.v}
+              </div>
             </div>
           ))}
         </div>
         <div className="mp-partner-torneo-card-actions">
-          <button className="btn btn-primary" style={{ fontSize: 10.5, padding: "6px 12px" }} disabled>
+          <button type="button" className="btn btn-primary" disabled>
             Gestionar
           </button>
         </div>
@@ -307,6 +250,7 @@ function TorneoPlaceholder() {
 
 export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
   const toast = useToast();
+  const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
 
   const handleCreate = () => {
@@ -315,6 +259,10 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
       return;
     }
     setCreateOpen(true);
+  };
+
+  const clearClubFilter = () => {
+    router.push("/dashboard/partner/p-torneos");
   };
 
   useRealtimeRefresh(
@@ -335,7 +283,16 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
         label="Partner · Torneos"
         title={
           <>
-            Mis torneos <span className="dot">●</span> {hasReal ? data.rows.length : 0}
+            {data.filterClub ? (
+              <>
+                Eventos en {data.filterClub.name} <span className="dot">●</span>{" "}
+                {hasReal ? data.rows.length : 0}
+              </>
+            ) : (
+              <>
+                Mis torneos <span className="dot">●</span> {hasReal ? data.rows.length : 0}
+              </>
+            )}
           </>
         }
         action={
@@ -349,12 +306,33 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
           </button>
         }
       />
+      {data.filterClub && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            fontSize: 12,
+            color: "var(--muted-fg)",
+          }}
+        >
+          <span>
+            Solo tus eventos en <strong style={{ color: "#0a0a0a" }}>{data.filterClub.name}</strong>.
+            No tienes acceso a la gestión del club.
+          </span>
+          <button type="button" className="btn btn-ghost" onClick={clearClubFilter} style={{ fontSize: 11 }}>
+            Ver todos
+          </button>
+        </div>
+      )}
       {data.partnerId && (
         <CreateTournamentFlow
           partnerId={data.partnerId}
           clubs={data.clubs}
           open={createOpen}
           onClose={() => setCreateOpen(false)}
+          initialClubId={data.filterClub?.id}
         />
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

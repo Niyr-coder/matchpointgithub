@@ -35,11 +35,21 @@ export const ScoringConfigSchema = z
   })
   .openapi("ScoringConfig");
 
+export const GroupSchedulingConfigSchema = z
+  .object({
+    courtIds: z.array(UuidSchema).min(1).max(32),
+    slotDurationMin: z.number().int().min(15).max(240).default(50),
+    roundOneStartsAt: IsoDateTimeSchema.nullable().optional(),
+    fechaGapHours: z.number().int().min(1).max(168).optional(),
+  })
+  .openapi("GroupSchedulingConfig");
+
 export const GroupPlayoffConfigSchema = z
   .object({
     groupsCount: z.number().int().min(1).max(16),
     advancePerGroup: z.number().int().min(1).max(16),
     finalScoringOverride: ScoringConfigSchema.nullable().optional(),
+    scheduling: GroupSchedulingConfigSchema.nullable().optional(),
   })
   .openapi("GroupPlayoffConfig");
 

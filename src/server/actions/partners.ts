@@ -17,6 +17,7 @@ import {
   type PartnerOrg,
 } from "@/lib/schemas/ops";
 import { UuidSchema } from "@/lib/schemas/common";
+import { normalizeClubPartnerLinkCode } from "@/lib/partners/club-link-code";
 
 function mapPartner(row: Record<string, unknown>): PartnerOrg {
   return PartnerOrgSchema.parse({
@@ -101,16 +102,30 @@ async function requirePartnerAdmin(partnerId: string): Promise<string> {
 
 const LinkSchema = z.object({
   partnerId: UuidSchema,
-  clubId: UuidSchema,
+  linkCode: z.string().trim().min(4).max(32),
   revenueSharePct: z.number().min(0).max(100).default(0),
 });
 
 export async function linkClubToPartner(
   input: unknown,
 ): Promise<ActionResult<{ ok: true }>> {
-  return runAction(LinkSchema, input, async ({ partnerId, clubId, revenueSharePct }) => {
+  return runAction(LinkSchema, input, async ({ partnerId, linkCode, revenueSharePct }) => {
     await requirePartnerAdmin(partnerId);
     const supabase = await getServerClient();
+    const normalized = normalizeClubPartnerLinkCode(linkCode);
+    const { data: club, error: clubErr } = await supabase
+      .from("clubs")
+      .select("id,status")
+      .eq("partner_link_code", normalized)
+      .maybeSingle();
+    if (clubErr) throw new MpError("PARTNERS.DB_ERROR", clubErr.message, 500);
+    if (!club) {
+      throw new MpError("PARTNERS.CODE_INVALID", "Código no válido. Pídeselo al club.", 404);
+    }
+    if ((club.status as string) !== "active") {
+      throw new MpError("PARTNERS.CLUB_INACTIVE", "Ese club no está activo.", 409);
+    }
+    const clubId = club.id as string;
     const { error } = await supabase.from("partner_club_links").upsert(
       {
         partner_id: partnerId,

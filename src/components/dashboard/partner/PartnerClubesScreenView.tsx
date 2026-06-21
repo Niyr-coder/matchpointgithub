@@ -1,6 +1,7 @@
 // Client view de PartnerClubesScreen — layout 1:1 (RoleScreens2.jsx 321-337).
 "use client";
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -30,6 +31,7 @@ const PLACEHOLDER_ROWS: ClubRow[] = Array.from({ length: 4 }).map((_, i) => ({
 
 export function PartnerClubesScreenView({ data }: { data: ClubesData }) {
   const toast = useToast();
+  const router = useRouter();
   const { ask } = usePromptModal();
   const [isPending, startTransition] = useTransition();
 
@@ -38,14 +40,15 @@ export function PartnerClubesScreenView({ data }: { data: ClubesData }) {
       toast({ icon: "alert-triangle", title: "Sin partner activo" });
       return;
     }
-    const clubId = await ask({
+    const linkCode = await ask({
       title: "Vincular club · 1/2",
-      label: "ID del club",
-      placeholder: "UUID del club",
+      label: "Código del club",
+      placeholder: "CLB-XXXX-XXXX",
       required: true,
       confirmLabel: "Siguiente",
+      validate: (v) => (v.trim().length < 4 ? "Ingresa el código completo." : null),
     });
-    if (clubId == null) return;
+    if (linkCode == null) return;
     const shareStr = await ask({
       title: "Vincular club · 2/2",
       label: "Revenue share (%)",
@@ -61,11 +64,15 @@ export function PartnerClubesScreenView({ data }: { data: ClubesData }) {
     startTransition(async () => {
       const res = await linkClubToPartner({
         partnerId: data.partnerId!,
-        clubId: clubId.trim(),
+        linkCode: linkCode.trim(),
         revenueSharePct: Number(shareStr) || 0,
       });
-      if (res.ok) toast({ icon: "check", title: "Club vinculado" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      if (res.ok) {
+        toast({ icon: "check", title: "Club vinculado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
     });
   };
 
@@ -122,9 +129,21 @@ export function PartnerClubesScreenView({ data }: { data: ClubesData }) {
       k: "a",
       l: "",
       align: "right",
-      render: () => (
-        <button className="btn btn-primary" style={{ fontSize: 10.5 }} disabled={!hasReal}>
-          Gestionar
+      render: (c) => (
+        <button
+          type="button"
+          className="btn"
+          style={{
+            fontSize: 10.5,
+            background: "#fff",
+            border: "1px solid var(--border)",
+          }}
+          disabled={!hasReal}
+          onClick={() => {
+            router.push(`/dashboard/partner/p-torneos?club=${encodeURIComponent(c.id)}`);
+          }}
+        >
+          Ver eventos
         </button>
       ),
     },

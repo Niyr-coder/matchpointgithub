@@ -223,7 +223,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
   },
   partner: {
     "p-ligas": () => <PartnerLigasScreen />,
-    "p-torneos": () => <PartnerTorneosScreen />,
+    "p-torneos": (sp) => <PartnerTorneosScreen searchParams={sp} />,
     "p-brackets": () => <PartnerBracketsScreen />,
     "p-inscritos": () => <PartnerInscritosScreen />,
     "p-clubes": () => <PartnerClubesScreen />,

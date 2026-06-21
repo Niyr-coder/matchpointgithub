@@ -10,6 +10,7 @@ import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { updateClub } from "@/server/actions/clubs";
 import { ClubMapPicker } from "@/components/dashboard/clubes/ClubMapPicker";
+import { ClubPartnerLinkPanel } from "./ClubPartnerLinkPanel";
 
 type Item = [string, string] | [string, string, "critical"];
 export type Section = { i: string; t: string; items: Item[] };
@@ -21,6 +22,7 @@ export type ConfigData = {
   latitude: number | null;
   longitude: number | null;
   version: number | null;
+  partnerLinkCode: string | null;
 };
 
 // Sin fallback inventado: si no hay clubId resuelto, secciones con valores `—`.
@@ -81,6 +83,7 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
   // en vez de la lista de items. Va al inicio porque es lo más visible públicamente.
   const SECTIONS: Record<string, Section> = {
     visual: { i: "image", t: "Identidad visual", items: [] },
+    partners: { i: "handshake", t: "Partners", items: [] },
     ...SECTIONS_DATA,
   };
   const SECTION_KEYS = Object.keys(SECTIONS);
@@ -329,6 +332,8 @@ export function ClubConfigScreenView({ data }: { data: ConfigData }) {
               onUploadLogo={(url) => persistClubAsset("logoUrl", url)}
               onUploadCover={(url) => persistClubAsset("coverUrl", url)}
             />
+          ) : active === "partners" && data.clubId ? (
+            <ClubPartnerLinkPanel clubId={data.clubId} linkCode={data.partnerLinkCode} />
           ) : cur.items.map(([k, v, critical], i) => (
             <div
               key={k}

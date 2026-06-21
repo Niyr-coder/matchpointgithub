@@ -1,24 +1,41 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { ScoreMatchCard } from "@/components/dashboard/brackets/ScoreMatchCard";
 import { useToast } from "../ToastProvider";
+import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import {
   closeGroupStage,
   drawTournamentGroups,
   generateKnockoutFromGroups,
+  getGroupStageSummary,
   reportGroupMatch,
+  saveGroupStageScheduling,
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
+import { GroupStageScheduleView } from "./GroupStageScheduleView";
+
+export type GroupStageCategory = {
+  id: string;
+  name: string;
+  stage: string;
+  acceptedCount: number;
+};
 
 type Props = {
   tournamentId: string;
-  acceptedCount: number;
+  categories: GroupStageCategory[];
+  clubCourts: Array<{ id: string; label: string }>;
   registrationLabels: Record<string, string>;
+  initialCategoryId: string | null;
   initial: GroupStageSummary | null;
 };
+
+type GroupRow = GroupStageSummary["groups"][number];
+type ViewMode = "groups" | "schedule";
 
 const STAGE_LABEL: Record<string, string> = {
   pending_groups: "Pendiente sorteo",
@@ -28,24 +45,154 @@ const STAGE_LABEL: Record<string, string> = {
   complete: "Finalizada",
 };
 
+function isoToLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToIso(local: string): string {
+  return new Date(local).toISOString();
+}
+
+function parseSetsWon(score: unknown, side: "a" | "b"): number | null {
+  if (!score || typeof score !== "object") return null;
+  const sets = (score as { sets?: Array<{ a: number; b: number }> }).sets;
+  if (!sets?.length) return null;
+  const first = sets[0];
+  return side === "a" ? first.a : first.b;
+}
+
+function isMatchDone(status: string): boolean {
+  return status === "reported" || status === "confirmed";
+}
+
 export function GroupStagePanel({
   tournamentId,
-  acceptedCount,
+  categories,
+  clubCourts,
   registrationLabels,
+  initialCategoryId,
   initial,
 }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
-  const [reportMatchId, setReportMatchId] = useState<string | null>(null);
-  const [setsA, setSetsA] = useState("2");
-  const [setsB, setSetsB] = useState("0");
+  const [reportingMatchId, setReportingMatchId] = useState<string | null>(null);
+  const [matchFilter, setMatchFilter] = useState<"pending" | "all">("pending");
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("groups");
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
+    initialCategoryId ?? categories[0]?.id ?? null,
+  );
+  const [summary, setSummary] = useState<GroupStageSummary | null>(
+    initial && initial.categoryId === (initialCategoryId ?? categories[0]?.id) ? initial : null,
+  );
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
-  const summary = initial;
+  const [selectedCourts, setSelectedCourts] = useState<string[]>([]);
+  const [slotMin, setSlotMin] = useState(50);
+  const [fechaGap, setFechaGap] = useState(24);
+  const [roundOneStart, setRoundOneStart] = useState("");
+
+  const [categoryStages, setCategoryStages] = useState<Record<string, string>>(() =>
+    Object.fromEntries(categories.map((c) => [c.id, c.stage])),
+  );
+
+  useEffect(() => {
+    setCategoryStages(Object.fromEntries(categories.map((c) => [c.id, c.stage])));
+  }, [categories]);
+
+  useEffect(() => {
+    if (summary?.categoryId && summary.stage) {
+      setCategoryStages((prev) => ({ ...prev, [summary.categoryId]: summary.stage }));
+    }
+  }, [summary?.categoryId, summary?.stage]);
+
+  const reloadSummary = useCallback(
+    async (categoryId: string) => {
+      setLoadingSummary(true);
+      const res = await getGroupStageSummary({ tournamentId, categoryId });
+      if (res.ok) setSummary(res.data);
+      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      setLoadingSummary(false);
+    },
+    [tournamentId, toast],
+  );
+
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    if (summary?.categoryId === activeCategoryId) return;
+    setSummary(null);
+    void reloadSummary(activeCategoryId);
+  }, [activeCategoryId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const s = summary?.config.scheduling;
+    setSelectedCourts(s?.courtIds ?? clubCourts.slice(0, Math.min(5, clubCourts.length)).map((c) => c.id));
+    setSlotMin(s?.slotDurationMin ?? 50);
+    setFechaGap(s?.fechaGapHours ?? 24);
+    setRoundOneStart(s?.roundOneStartsAt ? isoToLocalInput(s.roundOneStartsAt) : "");
+  }, [summary?.categoryId, summary?.config.scheduling, clubCourts]);
+
+  useRealtimeRefresh(
+    activeCategoryId
+      ? [
+          { table: "tournament_group_matches" },
+          { table: "tournament_groups", filter: `category_id=eq.${activeCategoryId}` },
+          { table: "tournament_categories", filter: `id=eq.${activeCategoryId}` },
+        ]
+      : [],
+    {
+      enabled: !!activeCategoryId,
+      onChange: () => {
+        if (activeCategoryId) void reloadSummary(activeCategoryId);
+      },
+    },
+  );
+
   const stage = summary?.stage ?? "pending_groups";
+  const groups = summary?.groups ?? [];
+  const acceptedCount = summary?.acceptedCount ?? 0;
 
-  const wrap = (key: string, fn: () => Promise<unknown>, ok: string) => {
+  useEffect(() => {
+    if (groups.length === 0) {
+      setSelectedGroupId(null);
+      return;
+    }
+    if (!selectedGroupId || !groups.some((g) => g.id === selectedGroupId)) {
+      setSelectedGroupId(groups[0].id);
+    }
+  }, [groups, selectedGroupId]);
+
+  useEffect(() => {
+    setMatchFilter("pending");
+    setViewMode("groups");
+  }, [activeCategoryId]);
+
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? groups[0] ?? null;
+  const teamsPerGroup =
+    summary && summary.config.groupsCount > 0
+      ? Math.floor(acceptedCount / summary.config.groupsCount)
+      : 0;
+
+  const selectedPendingCount = selectedGroup
+    ? selectedGroup.matches.filter((m) => !isMatchDone(m.status)).length
+    : 0;
+  const selectedTotalCount = selectedGroup?.matches.length ?? 0;
+
+  const displayedMatches = useMemo(() => {
+    if (!selectedGroup) return [];
+    if (matchFilter === "all") return selectedGroup.matches;
+    return selectedGroup.matches.filter((m) => !isMatchDone(m.status));
+  }, [selectedGroup, matchFilter]);
+
+  useEffect(() => {
+    setMatchFilter("pending");
+  }, [selectedGroupId]);
+
+  const wrap = (key: string, fn: () => Promise<unknown>, ok: string, after?: () => void) => {
     if (busy) return;
     setBusy(key);
     startTx(async () => {
@@ -53,7 +200,9 @@ export function GroupStagePanel({
         const res = (await fn()) as { ok: boolean; error?: { message: string } };
         if (res.ok) {
           toast({ icon: "check", title: ok });
+          if (activeCategoryId) await reloadSummary(activeCategoryId);
           router.refresh();
+          after?.();
         } else {
           toast({
             icon: "alert-triangle",
@@ -63,20 +212,68 @@ export function GroupStagePanel({
         }
       } finally {
         setBusy(null);
+        setReportingMatchId(null);
       }
     });
   };
 
-  const onDraw = () =>
+  const onSaveScheduling = () => {
+    if (!activeCategoryId) return;
+    if (selectedCourts.length === 0) {
+      toast({ icon: "alert-triangle", title: "Elige al menos una cancha" });
+      return;
+    }
+    wrap(
+      "sched",
+      () =>
+        saveGroupStageScheduling({
+          tournamentId,
+          categoryId: activeCategoryId,
+          scheduling: {
+            courtIds: selectedCourts,
+            slotDurationMin: slotMin,
+            fechaGapHours: fechaGap,
+            roundOneStartsAt: roundOneStart ? localInputToIso(roundOneStart) : null,
+          },
+        }),
+      "Programación guardada",
+    );
+  };
+
+  const onDraw = () => {
+    if (!summary || !activeCategoryId) return;
+    if (selectedCourts.length === 0 && clubCourts.length > 0) {
+      toast({
+        icon: "alert-triangle",
+        title: "Configura canchas",
+        sub: "Selecciona las canchas activas y guarda la programación antes del sorteo.",
+      });
+      return;
+    }
     wrap(
       "draw",
-      () =>
-        drawTournamentGroups({
+      async () => {
+        if (selectedCourts.length > 0) {
+          const sched = await saveGroupStageScheduling({
+            tournamentId,
+            categoryId: activeCategoryId,
+            scheduling: {
+              courtIds: selectedCourts,
+              slotDurationMin: slotMin,
+              fechaGapHours: fechaGap,
+              roundOneStartsAt: roundOneStart ? localInputToIso(roundOneStart) : null,
+            },
+          });
+          if (!sched.ok) return sched;
+        }
+        return drawTournamentGroups({
           tournamentId,
-          categoryId: summary!.categoryId,
-        }),
+          categoryId: summary.categoryId,
+        });
+      },
       "Grupos sorteados y calendario generado",
     );
+  };
 
   const onCloseGroups = () =>
     wrap(
@@ -100,18 +297,10 @@ export function GroupStagePanel({
       "Cuadro final generado",
     );
 
-  const onReport = (matchId: string) => {
-    const a = Number(setsA);
-    const b = Number(setsB);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) {
-      toast({
-        icon: "alert-triangle",
-        title: "Marcador inválido",
-        sub: "Indica sets ganados por cada lado (no pueden empatar).",
-      });
-      return;
-    }
-    const winnerSide = a > b ? "a" : "b";
+  const onScoreSubmit = (matchId: string, setsA: number, setsB: number) => {
+    if (busy) return;
+    const winnerSide = setsA > setsB ? "a" : "b";
+    setReportingMatchId(matchId);
     wrap(
       "report",
       () =>
@@ -119,253 +308,529 @@ export function GroupStagePanel({
           tournamentId,
           matchId,
           winnerSide,
-          score: { sets: [{ a, b }] },
+          score: { sets: [{ a: setsA, b: setsB }] },
         }),
       "Resultado registrado",
     );
-    setReportMatchId(null);
   };
 
-  if (!summary) {
+  if (categories.length === 0) {
     return (
-      <div className="card" style={{ padding: 18 }}>
+      <div className="card mp-grp-panel">
         <div className="label-mp">Fase de grupos</div>
-        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--muted-fg)" }}>
-          Crea una categoría con config de grupos para este torneo.
-        </p>
+        <p className="mp-grp-empty">Crea una categoría con config de grupos para este torneo.</p>
       </div>
     );
   }
 
+  const schedulePendingCount = useMemo(
+    () =>
+      groups.reduce(
+        (n, g) => n + g.matches.filter((m) => !isMatchDone(m.status)).length,
+        0,
+      ),
+    [groups],
+  );
+  const scheduleTotalCount = useMemo(
+    () => groups.reduce((n, g) => n + g.matches.length, 0),
+    [groups],
+  );
+
+  const canEditScores = stage === "group_stage";
+  const showScheduling = stage === "pending_groups" || stage === "group_stage";
+
   return (
-    <div className="card" style={{ padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div className="card mp-grp-panel">
+      <div className="mp-grp-panel-head">
         <div>
-          <div className="label-mp">Fase de grupos · {summary.categoryName}</div>
-          <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted-fg)" }}>
-            {summary.config.groupsCount} grupos · top {summary.config.advancePerGroup} por grupo ·{" "}
-            {STAGE_LABEL[stage] ?? stage}
+          <div className="label-mp">Fase de grupos</div>
+          <p className="mp-grp-panel-sub">
+            Cada categoría avanza por separado. Elige una para sortear, programar canchas y cargar
+            marcadores.
           </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {stage === "pending_groups" && (
-            <ActionBtn
-              icon="shuffle"
-              label="Sortear grupos"
-              onClick={onDraw}
-              loading={busy === "draw"}
-              disabled={acceptedCount < summary.config.groupsCount}
-              primary
-            />
-          )}
-          {stage === "group_stage" && (
-            <ActionBtn
-              icon="lock"
-              label="Cerrar fase de grupos"
-              onClick={onCloseGroups}
-              loading={busy === "close"}
-              primary
-            />
-          )}
-          {stage === "knockout" && (
-            <Link href="/dashboard/partner/brackets" className="btn btn-primary" style={{ fontSize: 12 }}>
-              Ver bracket en vivo
-            </Link>
-          )}
-          {stage === "group_complete" && (
-            <ActionBtn
-              icon="trophy"
-              label="Generar cuadro final"
-              onClick={onKnockout}
-              loading={busy === "ko"}
-              primary
-            />
-          )}
         </div>
       </div>
 
-      {stage === "pending_groups" && acceptedCount < summary.config.groupsCount && (
-        <p style={{ margin: "12px 0 0", fontSize: 12, color: "#dc2626" }}>
-          Necesitas al menos {summary.config.groupsCount} inscripciones aceptadas (tienes{" "}
-          {acceptedCount}).
-        </p>
-      )}
-
-      {summary.groups.length > 0 && (
-        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 16 }}>
-          {summary.groups.map((g) => (
-            <div
-              key={g.id}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                overflow: "hidden",
-              }}
+      <div className="mp-grp-category-bar" role="tablist" aria-label="Categorías">
+        {categories.map((c) => {
+          const on = c.id === activeCategoryId;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              className={`mp-grp-category-tab${on ? " is-active" : ""}`}
+              onClick={() => setActiveCategoryId(c.id)}
             >
-              <div
-                style={{
-                  padding: "10px 14px",
-                  background: "var(--muted)",
-                  fontWeight: 900,
-                  fontSize: 12,
-                }}
-              >
-                Grupo {g.name}
-              </div>
-              <div style={{ padding: 14 }}>
-                <div className="label-mp" style={{ marginBottom: 8 }}>
-                  Tabla
-                </div>
-                <table style={{ width: "100%", fontSize: 11.5, borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", color: "var(--muted-fg)" }}>
-                      <th style={{ padding: "4px 6px" }}>#</th>
-                      <th style={{ padding: "4px 6px" }}>Equipo</th>
-                      <th style={{ padding: "4px 6px" }}>PJ</th>
-                      <th style={{ padding: "4px 6px" }}>G</th>
-                      <th style={{ padding: "4px 6px" }}>P</th>
-                      <th style={{ padding: "4px 6px" }}>Dif</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.standings.map((row) => (
-                      <tr key={row.registrationId}>
-                        <td style={{ padding: "4px 6px", fontWeight: 900 }}>{row.rank}</td>
-                        <td style={{ padding: "4px 6px" }}>
-                          {registrationLabels[row.registrationId] ?? row.registrationId.slice(0, 8)}
-                        </td>
-                        <td style={{ padding: "4px 6px" }}>{row.played}</td>
-                        <td style={{ padding: "4px 6px" }}>{row.wins}</td>
-                        <td style={{ padding: "4px 6px" }}>{row.losses}</td>
-                        <td style={{ padding: "4px 6px" }}>
-                          {row.setsWon - row.setsLost}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <span className="mp-grp-category-tab-name">{c.name}</span>
+              <span className="mp-grp-category-tab-stage">
+                {STAGE_LABEL[c.id === activeCategoryId ? stage : categoryStages[c.id]] ??
+                  categoryStages[c.id]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-                {stage === "group_stage" && g.matches.length > 0 && (
-                  <>
-                    <div className="label-mp" style={{ margin: "14px 0 8px" }}>
-                      Partidos
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {g.matches.map((m) => {
-                        const done = m.status === "reported" || m.status === "confirmed";
-                        const labelA =
-                          registrationLabels[m.sideARegistrationId] ??
-                          m.sideARegistrationId.slice(0, 8);
-                        const labelB =
-                          registrationLabels[m.sideBRegistrationId] ??
-                          m.sideBRegistrationId.slice(0, 8);
-                        return (
-                          <div
-                            key={m.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              padding: "8px 10px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              fontSize: 11.5,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <span>
-                              F{m.roundNo} · {labelA} vs {labelB}
-                              {done && m.winnerSide && (
-                                <span style={{ color: "var(--primary)", fontWeight: 800 }}>
-                                  {" "}
-                                  · {m.winnerSide === "a" ? labelA : labelB} gana
-                                </span>
-                              )}
-                            </span>
-                            {!done && (
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() => {
-                                  setReportMatchId(m.id);
-                                  setSetsA("2");
-                                  setSetsB("0");
-                                }}
-                              >
-                                Reportar
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      {(loadingSummary || summary?.categoryId !== activeCategoryId) && (
+        <p className="mp-grp-empty">Cargando categoría…</p>
       )}
 
-      {reportMatchId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 200,
-            padding: 16,
-          }}
-          onClick={() => setReportMatchId(null)}
-        >
-          <div
-            className="card"
-            style={{ padding: 20, width: "100%", maxWidth: 360 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="label-mp">Reportar resultado (sets ganados)</div>
-            <div className="mp-tournament-form-grid-2" style={{ marginTop: 12 }}>
-              <label style={{ fontSize: 12 }}>
-                Lado A
-                <input
-                  type="number"
-                  min={0}
-                  value={setsA}
-                  onChange={(e) => setSetsA(e.target.value)}
-                  style={{ width: "100%", marginTop: 4 }}
-                />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Lado B
-                <input
-                  type="number"
-                  min={0}
-                  value={setsB}
-                  onChange={(e) => setSetsB(e.target.value)}
-                  style={{ width: "100%", marginTop: 4 }}
-                />
-              </label>
+      {summary && summary.categoryId === activeCategoryId && (
+        <>
+          <div className="mp-grp-panel-head mp-grp-panel-head--sub">
+            <div>
+              <div className="label-mp">
+                {summary.categoryName} · {STAGE_LABEL[stage] ?? stage}
+              </div>
+              <p className="mp-grp-panel-sub">
+                {summary.config.groupsCount} grupos · {teamsPerGroup || 4} equipos c/u · top{" "}
+                {summary.config.advancePerGroup} clasifican · {acceptedCount} inscritos aceptados
+              </p>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button type="button" className="btn" onClick={() => setReportMatchId(null)}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy === "report"}
-                onClick={() => onReport(reportMatchId)}
-              >
-                Guardar
-              </button>
+            <div className="mp-grp-panel-actions">
+              {stage === "pending_groups" && (
+                <ActionBtn
+                  icon="shuffle"
+                  label="Sortear grupos"
+                  onClick={onDraw}
+                  loading={busy === "draw"}
+                  disabled={acceptedCount < summary.config.groupsCount}
+                  primary
+                />
+              )}
+              {stage === "group_stage" && (
+                <ActionBtn
+                  icon="lock"
+                  label="Cerrar fase de grupos"
+                  onClick={onCloseGroups}
+                  loading={busy === "close"}
+                  primary
+                />
+              )}
+              {stage === "knockout" && (
+                <Link href="/dashboard/partner/brackets" className="btn btn-primary mp-grp-link-btn">
+                  Ver bracket en vivo
+                </Link>
+              )}
+              {stage === "group_complete" && (
+                <ActionBtn
+                  icon="trophy"
+                  label="Generar cuadro final"
+                  onClick={onKnockout}
+                  loading={busy === "ko"}
+                  primary
+                />
+              )}
             </div>
           </div>
-        </div>
+
+          {stage === "pending_groups" && acceptedCount < summary.config.groupsCount && (
+            <p className="mp-grp-alert">
+              Necesitas al menos {summary.config.groupsCount} inscripciones aceptadas en esta
+              categoría (tienes {acceptedCount}).
+            </p>
+          )}
+
+          {showScheduling && clubCourts.length > 0 && (
+            <div className="mp-grp-scheduling-card">
+              <div className="mp-grp-scheduling-head">
+                <div>
+                  <div className="label-mp">Canchas activas · {summary.categoryName}</div>
+                  <p className="mp-grp-panel-sub">
+                    Elige cuántas canchas usar del club. Si hay más partidos que canchas en una
+                    fecha, se forman olas automáticas.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary mp-grp-action-btn"
+                  onClick={onSaveScheduling}
+                  disabled={busy === "sched" || selectedCourts.length === 0}
+                >
+                  {busy === "sched" ? "Guardando…" : "Guardar programación"}
+                </button>
+              </div>
+              <div className="mp-grp-court-picks">
+                {clubCourts.map((c) => {
+                  const on = selectedCourts.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`mp-grp-court-pick${on ? " is-on" : ""}`}
+                      onClick={() =>
+                        setSelectedCourts((prev) =>
+                          on ? prev.filter((id) => id !== c.id) : [...prev, c.id],
+                        )
+                      }
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mp-grp-scheduling-fields">
+                <label className="mp-grp-field">
+                  <span>Inicio fecha 1</span>
+                  <input
+                    type="datetime-local"
+                    value={roundOneStart}
+                    onChange={(e) => setRoundOneStart(e.target.value)}
+                  />
+                </label>
+                <label className="mp-grp-field">
+                  <span>Minutos por partido</span>
+                  <input
+                    type="number"
+                    min={15}
+                    max={240}
+                    value={slotMin}
+                    onChange={(e) => setSlotMin(Number(e.target.value) || 50)}
+                  />
+                </label>
+                <label className="mp-grp-field">
+                  <span>Horas entre fechas</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={fechaGap}
+                    onChange={(e) => setFechaGap(Number(e.target.value) || 24)}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {showScheduling && clubCourts.length === 0 && (
+            <p className="mp-grp-alert">
+              Este torneo no tiene canchas del club configuradas. Los partidos se generan sin
+              horario hasta que el club registre canchas.
+            </p>
+          )}
+
+          {groups.length > 0 && (
+            <div className="mp-grp-view-toolbar">
+              <div className="mp-grp-view-toggle" role="tablist" aria-label="Vista de partidos">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === "groups"}
+                  className={`mp-grp-view-tab${viewMode === "groups" ? " is-active" : ""}`}
+                  onClick={() => setViewMode("groups")}
+                >
+                  Por grupo
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === "schedule"}
+                  className={`mp-grp-view-tab${viewMode === "schedule" ? " is-active" : ""}`}
+                  onClick={() => setViewMode("schedule")}
+                >
+                  Por cancha
+                </button>
+              </div>
+              {scheduleTotalCount > 0 && (
+                <div className="mp-grp-filter mp-grp-filter--inline">
+                  <div className="mp-grp-filter-tabs" role="tablist" aria-label="Filtrar partidos">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={matchFilter === "pending"}
+                      className={`mp-grp-filter-tab${matchFilter === "pending" ? " is-active" : ""}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setMatchFilter("pending")}
+                    >
+                      Pendientes ({schedulePendingCount})
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={matchFilter === "all"}
+                      className={`mp-grp-filter-tab${matchFilter === "all" ? " is-active" : ""}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setMatchFilter("all")}
+                    >
+                      Todos ({scheduleTotalCount})
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {groups.length > 0 && viewMode === "schedule" && (
+            <GroupStageScheduleView
+              summary={summary}
+              registrationLabels={registrationLabels}
+              canEditScores={canEditScores}
+              matchFilter={matchFilter}
+              reportingMatchId={reportingMatchId}
+              busy={busy === "report"}
+              onScoreSubmit={onScoreSubmit}
+            />
+          )}
+
+          {groups.length > 0 && viewMode === "groups" && (
+            <div className="mp-grp-panel-body">
+              <aside className="mp-grp-sidebar" aria-label="Grupos y tablas">
+                <div className="label-mp mp-grp-sidebar-label">Grupos</div>
+                <div className="mp-grp-sidebar-list">
+                  {groups.map((g) => (
+                    <GroupStandingsCard
+                      key={g.id}
+                      group={g}
+                      active={selectedGroup?.id === g.id}
+                      advancePerGroup={summary.config.advancePerGroup}
+                      registrationLabels={registrationLabels}
+                      onSelect={() => setSelectedGroupId(g.id)}
+                    />
+                  ))}
+                </div>
+              </aside>
+
+              {selectedGroup && (
+                <div className="mp-grp-matches-pane">
+                  <div className="mp-grp-matches-head">
+                    <div>
+                      <div className="label-mp">
+                        Partidos · Grupo{" "}
+                        <span className="mp-grp-matches-group-tag">{selectedGroup.name}</span>
+                      </div>
+                      <p className="mp-grp-matches-sub">
+                        {selectedGroup.standings.length} equipos · {selectedPendingCount} pendientes
+                        {selectedTotalCount > 0 &&
+                        matchFilter === "all" &&
+                        selectedPendingCount < selectedTotalCount
+                          ? ` · ${selectedTotalCount - selectedPendingCount} finalizados`
+                          : ""}
+                      </p>
+                    </div>
+                    {selectedTotalCount > 0 && (
+                      <div className="mp-grp-filter mp-grp-filter--inline">
+                        <div
+                          className="mp-grp-filter-tabs"
+                          role="tablist"
+                          aria-label="Filtrar partidos"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={matchFilter === "pending"}
+                            className={`mp-grp-filter-tab${matchFilter === "pending" ? " is-active" : ""}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setMatchFilter("pending")}
+                          >
+                            Pendientes ({selectedPendingCount})
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={matchFilter === "all"}
+                            className={`mp-grp-filter-tab${matchFilter === "all" ? " is-active" : ""}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setMatchFilter("all")}
+                          >
+                            Todos ({selectedTotalCount})
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {canEditScores && selectedTotalCount > 0 && (
+                    <p className="mp-grp-filter-hint mp-grp-filter-hint--pane">
+                      Enter o salir del campo guarda el marcador
+                    </p>
+                  )}
+
+                  <div key={selectedGroup.id} className="mp-grp-matches-switch">
+                    <GroupMatchesPane
+                      matches={displayedMatches}
+                      totalCount={selectedTotalCount}
+                      matchFilter={matchFilter}
+                      registrationLabels={registrationLabels}
+                      canEditScores={canEditScores}
+                      reportingMatchId={reportingMatchId}
+                      busy={busy === "report"}
+                      onScoreSubmit={onScoreSubmit}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function GroupStandingsCard({
+  group,
+  active,
+  advancePerGroup,
+  registrationLabels,
+  onSelect,
+}: {
+  group: GroupRow;
+  active: boolean;
+  advancePerGroup: number;
+  registrationLabels: Record<string, string>;
+  onSelect: () => void;
+}) {
+  const pendingCount = group.matches.filter((m) => !isMatchDone(m.status)).length;
+  const doneCount = group.matches.length - pendingCount;
+
+  return (
+    <button
+      type="button"
+      className={`mp-grp-sidebar-card${active ? " is-active" : ""}`}
+      onClick={onSelect}
+      aria-pressed={active}
+    >
+      <div className="mp-grp-sidebar-card-head">
+        <span className="mp-grp-sidebar-card-title">
+          {active && <span className="mp-grp-sidebar-card-dot" aria-hidden />}
+          Grupo {group.name}
+        </span>
+        {group.matches.length > 0 && (
+          <span className="mp-grp-sidebar-card-meta">
+            {doneCount}/{group.matches.length}
+          </span>
+        )}
+      </div>
+      <div className="mp-grp-standings mp-grp-standings--compact">
+        <div className="mp-grp-standings-head">
+          <span>#</span>
+          <span>Equipo</span>
+          <span>PJ</span>
+          <span>G</span>
+          <span>P</span>
+          <span>Sets</span>
+        </div>
+        {group.standings.map((row) => {
+          const qualified = row.rank <= advancePerGroup;
+          const showCutoff =
+            row.rank === advancePerGroup &&
+            group.standings.some((r) => r.rank === advancePerGroup + 1);
+          return (
+            <Fragment key={row.registrationId}>
+              <div className={`mp-grp-standing-row${qualified ? " is-qualified" : ""}`}>
+                <span className="mp-grp-standing-rank">{row.rank}</span>
+                <span className="mp-grp-standing-name">
+                  {registrationLabels[row.registrationId] ?? "Equipo sin nombre"}
+                </span>
+                <span className="mp-grp-standing-stat">{row.played}</span>
+                <span className="mp-grp-standing-stat is-win">{row.wins}</span>
+                <span className="mp-grp-standing-stat is-loss">{row.losses}</span>
+                <span className="mp-grp-standing-stat">
+                  {row.setsWon}-{row.setsLost}
+                </span>
+              </div>
+              {showCutoff && (
+                <div
+                  className="mp-grp-cutoff"
+                  role="separator"
+                  aria-label={`Clasifican ${advancePerGroup}`}
+                >
+                  <span>Clasifican {advancePerGroup}</span>
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
+      {group.matches.length > 0 && pendingCount > 0 && (
+        <span className="mp-grp-sidebar-pending">{pendingCount} pendientes</span>
+      )}
+    </button>
+  );
+}
+
+function GroupMatchesPane({
+  matches,
+  totalCount,
+  registrationLabels,
+  canEditScores,
+  matchFilter,
+  reportingMatchId,
+  busy,
+  onScoreSubmit,
+}: {
+  matches: GroupRow["matches"];
+  totalCount: number;
+  registrationLabels: Record<string, string>;
+  canEditScores: boolean;
+  matchFilter: "pending" | "all";
+  reportingMatchId: string | null;
+  busy: boolean;
+  onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
+}) {
+  const rounds = useMemo(() => {
+    const map = new Map<number, typeof matches>();
+    for (const m of matches) {
+      const list = map.get(m.roundNo) ?? [];
+      list.push(m);
+      map.set(m.roundNo, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => a - b);
+  }, [matches]);
+
+  if (totalCount === 0) {
+    return <p className="mp-grp-empty">Sortea los grupos para generar el calendario.</p>;
+  }
+
+  if (matches.length === 0) {
+    return (
+      <p className="mp-grp-empty">
+        {matchFilter === "pending"
+          ? "No hay partidos pendientes en este grupo."
+          : "No hay partidos en este grupo."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mp-grp-rounds">
+      {matchFilter === "all" && matches.length === totalCount && (
+        <p className="mp-grp-filter-hint mp-grp-filter-hint--pane" style={{ marginTop: 0 }}>
+          {matches.every((m) => !isMatchDone(m.status))
+            ? "Todos los partidos siguen pendientes de marcador."
+            : "Los partidos con marcador aparecen atenuados."}
+        </p>
+      )}
+      {rounds.map(([roundNo, roundMatches]) => (
+        <div key={roundNo} className="mp-grp-round">
+          <div className="mp-grp-round-label">Fecha {roundNo}</div>
+          <div className="mp-grp-round-grid">
+            {roundMatches.map((m) => {
+              const done = isMatchDone(m.status);
+              const labelA = registrationLabels[m.sideARegistrationId] ?? "Equipo A";
+              const labelB = registrationLabels[m.sideBRegistrationId] ?? "Equipo B";
+              return (
+                <ScoreMatchCard
+                  key={m.id}
+                  matchId={m.id}
+                  labelA={labelA}
+                  labelB={labelB}
+                  scoreA={parseSetsWon(m.score, "a")}
+                  scoreB={parseSetsWon(m.score, "b")}
+                  winnerSide={m.winnerSide === "a" || m.winnerSide === "b" ? m.winnerSide : null}
+                  editable={canEditScores && !done}
+                  busy={reportingMatchId === m.id && busy}
+                  dimmed={done && matchFilter === "all"}
+                  meta={`Partido ${m.matchNo}`}
+                  onScoreSubmit={onScoreSubmit}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -388,10 +853,9 @@ function ActionBtn({
   return (
     <button
       type="button"
-      className={primary ? "btn btn-primary" : "btn"}
+      className={primary ? "btn btn-primary mp-grp-action-btn" : "btn mp-grp-action-btn"}
       onClick={onClick}
       disabled={disabled || loading}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}
     >
       <Icon name={icon} size={13} />
       {loading ? "…" : label}
