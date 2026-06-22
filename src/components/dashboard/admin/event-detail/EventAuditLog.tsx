@@ -106,6 +106,7 @@ function TimelineRow({ entry }: { entry: AuditEntry }) {
         </div>
         {open && entry.rawDiff ? (
           <pre
+            className="mp-touch-hscroll"
             style={{
               marginTop: 8,
               padding: 10,
@@ -114,7 +115,6 @@ function TimelineRow({ entry }: { entry: AuditEntry }) {
               borderRadius: 8,
               fontSize: 11,
               lineHeight: 1.5,
-              overflowX: "auto",
               maxHeight: 280,
             }}
           >

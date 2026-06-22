@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getServerClient } from "@/lib/db/client.server";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { isOnboardingIdentityComplete } from "@/lib/identity/person-name";
 
 export const metadata = {
   title: "MATCHPOINT · Onboarding",
@@ -66,19 +67,18 @@ export default async function OnboardingPage({
   }
 
   // currentStep = primer paso pendiente. Personal = birthdate + country + city.
-  const identityDone = !!(p.first_name && p.last_name && p.username);
+  const identityComplete = isOnboardingIdentityComplete(p);
   const personalDone = !!(p.birthdate && p.country && p.city);
   const handDone = !!p.dominant_hand;
   let currentStep: 0 | 1 | 2 | 3 = 0;
-  if (identityDone) currentStep = 1;
-  if (identityDone && personalDone) currentStep = 2;
-  if (identityDone && personalDone && handDone) currentStep = 3;
+  if (identityComplete) currentStep = 1;
+  if (identityComplete && personalDone) currentStep = 2;
+  if (identityComplete && personalDone && handDone) currentStep = 3;
 
-  // Si el wizard arranca en step 0 y first_name está vacío pero display_name
-  // existe (viene del signup), partimos el display_name como sugerencia.
+  // Si el wizard arranca en step 0 (OAuth sin nombre), sugerir desde display_name.
   let suggestedFirst = p.first_name;
   let suggestedLast = p.last_name;
-  if (!identityDone && p.display_name) {
+  if (!identityComplete && p.display_name) {
     const parts = p.display_name.trim().split(/\s+/);
     if (!suggestedFirst) suggestedFirst = parts[0] ?? null;
     if (!suggestedLast && parts.length > 1) suggestedLast = parts.slice(1).join(" ");
@@ -90,6 +90,7 @@ export default async function OnboardingPage({
       initialStatus={{
         completed: false,
         currentStep,
+        identityComplete,
         firstName: suggestedFirst,
         lastName: suggestedLast,
         username: p.username,

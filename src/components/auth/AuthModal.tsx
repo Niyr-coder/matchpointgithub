@@ -19,6 +19,7 @@ import type { SessionResponse } from "@/lib/schemas/identity";
 import { BetaPhaseAuthNotice } from "@/components/legal/BetaPhaseAuthNotice";
 import { LegalDocLinks } from "@/components/legal/LegalDocLinks";
 import { isBetaPhaseDisclosureEnabled } from "@/lib/legal/compliance";
+import { formatPersonNameInput } from "@/lib/identity/person-name";
 
 export type AuthMode = "signin" | "signup";
 
@@ -33,17 +34,24 @@ const USERNAME_HINT = "3–24 caracteres · letras, números, _ o .";
 
 // Si el server action retornó ok=true pero la página no navegó (caso raro de
 // useActionState + redirect en Next 16), forzamos navegación client-side.
-// Por defecto vamos a /dashboard/user; el caller puede overridear con `next`.
-function useAuthRedirectFallback(state: State, next?: string) {
+function useAuthRedirectFallback(
+  state: State,
+  next?: string,
+  options?: { afterSignup?: boolean },
+) {
   const router = useRouter();
   const fired = useRef(false);
   useEffect(() => {
     if (fired.current) return;
     if (state && state.ok) {
       fired.current = true;
-      router.replace(next || "/dashboard/user");
+      const fallbackNext = next || "/dashboard/user";
+      const dest = options?.afterSignup
+        ? `/onboarding?next=${encodeURIComponent(fallbackNext)}`
+        : fallbackNext;
+      router.replace(dest);
     }
-  }, [state, next, router]);
+  }, [state, next, options?.afterSignup, router]);
 }
 
 const inp: CSSProperties = {
@@ -269,7 +277,7 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
   const f = state && !state.ok ? state.error.fields : undefined;
   // Safety net: si el server action devolvió ok pero el redirect no propagó
   // (cuirks de Next 16 + Turbopack con useActionState), navegamos a mano.
-  useAuthRedirectFallback(state, next);
+  useAuthRedirectFallback(state, next, { afterSignup: true });
 
   // React 19 hace requestFormReset() después de cada form action, incluso si
   // falla. Para preservar lo que el usuario ya escribió (loss aversion +
@@ -305,7 +313,7 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
             autoComplete="name"
             autoFocus
             value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => setDisplayName(formatPersonNameInput(e.target.value))}
             style={inp}
           />
         </FieldLabel>
@@ -320,7 +328,7 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
             placeholder="vicente_uio"
             autoComplete="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
             aria-invalid={usernameInvalid || Boolean(f?.username?.[0])}
             style={inp}
           />

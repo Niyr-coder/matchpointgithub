@@ -141,7 +141,7 @@ export function CancelacionSection({
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <div className="mp-touch-hscroll">
           <div style={{ minWidth: 560, position: "relative", padding: "20px 0 40px" }}>
             <div style={{ position: "absolute", top: 36, left: "5%", right: "5%", height: 4, borderRadius: 9999, background: "linear-gradient(90deg, var(--primary) 0%, #34d399 25%, #fbbf24 50%, #dc2626 75%, #7c1d1d 100%)" }} />
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${tiers.length}, 1fr)`, gap: 8, position: "relative" }}>

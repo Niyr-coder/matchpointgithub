@@ -21,8 +21,16 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UsernameSchema } from "@/lib/schemas/common";
 import { MpDominantHandSchema } from "@/lib/schemas/identity";
+import {
+  formatPersonNameField,
+  isOnboardingIdentityComplete,
+} from "@/lib/identity/person-name";
 
-const NameSchema = z.string().trim().min(1, "Requerido").max(40);
+const NameSchema = z.string().trim().min(1, "Requerido").max(40).transform(formatPersonNameField);
+const OptionalNameSchema = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  NameSchema.optional(),
+);
 // Birthdate: ISO YYYY-MM-DD; mayor de 13 años (política básica).
 const BirthdateSchema = z
   .string()
@@ -44,6 +52,7 @@ const PhoneSchema = z
 export type OnboardingStatus = {
   completed: boolean;
   currentStep: 0 | 1 | 2 | 3;
+  identityComplete: boolean;
   firstName: string | null;
   lastName: string | null;
   username: string | null;
@@ -95,20 +104,22 @@ export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStat
 
     const completed = row.onboarded_at !== null;
 
+    const identityComplete = isOnboardingIdentityComplete(row);
+
     // currentStep = primer paso pendiente. Personal incluye país/ciudad
     // ahora, así que se considera done solo si birthdate Y city Y country.
     let currentStep: 0 | 1 | 2 | 3 = 0;
-    const identityDone = !!(row.first_name && row.last_name && row.username);
     const personalDone = !!(row.birthdate && row.country && row.city);
     const handDone = !!row.dominant_hand;
-    if (identityDone) currentStep = 1;
-    if (identityDone && personalDone) currentStep = 2;
-    if (identityDone && personalDone && handDone) currentStep = 3;
+    if (identityComplete) currentStep = 1;
+    if (identityComplete && personalDone) currentStep = 2;
+    if (identityComplete && personalDone && handDone) currentStep = 3;
     if (completed) currentStep = 3;
 
     return {
       completed,
       currentStep,
+      identityComplete,
       firstName: row.first_name,
       lastName: row.last_name,
       username: row.username,
@@ -126,8 +137,8 @@ const SaveStepSchema = z.discriminatedUnion("step", [
   z.object({
     step: z.literal("identity"),
     firstName: NameSchema,
-    lastName: NameSchema,
-    username: UsernameSchema,
+    lastName: OptionalNameSchema,
+    username: UsernameSchema.transform((v) => v.toLowerCase()),
   }),
   z.object({
     step: z.literal("personal"),
@@ -163,12 +174,14 @@ export async function saveOnboardingStep(
           username: ["Ese username ya está en uso"],
         });
       }
-      const display = `${payload.firstName.trim()} ${payload.lastName.trim()}`.trim();
+      const display = payload.lastName
+        ? `${payload.firstName} ${payload.lastName}`.trim()
+        : payload.firstName.trim();
       const { error } = await supabase
         .from("profiles")
         .update({
           first_name: payload.firstName.trim(),
-          last_name: payload.lastName.trim(),
+          last_name: payload.lastName?.trim() || null,
           username: payload.username,
           display_name: display,
         } as never)
@@ -222,7 +235,6 @@ export async function saveOnboardingStep(
     };
     if (
       !r.first_name ||
-      !r.last_name ||
       !r.username ||
       !r.birthdate ||
       !r.country ||

@@ -109,7 +109,7 @@ export function EmployeeCourtScheduleGrid({
   const colTemplate = `52px repeat(${courtCount}, minmax(76px, 1fr))`;
 
   return (
-    <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+    <div className="mp-touch-hscroll">
       <div style={{ minWidth: Math.max(640, 52 + courtCount * 80) }}>
         <div
           style={{

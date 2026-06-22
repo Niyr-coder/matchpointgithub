@@ -146,7 +146,35 @@ Confirmar:
 2. **Cards no se cortan** en mobile (deben stackear o ser carrousel).
 3. **Desktop NO cambió** vs antes del cambio.
 
-## 6. Cosas que rompen seguido
+## 6. Scroll horizontal dentro de cards (tablas, heatmaps, tabs)
+
+Contenido ancho **dentro** de una card debe scrollear horizontalmente sin
+desbordar la página. Patrón canónico:
+
+```jsx
+<div className="mp-touch-hscroll">
+  <div style={{ minWidth: 520 }}>{/* grid / tabla ancha */}</div>
+</div>
+```
+
+Comportamiento de `.mp-touch-hscroll` (y clases legacy `*-scroll`,
+`.mp-table-scroll`, `.mp-subtle-hscroll`):
+
+- **Touch:** sin barra visible, `touch-action: pan-x`, deslizar con el dedo.
+- **Desktop:** barra fina casi invisible (4px, ~16% opacidad), no el gris
+  oscuro del scrollbar global.
+
+Auditoría regenerable:
+
+```bash
+node scripts/scroll-touch-audit.mjs          # overflow inline sin clase
+node scripts/responsive-audit.mjs              # grids inline sin wrapper
+```
+
+Regla: **nunca** `overflowX: "auto"` inline ni `overflow-x-auto` suelto —
+siempre `mp-touch-hscroll` o `mp-table-scroll`.
+
+## 7. Cosas que rompen seguido
 
 - **Inline `style={{padding: "100px 32px"}}` para una section** → en
   mobile son 200px verticales perdidos. Convertir a `py-15 md:py-25`.
@@ -160,7 +188,7 @@ Confirmar:
 - **Form con `gridTemplateColumns: "1fr 1fr"`** → campos quedan
   apretadísimos en mobile. Usar `grid-cols-1 sm:grid-cols-2`.
 
-## 7. Convención v1 que NO seguimos en v2 (intencional)
+## 8. Convención v1 que NO seguimos en v2 (intencional)
 
 v1 usaba Tailwind para TODO (incluyendo colores y gradients). v2 mezcla:
 Tailwind para layout, inline para tokens visuales. Razón: los gradients

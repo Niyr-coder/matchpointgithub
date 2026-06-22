@@ -42,11 +42,9 @@ export function CategoryFilterBar({ categories, active, onChange }: Props) {
         role="group"
         aria-label="Categorías"
         onKeyDown={onKeyDown}
-        className="flex gap-2 overflow-x-auto mp-blog-filter-row"
+        className="flex gap-2 mp-touch-hscroll mp-blog-filter-row"
         style={{
           scrollSnapType: "x mandatory",
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
         }}
       >
         {categories.map((cat) => {

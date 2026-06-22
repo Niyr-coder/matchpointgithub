@@ -149,7 +149,7 @@ export function BuscarMatchView() {
             de abrir
           </div>
         </div>
-        <div style={{ display: "flex", gap: 22, alignItems: "center", overflowX: "auto", flex: 1, scrollbarWidth: "none" }}>
+        <div className="mp-touch-hscroll" style={{ display: "flex", gap: 22, alignItems: "center", flex: 1 }}>
           {JUST_OPENED.map((j) => (
             <div key={j.name} style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
               <div style={{ width: 30, height: 30, borderRadius: "50%", background: j.bg, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #1f1f1f", flexShrink: 0 }}>
@@ -445,7 +445,7 @@ function FineFilter({ label, value, onChange, options }: { label: string; value:
 
 function ListView({ matches, onJoin }: { matches: Match[]; onJoin: () => void }) {
   return (
-    <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+    <div className="card mp-touch-hscroll" style={{ padding: 0 }}>
       <div style={{ minWidth: 720 }}>
         <div style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: BM_LIST_COLS, gap: 14, alignItems: "center", fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--muted-fg)" }}>
           <div>Cuándo</div>

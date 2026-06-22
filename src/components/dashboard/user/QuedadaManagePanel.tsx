@@ -642,7 +642,7 @@ function MatchCarouselCard({
 
           {/* Navegación: cuadritos numerados por cancha */}
           {n > 1 && (
-            <div style={{ display: "flex", gap: 4, justifyContent: "center", overflowX: "auto", flexShrink: 0 }}>
+            <div className="mp-touch-hscroll" style={{ display: "flex", gap: 4, justifyContent: "center", flexShrink: 0 }}>
               {matches.map((m, i) => {
                 const on = i === active;
                 return (
@@ -1015,7 +1015,7 @@ function LastMatchCard({ matches }: { matches: HistoryItem[] }) {
 
       {/* Footer: una cancha por número */}
       {matches.length > 1 && (
-        <div style={{ display: "flex", gap: 4, justifyContent: "center", overflowX: "auto", borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 2 }}>
+        <div className="mp-touch-hscroll" style={{ display: "flex", gap: 4, justifyContent: "center", borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 2 }}>
           {matches.map((mm, i) => {
             const on = i === active;
             return (
@@ -2432,7 +2432,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
       ))}
     </div>
   ) : data && data.canManage ? (
-      <div style={{ display: "flex", gap: 2, overflowX: "auto" }}>
+      <div className="mp-touch-hscroll" style={{ display: "flex", gap: 2 }}>
         {sectionTabs.map((t) => {
           const on = t.k === activeTab;
           return (
@@ -3619,7 +3619,7 @@ function PagosTab({
                 )}
               </div>
 
-              <div style={{ overflowX: "auto" }}>
+              <div className="mp-touch-hscroll">
               <div style={{ minWidth: 560 }}>
               <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 10, padding: "9px 14px" }}>
                 {headerCell("Inscrito")}

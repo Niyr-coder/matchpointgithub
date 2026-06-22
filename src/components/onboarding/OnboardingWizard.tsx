@@ -25,6 +25,7 @@ import {
   type OnboardingStatus,
 } from "@/server/actions/onboarding";
 import { LATAM_COUNTRIES, findCountry, findProvince } from "@/lib/geo/latam";
+import { formatPersonNameInput, formatPhoneInput } from "@/lib/identity/person-name";
 
 type Hand = "left" | "right";
 
@@ -55,6 +56,8 @@ export function OnboardingWizard({
   const [step, setStep] = useState<0 | 1 | 2 | 3>(
     initialStatus ? initialStatus.currentStep : 0,
   );
+  const identityComplete = initialStatus?.identityComplete ?? false;
+  const minStep = identityComplete ? 1 : 0;
   const [status, setStatus] = useState<OnboardingStatus | null>(initialStatus ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +228,12 @@ export function OnboardingWizard({
     <>
       <WizardHeader
         step={step}
-        onBack={step > 0 ? () => setStep((s) => (s > 0 ? ((s - 1) as 0 | 1 | 2 | 3) : s)) : null}
+        identityComplete={identityComplete}
+        onBack={
+          step > minStep
+            ? () => setStep((s) => (s > minStep ? ((s - 1) as 0 | 1 | 2 | 3) : s))
+            : null
+        }
         onSkip={isPage ? null : handleSkip}
         onClose={isPage ? null : close}
         busy={busy}
@@ -328,18 +336,22 @@ export function OnboardingWizard({
 // ── header con progreso ────────────────────────────────────────────────
 function WizardHeader({
   step,
+  identityComplete,
   onBack,
   onSkip,
   onClose,
   busy,
 }: {
   step: 0 | 1 | 2 | 3;
+  identityComplete: boolean;
   onBack: (() => void) | null;
   onSkip: (() => void) | null;
   onClose: (() => void) | null;
   busy: boolean;
 }) {
-  const pct = ((step + 1) / 4) * 100;
+  const totalSteps = identityComplete ? 3 : 4;
+  const stepNumber = identityComplete ? step : step + 1;
+  const pct = (stepNumber / totalSteps) * 100;
   return (
     <div style={{ borderBottom: "1px solid var(--border)" }}>
       <div
@@ -383,7 +395,7 @@ function WizardHeader({
               color: "var(--muted-fg)",
             }}
           >
-            Paso {step + 1} de 4
+            Paso {stepNumber} de {totalSteps}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -500,14 +512,18 @@ function StepIdentity({
   const [lastName, setLastName] = useState(initial?.lastName ?? "");
   const [username, setUsername] = useState(initial?.username ?? "");
 
-  const canSubmit = firstName.trim() && lastName.trim() && username.trim();
+  const canSubmit = firstName.trim() && username.trim();
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         if (!canSubmit || busy) return;
-        onSubmit(firstName.trim(), lastName.trim(), username.trim().toLowerCase());
+        onSubmit(
+          firstName.trim(),
+          lastName.trim(),
+          username.trim().toLowerCase(),
+        );
       }}
       style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
@@ -527,20 +543,19 @@ function StepIdentity({
         <FieldLabel label="Nombre" error={errors.firstName}>
           <input
             value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
+            onChange={(e) => setFirstName(formatPersonNameInput(e.target.value))}
             placeholder="Vicente"
             autoComplete="given-name"
             required
             style={inp}
           />
         </FieldLabel>
-        <FieldLabel label="Apellido" error={errors.lastName}>
+        <FieldLabel label="Apellido (opcional)" error={errors.lastName}>
           <input
             value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
+            onChange={(e) => setLastName(formatPersonNameInput(e.target.value))}
             placeholder="Maldonado"
             autoComplete="family-name"
-            required
             style={inp}
           />
         </FieldLabel>
@@ -660,13 +675,28 @@ function StepPersonal({
           className="font-heading"
           style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
         >
-          Ubicación y contacto<span className="dot">.</span>
+          Datos personales<span className="dot">.</span>
         </h2>
         <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
-          Tu ubicación nos ayuda a sugerirte clubes y torneos cerca. El teléfono
-          es opcional, solo visible para clubes y rivales en encuentros confirmados.
+          Confirmamos tu edad (mínimo 13 años). Luego tu ubicación nos ayuda a
+          sugerirte clubes y torneos cerca. El teléfono es opcional.
         </p>
       </div>
+
+      <FieldLabel
+        label="Fecha de nacimiento"
+        hint="Debes tener al menos 13 años para usar MATCHPOINT."
+        error={errors.birthdate}
+      >
+        <input
+          type="date"
+          value={birthdate}
+          onChange={(e) => setBirthdate(e.target.value)}
+          required
+          max={new Date().toISOString().slice(0, 10)}
+          style={inp}
+        />
+      </FieldLabel>
 
       <FieldLabel label="País" error={errors.country}>
         <select
@@ -729,35 +759,24 @@ function StepPersonal({
         </select>
       </FieldLabel>
 
-      <div className="mp-grid-form-2 gap-2.5">
-        <FieldLabel label="Fecha de nacimiento" error={errors.birthdate}>
-          <input
-            type="date"
-            value={birthdate}
-            onChange={(e) => setBirthdate(e.target.value)}
-            required
-            max={new Date().toISOString().slice(0, 10)}
-            style={inp}
-          />
-        </FieldLabel>
-        <FieldLabel
-          label="Teléfono (opcional)"
-          hint="Prefijo del país. Puedes editarlo."
-          error={errors.phone}
-        >
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => {
-              phoneTouched.current = true;
-              setPhone(e.target.value);
-            }}
-            placeholder="+593 99 123 4567"
-            autoComplete="tel"
-            style={inp}
-          />
-        </FieldLabel>
-      </div>
+      <FieldLabel
+        label="Teléfono (opcional)"
+        hint="Solo números y símbolos de teléfono. Prefijo del país."
+        error={errors.phone}
+      >
+        <input
+          type="tel"
+          inputMode="tel"
+          value={phone}
+          onChange={(e) => {
+            phoneTouched.current = true;
+            setPhone(formatPhoneInput(e.target.value));
+          }}
+          placeholder="+593 99 123 4567"
+          autoComplete="tel"
+          style={inp}
+        />
+      </FieldLabel>
 
       <button
         type="submit"

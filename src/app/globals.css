@@ -1311,15 +1311,8 @@ select.mp-input:disabled {
   .mp-grid-split-cart { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 }
 
-/* Tablas / filas admin: scroll horizontal en mobile */
-.mp-table-scroll {
-  width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-}
-
+/* Tablas / filas admin: scroll horizontal en mobile — reglas de barra en bloque
+   «mp-touch-hscroll» más abajo; acá solo hijos con ancho mínimo de fila. */
 .mp-table-scroll > .mp-table-row {
   min-width: 640px;
 }
@@ -1430,10 +1423,6 @@ select.mp-input:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   gap: 14px;
-}
-.mp-stf-schedule-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .mp-stf-schedule-inner {
   min-width: 480px;
@@ -1837,19 +1826,10 @@ select.mp-input:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .mp-role-home-calendar-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
   margin: 0 -2px;
-  padding-bottom: 4px;
 }
-/* Grid semanal de reservas: columnas fijas compartidas entre filas */
 .mp-reservas-grid-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
   margin: 0 -2px;
-  padding-bottom: 4px;
 }
 .mp-reservas-week-grid {
   min-width: 100%;
@@ -3556,10 +3536,6 @@ select.mp-input:disabled {
   gap: 14px;
   align-items: center;
 }
-.mp-partner-bracket-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
 .mp-partner-bracket-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4961,10 +4937,6 @@ input.mp-input.mp-bk-score-input {
   gap: 16px;
   align-items: start;
 }
-.mp-audit-stream-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
 .mp-admin-audit-log-inner {
   min-width: 680px;
 }
@@ -5036,10 +5008,6 @@ input.mp-input.mp-bk-score-input {
   grid-template-columns: 1.4fr 1fr auto auto;
   gap: 12px;
   align-items: center;
-}
-.mp-metrics-heatmap-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .mp-metrics-heatmap-inner {
   min-width: 520px;
@@ -5175,10 +5143,6 @@ input.mp-input.mp-bk-score-input {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-}
-.mp-coach-calendar-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .mp-coach-calendar-inner {
   min-width: 520px;
@@ -5328,10 +5292,6 @@ input.mp-input.mp-bk-score-input {
   gap: 12px;
   align-items: center;
 }
-.mp-club-sorteos-table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
 .mp-club-sorteos-table-inner {
   min-width: 720px;
 }
@@ -5344,10 +5304,6 @@ input.mp-input.mp-bk-score-input {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-}
-.mp-sandbox-grid-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .mp-sandbox-grid-inner {
   min-width: 300px;
@@ -6039,12 +5995,6 @@ input.mp-input.mp-bk-score-input {
   .mp-save-btn[data-saved="true"] .mp-save-icon { animation: none; }
 }
 
-.mp-featured-slots-scroll {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
-}
 .mp-featured-slots-scroll .mp-slots-row {
   width: max-content;
   min-width: 100%;
@@ -6247,8 +6197,27 @@ input.mp-input.mp-bk-score-input {
   }
 }
 
-/* Tablas — overflow contenido; barra fina visible (evita que el flex padre se expanda) */
-.mp-table-scroll {
+/* ── Scroll horizontal touch-friendly (canónico)
+   Touch: sin barra visible, deslizar con el dedo (pan-x).
+   Desktop: barra fina casi invisible — override del ::-webkit-scrollbar global.
+   Usar .mp-touch-hscroll en nuevos contenedores; las clases *-scroll legacy
+   heredan el mismo comportamiento. Ver docs/guides/06-responsive.md § scroll. */
+.mp-touch-hscroll,
+.mp-hscroll,
+.mp-table-scroll,
+.mp-subtle-hscroll,
+.mp-msg-filter-scroll,
+.mp-metrics-heatmap-scroll,
+.mp-audit-stream-scroll,
+.mp-coach-calendar-scroll,
+.mp-role-home-calendar-scroll,
+.mp-reservas-grid-scroll,
+.mp-stf-schedule-scroll,
+.mp-partner-bracket-scroll,
+.mp-club-sorteos-table-scroll,
+.mp-sandbox-grid-scroll,
+.mp-featured-slots-scroll,
+.mp-admin-event-txn-scroll {
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -6256,21 +6225,142 @@ input.mp-input.mp-bk-score-input {
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--border) 70%, transparent) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.mp-table-scroll::-webkit-scrollbar {
-  height: 6px;
+.mp-touch-hscroll::-webkit-scrollbar,
+.mp-hscroll::-webkit-scrollbar,
+.mp-table-scroll::-webkit-scrollbar,
+.mp-subtle-hscroll::-webkit-scrollbar,
+.mp-msg-filter-scroll::-webkit-scrollbar,
+.mp-metrics-heatmap-scroll::-webkit-scrollbar,
+.mp-audit-stream-scroll::-webkit-scrollbar,
+.mp-coach-calendar-scroll::-webkit-scrollbar,
+.mp-role-home-calendar-scroll::-webkit-scrollbar,
+.mp-reservas-grid-scroll::-webkit-scrollbar,
+.mp-stf-schedule-scroll::-webkit-scrollbar,
+.mp-partner-bracket-scroll::-webkit-scrollbar,
+.mp-club-sorteos-table-scroll::-webkit-scrollbar,
+.mp-sandbox-grid-scroll::-webkit-scrollbar,
+.mp-featured-slots-scroll::-webkit-scrollbar,
+.mp-admin-event-txn-scroll::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
 }
-.mp-table-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.mp-table-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 9999px;
+@media (hover: hover) and (pointer: fine) {
+  .mp-touch-hscroll,
+  .mp-hscroll,
+  .mp-table-scroll,
+  .mp-subtle-hscroll,
+  .mp-msg-filter-scroll,
+  .mp-metrics-heatmap-scroll,
+  .mp-audit-stream-scroll,
+  .mp-coach-calendar-scroll,
+  .mp-role-home-calendar-scroll,
+  .mp-reservas-grid-scroll,
+  .mp-stf-schedule-scroll,
+  .mp-partner-bracket-scroll,
+  .mp-club-sorteos-table-scroll,
+  .mp-sandbox-grid-scroll,
+  .mp-featured-slots-scroll,
+  .mp-admin-event-txn-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted-fg) 16%, transparent) transparent;
+    padding-bottom: 2px;
+  }
+  .mp-touch-hscroll::-webkit-scrollbar,
+  .mp-hscroll::-webkit-scrollbar,
+  .mp-table-scroll::-webkit-scrollbar,
+  .mp-subtle-hscroll::-webkit-scrollbar,
+  .mp-msg-filter-scroll::-webkit-scrollbar,
+  .mp-metrics-heatmap-scroll::-webkit-scrollbar,
+  .mp-audit-stream-scroll::-webkit-scrollbar,
+  .mp-coach-calendar-scroll::-webkit-scrollbar,
+  .mp-role-home-calendar-scroll::-webkit-scrollbar,
+  .mp-reservas-grid-scroll::-webkit-scrollbar,
+  .mp-stf-schedule-scroll::-webkit-scrollbar,
+  .mp-partner-bracket-scroll::-webkit-scrollbar,
+  .mp-club-sorteos-table-scroll::-webkit-scrollbar,
+  .mp-sandbox-grid-scroll::-webkit-scrollbar,
+  .mp-featured-slots-scroll::-webkit-scrollbar,
+  .mp-admin-event-txn-scroll::-webkit-scrollbar {
+    display: block;
+    height: 4px;
+  }
+  .mp-touch-hscroll::-webkit-scrollbar-track,
+  .mp-hscroll::-webkit-scrollbar-track,
+  .mp-table-scroll::-webkit-scrollbar-track,
+  .mp-subtle-hscroll::-webkit-scrollbar-track,
+  .mp-msg-filter-scroll::-webkit-scrollbar-track,
+  .mp-metrics-heatmap-scroll::-webkit-scrollbar-track,
+  .mp-audit-stream-scroll::-webkit-scrollbar-track,
+  .mp-coach-calendar-scroll::-webkit-scrollbar-track,
+  .mp-role-home-calendar-scroll::-webkit-scrollbar-track,
+  .mp-reservas-grid-scroll::-webkit-scrollbar-track,
+  .mp-stf-schedule-scroll::-webkit-scrollbar-track,
+  .mp-partner-bracket-scroll::-webkit-scrollbar-track,
+  .mp-club-sorteos-table-scroll::-webkit-scrollbar-track,
+  .mp-sandbox-grid-scroll::-webkit-scrollbar-track,
+  .mp-featured-slots-scroll::-webkit-scrollbar-track,
+  .mp-admin-event-txn-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .mp-touch-hscroll::-webkit-scrollbar-thumb,
+  .mp-hscroll::-webkit-scrollbar-thumb,
+  .mp-table-scroll::-webkit-scrollbar-thumb,
+  .mp-subtle-hscroll::-webkit-scrollbar-thumb,
+  .mp-msg-filter-scroll::-webkit-scrollbar-thumb,
+  .mp-metrics-heatmap-scroll::-webkit-scrollbar-thumb,
+  .mp-audit-stream-scroll::-webkit-scrollbar-thumb,
+  .mp-coach-calendar-scroll::-webkit-scrollbar-thumb,
+  .mp-role-home-calendar-scroll::-webkit-scrollbar-thumb,
+  .mp-reservas-grid-scroll::-webkit-scrollbar-thumb,
+  .mp-stf-schedule-scroll::-webkit-scrollbar-thumb,
+  .mp-partner-bracket-scroll::-webkit-scrollbar-thumb,
+  .mp-club-sorteos-table-scroll::-webkit-scrollbar-thumb,
+  .mp-sandbox-grid-scroll::-webkit-scrollbar-thumb,
+  .mp-featured-slots-scroll::-webkit-scrollbar-thumb,
+  .mp-admin-event-txn-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--muted-fg) 16%, transparent);
+    border-radius: 9999px;
+  }
+  .mp-touch-hscroll::-webkit-scrollbar-thumb:hover,
+  .mp-hscroll::-webkit-scrollbar-thumb:hover,
+  .mp-table-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-subtle-hscroll::-webkit-scrollbar-thumb:hover,
+  .mp-msg-filter-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-metrics-heatmap-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-audit-stream-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-coach-calendar-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-role-home-calendar-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-reservas-grid-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-stf-schedule-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-partner-bracket-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-club-sorteos-table-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-sandbox-grid-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-featured-slots-scroll::-webkit-scrollbar-thumb:hover,
+  .mp-admin-event-txn-scroll::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--muted-fg) 28%, transparent);
+  }
 }
 @media (hover: none) and (pointer: coarse) {
-  .mp-table-scroll {
+  .mp-touch-hscroll,
+  .mp-hscroll,
+  .mp-table-scroll,
+  .mp-subtle-hscroll,
+  .mp-msg-filter-scroll,
+  .mp-metrics-heatmap-scroll,
+  .mp-audit-stream-scroll,
+  .mp-coach-calendar-scroll,
+  .mp-role-home-calendar-scroll,
+  .mp-reservas-grid-scroll,
+  .mp-stf-schedule-scroll,
+  .mp-partner-bracket-scroll,
+  .mp-club-sorteos-table-scroll,
+  .mp-sandbox-grid-scroll,
+  .mp-featured-slots-scroll,
+  .mp-admin-event-txn-scroll {
     touch-action: pan-x;
   }
 }
@@ -6279,48 +6369,6 @@ input.mp-input.mp-bk-score-input {
 .mp-dashboard-main > * {
   min-width: 0;
   max-width: 100%;
-}
-
-/* Scroll horizontal sutil — sin barra en touch; fina y casi invisible en desktop */
-.mp-subtle-hscroll,
-.mp-msg-filter-scroll {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.mp-subtle-hscroll::-webkit-scrollbar,
-.mp-msg-filter-scroll::-webkit-scrollbar {
-  display: none;
-  height: 0;
-  width: 0;
-}
-@media (hover: hover) and (pointer: fine) {
-  .mp-subtle-hscroll,
-  .mp-msg-filter-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--border) 80%, transparent) transparent;
-    padding-bottom: 2px;
-  }
-  .mp-subtle-hscroll::-webkit-scrollbar,
-  .mp-msg-filter-scroll::-webkit-scrollbar {
-    display: block;
-    height: 5px;
-  }
-  .mp-subtle-hscroll::-webkit-scrollbar-thumb,
-  .mp-msg-filter-scroll::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--border) 80%, transparent);
-    border-radius: 9999px;
-  }
-}
-@media (hover: none) and (pointer: coarse) {
-  .mp-subtle-hscroll,
-  .mp-msg-filter-scroll {
-    touch-action: pan-x;
-  }
 }
 
 /* Mensajes / tabs: fila flex deslizable */

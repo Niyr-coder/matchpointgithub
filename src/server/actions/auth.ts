@@ -15,6 +15,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { AuthError, ACTIVE_CLUB_COOKIE, ACTIVE_ROLE_COOKIE } from "@/lib/auth/session";
 import { ROLE_LOGIN_PRIORITY } from "@/lib/auth/role-route-guard";
 import { areSignupsClosed, buildPostAuthRedirect, safeOAuthNext } from "@/lib/auth/oauth";
+import { parsePersonName } from "@/lib/identity/person-name";
 import type { RoleKey } from "@/lib/roles";
 
 async function clientIp(): Promise<string> {
@@ -210,14 +211,16 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     }
 
     const supabase = await getServerClient();
+    const parsedName = parsePersonName(data.displayName);
+    const normalizedUsername = data.username.trim().toLowerCase();
 
     const { data: signUpData, error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
         data: {
-          username: data.username,
-          display_name: data.displayName,
+          username: normalizedUsername,
+          display_name: parsedName.displayName,
           locale: data.locale ?? "es",
         },
       },
@@ -236,6 +239,20 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     }
 
     // Trigger tg_handle_new_auth_user already inserted profile + role 'user'.
+    // Sincronizamos first/last para que el onboarding no repita el paso de identidad.
+    const { error: profileSyncErr } = await supabase
+      .from("profiles")
+      .update({
+        first_name: parsedName.firstName,
+        last_name: parsedName.lastName || null,
+        display_name: parsedName.displayName,
+        username: normalizedUsername,
+      } as never)
+      .eq("id", signUpData.user.id);
+    if (profileSyncErr) {
+      console.error("[auth.signUp] profile identity sync failed", profileSyncErr);
+    }
+
     // Default the active role cookie so the dashboard works on first load.
     const c = await cookies();
     c.set(ACTIVE_ROLE_COOKIE, "user", COOKIE_OPTS);
@@ -248,7 +265,7 @@ export async function signUp(input: unknown): Promise<ActionResult<SessionRespon
     // el signup. El killswitch system_messages_enabled lo apaga global.
     try {
       const { sendSystemMessage, renderTemplate } = await import("@/lib/messages/system");
-      const firstName = data.displayName.split(" ")[0] || "jugador";
+      const firstName = parsedName.firstName || "jugador";
       await sendSystemMessage({
         recipientUserId: signUpData.user.id,
         kind: "welcome_signup",

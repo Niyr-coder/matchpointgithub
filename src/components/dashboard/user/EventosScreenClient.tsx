@@ -444,13 +444,11 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
       </div>
 
       <div
-        className="mp-noscroll"
+        className="mp-touch-hscroll"
         style={{
           display: "flex",
           gap: 0,
           borderBottom: "1px solid var(--border)",
-          overflowX: "auto",
-          WebkitOverflowScrolling: "touch",
           maxWidth: "100%",
         }}
       >

@@ -374,12 +374,11 @@ export function ClubReservasScreenView({
 
       <div className="card" style={{ padding: 18 }}>
         <div
+          className="mp-touch-hscroll"
           style={{
             display: "flex",
             gap: 6,
             marginBottom: 10,
-            overflowX: "auto",
-            paddingBottom: 4,
           }}
         >
           {courts.map((c, n) => {
