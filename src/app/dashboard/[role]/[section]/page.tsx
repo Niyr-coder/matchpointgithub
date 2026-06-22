@@ -65,6 +65,7 @@ import { AdminPaywallFunnelScreen } from "@/components/dashboard/admin/AdminPayw
 import { RankingScreen } from "@/components/dashboard/user/RankingScreen";
 import { QuedadasScreen } from "@/components/dashboard/user/QuedadasScreen";
 import { ProfileScreen } from "@/components/dashboard/user/ProfileScreen";
+import { AccountSettingsScreen } from "@/components/dashboard/user/AccountSettingsScreen";
 import { ClubesScreen } from "@/components/dashboard/user/ClubesScreen";
 import { EventosScreen } from "@/components/dashboard/user/EventosScreen";
 import { MensajesScreen } from "@/components/dashboard/user/MensajesScreen";
@@ -175,6 +176,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
   user: {
     ranking: () => <RankingScreen />,
     perfil: () => <ProfileScreen />,
+    cuenta: () => <AccountSettingsScreen />,
     clubes: () => <ClubesScreen />,
     eventos: () => <EventosScreen />,
     chat: (sp) => <MensajesScreen searchParams={sp} />,

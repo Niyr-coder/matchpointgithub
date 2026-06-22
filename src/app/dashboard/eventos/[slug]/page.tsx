@@ -21,6 +21,8 @@ export default async function DashboardTournamentPage({
       meUserId={data.meUserId}
       myMatches={data.myMatches}
       bracketSides={data.bracketSides}
+      categoryRegistrationCounts={data.categoryRegistrationCounts}
+      scheduleBlocks={data.scheduleBlocks}
     />
   );
 }

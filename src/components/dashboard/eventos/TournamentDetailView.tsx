@@ -17,6 +17,7 @@ import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPan
 import { TournamentCategoryJoinModal } from "@/components/dashboard/eventos/TournamentCategoryJoinModal";
 import { TournamentScheduleSection } from "@/components/events/TournamentScheduleSection";
 import type { TournamentScheduleBlockView } from "@/lib/tournaments/schedule-display";
+import { getTournamentRegistrationEligibility } from "@/lib/tournaments/registration-eligibility";
 
 export type MyRegistration = {
   id: string;
@@ -62,11 +63,7 @@ function formatLabel(format: string): string {
   }
 }
 
-function tagFromFormat(format: string): string {
-  if (format === "round_robin" || format === "swiss") return "LIGA";
-  if (format === "groups_to_knockout") return "ESTELAR";
-  return "TORNEO";
-}
+import { tournamentFormatBadge } from "@/lib/tournaments/event-badges";
 
 function dateLabel(startsAt: string, endsAt: string | null): { d: string; m: string; full: string } {
   const s = new Date(startsAt);
@@ -107,7 +104,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
   const date = dateLabel(t.startsAt, t.endsAt);
   const sport = sportLabel(t.sport);
   const fmt = formatLabel(t.format);
-  const tag = tagFromFormat(t.format);
+  const tag = tournamentFormatBadge(t.format, true);
   const level = levelRange(categories);
   const slots = t.maxParticipants ?? 0;
   const insc = registrationCount;
@@ -120,6 +117,18 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
   const isCancelled = status === "cancelled";
   const isFinished = status === "finished" || status === "completed";
   const isClosedState = isCancelled || isFinished;
+
+  const registrationEligibility = getTournamentRegistrationEligibility({
+    status,
+    registrationOpensAt: t.registrationOpensAt,
+    registrationClosesAt: t.registrationClosesAt,
+    maxParticipants: t.maxParticipants,
+    registrationCount: insc,
+    categories: categories.map((c) => ({ id: c.id, maxTeams: c.maxTeams })),
+    categoryRegistrationCounts,
+  });
+  const isFull = registrationEligibility.block === "full";
+  const canRegister = registrationEligibility.canRegister;
 
   const pool = t.prizePoolCents ?? 0;
   const podium = pool > 0
@@ -140,7 +149,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
 
   // Inscripción real — el dashboard es el único lugar donde se ejecuta.
   const handleRegister = () => {
-    if (registering || !meUserId) return;
+    if (registering || !meUserId || !canRegister) return;
     if (needsCategoryPicker) {
       setPickCategoryOpen(true);
       return;
@@ -242,6 +251,49 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
     });
   };
 
+  const renderBlockedRegisterButton = (variant: "hero" | "rail") => {
+    const label = registrationEligibility.label || "Inscripciones cerradas";
+    if (variant === "hero") {
+      return (
+        <button
+          type="button"
+          className="btn"
+          disabled
+          style={{
+            padding: "15px 26px",
+            fontSize: 13,
+            background: "rgba(255,255,255,0.1)",
+            color: "rgba(255,255,255,0.6)",
+            border: "1px solid rgba(255,255,255,0.2)",
+            cursor: "not-allowed",
+          }}
+        >
+          <Icon name="lock" size={14} color="rgba(255,255,255,0.6)" />
+          {label}
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="btn"
+        disabled
+        style={{
+          width: "100%",
+          marginTop: 14,
+          justifyContent: "center",
+          background: "var(--muted)",
+          color: "var(--muted-fg)",
+          border: "1px solid var(--border)",
+          cursor: "not-allowed",
+        }}
+      >
+        <Icon name="lock" size={13} />
+        {label}
+      </button>
+    );
+  };
+
   const renderHeroCta = () => {
     if (isClosedState) {
       return (
@@ -303,6 +355,9 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
         </>
       );
     }
+    if (!canRegister) {
+      return renderBlockedRegisterButton("hero");
+    }
     return (
       <button
         type="button"
@@ -339,6 +394,22 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           {isCancelled
             ? "Este torneo fue cancelado por el organizador. Si pagaste cuota, te será devuelta."
             : "Este torneo ya finalizó. Las inscripciones están cerradas."}
+        </div>
+      )}
+      {!isClosedState && !myReg && !canRegister && (
+        <div
+          style={{
+            background: "#fef3c7",
+            color: "#92400e",
+            padding: "12px 16px",
+            textAlign: "center",
+            fontSize: 13,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+            borderBottom: "1px solid #fcd34d",
+          }}
+        >
+          <Icon name="lock" size={14} color="#92400e" /> {registrationEligibility.label}
         </div>
       )}
       <section
@@ -464,6 +535,9 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
                 }}
               >
                 <span>Cupos restantes</span>
+                {remaining != null && remaining <= 0 && (
+                  <span style={{ color: "#f87171", fontWeight: 800 }}>Lleno</span>
+                )}
                 {remaining != null && remaining > 0 && remaining <= 6 && (
                   <span style={{ color: "#fbbf24", fontWeight: 800 }}>¡Solo {remaining}!</span>
                 )}
@@ -480,7 +554,9 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
                   style={{
                     height: "100%",
                     width: `${pct}%`,
-                    background: "linear-gradient(90deg, #10b981, #fbbf24)",
+                    background: isFull
+                      ? "#dc2626"
+                      : "linear-gradient(90deg, #10b981, #fbbf24)",
                   }}
                 />
               </div>
@@ -593,7 +669,9 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
                 ))
               : (
                 <p style={{ fontSize: 12, color: "var(--muted-fg)", margin: "8px 0" }}>
-                  Premios por anunciar. Inscríbete para asegurar tu cupo.
+                  {canRegister
+                    ? "Premios por anunciar. Inscríbete para asegurar tu cupo."
+                    : "Premios por anunciar."}
                 </p>
               )}
             {isClosedState ? (
@@ -629,6 +707,8 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
                 <Icon name="x" size={13} />
                 {cancelling ? "Cancelando…" : "Abandonar inscripción"}
               </button>
+            ) : !canRegister ? (
+              renderBlockedRegisterButton("rail")
             ) : (
               <button
                 type="button"
@@ -727,7 +807,7 @@ function PaymentModePicker({
           boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
         }}
       >
-        <div className="label-mp">Cómo querés pagar</div>
+        <div className="label-mp">Cómo quieres pagar</div>
         <h3
           className="font-heading"
           style={{

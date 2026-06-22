@@ -10,6 +10,7 @@ import { EventPlayerConfigPanel } from "@/components/events/EventPlayerConfigPan
 import { TournamentScheduleSection } from "@/components/events/TournamentScheduleSection";
 import type { TournamentScheduleBlockView } from "@/lib/tournaments/schedule-display";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
+import { tournamentFormatBadge } from "@/lib/tournaments/event-badges";
 
 export type MyRegistration = {
   id: string;
@@ -51,12 +52,6 @@ function formatLabel(format: string): string {
     case "groups_to_knockout": return "Grupos + llave";
     default: return "Eliminación";
   }
-}
-
-function tagFromFormat(format: string): string {
-  if (format === "round_robin" || format === "swiss") return "LIGA";
-  if (format === "groups_to_knockout") return "ESTELAR";
-  return "TORNEO";
 }
 
 function dateLabel(startsAt: string, endsAt: string | null): { d: string; m: string; full: string } {
@@ -344,7 +339,7 @@ export function EventDetailView({
   const date = dateLabel(t.startsAt, t.endsAt);
   const sport = sportLabel(t.sport);
   const fmt = formatLabel(t.format);
-  const tag = tagFromFormat(t.format);
+  const tag = tournamentFormatBadge(t.format, true);
   const level = levelRange(categories);
   const slots = t.maxParticipants ?? 0;
   const insc = registrationCount;

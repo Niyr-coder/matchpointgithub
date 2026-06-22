@@ -594,6 +594,17 @@ export function GroupStagePanel({
 
               {selectedGroup && (
                 <div className="mp-grp-matches-pane">
+                  <div className="mp-grp-standings-block mp-grp-standings-block--mobile">
+                    <div className="label-mp mp-grp-standings-block-label">
+                      Posiciones · Grupo{" "}
+                      <span className="mp-grp-matches-group-tag">{selectedGroup.name}</span>
+                    </div>
+                    <GroupStandingsTable
+                      group={selectedGroup}
+                      advancePerGroup={summary.config.advancePerGroup}
+                      registrationLabels={registrationLabels}
+                    />
+                  </div>
                   <div className="mp-grp-matches-head">
                     <div>
                       <div className="label-mp">
@@ -669,6 +680,78 @@ export function GroupStagePanel({
   );
 }
 
+function GroupStandingsTable({
+  group,
+  advancePerGroup,
+  registrationLabels,
+  compact = false,
+}: {
+  group: GroupRow;
+  advancePerGroup: number;
+  registrationLabels: Record<string, string>;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`mp-grp-standings${compact ? " mp-grp-standings--compact" : ""}`}>
+      <div className="mp-grp-standings-head">
+        <span>#</span>
+        <span>Equipo</span>
+        <div className="mp-grp-standing-stats mp-grp-standing-stats--head" aria-hidden>
+          <span>PJ</span>
+          <span>G</span>
+          <span>P</span>
+          <span>Sets</span>
+        </div>
+      </div>
+      {group.standings.map((row) => {
+        const qualified = row.rank <= advancePerGroup;
+        const showCutoff =
+          row.rank === advancePerGroup &&
+          group.standings.some((r) => r.rank === advancePerGroup + 1);
+        return (
+          <Fragment key={row.registrationId}>
+            <div className={`mp-grp-standing-row${qualified ? " is-qualified" : ""}`}>
+              <span className="mp-grp-standing-rank">{row.rank}</span>
+              <span className="mp-grp-standing-name">
+                {registrationLabels[row.registrationId] ?? "Equipo sin nombre"}
+              </span>
+              <div className="mp-grp-standing-stats" aria-label="Estadísticas">
+                <span className="mp-grp-standing-stat">
+                  <span className="mp-grp-stat-lbl">PJ</span>
+                  <span className="mp-grp-stat-val">{row.played}</span>
+                </span>
+                <span className="mp-grp-standing-stat is-win">
+                  <span className="mp-grp-stat-lbl">G</span>
+                  <span className="mp-grp-stat-val">{row.wins}</span>
+                </span>
+                <span className="mp-grp-standing-stat is-loss">
+                  <span className="mp-grp-stat-lbl">P</span>
+                  <span className="mp-grp-stat-val">{row.losses}</span>
+                </span>
+                <span className="mp-grp-standing-stat">
+                  <span className="mp-grp-stat-lbl">Sets</span>
+                  <span className="mp-grp-stat-val">
+                    {row.setsWon}-{row.setsLost}
+                  </span>
+                </span>
+              </div>
+            </div>
+            {showCutoff && (
+              <div
+                className="mp-grp-cutoff"
+                role="separator"
+                aria-label={`Clasifican ${advancePerGroup}`}
+              >
+                <span>Clasifican {advancePerGroup}</span>
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function GroupStandingsCard({
   group,
   active,
@@ -703,46 +786,13 @@ function GroupStandingsCard({
           </span>
         )}
       </div>
-      <div className="mp-grp-standings mp-grp-standings--compact">
-        <div className="mp-grp-standings-head">
-          <span>#</span>
-          <span>Equipo</span>
-          <span>PJ</span>
-          <span>G</span>
-          <span>P</span>
-          <span>Sets</span>
-        </div>
-        {group.standings.map((row) => {
-          const qualified = row.rank <= advancePerGroup;
-          const showCutoff =
-            row.rank === advancePerGroup &&
-            group.standings.some((r) => r.rank === advancePerGroup + 1);
-          return (
-            <Fragment key={row.registrationId}>
-              <div className={`mp-grp-standing-row${qualified ? " is-qualified" : ""}`}>
-                <span className="mp-grp-standing-rank">{row.rank}</span>
-                <span className="mp-grp-standing-name">
-                  {registrationLabels[row.registrationId] ?? "Equipo sin nombre"}
-                </span>
-                <span className="mp-grp-standing-stat">{row.played}</span>
-                <span className="mp-grp-standing-stat is-win">{row.wins}</span>
-                <span className="mp-grp-standing-stat is-loss">{row.losses}</span>
-                <span className="mp-grp-standing-stat">
-                  {row.setsWon}-{row.setsLost}
-                </span>
-              </div>
-              {showCutoff && (
-                <div
-                  className="mp-grp-cutoff"
-                  role="separator"
-                  aria-label={`Clasifican ${advancePerGroup}`}
-                >
-                  <span>Clasifican {advancePerGroup}</span>
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
+      <div className="mp-grp-sidebar-card-standings">
+        <GroupStandingsTable
+          group={group}
+          advancePerGroup={advancePerGroup}
+          registrationLabels={registrationLabels}
+          compact
+        />
       </div>
       {group.matches.length > 0 && pendingCount > 0 && (
         <span className="mp-grp-sidebar-pending">{pendingCount} pendientes</span>

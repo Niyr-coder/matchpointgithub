@@ -620,7 +620,6 @@ export default async function PartnerTorneoPage({
                       background: "var(--muted)",
                       borderRadius: 2,
                       overflow: "hidden",
-                      marginTop: 8,
                     }}
                   >
                     <div
@@ -640,7 +639,7 @@ export default async function PartnerTorneoPage({
               value={String(pendingCount)}
               accent="#fbbf24"
               foot={
-                <div style={{ fontSize: 10, color: "var(--muted-fg)", marginTop: 8 }}>
+                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
                   Esperando confirmación o pago
                 </div>
               }
@@ -650,7 +649,7 @@ export default async function PartnerTorneoPage({
               value={`$${Math.round(revenue / 100).toLocaleString("en-US")}`}
               accent="var(--primary)"
               foot={
-                <div style={{ fontSize: 10, color: "var(--muted-fg)", marginTop: 8 }}>
+                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
                   {pendingPay} pago{pendingPay === 1 ? "" : "s"} pendiente
                   {pendingPay === 1 ? "" : "s"}
                 </div>
@@ -780,65 +779,52 @@ export default async function PartnerTorneoPage({
                 {regs.slice(0, 12).map((r) => {
                   const name = r.label;
                   const dt = new Date(r.createdAt);
+                  const paymentModeLabel =
+                    r.paymentMode === "online"
+                      ? "Online"
+                      : r.paymentMode === "onsite"
+                        ? "En club"
+                        : r.paymentMode === "free"
+                          ? "Gratis"
+                          : "—";
+                  const hidePaymentMode =
+                    r.paymentMode === "free" &&
+                    (r.payStatus === "free" || r.payStatus === "paid" || r.payStatus === null);
                   return (
                     <div key={r.id} className="mp-partner-torneo-regs-row">
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className="mp-partner-torneo-regs-player">
                         <div
+                          className="mp-partner-torneo-regs-avatar"
                           style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: "50%",
                             background: r.avatarUrl
                               ? `url(${r.avatarUrl}) center/cover`
                               : "linear-gradient(135deg,#10b981,#047857)",
-                            color: "#fff",
-                            fontSize: 10,
-                            fontWeight: 900,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
                           }}
                         >
                           {!r.avatarUrl && name.slice(0, 2).toUpperCase()}
                         </div>
-                        <b style={{ color: "#0a0a0a" }}>{name}</b>
+                        <b className="mp-partner-torneo-regs-name">{name}</b>
                       </div>
-                      <RegStatus value={r.status} />
-                      <div
-                        style={{
-                          textAlign: "center",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: "var(--muted-fg)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                        }}
-                      >
-                        {r.paymentMode === "online"
-                          ? "Online"
-                          : r.paymentMode === "onsite"
-                            ? "En club"
-                            : r.paymentMode === "free"
-                              ? "Gratis"
-                              : "—"}
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "center" }}>
-                        {r.payStatus === "onsite_pending" && !isCancelled ? (
-                          <MarkPaidInline registrationId={r.id} />
-                        ) : (
-                          <PayStatus value={r.payStatus} />
+                      <div className="mp-partner-torneo-regs-badges">
+                        <div className="mp-partner-torneo-regs-status">
+                          <RegStatus value={r.status} />
+                        </div>
+                        {!hidePaymentMode && (
+                          <div className="mp-partner-torneo-regs-mode">
+                            <span className="mp-partner-torneo-regs-mode-label">{paymentModeLabel}</span>
+                          </div>
                         )}
+                        <div className="mp-partner-torneo-regs-pay">
+                          {r.payStatus === "onsite_pending" && !isCancelled ? (
+                            <MarkPaidInline registrationId={r.id} />
+                          ) : (
+                            <PayStatus value={r.payStatus} />
+                          )}
+                        </div>
                       </div>
-                      <div
-                        style={{
-                          textAlign: "right",
-                          fontSize: 11,
-                          color: "var(--muted-fg)",
-                        }}
-                      >
+                      <time className="mp-partner-torneo-regs-date" dateTime={r.createdAt}>
                         {dt.toLocaleDateString("es-EC", { day: "2-digit", month: "short" })}
-                      </div>
+                      </time>
                     </div>
                   );
                 })}
@@ -956,7 +942,7 @@ function KPI({
   foot?: React.ReactNode;
 }) {
   return (
-    <div className="card" style={{ padding: 16 }}>
+    <div className="card mp-partner-torneo-kpi" style={{ padding: 16 }}>
       <div className="label-mp">{label}</div>
       <div
         className="font-heading tabular"
@@ -970,7 +956,7 @@ function KPI({
       >
         {value}
       </div>
-      {foot}
+      {foot ? <div className="mp-partner-torneo-kpi-foot">{foot}</div> : null}
     </div>
   );
 }

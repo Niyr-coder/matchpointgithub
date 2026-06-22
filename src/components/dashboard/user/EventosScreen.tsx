@@ -16,6 +16,7 @@ export async function EventosScreen() {
   const tournamentsPromise = supabase
     .from("tournaments_public_summary")
     .select("*")
+    .order("is_featured", { ascending: false })
     .order("starts_at", { ascending: true })
     .limit(60);
 
@@ -51,6 +52,7 @@ export async function EventosScreen() {
           clubName: row.club_name ?? null,
           clubCity: row.club_city ?? null,
           registrationsCount: row.registrations_count ?? 0,
+          isFeatured: (row.is_featured as boolean | null | undefined) ?? false,
         });
       } catch {
         return null;

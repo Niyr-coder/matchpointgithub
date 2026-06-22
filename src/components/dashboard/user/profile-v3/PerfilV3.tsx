@@ -14,7 +14,8 @@ import { useProfileV3Actions } from "./ProfileV3ActionsContext";
 import { AnalyticsUpdatedLabel } from "./AnalyticsUpdatedLabel";
 import { ProfileEmptyState, openCrearMatchModal } from "./ProfileEmptyState";
 import { QuedadaPlayerStatsPanel } from "../QuedadaPlayerStatsPanel";
-import { AccountPrivacyPanel } from "../AccountPrivacyPanel";
+import Link from "next/link";
+import { Icon } from "@/components/Icon";
 // PerfilV3 — fusión profile-first (V2) + dashboard analítico (V1).
 // Un solo scroll, sin tabs: identidad arriba, análisis embebido como bandas.
 // Reutiliza componentes V2 (hero, showcase, kpis, h2h) y agrega bandas analíticas.
@@ -582,7 +583,40 @@ export function PerfilV3Board({ sub = 'plus', view = 'mine' }: { sub?: 'free' | 
 
       {isMine ? (
         <div className="pv3-stack-sm">
-          <AccountPrivacyPanel />
+          <Link
+            href="/dashboard/user/cuenta"
+            className="card"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: "16px 18px",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            <span
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: "var(--muted)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="shield" size={18} color="var(--muted-fg)" />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>Privacidad y cuenta</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--muted-fg)", marginTop: 2 }}>
+                Exportar datos, políticas y cierre de cuenta
+              </span>
+            </span>
+            <Icon name="chevron-right" size={16} color="var(--muted-fg)" />
+          </Link>
         </div>
       ) : null}
     </div>

@@ -5,7 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import type { TournamentFeatured } from "@/lib/schemas/tournaments";
+import type { TournamentFeatured, TournamentDetail } from "@/lib/schemas/tournaments";
+import { tournamentFormatBadge } from "@/lib/tournaments/event-badges";
+import { getTournamentRegistrationEligibility } from "@/lib/tournaments/registration-eligibility";
+import {
+  getTournamentRegisterContext,
+  registerToTournament,
+} from "@/server/actions/tournaments";
+import { TournamentCategoryJoinModal } from "@/components/dashboard/eventos/TournamentCategoryJoinModal";
 
 type Props = {
   tournaments: TournamentFeatured[];
@@ -102,12 +109,76 @@ function sportLabel(s: string): string {
   return "Pickleball";
 }
 
-function tagFromFormat(format: string): string {
-  if (format === "round_robin" || format === "swiss") return "Liga";
-  if (format === "groups_to_knockout") return "Estelar";
-  return "Torneo";
+function eventListEligibility(t: TournamentFeatured) {
+  return getTournamentRegistrationEligibility({
+    status: t.status,
+    registrationOpensAt: null,
+    registrationClosesAt: null,
+    maxParticipants: t.maxParticipants,
+    registrationCount: t.registrationsCount,
+    categories: [],
+    categoryRegistrationCounts: {},
+  });
 }
 
+function EventTypeBadges({
+  t,
+  registered,
+}: {
+  t: TournamentFeatured;
+  registered?: boolean;
+}) {
+  return (
+    <>
+      {t.isFeatured && (
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 900,
+            padding: "2px 8px",
+            borderRadius: 9999,
+            background: "#fef3c7",
+            color: "#92400e",
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+          }}
+        >
+          ★ Estelar
+        </span>
+      )}
+      <span
+        style={{
+          fontSize: 9.5,
+          fontWeight: 900,
+          padding: "2px 8px",
+          borderRadius: 9999,
+          background: "#ecfdf5",
+          color: "#065f46",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+        }}
+      >
+        {tournamentFormatBadge(t.format)}
+      </span>
+      {registered && (
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 900,
+            padding: "2px 8px",
+            borderRadius: 9999,
+            background: "#fbbf24",
+            color: "#0a0a0a",
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+          }}
+        >
+          ✓ Inscrito
+        </span>
+      )}
+    </>
+  );
+}
 function formatLabel(format: string): string {
   switch (format) {
     case "single_elim": return "Eliminación directa";
@@ -153,10 +224,19 @@ function padRows(arr: TournamentFeatured[]): RowItem[] {
   return out;
 }
 
-export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
+export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const toast = useToast();
   const [searchQ, setSearchQ] = useState("");
+  const [registerCtx, setRegisterCtx] = useState<{
+    detail: TournamentDetail;
+    categoryCounts: Record<string, number>;
+  } | null>(null);
+  const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
+  const [pickPaymentOpen, setPickPaymentOpen] = useState(false);
+  const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
+  const [registering, startRegister] = useTransition();
   // Realtime: solo INSERT de torneos nuevos. Drop registrations y UPDATEs
   // de tournaments para no refrescar a TODOS los users del país por cada
   // edit ajeno (ver docs/architecture/50-realtime.md §Carga global).
@@ -201,9 +281,125 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
   } satisfies Record<Tab, TournamentFeatured[]>;
 
   const list = partitioned[tab];
-  const featured = tab === "Próximos" ? list[0] : null;
-  const rest = featured ? list.slice(1) : list;
+  const sortedList = useMemo(() => {
+    if (tab !== "Próximos") return list;
+    return [...list].sort((a, b) => {
+      if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+      return +new Date(a.startsAt) - +new Date(b.startsAt);
+    });
+  }, [list, tab]);
+  const featured =
+    tab === "Próximos" ? sortedList.find((t) => t.isFeatured) ?? sortedList[0] ?? null : null;
+  const rest = featured ? sortedList.filter((t) => t.id !== featured.id) : sortedList;
   const padded = padRows(rest);
+
+  const runRegister = (
+    detail: TournamentDetail,
+    paymentMode?: "online" | "onsite",
+    categoryId?: string,
+  ) => {
+    if (!userId) return;
+    startRegister(async () => {
+      const res = await registerToTournament({
+        tournamentId: detail.tournament.id,
+        body: {
+          playerIds: [userId],
+          categoryId: categoryId ?? pendingCategoryId ?? undefined,
+        },
+        paymentMode,
+      });
+      if (!res.ok) {
+        const code = res.error.code;
+        if (code === "TOURNAMENTS.CATEGORY_REQUIRED") {
+          setPickCategoryOpen(true);
+          return;
+        }
+        if (code === "TOURNAMENTS.CATEGORY_FULL") {
+          toast({ icon: "alert-triangle", title: "Categoría llena", sub: "Prueba otra categoría." });
+          setPickCategoryOpen(true);
+          return;
+        }
+        if (code === "TOURNAMENTS.ALREADY_REGISTERED") {
+          toast({ icon: "check-circle-2", title: "Ya estabas inscrito" });
+          router.refresh();
+          return;
+        }
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo inscribir",
+          sub: res.error.message,
+        });
+        return;
+      }
+      const txId = res.data.paidTransactionId ?? null;
+      const policy = detail.tournament.paymentPolicy;
+      const effectiveMode = paymentMode ?? (policy === "prepay" ? "online" : policy === "onsite" ? "onsite" : null);
+      if (txId && effectiveMode === "online") {
+        toast({ icon: "upload", title: "Inscripción creada", sub: "Sube tu comprobante" });
+        router.push(`/pagos/${txId}`);
+        return;
+      }
+      const isOnsite = paymentMode === "onsite";
+      toast({
+        icon: isOnsite ? "map-pin" : "check",
+        title: isOnsite ? "Cupo reservado" : "¡Inscrito!",
+        sub: isOnsite ? "Pagas en el club al llegar" : undefined,
+      });
+      setRegisterCtx(null);
+      setPickCategoryOpen(false);
+      setPickPaymentOpen(false);
+      setPendingCategoryId(null);
+      router.refresh();
+    });
+  };
+
+  const beginRegister = (t: TournamentFeatured) => {
+    if (!userId) {
+      router.push(`/login?next=${encodeURIComponent("/dashboard/user/eventos")}`);
+      return;
+    }
+    const quick = eventListEligibility(t);
+    if (!quick.canRegister) {
+      toast({ icon: "lock", title: quick.label });
+      return;
+    }
+    void (async () => {
+      const res = await getTournamentRegisterContext({ idOrSlug: t.slug });
+      if (!res.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "No se pudo cargar el torneo",
+          sub: res.error.message,
+        });
+        return;
+      }
+      const { detail, categoryRegistrationCounts } = res.data;
+      const full = getTournamentRegistrationEligibility({
+        status: detail.tournament.status,
+        registrationOpensAt: detail.tournament.registrationOpensAt,
+        registrationClosesAt: detail.tournament.registrationClosesAt,
+        maxParticipants: detail.tournament.maxParticipants,
+        registrationCount: detail.registrationCount,
+        categories: detail.categories.map((c) => ({ id: c.id, maxTeams: c.maxTeams })),
+        categoryRegistrationCounts,
+      });
+      if (!full.canRegister) {
+        toast({ icon: "lock", title: full.label });
+        return;
+      }
+      setRegisterCtx({ detail, categoryCounts: categoryRegistrationCounts });
+      setPendingCategoryId(null);
+      if (detail.categories.length > 0) {
+        setPickCategoryOpen(true);
+        return;
+      }
+      if (detail.tournament.paymentPolicy === "flexible") {
+        setPickPaymentOpen(true);
+        return;
+      }
+      runRegister(detail);
+    })();
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -298,7 +494,16 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
         ))}
       </div>
 
-      {featured && <FeaturedCard t={featured} registered={myIds.has(featured.id)} onOpen={() => openTournament(featured.slug)} />}
+      {featured && (
+        <FeaturedCard
+          t={featured}
+          registered={myIds.has(featured.id)}
+          onOpen={() => openTournament(featured.slug)}
+          onRegister={() => beginRegister(featured)}
+          canRegister={eventListEligibility(featured).canRegister}
+          registering={registering}
+        />
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {padded.map((row) =>
@@ -310,6 +515,10 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
               t={row}
               registered={myIds.has(row.id)}
               onOpen={() => openTournament(row.slug)}
+              onRegister={() => beginRegister(row)}
+              canRegister={eventListEligibility(row).canRegister}
+              blockLabel={eventListEligibility(row).label}
+              registering={registering}
             />
           ),
         )}
@@ -332,11 +541,58 @@ export function EventosScreenClient({ tournaments, myRegisteredIds }: Props) {
           <span>Aún no te has inscrito a ningún evento. Explora los próximos y elige uno.</span>
         </div>
       )}
+      {registerCtx && pickCategoryOpen && (
+        <TournamentCategoryJoinModal
+          open={pickCategoryOpen}
+          tournamentName={registerCtx.detail.tournament.name}
+          entryFeeCents={registerCtx.detail.tournament.entryFeeCents ?? 0}
+          categories={registerCtx.detail.categories}
+          registrationCountByCategory={registerCtx.categoryCounts}
+          pending={registering}
+          onClose={() => {
+            if (!registering) {
+              setPickCategoryOpen(false);
+              setPendingCategoryId(null);
+            }
+          }}
+          onPick={(categoryId) => {
+            setPendingCategoryId(categoryId);
+            setPickCategoryOpen(false);
+            if (registerCtx.detail.tournament.paymentPolicy === "flexible") {
+              setPickPaymentOpen(true);
+              return;
+            }
+            runRegister(registerCtx.detail, undefined, categoryId);
+          }}
+        />
+      )}
+      {registerCtx && pickPaymentOpen && (
+        <PaymentModeDialog
+          onChoose={(mode) => runRegister(registerCtx.detail, mode, pendingCategoryId ?? undefined)}
+          onCancel={() => {
+            if (!registering) setPickPaymentOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; registered: boolean; onOpen: () => void }) {
+function FeaturedCard({
+  t,
+  registered,
+  onOpen,
+  onRegister,
+  canRegister,
+  registering,
+}: {
+  t: TournamentFeatured;
+  registered: boolean;
+  onOpen: () => void;
+  onRegister: () => void;
+  canRegister: boolean;
+  registering: boolean;
+}) {
   const { d, m } = dateParts(t.startsAt, t.endsAt);
   const filled = t.registrationsCount;
   const slots = t.maxParticipants ?? 0;
@@ -345,8 +601,7 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
   const club = [t.clubName, t.clubCity].filter(Boolean).join(" · ") || "Multi-club";
 
   return (
-    <button
-      onClick={onOpen}
+    <div
       className="card"
       style={{
         padding: 0,
@@ -354,10 +609,7 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
         position: "relative",
         background: "linear-gradient(135deg, #0a0a0a 0%, #1f2937 60%, #064e3b 100%)",
         color: "#fff",
-        cursor: "pointer",
         textAlign: "left",
-        border: 0,
-        fontFamily: "inherit",
         display: "block",
         width: "100%",
       }}
@@ -395,10 +647,28 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
           letterSpacing: "0.18em",
         }}
       >
-        {registered ? "✓ Inscrito" : "★ Evento " + tagFromFormat(t.format)}
+        {registered
+          ? "✓ Inscrito"
+          : t.isFeatured
+            ? "★ Evento estelar"
+            : `★ Evento ${tournamentFormatBadge(t.format)}`}
       </div>
       <div className="relative p-5 md:p-8 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 md:gap-8 items-end">
-        <div>
+        <button
+          type="button"
+          onClick={onOpen}
+          style={{
+            margin: 0,
+            padding: 0,
+            border: 0,
+            background: "transparent",
+            color: "inherit",
+            font: "inherit",
+            textAlign: "left",
+            cursor: "pointer",
+            width: "100%",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, marginTop: 24 }}>
             <span className="font-heading" style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.04em" }}>{d}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.18em" }}>{m}</span>
@@ -434,7 +704,7 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
           >
             Ver detalles del evento <Icon name="arrow-right" size={12} color="#10b981" />
           </div>
-        </div>
+        </button>
         <div className="flex flex-col gap-3 items-start md:items-end">
           <div style={{ display: "flex", gap: 18 }}>
             <Stat label="Premio" value={priceLabel(t.prizePoolCents, "—")} accent="#10b981" />
@@ -444,18 +714,50 @@ function FeaturedCard({ t, registered, onOpen }: { t: TournamentFeatured; regist
             <div style={{ width: 240 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "rgba(255,255,255,0.7)", marginBottom: 5 }}>
                 <span>Cupos {filled}/{slots}</span>
+                {remaining != null && remaining <= 0 && (
+                  <span style={{ color: "#f87171", fontWeight: 800 }}>Lleno</span>
+                )}
                 {remaining != null && remaining > 0 && remaining <= 6 && (
                   <span style={{ color: "#fbbf24", fontWeight: 800 }}>¡Últimos lugares!</span>
                 )}
               </div>
               <div style={{ height: 6, background: "rgba(255,255,255,0.15)", borderRadius: 9999, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, #10b981, #fbbf24)" }} />
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${pct}%`,
+                    background:
+                      remaining != null && remaining <= 0
+                        ? "#dc2626"
+                        : "linear-gradient(90deg, #10b981, #fbbf24)",
+                  }}
+                />
               </div>
             </div>
           )}
+          {!registered && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!canRegister || registering}
+              onClick={onRegister}
+              style={{
+                marginTop: 4,
+                opacity: !canRegister || registering ? 0.65 : 1,
+                cursor: !canRegister ? "not-allowed" : registering ? "wait" : "pointer",
+              }}
+            >
+              <Icon name={canRegister ? "check" : "lock"} size={13} />
+              {registering
+                ? "Procesando…"
+                : canRegister
+                  ? "Inscribirme"
+                  : eventListEligibility(t).label}
+            </button>
+          )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -472,11 +774,26 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered: boolean; onOpen: () => void }) {
+function EventRow({
+  t,
+  registered,
+  onOpen,
+  onRegister,
+  canRegister,
+  blockLabel,
+  registering,
+}: {
+  t: TournamentFeatured;
+  registered: boolean;
+  onOpen: () => void;
+  onRegister: () => void;
+  canRegister: boolean;
+  blockLabel: string;
+  registering: boolean;
+}) {
   const { d, m } = dateParts(t.startsAt, t.endsAt);
-  const tag = tagFromFormat(t.format);
   const slots = t.maxParticipants ?? 0;
-  const full = slots > 0 && t.registrationsCount >= slots;
+  const full = !canRegister && blockLabel === "Cupos llenos";
   const club = [t.clubName, t.clubCity].filter(Boolean).join(" · ") || "Multi-club";
 
   return (
@@ -487,9 +804,21 @@ function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered
       </div>
       <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "#ecfdf5", color: "#065f46", textTransform: "uppercase", letterSpacing: "0.12em" }}>{tag}</span>
-          <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9999, background: "var(--muted)", color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.12em" }}>{sportLabel(t.sport)}</span>
-          {registered && <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 8px", borderRadius: 9999, background: "#fbbf24", color: "#0a0a0a", textTransform: "uppercase", letterSpacing: "0.12em" }}>✓ Inscrito</span>}
+          <EventTypeBadges t={t} registered={registered} />
+          <span
+            style={{
+              fontSize: 9.5,
+              fontWeight: 800,
+              padding: "2px 8px",
+              borderRadius: 9999,
+              background: "var(--muted)",
+              color: "var(--muted-fg)",
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+            }}
+          >
+            {sportLabel(t.sport)}
+          </span>
         </div>
         <button
           onClick={onOpen}
@@ -523,19 +852,26 @@ function EventRow({ t, registered, onOpen }: { t: TournamentFeatured; registered
         </div>
       </div>
       <div className="hidden md:flex" style={{ padding: 14, alignItems: "center", paddingRight: 18, gap: 6 }}>
-        <button onClick={onOpen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Ver</button>
+        <button type="button" onClick={onOpen} className="btn" style={{ background: "#fff", border: "1px solid var(--border)" }}>Ver</button>
         {registered ? (
-          <button className="btn" style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #10b981" }} disabled>
+          <button type="button" className="btn" style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #10b981" }} disabled>
             <Icon name="check" size={12} color="#065f46" />
             Inscrito
           </button>
-        ) : full ? (
-          <button className="btn" style={{ background: "var(--muted)", color: "var(--muted-fg)", cursor: "not-allowed" }} disabled>
-            Lleno
+        ) : !canRegister ? (
+          <button type="button" className="btn" style={{ background: "var(--muted)", color: "var(--muted-fg)", cursor: "not-allowed" }} disabled>
+            <Icon name="lock" size={12} />
+            {blockLabel}
           </button>
         ) : (
-          <button onClick={onOpen} className="btn btn-primary">
-            Inscribirme
+          <button
+            type="button"
+            onClick={onRegister}
+            disabled={registering}
+            className="btn btn-primary"
+            style={{ opacity: registering ? 0.7 : 1 }}
+          >
+            {registering ? "Procesando…" : "Inscribirme"}
             <Icon name="arrow-right" size={12} />
           </button>
         )}
@@ -602,7 +938,7 @@ function EventDetail({
   const filled = ev.registrationsCount;
   const isFull = slots > 0 && filled >= slots;
   const remaining = slots > 0 ? slots - filled : null;
-  const tag = tagFromFormat(ev.format);
+  const tag = tournamentFormatBadge(ev.format, true);
   const club = [ev.clubName, ev.clubCity].filter(Boolean).join(" · ") || "Multi-club";
 
   // Cronograma mock — sin tabla de schedule en DB todavía.

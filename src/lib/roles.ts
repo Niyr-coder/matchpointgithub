@@ -86,6 +86,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
         h: "Mi cuenta",
         items: [
           { k: "perfil", label: "Mi perfil", icon: "user" },
+          { k: "cuenta", label: "Privacidad y cuenta", icon: "shield" },
           { k: "membresias", label: "Mis membresías", icon: "star" },
           { k: "mi-plan", label: "Mi plan MP+", icon: "crown", flag: "user_has_mp_plus" },
           { k: "soporte", label: "Soporte", icon: "life-buoy" },
@@ -358,6 +359,7 @@ export const MP_ROLE_SCREENS: Record<RoleKey, string[]> = {
   user: [
     "ranking",
     "perfil",
+    "cuenta",
     "clubes",
     "eventos",
     "chat",

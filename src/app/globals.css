@@ -2831,6 +2831,62 @@ select.mp-input:disabled {
   background: var(--muted);
   font-size: 12px;
 }
+.mp-partner-torneo-regs-badges {
+  display: contents;
+}
+.mp-partner-torneo-regs-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  grid-column: 1;
+}
+.mp-partner-torneo-regs-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.mp-partner-torneo-regs-name {
+  color: #0a0a0a;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-partner-torneo-regs-status {
+  grid-column: 2;
+  text-align: center;
+}
+.mp-partner-torneo-regs-mode {
+  grid-column: 3;
+  text-align: center;
+}
+.mp-partner-torneo-regs-mode-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.mp-partner-torneo-regs-pay {
+  grid-column: 4;
+  display: flex;
+  justify-content: center;
+}
+.mp-partner-torneo-regs-date {
+  grid-column: 5;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted-fg);
+  white-space: nowrap;
+}
 .mp-tournament-cat-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 100px 110px 90px 110px 90px;
@@ -2902,6 +2958,18 @@ select.mp-input:disabled {
   }
   .mp-partner-torneo-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .mp-partner-torneo-kpi {
+    padding: 12px !important;
+  }
+  .mp-partner-torneo-kpi .font-heading {
+    font-size: 22px !important;
+  }
+  .mp-partner-torneo-kpi-foot {
+    font-size: 9px !important;
+    line-height: 1.35;
+    margin-top: 6px !important;
   }
   .mp-partner-torneo-bottom {
     grid-template-columns: 1fr;
@@ -2914,16 +2982,50 @@ select.mp-input:disabled {
   }
   .mp-partner-torneo-regs-row {
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px 12px;
+    grid-template-rows: auto auto;
+    gap: 8px 10px;
     padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
   }
-  .mp-partner-torneo-regs-row > :nth-child(1) {
+  .mp-partner-torneo-regs-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
     grid-column: 1 / -1;
   }
-  .mp-partner-torneo-regs-row > :nth-child(5) {
+  .mp-partner-torneo-regs-player {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .mp-partner-torneo-regs-date {
     grid-column: 2;
     grid-row: 1;
-    align-self: start;
+    align-self: center;
+    text-align: right;
+  }
+  .mp-partner-torneo-regs-status,
+  .mp-partner-torneo-regs-mode,
+  .mp-partner-torneo-regs-pay {
+    grid-column: unset;
+    text-align: left;
+  }
+  .mp-partner-torneo-regs-mode-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 7px;
+    border-radius: 4px;
+    background: var(--muted);
+    color: var(--muted-fg);
+    font-size: 9.5px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+  }
+  .mp-partner-torneo-regs-status > div,
+  .mp-partner-torneo-regs-pay > div {
+    text-align: left;
   }
   .mp-tournament-cat-row {
     grid-template-columns: 1fr 1fr;
@@ -2952,12 +3054,6 @@ select.mp-input:disabled {
   }
   .mp-partner-torneo-actions-grid {
     grid-template-columns: 1fr !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .mp-partner-torneo-kpis {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -3743,11 +3839,23 @@ select.mp-input:disabled {
 .mp-grp-standings-head,
 .mp-grp-standing-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 28px 28px 28px 44px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
   padding: 6px 8px;
   font-size: 11px;
+}
+.mp-grp-standing-stats {
+  display: grid;
+  grid-template-columns: 28px 28px 28px 44px;
+  gap: 6px;
+  align-items: center;
+}
+.mp-grp-stat-lbl {
+  display: none;
+}
+.mp-grp-stat-val {
+  font-variant-numeric: tabular-nums;
 }
 .mp-grp-standings--compact .mp-grp-standings-head,
 .mp-grp-standings--compact .mp-grp-standing-row {
@@ -3762,6 +3870,9 @@ select.mp-input:disabled {
   color: var(--muted-fg);
   padding: 2px 6px 4px;
   border-bottom: 1px solid var(--border);
+}
+.mp-grp-standing-stats--head span {
+  text-align: center;
 }
 .mp-grp-standing-row {
   border-radius: 8px;
@@ -4089,6 +4200,186 @@ select.mp-input:disabled {
   font-weight: 700;
   color: var(--muted-fg);
   font-style: italic;
+}
+
+/* ── Group stage · responsive móvil ── */
+@media (max-width: 767px) {
+  .mp-grp-panel {
+    padding: 14px 12px;
+  }
+  .mp-grp-panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mp-grp-panel-actions {
+    width: 100%;
+  }
+  .mp-grp-panel-actions .mp-grp-action-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .mp-grp-category-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    margin-left: -2px;
+    margin-right: -2px;
+    padding: 0 2px 8px;
+    scrollbar-width: thin;
+  }
+  .mp-grp-category-tab {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    max-width: none;
+  }
+  .mp-grp-scheduling-fields {
+    grid-template-columns: 1fr;
+  }
+  .mp-grp-field input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .mp-grp-view-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin: 12px 0 10px;
+  }
+  .mp-grp-view-toolbar .mp-grp-filter--inline {
+    width: 100%;
+  }
+  .mp-grp-view-toggle,
+  .mp-grp-view-toolbar .mp-grp-filter-tabs {
+    display: flex;
+    width: 100%;
+  }
+  .mp-grp-view-tab,
+  .mp-grp-filter-tab {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 8px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .mp-grp-sidebar-label {
+    display: none;
+  }
+  .mp-grp-sidebar-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-snap-type: x proximity;
+    gap: 8px;
+    max-height: none;
+    padding: 2px 2px 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .mp-grp-sidebar-card {
+    flex: 0 0 auto;
+    min-width: 128px;
+    max-width: 148px;
+    padding: 10px 12px;
+    opacity: 1;
+  }
+  .mp-grp-sidebar-card.is-active {
+    transform: none;
+  }
+  .mp-grp-sidebar-card-head {
+    margin-bottom: 0;
+  }
+  .mp-grp-sidebar-card-standings {
+    display: none;
+  }
+  .mp-grp-standings-block--mobile {
+    display: block;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mp-grp-standings-block-label {
+    margin-bottom: 10px;
+  }
+  .mp-grp-standings-head {
+    display: none;
+  }
+  .mp-grp-standing-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 6px 10px;
+    padding: 10px 12px;
+  }
+  .mp-grp-standing-rank {
+    grid-row: 1 / 3;
+    align-self: start;
+    font-size: 13px;
+    padding-top: 1px;
+  }
+  .mp-grp-standing-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  .mp-grp-standing-stats {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mp-grp-standing-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--muted) 75%, var(--card));
+    font-size: 11px;
+    text-align: left;
+  }
+  .mp-grp-standing-stat.is-win {
+    background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  }
+  .mp-grp-stat-lbl {
+    display: inline;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-fg);
+  }
+  .mp-grp-cutoff span {
+    font-size: 9px;
+  }
+  .mp-grp-matches-pane {
+    padding: 12px;
+  }
+  .mp-grp-matches-head .mp-grp-filter--inline {
+    display: none;
+  }
+  .mp-grp-matches-head {
+    margin-bottom: 8px;
+  }
+  .mp-grp-round-grid {
+    grid-template-columns: 1fr;
+  }
+  .mp-grp-schedule-fecha-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .mp-grp-schedule-fecha-meta {
+    margin-left: 0;
+  }
+}
+@media (min-width: 768px) {
+  .mp-grp-standings-block--mobile {
+    display: none;
+  }
 }
 
 /* ── BracketView · integrado al dashboard claro ── */

@@ -11,7 +11,7 @@ import {
   requestAccountClosure,
 } from "@/server/actions/account-privacy";
 
-/** Panel LOPDP: exportar datos y cerrar cuenta (perfil propio). */
+/** Panel LOPDP: exportar datos y cerrar cuenta (pantalla /dashboard/user/cuenta). */
 export function AccountPrivacyPanel() {
   const toast = useToast();
   const { confirm } = usePromptModal();

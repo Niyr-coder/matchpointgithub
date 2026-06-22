@@ -279,6 +279,7 @@ export async function listFeaturedTournaments(
       .from("tournaments_public_summary")
       .select("*")
       .gte("starts_at", new Date().toISOString())
+      .order("is_featured", { ascending: false })
       .order("starts_at", { ascending: true })
       .limit(limit);
     if (error) throw new MpError("TOURNAMENTS.DB_ERROR", error.message, 500);
@@ -1221,6 +1222,16 @@ export async function setTournamentFeatured(
   return runAction(SetFeaturedSchema, input, async ({ tournamentId, featured }) => {
     await requireAdminUserId();
     const supabase = await getServerClient();
+    if (featured) {
+      // Solo un torneo estelar activo en portada / calendario.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: clearErr } = await (supabase as any)
+        .from("tournaments")
+        .update({ is_featured: false })
+        .eq("is_featured", true)
+        .neq("id", tournamentId);
+      if (clearErr) throw new MpError("TOURNAMENTS.UPDATE_FAILED", clearErr.message, 500);
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
       .from("tournaments")
@@ -1232,6 +1243,46 @@ export async function setTournamentFeatured(
     return {
       id: data.id as string,
       isFeatured: data.is_featured as boolean,
+    };
+  });
+}
+
+const RegisterContextSchema = z.object({ idOrSlug: z.string() });
+
+export async function getTournamentRegisterContext(
+  input: unknown,
+): Promise<
+  ActionResult<{
+    detail: TournamentDetail;
+    categoryRegistrationCounts: Record<string, number>;
+  }>
+> {
+  return runAction(RegisterContextSchema, input, async ({ idOrSlug }) => {
+    const detailRes = await getTournament({ idOrSlug });
+    if (!detailRes.ok) {
+      throw new MpError(
+        detailRes.error.code,
+        detailRes.error.message,
+        detailRes.error.code === "TOURNAMENTS.NOT_FOUND" ? 404 : 422,
+      );
+    }
+
+    const supabase = await getServerClient();
+    const { data: regsRaw } = await supabase
+      .from("registrations")
+      .select("category_id")
+      .eq("tournament_id", detailRes.data.tournament.id)
+      .not("status", "in", "(withdrawn,rejected,cancelled)");
+
+    const categoryRegistrationCounts: Record<string, number> = {};
+    for (const r of regsRaw ?? []) {
+      const cid = r.category_id as string | null;
+      if (cid) categoryRegistrationCounts[cid] = (categoryRegistrationCounts[cid] ?? 0) + 1;
+    }
+
+    return {
+      detail: detailRes.data,
+      categoryRegistrationCounts,
     };
   });
 }
