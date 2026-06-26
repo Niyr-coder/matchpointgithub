@@ -6484,6 +6484,7 @@ export type Database = {
         Row: {
           court_label: string | null
           created_at: string
+          finished_at: string | null
           id: string
           level_label: string | null
           max_slots: number | null
@@ -6491,11 +6492,13 @@ export type Database = {
           quedada_id: string
           sort_order: number
           starts_at: string | null
+          status: string
           target_points: number | null
         }
         Insert: {
           court_label?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -6503,11 +6506,13 @@ export type Database = {
           quedada_id: string
           sort_order?: number
           starts_at?: string | null
+          status?: string
           target_points?: number | null
         }
         Update: {
           court_label?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -6515,6 +6520,7 @@ export type Database = {
           quedada_id?: string
           sort_order?: number
           starts_at?: string | null
+          status?: string
           target_points?: number | null
         }
         Relationships: [
