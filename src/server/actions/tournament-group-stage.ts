@@ -533,6 +533,58 @@ export async function correctGroupMatch(
   });
 }
 
+const ConfirmGroupMatchSchema = z.object({
+  tournamentId: UuidSchema,
+  matchId: UuidSchema,
+});
+
+/** Confirma un marcador reportado (verificación partner / mesa). */
+export async function confirmGroupMatch(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  return runAction(ConfirmGroupMatchSchema, input, async ({ tournamentId, matchId }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const gdb = groupDb(getAdminClient());
+
+    const { data: match } = await gdb
+      .from("tournament_group_matches")
+      .select("id,group_id,status")
+      .eq("id", matchId)
+      .single();
+    if (!match) throw new MpError("GROUPS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    if ((match.status as string) !== "reported") {
+      throw new MpError(
+        "GROUPS.NOT_REPORTED",
+        "Solo puedes confirmar partidos con marcador reportado",
+        409,
+      );
+    }
+
+    const { data: group } = await gdb
+      .from("tournament_groups")
+      .select("category_id")
+      .eq("id", match.group_id as string)
+      .single();
+    if (!group) throw new MpError("GROUPS.NOT_FOUND", "Grupo no encontrado", 404);
+
+    const { cat } = await loadCategoryContext(group.category_id as string);
+    if ((cat.tournament_id as string) !== tournamentId) {
+      throw new MpError("GROUPS.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
+    }
+    if ((cat.stage as string) !== "group_stage") {
+      throw new MpError("GROUPS.STAGE_CLOSED", "La fase de grupos ya está cerrada", 409);
+    }
+
+    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    const { error } = await gdb
+      .from("tournament_group_matches")
+      .update({ status: "confirmed" } as never)
+      .eq("id", matchId);
+    if (error) throw new MpError("GROUPS.CONFIRM_FAILED", error.message, 500);
+    return { id: matchId };
+  });
+}
+
 const CloseGroupStageSchema = z.object({
   tournamentId: UuidSchema,
   categoryId: UuidSchema,
@@ -557,13 +609,11 @@ export async function closeGroupStage(
     for (const g of summary.data.groups) {
       const expectedMatches =
         (g.members.length * (g.members.length - 1)) / 2;
-      const played = g.matches.filter(
-        (m) => m.status === "reported" || m.status === "confirmed",
-      ).length;
+      const played = g.matches.filter((m) => m.status === "confirmed").length;
       if (played < expectedMatches) {
         throw new MpError(
           "GROUPS.INCOMPLETE",
-          `Grupo ${g.name}: faltan resultados (${played}/${expectedMatches} partidos)`,
+          `Grupo ${g.name}: faltan confirmaciones (${played}/${expectedMatches} partidos)`,
           422,
         );
       }

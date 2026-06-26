@@ -5,7 +5,6 @@ import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getSession } from "@/lib/auth/session";
-import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
 import { Icon } from "@/components/Icon";
 import { PartnerTorneoActions } from "@/components/dashboard/partner/PartnerTorneoActions";
 import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel";
@@ -18,7 +17,10 @@ import {
 } from "@/components/dashboard/partner/CategoryGroupConfigPanel";
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
-import { PublicPreviewModal } from "@/components/dashboard/partner/PublicPreviewModal";
+import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
+import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
+import { PartnerTorneoOperacionPanel } from "@/components/dashboard/partner/PartnerTorneoOperacionPanel";
+import { PartnerTorneoPlaybook } from "@/components/dashboard/partner/PartnerTorneoPlaybook";
 import { AdminOverridesPanel } from "@/components/dashboard/partner/AdminOverridesPanel";
 import { PrizesPanel, type PrizeRow } from "@/components/dashboard/partner/PrizesPanel";
 import { TournamentGestionRealtime } from "@/components/dashboard/partner/TournamentGestionRealtime";
@@ -101,11 +103,11 @@ export default async function PartnerTorneoPage({
   const supabase = await getServerClient();
   const admin = getAdminClient();
 
-  const { data: tRaw } = await supabase
+  // Admin: incluye borradores y evita depender de columnas nuevas en el SELECT inicial.
+  const { data: tRaw } = await admin
     .from("tournaments")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select(
-      "id,slug,name,status,sport,format,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,display_token,clubs(name,city)" as any,
+      "id,slug,name,status,sport,format,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,clubs(name,city)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -114,7 +116,7 @@ export default async function PartnerTorneoPage({
   const t = tRaw as any;
 
   // is_featured aún no está en los types generados — fetch separado.
-  const { data: featRow } = await supabase
+  const { data: featRow } = await admin
     .from("tournaments")
     .select("id")
     .eq("id", id)
@@ -134,8 +136,6 @@ export default async function PartnerTorneoPage({
   const isAdmin = !!adminRow;
   if (!isAdmin) {
     if (partnerId) {
-      const activePartnerId = await resolveActivePartnerId();
-      if (!activePartnerId || activePartnerId !== partnerId) notFound();
       const { data: member } = await admin
         .from("partner_members")
         .select("role")
@@ -315,7 +315,8 @@ export default async function PartnerTorneoPage({
     });
 
   const tournamentSlug = (t.slug as string) ?? "";
-  const displayToken = (t.display_token as string | null) ?? null;
+  // display_token se resuelve en cliente vía ensureTournamentDisplayToken (columna opcional).
+  const displayToken: string | null = null;
 
   const groupStageCategories = groupConfigCategories.map((c) => ({
     id: c.id,
@@ -408,6 +409,36 @@ export default async function PartnerTorneoPage({
     if (gs.ok) groupStageInitial = gs.data;
   }
 
+  let groupMatchStats: {
+    pending: number;
+    awaitingConfirm: number;
+    confirmed: number;
+    total: number;
+  } | null = null;
+  if (groupStageInitial) {
+    let pending = 0;
+    let awaitingConfirm = 0;
+    let confirmed = 0;
+    let total = 0;
+    for (const g of groupStageInitial.groups) {
+      for (const m of g.matches) {
+        total++;
+        if (m.status === "confirmed") confirmed++;
+        else if (m.status === "reported") awaitingConfirm++;
+        else pending++;
+      }
+    }
+    groupMatchStats = { pending, awaitingConfirm, confirmed, total };
+  }
+
+  const playbookCategories = groupConfigCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    stage: c.stage,
+    acceptedCount: c.acceptedCount,
+    groupsCount: c.config.groupsCount,
+  }));
+
   const cap = (t.max_participants as number | null) ?? 0;
   const prize = ((t.prize_pool_cents as number | null) ?? 0) / 100;
   const dbStatus = String(t.status);
@@ -452,6 +483,55 @@ export default async function PartnerTorneoPage({
   const formatLabel = formatTournamentFormat(tournamentFormat);
   const paymentLabel = formatPaymentPolicy(t.payment_policy as string | null);
   const dateLabel = formatTorneoDateRange(t.starts_at as string, (t.ends_at as string | null) ?? null);
+
+  const hasGroupOperacion =
+    tournamentFormat === "groups_to_knockout" &&
+    !isClosed &&
+    groupStageCategories.length > 0;
+  const defaultGestionTab =
+    hasGroupOperacion || hasBracket || dbStatus === "in_progress" || dbStatus === "active"
+      ? ("operacion" as const)
+      : ("configuracion" as const);
+
+  const previewPayload = {
+    name: t.name as string,
+    slug: t.slug as string,
+    sport: String(t.sport),
+    format: String(t.format),
+    modalityLabel: "Pickleball",
+    startsAt: t.starts_at as string,
+    endsAt: (t.ends_at as string | null) ?? null,
+    clubName: club?.name ?? null,
+    prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
+    entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
+    maxParticipants: (t.max_participants as number | null) ?? null,
+    paymentPolicy: (t.payment_policy as string | null) ?? "prepay",
+    status: dbStatus,
+    isFeatured,
+    scoringSummary: "Side-out · Best of 3 a 11 · Gana por 2",
+  };
+  const previewCategories = categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    mprMin: c.mprMin,
+    mprMax: c.mprMax,
+  }));
+  const previewBlocks = blocks.map((b) => ({
+    id: b.id,
+    startsAt: b.startsAt,
+    label: b.label,
+    categoryId: b.categoryId,
+  }));
+  const previewPrizes = prizes.map((p) => ({
+    id: p.id,
+    placeLabel: p.placeLabel,
+    prizeLabel: p.prizeLabel,
+    valueCents: p.valueCents,
+    sponsor: p.sponsor,
+    categoryName: p.categoryId
+      ? (categories.find((c) => c.id === p.categoryId)?.name ?? null)
+      : null,
+  }));
 
   return (
     <main className="mp-partner-torneo-page-main">
@@ -633,342 +713,264 @@ export default async function PartnerTorneoPage({
             </div>
           </div>
 
-          <div className="mp-partner-torneo-kpis">
-            <KPI
-              label="Inscritos"
-              value={`${totalCount}${cap > 0 ? ` / ${cap}` : ""}`}
-              accent="#0a0a0a"
-              foot={
-                cap > 0 ? (
-                  <div
-                    style={{
-                      height: 4,
-                      background: "var(--muted)",
-                      borderRadius: 2,
-                      overflow: "hidden",
+          <PartnerTorneoGestionShell
+            defaultTab={defaultGestionTab}
+            rail={
+              <>
+                <div className="mp-partner-torneo-rail-kpis">
+                  <KPI
+                    label="Inscritos"
+                    value={`${totalCount}${cap > 0 ? ` / ${cap}` : ""}`}
+                    accent="#0a0a0a"
+                    compact
+                    foot={
+                      cap > 0 ? (
+                        <div className="mp-partner-torneo-kpi-bar">
+                          <div style={{ width: `${occupancyPct}%` }} />
+                        </div>
+                      ) : null
+                    }
+                  />
+                  <KPI label="Pendientes" value={String(pendingCount)} accent="#fbbf24" compact />
+                  <KPI
+                    label="Revenue"
+                    value={`$${Math.round(revenue / 100).toLocaleString("en-US")}`}
+                    accent="var(--primary)"
+                    compact
+                    foot={
+                      <span>
+                        {pendingPay} pago{pendingPay === 1 ? "" : "s"} pendiente
+                        {pendingPay === 1 ? "" : "s"}
+                      </span>
+                    }
+                  />
+                  <KPI
+                    label="Premio"
+                    value={prize > 0 ? `$${Math.round(prize).toLocaleString("en-US")}` : "—"}
+                    accent="#fbbf24"
+                    compact
+                  />
+                </div>
+
+                {!isClosed && (
+                  <PartnerTorneoActions
+                    tournamentId={t.id as string}
+                    status={dbStatus}
+                    format={tournamentFormat}
+                    isFeatured={isFeatured}
+                    isAdmin={isAdmin}
+                    acceptedCount={acceptedCount}
+                    hasBracket={hasBracket}
+                    setupLocked={setupLocked}
+                    setupLockMessage={setupLockMessage}
+                    editable={{
+                      id: t.id as string,
+                      name: t.name as string,
+                      startsAt: t.starts_at as string,
+                      endsAt: (t.ends_at as string | null) ?? null,
+                      maxParticipants: (t.max_participants as number | null) ?? null,
+                      entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
+                      prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
+                      paymentPolicy:
+                        ((t.payment_policy as string | null) ?? "prepay") as
+                          | "free"
+                          | "prepay"
+                          | "onsite"
+                          | "flexible",
                     }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${occupancyPct}%`,
-                        background: "var(--primary)",
-                        transition: "width 320ms var(--ease-out)",
-                      }}
+                  />
+                )}
+
+                {!isClosed && tournamentFormat === "groups_to_knockout" && (
+                  <PartnerTorneoPlaybook
+                    format={tournamentFormat}
+                    status={dbStatus}
+                    pendingRegCount={pendingCount}
+                    categories={playbookCategories}
+                    hasBracket={hasBracket}
+                    matchStats={groupMatchStats}
+                    clubCourtsCount={clubCourts.length}
+                  />
+                )}
+
+                <PartnerTorneoRailLinks
+                  preview={previewPayload}
+                  categories={previewCategories}
+                  blocks={previewBlocks}
+                  prizes={previewPrizes}
+                />
+
+                {!isClosed && (
+                  <TournamentVenueDisplayPanel
+                    tournamentId={t.id as string}
+                    slug={tournamentSlug}
+                    initialToken={displayToken}
+                    readOnly={configReadOnly}
+                  />
+                )}
+              </>
+            }
+            operacion={
+              <PartnerTorneoOperacionPanel
+                showBracketsFallback={!hasGroupOperacion}
+                hasBracket={hasBracket}
+              >
+                {hasGroupOperacion && (
+                  <GroupStagePanel
+                    tournamentId={t.id as string}
+                    categories={groupStageCategories}
+                    clubCourts={clubCourts}
+                    registrationLabels={registrationLabels}
+                    initialCategoryId={initialGroupCategoryId}
+                    initial={groupStageInitial}
+                  />
+                )}
+              </PartnerTorneoOperacionPanel>
+            }
+            configuracion={
+              <div className="mp-partner-torneo-config-stack">
+                {!isClosed &&
+                  tournamentFormat === "groups_to_knockout" &&
+                  groupConfigCategories.length > 0 && (
+                    <CategoryGroupConfigPanel
+                      tournamentId={t.id as string}
+                      categories={groupConfigCategories}
+                      readOnly={configReadOnly}
                     />
-                  </div>
-                ) : null
-              }
-            />
-            <KPI
-              label="Pendientes"
-              value={String(pendingCount)}
-              accent="#fbbf24"
-              foot={
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-                  Esperando confirmación o pago
-                </div>
-              }
-            />
-            <KPI
-              label="Revenue capturado"
-              value={`$${Math.round(revenue / 100).toLocaleString("en-US")}`}
-              accent="var(--primary)"
-              foot={
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-                  {pendingPay} pago{pendingPay === 1 ? "" : "s"} pendiente
-                  {pendingPay === 1 ? "" : "s"}
-                </div>
-              }
-            />
-            <KPI
-              label="Premio"
-              value={prize > 0 ? `$${Math.round(prize).toLocaleString("en-US")}` : "—"}
-              accent="#fbbf24"
-            />
-          </div>
-
-          {!isClosed && (
-            <PartnerTorneoActions
-              tournamentId={t.id as string}
-              status={dbStatus}
-              format={tournamentFormat}
-              isFeatured={isFeatured}
-              isAdmin={isAdmin}
-              acceptedCount={acceptedCount}
-              hasBracket={hasBracket}
-              setupLocked={setupLocked}
-              setupLockMessage={setupLockMessage}
-              editable={{
-                id: t.id as string,
-                name: t.name as string,
-                startsAt: t.starts_at as string,
-                endsAt: (t.ends_at as string | null) ?? null,
-                maxParticipants: (t.max_participants as number | null) ?? null,
-                entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
-                prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
-                paymentPolicy:
-                  ((t.payment_policy as string | null) ?? "prepay") as
-                    | "free"
-                    | "prepay"
-                    | "onsite"
-                    | "flexible",
-              }}
-            />
-          )}
-
-          {tournamentFormat === "groups_to_knockout" && !isClosed && groupConfigCategories.length > 0 && (
-            <CategoryGroupConfigPanel
-              tournamentId={t.id as string}
-              categories={groupConfigCategories}
-              readOnly={configReadOnly}
-            />
-          )}
-
-          {tournamentFormat === "groups_to_knockout" && !isClosed && groupStageCategories.length > 0 && (
-            <GroupStagePanel
-              tournamentId={t.id as string}
-              categories={groupStageCategories}
-              clubCourts={clubCourts}
-              registrationLabels={registrationLabels}
-              initialCategoryId={initialGroupCategoryId}
-              initial={groupStageInitial}
-            />
-          )}
-
-          {!isClosed && (
-            <TournamentVenueDisplayPanel
-              tournamentId={t.id as string}
-              slug={tournamentSlug}
-              initialToken={displayToken}
-              readOnly={configReadOnly}
-            />
-          )}
-
-          {isAdmin && (
-            <AdminOverridesPanel
-              tournamentId={t.id as string}
-              status={dbStatus}
-            />
-          )}
-
-          <CategoriesPanel
-            tournamentId={t.id as string}
-            initialCategories={categories}
-            readOnly={configReadOnly}
-          />
-
-          <SchedulePanel
-            tournamentId={t.id as string}
-            initialBlocks={blocks}
-            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            readOnly={configReadOnly}
-          />
-
-          <PrizesPanel
-            tournamentId={t.id as string}
-            initialPrizes={prizes}
-            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            readOnly={configReadOnly}
-          />
-
-          <div className="card" style={{ padding: 18 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 12,
-              }}
-            >
-              <div>
-                <div className="label-mp">Inscritos</div>
-                <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-                  {regs.length === 0
-                    ? "Aún no hay inscritos."
-                    : `${regs.length} inscripción${regs.length === 1 ? "" : "es"} en total.`}
-                </div>
+                  )}
+                <CategoriesPanel
+                  tournamentId={t.id as string}
+                  initialCategories={categories}
+                  readOnly={configReadOnly}
+                />
+                <SchedulePanel
+                  tournamentId={t.id as string}
+                  initialBlocks={blocks}
+                  categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+                  readOnly={configReadOnly}
+                />
+                <PrizesPanel
+                  tournamentId={t.id as string}
+                  initialPrizes={prizes}
+                  categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+                  readOnly={configReadOnly}
+                />
+                {isAdmin && (
+                  <AdminOverridesPanel tournamentId={t.id as string} status={dbStatus} />
+                )}
               </div>
-              <Link
-                href="/dashboard/partner/p-inscritos"
-                className="btn"
-                style={{ background: "#fff", border: "1px solid var(--border)" }}
-              >
-                <Icon name="external-link" size={12} />
-                Vista completa
-              </Link>
-            </div>
-
-            {regs.length === 0 ? (
-              <div
-                style={{
-                  padding: "24px 0",
-                  textAlign: "center",
-                  color: "var(--muted-fg)",
-                  fontSize: 12,
-                }}
-              >
-                Cuando alguien se inscriba aparecerá aquí.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div className="mp-partner-torneo-regs-head">
-                  <div>Jugador</div>
-                  <div style={{ textAlign: "center" }}>Estado</div>
-                  <div style={{ textAlign: "center" }}>Modo</div>
-                  <div style={{ textAlign: "center" }}>Pago</div>
-                  <div style={{ textAlign: "right" }}>Inscrito</div>
-                </div>
-                {regs.slice(0, 12).map((r) => {
-                  const name = r.label;
-                  const dt = new Date(r.createdAt);
-                  const paymentModeLabel =
-                    r.paymentMode === "online"
-                      ? "Online"
-                      : r.paymentMode === "onsite"
-                        ? "En club"
-                        : r.paymentMode === "free"
-                          ? "Gratis"
-                          : "—";
-                  const hidePaymentMode =
-                    r.paymentMode === "free" &&
-                    (r.payStatus === "free" || r.payStatus === "paid" || r.payStatus === null);
-                  return (
-                    <div key={r.id} className="mp-partner-torneo-regs-row">
-                      <div className="mp-partner-torneo-regs-player">
-                        <div
-                          className="mp-partner-torneo-regs-avatar"
-                          style={{
-                            background: r.avatarUrl
-                              ? `url(${r.avatarUrl}) center/cover`
-                              : "linear-gradient(135deg,#10b981,#047857)",
-                          }}
-                        >
-                          {!r.avatarUrl && name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <b className="mp-partner-torneo-regs-name">{name}</b>
-                      </div>
-                      <div className="mp-partner-torneo-regs-badges">
-                        <div className="mp-partner-torneo-regs-status">
-                          <RegStatus value={r.status} />
-                        </div>
-                        {!hidePaymentMode && (
-                          <div className="mp-partner-torneo-regs-mode">
-                            <span className="mp-partner-torneo-regs-mode-label">{paymentModeLabel}</span>
-                          </div>
-                        )}
-                        <div className="mp-partner-torneo-regs-pay">
-                          {r.payStatus === "onsite_pending" && !isCancelled ? (
-                            <MarkPaidInline registrationId={r.id} />
-                          ) : (
-                            <PayStatus value={r.payStatus} />
-                          )}
-                        </div>
-                      </div>
-                      <time className="mp-partner-torneo-regs-date" dateTime={r.createdAt}>
-                        {dt.toLocaleDateString("es-EC", { day: "2-digit", month: "short" })}
-                      </time>
+            }
+            inscritos={
+              <div className="card" style={{ padding: 18 }}>
+                <div className="mp-partner-torneo-inscritos-head">
+                  <div>
+                    <div className="label-mp">Inscritos</div>
+                    <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+                      {regs.length === 0
+                        ? "Aún no hay inscritos."
+                        : `${regs.length} inscripción${regs.length === 1 ? "" : "es"} en total.`}
                     </div>
-                  );
-                })}
-                {regs.length > 12 && (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "10px 0 4px",
-                      fontSize: 11,
-                      color: "var(--muted-fg)",
-                    }}
+                  </div>
+                  <Link
+                    href="/dashboard/partner/p-inscritos"
+                    className="btn"
+                    style={{ background: "#fff", border: "1px solid var(--border)" }}
                   >
-                    Mostrando 12 de {regs.length} ·{" "}
-                    <Link
-                      href="/dashboard/partner/p-inscritos"
-                      style={{ color: "#0a0a0a", fontWeight: 800 }}
-                    >
-                      ver todos
-                    </Link>
+                    <Icon name="external-link" size={12} />
+                    Vista completa
+                  </Link>
+                </div>
+
+                {regs.length === 0 ? (
+                  <div className="mp-partner-torneo-inscritos-empty">
+                    Cuando alguien se inscriba aparecerá aquí.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="mp-partner-torneo-regs-head">
+                      <div>Jugador</div>
+                      <div style={{ textAlign: "center" }}>Estado</div>
+                      <div style={{ textAlign: "center" }}>Modo</div>
+                      <div style={{ textAlign: "center" }}>Pago</div>
+                      <div style={{ textAlign: "right" }}>Inscrito</div>
+                    </div>
+                    {regs.slice(0, 20).map((r) => {
+                      const name = r.label;
+                      const dt = new Date(r.createdAt);
+                      const paymentModeLabel =
+                        r.paymentMode === "online"
+                          ? "Online"
+                          : r.paymentMode === "onsite"
+                            ? "En club"
+                            : r.paymentMode === "free"
+                              ? "Gratis"
+                              : "—";
+                      const hidePaymentMode =
+                        r.paymentMode === "free" &&
+                        (r.payStatus === "free" || r.payStatus === "paid" || r.payStatus === null);
+                      return (
+                        <div key={r.id} className="mp-partner-torneo-regs-row">
+                          <div className="mp-partner-torneo-regs-player">
+                            <div
+                              className="mp-partner-torneo-regs-avatar"
+                              style={{
+                                background: r.avatarUrl
+                                  ? `url(${r.avatarUrl}) center/cover`
+                                  : "linear-gradient(135deg,#10b981,#047857)",
+                              }}
+                            >
+                              {!r.avatarUrl && name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <b className="mp-partner-torneo-regs-name">{name}</b>
+                          </div>
+                          <div className="mp-partner-torneo-regs-badges">
+                            <div className="mp-partner-torneo-regs-status">
+                              <RegStatus value={r.status} />
+                            </div>
+                            {!hidePaymentMode && (
+                              <div className="mp-partner-torneo-regs-mode">
+                                <span className="mp-partner-torneo-regs-mode-label">
+                                  {paymentModeLabel}
+                                </span>
+                              </div>
+                            )}
+                            <div className="mp-partner-torneo-regs-pay">
+                              {r.payStatus === "onsite_pending" && !isCancelled ? (
+                                <MarkPaidInline registrationId={r.id} />
+                              ) : (
+                                <PayStatus value={r.payStatus} />
+                              )}
+                            </div>
+                          </div>
+                          <time className="mp-partner-torneo-regs-date" dateTime={r.createdAt}>
+                            {dt.toLocaleDateString("es-EC", { day: "2-digit", month: "short" })}
+                          </time>
+                        </div>
+                      );
+                    })}
+                    {regs.length > 20 && (
+                      <div
+                        style={{
+                          textAlign: "center",
+                          padding: "10px 0 4px",
+                          fontSize: 11,
+                          color: "var(--muted-fg)",
+                        }}
+                      >
+                        Mostrando 20 de {regs.length} ·{" "}
+                        <Link
+                          href="/dashboard/partner/p-inscritos"
+                          style={{ color: "#0a0a0a", fontWeight: 800 }}
+                        >
+                          ver todos
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-
-          <div className="mp-partner-torneo-bottom">
-            <PublicPreviewModal
-              preview={{
-                name: t.name as string,
-                slug: t.slug as string,
-                sport: String(t.sport),
-                format: String(t.format),
-                modalityLabel: "Pickleball",
-                startsAt: t.starts_at as string,
-                endsAt: (t.ends_at as string | null) ?? null,
-                clubName: club?.name ?? null,
-                prizePoolCents: (t.prize_pool_cents as number | null) ?? null,
-                entryFeeCents: (t.entry_fee_cents as number | null) ?? 0,
-                maxParticipants: (t.max_participants as number | null) ?? null,
-                paymentPolicy: (t.payment_policy as string | null) ?? "prepay",
-                status: dbStatus,
-                isFeatured,
-                scoringSummary: "Side-out · Best of 3 a 11 · Gana por 2",
-              }}
-              categories={categories.map((c) => ({
-                id: c.id,
-                name: c.name,
-                mprMin: c.mprMin,
-                mprMax: c.mprMax,
-              }))}
-              blocks={blocks.map((b) => ({
-                id: b.id,
-                startsAt: b.startsAt,
-                label: b.label,
-                categoryId: b.categoryId,
-              }))}
-              prizes={prizes.map((p) => ({
-                id: p.id,
-                placeLabel: p.placeLabel,
-                prizeLabel: p.prizeLabel,
-                valueCents: p.valueCents,
-                sponsor: p.sponsor,
-                categoryName: p.categoryId
-                  ? (categories.find((c) => c.id === p.categoryId)?.name ?? null)
-                  : null,
-              }))}
-            />
-            <Link
-              href="/dashboard/partner/p-brackets"
-              className="card"
-              style={{
-                padding: 18,
-                textDecoration: "none",
-                color: "inherit",
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: "var(--muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Icon name="trophy" size={16} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 900 }}>Brackets</div>
-                <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-                  Ver y gestionar el cuadro del torneo.
-                </div>
-              </div>
-            </Link>
-          </div>
+            }
+          />
     </main>
   );
 }
@@ -978,22 +980,27 @@ function KPI({
   value,
   accent,
   foot,
+  compact = false,
 }: {
   label: string;
   value: string;
   accent: string;
   foot?: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
-    <div className="card mp-partner-torneo-kpi" style={{ padding: 16 }}>
+    <div
+      className={`card mp-partner-torneo-kpi${compact ? " mp-partner-torneo-kpi--compact" : ""}`}
+      style={{ padding: compact ? 12 : 16 }}
+    >
       <div className="label-mp">{label}</div>
       <div
         className="font-heading tabular"
         style={{
-          fontSize: 26,
+          fontSize: compact ? 20 : 26,
           fontWeight: 900,
           letterSpacing: "-0.03em",
-          marginTop: 6,
+          marginTop: compact ? 4 : 6,
           color: accent,
         }}
       >

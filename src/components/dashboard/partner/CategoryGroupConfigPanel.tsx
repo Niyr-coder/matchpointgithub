@@ -177,6 +177,7 @@ export function CategoryGroupConfigPanel({
         <div className="label-mp">Formato competitivo</div>
         <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.5 }}>
           Configura grupos y clasificación por categoría. Solo editable antes del sorteo de grupos.
+          Guarda aquí antes de sortear en Operación.
         </div>
       </div>
 
@@ -262,7 +263,10 @@ export function CategoryGroupConfigPanel({
                 style={inputStyle}
               />
             </Field>
-            <Field label="Mejores 3.º globales">
+            <Field
+              label="Mejores terceros globales"
+              hint="Cuántos 3.º de grupo entran a la llave por ranking global (como los mejores terceros en un Mundial). 0 = solo pasan los de arriba en cada grupo."
+            >
               <input
                 type="number"
                 min={0}
@@ -275,27 +279,42 @@ export function CategoryGroupConfigPanel({
             </Field>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: locked ? "default" : "pointer" }}>
-              <input
-                type="checkbox"
-                checked={finalBo5}
-                disabled={locked}
-                onChange={(e) => setFinalBo5(e.target.checked)}
-                style={{ accentColor: "var(--primary)" }}
-              />
-              Final al best of 5
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: locked ? "default" : "pointer" }}>
-              <input
-                type="checkbox"
-                checked={thirdPlaceMatch}
-                disabled={locked}
-                onChange={(e) => setThirdPlaceMatch(e.target.checked)}
-                style={{ accentColor: "var(--primary)" }}
-              />
-              Partido por el 3er puesto (perdedores de semifinales)
-            </label>
+          <div style={{ marginTop: 14 }}>
+            <div className="label-mp" style={{ marginBottom: 8 }}>
+              Eliminatoria
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, cursor: locked ? "default" : "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={finalBo5}
+                  disabled={locked}
+                  onChange={(e) => setFinalBo5(e.target.checked)}
+                  style={{ accentColor: "var(--primary)", marginTop: 2 }}
+                />
+                <span>
+                  Final al best of 5
+                  <span style={{ display: "block", fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.4 }}>
+                    Solo la final del cuadro; el resto sigue la regla del torneo.
+                  </span>
+                </span>
+              </label>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, cursor: locked ? "default" : "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={thirdPlaceMatch}
+                  disabled={locked}
+                  onChange={(e) => setThirdPlaceMatch(e.target.checked)}
+                  style={{ accentColor: "var(--primary)", marginTop: 2 }}
+                />
+                <span>
+                  Partido de bronce (3.º y 4.º del torneo)
+                  <span style={{ display: "block", fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.4 }}>
+                    Perdedores de semifinal juegan por el podio. No es lo mismo que los mejores terceros de grupo.
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
 
           {preview && (
@@ -322,7 +341,12 @@ export function CategoryGroupConfigPanel({
                   {preview.wildcardCount > 0 && (
                     <>
                       {" "}
-                      + <b style={{ color: "#0a0a0a" }}>{preview.wildcardCount}</b> mejores 3.º
+                      +{" "}
+                      <b style={{ color: "#0a0a0a" }}>
+                        {preview.wildcardCount}
+                      </b>{" "}
+                      {preview.wildcardCount === 1 ? "mejor tercero" : "mejores terceros"} global
+                      {preview.wildcardCount === 1 ? "" : "es"}
                     </>
                   )}{" "}
                   → <b style={{ color: "#0a0a0a" }}>{preview.qualified}</b> en llave
@@ -330,6 +354,12 @@ export function CategoryGroupConfigPanel({
                     <>
                       {" "}
                       (cuadro de {preview.bracketSize} con {preview.byes} bye{preview.byes === 1 ? "" : "s"})
+                    </>
+                  )}
+                  {thirdPlaceMatch && preview.qualified >= 4 && (
+                    <>
+                      {" "}
+                      · incluye partido de bronce tras semifinal
                     </>
                   )}
                   .
@@ -369,7 +399,15 @@ export function CategoryGroupConfigPanel({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <span
@@ -384,6 +422,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </span>
       {children}
+      {hint ? (
+        <span style={{ fontSize: 10.5, color: "var(--muted-fg)", lineHeight: 1.45 }}>{hint}</span>
+      ) : null}
     </label>
   );
 }

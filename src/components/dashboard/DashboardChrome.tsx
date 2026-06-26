@@ -124,7 +124,7 @@ export function DashboardChrome({
           );
         })()}
         <main
-          className={`mp-dashboard-main flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-x-hidden p-4 md:p-7 md:gap-5 md:pb-7 ${
+          className={`mp-dashboard-main flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-x-clip p-4 md:p-7 md:gap-5 md:pb-7 ${
             isMessagesRoute ? "gap-0 max-lg:pb-[4.75rem]" : "gap-4 pb-24"
           }`}
         >

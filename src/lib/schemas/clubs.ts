@@ -6,6 +6,7 @@ import {
   MpCurrencySchema,
   MpSportSchema,
   SlugSchema,
+  StoredSlugSchema,
   UuidSchema,
 } from "./common";
 
@@ -110,7 +111,7 @@ export const ClubUpdateSchema = z
 export const ClubFeaturedSchema = z
   .object({
     id: UuidSchema,
-    slug: SlugSchema,
+    slug: StoredSlugSchema,
     name: z.string(),
     city: z.string(),
     coverUrl: z.string().url().nullable(),

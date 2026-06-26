@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { ScoreMatchCard } from "@/components/dashboard/brackets/ScoreMatchCard";
 import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
+import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import {
   closeGroupStage,
@@ -14,6 +15,7 @@ import {
   getGroupStageSummary,
   reportGroupMatch,
   correctGroupMatch,
+  confirmGroupMatch,
   saveGroupStageScheduling,
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
@@ -64,8 +66,33 @@ function parseSetsWon(score: unknown, side: "a" | "b"): number | null {
   return side === "a" ? first.a : first.b;
 }
 
-function isMatchDone(status: string): boolean {
-  return status === "reported" || status === "confirmed";
+function isMatchConfirmed(status: string): boolean {
+  return status === "confirmed";
+}
+
+function isMatchAwaitingConfirm(status: string): boolean {
+  return status === "reported";
+}
+
+function isMatchPendingPlay(status: string): boolean {
+  return !isMatchConfirmed(status) && !isMatchAwaitingConfirm(status);
+}
+
+function isMatchScored(status: string): boolean {
+  return isMatchConfirmed(status) || isMatchAwaitingConfirm(status);
+}
+
+function matchListSortOrder(status: string): number {
+  if (isMatchPendingPlay(status)) return 0;
+  if (isMatchAwaitingConfirm(status)) return 1;
+  return 2;
+}
+
+function sortGroupMatches<T extends { status: string; matchNo: number }>(matches: T[]): T[] {
+  return [...matches].sort(
+    (a, b) =>
+      matchListSortOrder(a.status) - matchListSortOrder(b.status) || a.matchNo - b.matchNo,
+  );
 }
 
 export function GroupStagePanel({
@@ -78,10 +105,11 @@ export function GroupStagePanel({
 }: Props) {
   const router = useRouter();
   const toast = useToast();
+  const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [reportingMatchId, setReportingMatchId] = useState<string | null>(null);
-  const [matchFilter, setMatchFilter] = useState<"pending" | "all">("pending");
+  const [confirmingMatchId, setConfirmingMatchId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("groups");
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
@@ -168,7 +196,6 @@ export function GroupStagePanel({
   }, [groups, selectedGroupId]);
 
   useEffect(() => {
-    setMatchFilter("pending");
     setViewMode("groups");
   }, [activeCategoryId]);
 
@@ -178,20 +205,21 @@ export function GroupStagePanel({
       ? Math.floor(acceptedCount / summary.config.groupsCount)
       : 0;
 
-  const selectedPendingCount = selectedGroup
-    ? selectedGroup.matches.filter((m) => !isMatchDone(m.status)).length
+  const selectedPlayCount = selectedGroup
+    ? selectedGroup.matches.filter((m) => isMatchPendingPlay(m.status)).length
+    : 0;
+  const selectedAwaitingCount = selectedGroup
+    ? selectedGroup.matches.filter((m) => isMatchAwaitingConfirm(m.status)).length
+    : 0;
+  const selectedConfirmedCount = selectedGroup
+    ? selectedGroup.matches.filter((m) => isMatchConfirmed(m.status)).length
     : 0;
   const selectedTotalCount = selectedGroup?.matches.length ?? 0;
 
   const displayedMatches = useMemo(() => {
     if (!selectedGroup) return [];
-    if (matchFilter === "all") return selectedGroup.matches;
-    return selectedGroup.matches.filter((m) => !isMatchDone(m.status));
-  }, [selectedGroup, matchFilter]);
-
-  useEffect(() => {
-    setMatchFilter("pending");
-  }, [selectedGroupId]);
+    return sortGroupMatches(selectedGroup.matches);
+  }, [selectedGroup]);
 
   const wrap = (key: string, fn: () => Promise<unknown>, ok: string, after?: () => void) => {
     if (busy) return;
@@ -203,7 +231,10 @@ export function GroupStagePanel({
           toast({
             icon: "check",
             title: ok,
-            durationMs: key === "report" || key === "correct" ? TOAST_SCORE_MS : undefined,
+            durationMs:
+              key === "report" || key === "correct" || key === "confirm"
+                ? TOAST_SCORE_MS
+                : undefined,
           });
           if (activeCategoryId) await reloadSummary(activeCategoryId);
           router.refresh();
@@ -218,6 +249,7 @@ export function GroupStagePanel({
       } finally {
         setBusy(null);
         setReportingMatchId(null);
+        setConfirmingMatchId(null);
       }
     });
   };
@@ -245,7 +277,7 @@ export function GroupStagePanel({
     );
   };
 
-  const onDraw = () => {
+  const onDraw = async () => {
     if (!summary || !activeCategoryId) return;
     if (selectedCourts.length === 0 && clubCourts.length > 0) {
       toast({
@@ -255,6 +287,12 @@ export function GroupStagePanel({
       });
       return;
     }
+    const ok = await confirm({
+      title: "Sortear grupos",
+      body: "Se generan grupos y calendario. El formato competitivo quedará bloqueado. ¿Continuar?",
+      confirmLabel: "Sortear",
+    });
+    if (!ok) return;
     wrap(
       "draw",
       async () => {
@@ -280,7 +318,44 @@ export function GroupStagePanel({
     );
   };
 
-  const onCloseGroups = () =>
+  const closeReadiness = useMemo(() => {
+    if (groups.length === 0) return { canClose: false, confirmed: 0, expected: 0, awaiting: 0, pending: 0 };
+    let confirmed = 0;
+    let expected = 0;
+    let awaiting = 0;
+    let pending = 0;
+    for (const g of groups) {
+      expected += (g.members.length * (g.members.length - 1)) / 2;
+      for (const m of g.matches) {
+        if (isMatchConfirmed(m.status)) confirmed++;
+        else if (isMatchAwaitingConfirm(m.status)) awaiting++;
+        else pending++;
+      }
+    }
+    return {
+      canClose: expected > 0 && confirmed === expected,
+      confirmed,
+      expected,
+      awaiting,
+      pending,
+    };
+  }, [groups]);
+
+  const onCloseGroups = async () => {
+    if (!closeReadiness.canClose) {
+      toast({
+        icon: "alert-triangle",
+        title: "Faltan confirmaciones",
+        sub: `${closeReadiness.confirmed}/${closeReadiness.expected} partidos confirmados. Reporta, confirma y vuelve a intentar.`,
+      });
+      return;
+    }
+    const ok = await confirm({
+      title: "Cerrar fase de grupos",
+      body: "Se calculan clasificados y wildcards con los marcadores confirmados. ¿Continuar?",
+      confirmLabel: "Cerrar grupos",
+    });
+    if (!ok) return;
     wrap(
       "close",
       () =>
@@ -290,8 +365,15 @@ export function GroupStagePanel({
         }),
       "Fase de grupos cerrada",
     );
+  };
 
-  const onKnockout = () =>
+  const onKnockout = async () => {
+    const ok = await confirm({
+      title: "Generar cuadro final",
+      body: "Se crea la llave eliminatoria con los clasificados. Revisa la config de mejores terceros y bronce antes de continuar.",
+      confirmLabel: "Generar llave",
+    });
+    if (!ok) return;
     wrap(
       "ko",
       () =>
@@ -301,6 +383,7 @@ export function GroupStagePanel({
         }),
       "Cuadro final generado",
     );
+  };
 
   const onScoreSubmit = (matchId: string, setsA: number, setsB: number) => {
     if (busy) return;
@@ -309,7 +392,7 @@ export function GroupStagePanel({
     for (const g of groups) {
       const m = g.matches.find((x) => x.id === matchId);
       if (m) {
-        isCorrection = isMatchDone(m.status);
+        isCorrection = isMatchScored(m.status);
         break;
       }
     }
@@ -334,6 +417,16 @@ export function GroupStagePanel({
     );
   };
 
+  const onConfirmMatch = (matchId: string) => {
+    if (busy) return;
+    setConfirmingMatchId(matchId);
+    wrap(
+      "confirm",
+      () => confirmGroupMatch({ tournamentId, matchId }),
+      "Resultado confirmado",
+    );
+  };
+
   if (categories.length === 0) {
     return (
       <div className="card mp-grp-panel">
@@ -343,10 +436,18 @@ export function GroupStagePanel({
     );
   }
 
-  const schedulePendingCount = useMemo(
+  const schedulePendingPlayCount = useMemo(
     () =>
       groups.reduce(
-        (n, g) => n + g.matches.filter((m) => !isMatchDone(m.status)).length,
+        (n, g) => n + g.matches.filter((m) => isMatchPendingPlay(m.status)).length,
+        0,
+      ),
+    [groups],
+  );
+  const scheduleAwaitingCount = useMemo(
+    () =>
+      groups.reduce(
+        (n, g) => n + g.matches.filter((m) => isMatchAwaitingConfirm(m.status)).length,
         0,
       ),
     [groups],
@@ -426,11 +527,17 @@ export function GroupStagePanel({
                   label="Cerrar fase de grupos"
                   onClick={onCloseGroups}
                   loading={busy === "close"}
+                  disabled={!closeReadiness.canClose}
+                  title={
+                    closeReadiness.canClose
+                      ? undefined
+                      : `${closeReadiness.confirmed}/${closeReadiness.expected} confirmados`
+                  }
                   primary
                 />
               )}
               {stage === "knockout" && (
-                <Link href="/dashboard/partner/brackets" className="btn btn-primary mp-grp-link-btn">
+                <Link href="/dashboard/partner/p-brackets" className="btn btn-primary mp-grp-link-btn">
                   Ver bracket en vivo
                 </Link>
               )}
@@ -450,6 +557,22 @@ export function GroupStagePanel({
             <p className="mp-grp-alert">
               Necesitas al menos {summary.config.groupsCount} inscripciones aceptadas en esta
               categoría (tienes {acceptedCount}).
+            </p>
+          )}
+
+          {stage === "group_stage" && !closeReadiness.canClose && closeReadiness.expected > 0 && (
+            <p className="mp-grp-alert">
+              Para cerrar grupos necesitas{" "}
+              <b>
+                {closeReadiness.confirmed}/{closeReadiness.expected}
+              </b>{" "}
+              partidos confirmados
+              {closeReadiness.awaiting > 0
+                ? ` (${closeReadiness.awaiting} reportados sin confirmar)`
+                : closeReadiness.pending > 0
+                  ? ` (${closeReadiness.pending} por jugar)`
+                  : ""}
+              . La tabla solo cuenta confirmados.
             </p>
           )}
 
@@ -554,30 +677,13 @@ export function GroupStagePanel({
                 </button>
               </div>
               {scheduleTotalCount > 0 && (
-                <div className="mp-grp-filter mp-grp-filter--inline">
-                  <div className="mp-grp-filter-tabs" role="tablist" aria-label="Filtrar partidos">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={matchFilter === "pending"}
-                      className={`mp-grp-filter-tab${matchFilter === "pending" ? " is-active" : ""}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setMatchFilter("pending")}
-                    >
-                      Pendientes ({schedulePendingCount})
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={matchFilter === "all"}
-                      className={`mp-grp-filter-tab${matchFilter === "all" ? " is-active" : ""}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setMatchFilter("all")}
-                    >
-                      Todos ({scheduleTotalCount})
-                    </button>
-                  </div>
-                </div>
+                <p className="mp-grp-schedule-summary">
+                  {schedulePendingPlayCount} por jugar
+                  {scheduleAwaitingCount > 0 ? ` · ${scheduleAwaitingCount} por confirmar` : ""}
+                  {scheduleTotalCount - schedulePendingPlayCount - scheduleAwaitingCount > 0
+                    ? ` · ${scheduleTotalCount - schedulePendingPlayCount - scheduleAwaitingCount} confirmados`
+                    : ""}
+                </p>
               )}
             </div>
           )}
@@ -587,18 +693,20 @@ export function GroupStagePanel({
               summary={summary}
               registrationLabels={registrationLabels}
               canEditScores={canEditScores}
-              matchFilter={matchFilter}
               reportingMatchId={reportingMatchId}
-              busy={busy === "report"}
+              confirmingMatchId={confirmingMatchId}
+              reportingBusy={busy === "report"}
+              confirmingBusy={busy === "confirm"}
               onScoreSubmit={onScoreSubmit}
+              onConfirmMatch={onConfirmMatch}
             />
           )}
 
           {groups.length > 0 && viewMode === "groups" && (
             <div className="mp-grp-panel-body">
-              <aside className="mp-grp-sidebar" aria-label="Grupos y tablas">
-                <div className="label-mp mp-grp-sidebar-label">Grupos</div>
-                <div className="mp-grp-sidebar-list">
+              <div className="mp-grp-group-strip-wrap">
+                <div className="label-mp mp-grp-group-strip-label">Grupos</div>
+                <div className="mp-grp-group-strip" role="tablist" aria-label="Grupos">
                   {groups.map((g) => (
                     <GroupStandingsCard
                       key={g.id}
@@ -610,85 +718,78 @@ export function GroupStagePanel({
                     />
                   ))}
                 </div>
-              </aside>
+              </div>
 
               {selectedGroup && (
-                <div className="mp-grp-matches-pane">
-                  <div className="mp-grp-standings-block mp-grp-standings-block--mobile">
-                    <div className="label-mp mp-grp-standings-block-label">
-                      Posiciones · Grupo{" "}
-                      <span className="mp-grp-matches-group-tag">{selectedGroup.name}</span>
-                    </div>
-                    <GroupStandingsTable
-                      group={selectedGroup}
-                      advancePerGroup={summary.config.advancePerGroup}
-                      registrationLabels={registrationLabels}
-                    />
-                  </div>
-                  <div className="mp-grp-matches-head">
-                    <div>
-                      <div className="label-mp">
-                        Partidos · Grupo{" "}
+                <div className="mp-grp-detail">
+                  <div className="mp-grp-detail-grid">
+                    <section className="mp-grp-standings-section" aria-label="Posiciones del grupo">
+                      <div className="label-mp mp-grp-standings-section-label">
+                        Posiciones ·{" "}
                         <span className="mp-grp-matches-group-tag">{selectedGroup.name}</span>
                       </div>
-                      <p className="mp-grp-matches-sub">
-                        {selectedGroup.standings.length} equipos · {selectedPendingCount} pendientes
-                        {selectedTotalCount > 0 &&
-                        matchFilter === "all" &&
-                        selectedPendingCount < selectedTotalCount
-                          ? ` · ${selectedTotalCount - selectedPendingCount} finalizados`
-                          : ""}
-                      </p>
-                    </div>
-                    {selectedTotalCount > 0 && (
-                      <div className="mp-grp-filter mp-grp-filter--inline">
-                        <div
-                          className="mp-grp-filter-tabs"
-                          role="tablist"
-                          aria-label="Filtrar partidos"
-                        >
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={matchFilter === "pending"}
-                            className={`mp-grp-filter-tab${matchFilter === "pending" ? " is-active" : ""}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => setMatchFilter("pending")}
-                          >
-                            Pendientes ({selectedPendingCount})
-                          </button>
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={matchFilter === "all"}
-                            className={`mp-grp-filter-tab${matchFilter === "all" ? " is-active" : ""}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => setMatchFilter("all")}
-                          >
-                            Todos ({selectedTotalCount})
-                          </button>
+                      <GroupStandingsTable
+                        group={selectedGroup}
+                        advancePerGroup={summary.config.advancePerGroup}
+                        registrationLabels={registrationLabels}
+                        narrow
+                      />
+                    </section>
+
+                    <section className="mp-grp-matches-section">
+                      <div className="mp-grp-matches-pane">
+                        <div className="mp-grp-matches-head">
+                          <div>
+                            <div className="label-mp">
+                              Partidos ·{" "}
+                              <span className="mp-grp-matches-group-tag">{selectedGroup.name}</span>
+                            </div>
+                            <p className="mp-grp-matches-sub">
+                              {selectedGroup.standings.length} equipos
+                              {selectedTotalCount > 0 && (
+                                <>
+                                  {" · "}
+                                  {selectedPlayCount} por jugar
+                                  {selectedAwaitingCount > 0
+                                    ? ` · ${selectedAwaitingCount} por confirmar`
+                                    : ""}
+                                  {selectedConfirmedCount > 0
+                                    ? ` · ${selectedConfirmedCount} confirmados`
+                                    : ""}
+                                </>
+                              )}
+                              {canEditScores && selectedTotalCount > 0 && (
+                                <span className="mp-grp-matches-sub-legend" aria-hidden>
+                                  {" · "}
+                                  <span className="mp-grp-legend-inline is-pending">Por jugar</span>
+                                  {" · "}
+                                  <span className="mp-grp-legend-inline is-awaiting">
+                                    Por confirmar
+                                  </span>
+                                  {" · "}
+                                  <span className="mp-grp-legend-inline is-done">Confirmado</span>
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div key={selectedGroup.id} className="mp-grp-matches-switch">
+                          <GroupMatchesPane
+                            matches={displayedMatches}
+                            totalCount={selectedTotalCount}
+                            registrationLabels={registrationLabels}
+                            canEditScores={canEditScores}
+                            reportingMatchId={reportingMatchId}
+                            confirmingMatchId={confirmingMatchId}
+                            reportingBusy={busy === "report"}
+                            confirmingBusy={busy === "confirm"}
+                            onScoreSubmit={onScoreSubmit}
+                            onConfirmMatch={onConfirmMatch}
+                          />
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {canEditScores && selectedTotalCount > 0 && (
-                    <p className="mp-grp-filter-hint mp-grp-filter-hint--pane">
-                      Enter o salir del campo guarda el marcador
-                    </p>
-                  )}
-
-                  <div key={selectedGroup.id} className="mp-grp-matches-switch">
-                    <GroupMatchesPane
-                      matches={displayedMatches}
-                      totalCount={selectedTotalCount}
-                      matchFilter={matchFilter}
-                      registrationLabels={registrationLabels}
-                      canEditScores={canEditScores}
-                      reportingMatchId={reportingMatchId}
-                      busy={busy === "report"}
-                      onScoreSubmit={onScoreSubmit}
-                    />
+                    </section>
                   </div>
                 </div>
               )}
@@ -705,58 +806,96 @@ function GroupStandingsTable({
   advancePerGroup,
   registrationLabels,
   compact = false,
+  narrow = false,
 }: {
   group: GroupRow;
   advancePerGroup: number;
   registrationLabels: Record<string, string>;
   compact?: boolean;
+  narrow?: boolean;
 }) {
   return (
-    <div className={`mp-grp-standings${compact ? " mp-grp-standings--compact" : ""}`}>
-      <div className="mp-grp-standings-head">
-        <span>#</span>
-        <span>Equipo</span>
-        <div className="mp-grp-standing-stats mp-grp-standing-stats--head" aria-hidden>
-          <span>PJ</span>
-          <span>G</span>
-          <span>P</span>
-          <span>Sets</span>
+    <div
+      className={`mp-grp-standings${compact ? " mp-grp-standings--compact" : ""}${
+        narrow ? " mp-grp-standings--narrow" : ""
+      }`}
+    >
+      {!narrow ? (
+        <div className="mp-grp-standings-head">
+          <span>#</span>
+          <span>Equipo</span>
+          <div className="mp-grp-standing-stats mp-grp-standing-stats--head" aria-hidden>
+            <span>PJ</span>
+            <span>G</span>
+            <span>P</span>
+            <span>Sets</span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="mp-grp-standings-head mp-grp-standings-head--narrow">
+          <span>#</span>
+          <span>Equipo</span>
+          <span className="mp-grp-standings-head-advance">Avanzan {advancePerGroup}</span>
+        </div>
+      )}
       {group.standings.map((row) => {
-        const qualified = row.rank <= advancePerGroup;
         const showCutoff =
           row.rank === advancePerGroup &&
           group.standings.some((r) => r.rank === advancePerGroup + 1);
+        const teamName = registrationLabels[row.registrationId] ?? "Equipo sin nombre";
+        const isAfterCutoff = narrow && row.rank === advancePerGroup + 1;
+        const advances = row.rank <= advancePerGroup;
         return (
           <Fragment key={row.registrationId}>
-            <div className={`mp-grp-standing-row${qualified ? " is-qualified" : ""}`}>
+            <div className={`mp-grp-standing-row${isAfterCutoff ? " is-after-cutoff" : ""}`}>
               <span className="mp-grp-standing-rank">{row.rank}</span>
-              <span className="mp-grp-standing-name">
-                {registrationLabels[row.registrationId] ?? "Equipo sin nombre"}
-              </span>
-              <div className="mp-grp-standing-stats" aria-label="Estadísticas">
-                <span className="mp-grp-standing-stat">
-                  <span className="mp-grp-stat-lbl">PJ</span>
-                  <span className="mp-grp-stat-val">{row.played}</span>
-                </span>
-                <span className="mp-grp-standing-stat is-win">
-                  <span className="mp-grp-stat-lbl">G</span>
-                  <span className="mp-grp-stat-val">{row.wins}</span>
-                </span>
-                <span className="mp-grp-standing-stat is-loss">
-                  <span className="mp-grp-stat-lbl">P</span>
-                  <span className="mp-grp-stat-val">{row.losses}</span>
-                </span>
-                <span className="mp-grp-standing-stat">
-                  <span className="mp-grp-stat-lbl">Sets</span>
-                  <span className="mp-grp-stat-val">
-                    {row.setsWon}-{row.setsLost}
+              {narrow ? (
+                <>
+                  <div className="mp-grp-standing-body">
+                    <span className="mp-grp-standing-name" title={teamName}>
+                      {teamName}
+                    </span>
+                    <span className="mp-grp-standing-record" aria-label="Victorias, derrotas y sets">
+                      {row.wins}G · {row.losses}P · {row.setsWon}-{row.setsLost} sets
+                    </span>
+                  </div>
+                  <span
+                    className={`mp-grp-standing-advance${advances ? " is-on" : ""}`}
+                    aria-label={advances ? "Clasifica" : undefined}
+                    aria-hidden={!advances}
+                  >
+                    {advances ? <Icon name="arrow-up" size={12} /> : null}
                   </span>
-                </span>
-              </div>
+                </>
+              ) : (
+                <>
+                  <span className="mp-grp-standing-name" title={teamName}>
+                    {teamName}
+                  </span>
+                  <div className="mp-grp-standing-stats" aria-label="Estadísticas">
+                    <span className="mp-grp-standing-stat">
+                      <span className="mp-grp-stat-lbl">PJ</span>
+                      <span className="mp-grp-stat-val">{row.played}</span>
+                    </span>
+                    <span className="mp-grp-standing-stat is-win">
+                      <span className="mp-grp-stat-lbl">G</span>
+                      <span className="mp-grp-stat-val">{row.wins}</span>
+                    </span>
+                    <span className="mp-grp-standing-stat is-loss">
+                      <span className="mp-grp-stat-lbl">P</span>
+                      <span className="mp-grp-stat-val">{row.losses}</span>
+                    </span>
+                    <span className="mp-grp-standing-stat">
+                      <span className="mp-grp-stat-lbl">Sets</span>
+                      <span className="mp-grp-stat-val">
+                        {row.setsWon}-{row.setsLost}
+                      </span>
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
-            {showCutoff && (
+            {showCutoff && !narrow && (
               <div
                 className="mp-grp-cutoff"
                 role="separator"
@@ -775,7 +914,6 @@ function GroupStandingsTable({
 function GroupStandingsCard({
   group,
   active,
-  advancePerGroup,
   registrationLabels,
   onSelect,
 }: {
@@ -785,38 +923,39 @@ function GroupStandingsCard({
   registrationLabels: Record<string, string>;
   onSelect: () => void;
 }) {
-  const pendingCount = group.matches.filter((m) => !isMatchDone(m.status)).length;
-  const doneCount = group.matches.length - pendingCount;
+  const pendingPlayCount = group.matches.filter((m) => isMatchPendingPlay(m.status)).length;
+  const awaitingCount = group.matches.filter((m) => isMatchAwaitingConfirm(m.status)).length;
+  const confirmedCount = group.matches.filter((m) => isMatchConfirmed(m.status)).length;
+  const leader = group.standings[0];
+  const leaderLabel = leader
+    ? (registrationLabels[leader.registrationId] ?? "—").split(" ")[0]
+    : null;
 
   return (
     <button
       type="button"
-      className={`mp-grp-sidebar-card${active ? " is-active" : ""}`}
+      role="tab"
+      aria-selected={active}
+      className={`mp-grp-group-chip${active ? " is-active" : ""}`}
       onClick={onSelect}
-      aria-pressed={active}
     >
-      <div className="mp-grp-sidebar-card-head">
-        <span className="mp-grp-sidebar-card-title">
-          {active && <span className="mp-grp-sidebar-card-dot" aria-hidden />}
-          Grupo {group.name}
-        </span>
+      <span className="mp-grp-group-chip-letter" aria-hidden>
+        {group.name}
+      </span>
+      <span className="mp-grp-group-chip-body">
+        <span className="mp-grp-group-chip-title">Grupo {group.name}</span>
         {group.matches.length > 0 && (
-          <span className="mp-grp-sidebar-card-meta">
-            {doneCount}/{group.matches.length}
+          <span className="mp-grp-group-chip-meta">
+            {confirmedCount}/{group.matches.length}
+            {leaderLabel ? ` · ${leaderLabel}` : ""}
           </span>
         )}
-      </div>
-      <div className="mp-grp-sidebar-card-standings">
-        <GroupStandingsTable
-          group={group}
-          advancePerGroup={advancePerGroup}
-          registrationLabels={registrationLabels}
-          compact
-        />
-      </div>
-      {group.matches.length > 0 && pendingCount > 0 && (
-        <span className="mp-grp-sidebar-pending">{pendingCount} pendientes</span>
-      )}
+      </span>
+      {awaitingCount > 0 ? (
+        <span className="mp-grp-group-chip-badge is-confirm">{awaitingCount}</span>
+      ) : pendingPlayCount > 0 ? (
+        <span className="mp-grp-group-chip-badge">{pendingPlayCount}</span>
+      ) : null}
     </button>
   );
 }
@@ -826,19 +965,23 @@ function GroupMatchesPane({
   totalCount,
   registrationLabels,
   canEditScores,
-  matchFilter,
   reportingMatchId,
-  busy,
+  confirmingMatchId,
+  reportingBusy,
+  confirmingBusy,
   onScoreSubmit,
+  onConfirmMatch,
 }: {
   matches: GroupRow["matches"];
   totalCount: number;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
-  matchFilter: "pending" | "all";
   reportingMatchId: string | null;
-  busy: boolean;
+  confirmingMatchId: string | null;
+  reportingBusy: boolean;
+  confirmingBusy: boolean;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
+  onConfirmMatch: (matchId: string) => void;
 }) {
   const rounds = useMemo(() => {
     const map = new Map<number, typeof matches>();
@@ -854,31 +997,16 @@ function GroupMatchesPane({
     return <p className="mp-grp-empty">Sortea los grupos para generar el calendario.</p>;
   }
 
-  if (matches.length === 0) {
-    return (
-      <p className="mp-grp-empty">
-        {matchFilter === "pending"
-          ? "No hay partidos pendientes en este grupo."
-          : "No hay partidos en este grupo."}
-      </p>
-    );
-  }
-
   return (
     <div className="mp-grp-rounds">
-      {matchFilter === "all" && matches.length === totalCount && (
-        <p className="mp-grp-filter-hint mp-grp-filter-hint--pane" style={{ marginTop: 0 }}>
-          {matches.every((m) => !isMatchDone(m.status))
-            ? "Todos los partidos siguen pendientes de marcador."
-            : "Los partidos con marcador aparecen atenuados."}
-        </p>
-      )}
       {rounds.map(([roundNo, roundMatches]) => (
         <div key={roundNo} className="mp-grp-round">
           <div className="mp-grp-round-label">Fecha {roundNo}</div>
           <div className="mp-grp-round-grid">
             {roundMatches.map((m) => {
-              const done = isMatchDone(m.status);
+              const pending = isMatchPendingPlay(m.status);
+              const awaiting = isMatchAwaitingConfirm(m.status);
+              const confirmed = isMatchConfirmed(m.status);
               const labelA = registrationLabels[m.sideARegistrationId] ?? "Equipo A";
               const labelB = registrationLabels[m.sideBRegistrationId] ?? "Equipo B";
               return (
@@ -890,10 +1018,15 @@ function GroupMatchesPane({
                   scoreA={parseSetsWon(m.score, "a")}
                   scoreB={parseSetsWon(m.score, "b")}
                   winnerSide={m.winnerSide === "a" || m.winnerSide === "b" ? m.winnerSide : null}
-                  editable={canEditScores && !done}
-                  correctable={canEditScores && done}
-                  busy={reportingMatchId === m.id && busy}
-                  dimmed={done && matchFilter === "all"}
+                  editable={canEditScores && pending}
+                  correctable={canEditScores && (awaiting || confirmed)}
+                  confirmable={canEditScores && awaiting}
+                  onConfirm={() => onConfirmMatch(m.id)}
+                  busy={
+                    (reportingMatchId === m.id && reportingBusy) ||
+                    (confirmingMatchId === m.id && confirmingBusy)
+                  }
+                  dimmed={confirmed}
                   meta={`Partido ${m.matchNo}`}
                   onScoreSubmit={onScoreSubmit}
                 />
@@ -913,6 +1046,7 @@ function ActionBtn({
   loading,
   disabled,
   primary,
+  title,
 }: {
   icon: string;
   label: string;
@@ -920,6 +1054,7 @@ function ActionBtn({
   loading?: boolean;
   disabled?: boolean;
   primary?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -927,6 +1062,7 @@ function ActionBtn({
       className={primary ? "btn btn-primary mp-grp-action-btn" : "btn mp-grp-action-btn"}
       onClick={onClick}
       disabled={disabled || loading}
+      title={title}
     >
       <Icon name={icon} size={13} />
       {loading ? "…" : label}

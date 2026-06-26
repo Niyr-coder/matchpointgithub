@@ -151,7 +151,7 @@ export function computeGroupStandings(
   }
 
   for (const m of matches) {
-    if (m.status !== "reported" && m.status !== "confirmed" && m.status !== "live") continue;
+    if (m.status !== "confirmed") continue;
     if (!m.winnerSide || m.winnerSide === "d") continue;
     const a = stats.get(m.sideARegistrationId);
     const b = stats.get(m.sideBRegistrationId);
@@ -408,6 +408,11 @@ export function validateGroupPlayoffConfig(
   const wc = wildcardCount(config);
   if (wc > config.groupsCount) {
     return `No puedes tener más mejores 3.º (${wc}) que grupos (${config.groupsCount})`;
+  }
+  if (wc > 0) {
+    if (config.advancePerGroup < 2) {
+      return "Mejores terceros globales requiere clasificar al menos 2 por grupo";
+    }
   }
   const total = config.groupsCount * config.advancePerGroup + wc;
   if (total < 2) return "Se necesitan al menos 2 clasificados para la llave";

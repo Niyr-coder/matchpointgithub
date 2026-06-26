@@ -6,9 +6,10 @@ import {
   type TournamentInscrito,
 } from "@/components/dashboard/eventos/TournamentDetailView";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
-import type { TournamentBracketSideView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
+import type { TournamentBracketSideView, TournamentPlayerGroupView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
 import { buildTorneoPlayerShell } from "@/lib/torneos/player-view";
 import { TorneoDetailView } from "./TorneoDetailView";
+import { TorneoPlayerRealtime } from "./TorneoPlayerRealtime";
 
 type Props = {
   detail: TournamentDetail;
@@ -21,6 +22,7 @@ type Props = {
   scheduleBlocks?: import("@/lib/tournaments/schedule-display").TournamentScheduleBlockView[];
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
+  groupView?: TournamentPlayerGroupView | null;
 };
 
 export function TorneoPageRouter({
@@ -34,22 +36,31 @@ export function TorneoPageRouter({
   scheduleBlocks = [],
   myMatches = [],
   bracketSides = [],
+  groupView = null,
 }: Props) {
+  const tournamentId = detail.tournament.id;
+
   if (myRegistration) {
     const shell = buildTorneoPlayerShell(detail, clubName, myRegistration.status);
     return (
-      <TorneoDetailView
-        shell={shell}
-        detail={detail}
-        myRegistration={myRegistration}
-        myMatches={myMatches}
-        bracketSides={bracketSides}
-      />
+      <>
+        <TorneoPlayerRealtime tournamentId={tournamentId} />
+        <TorneoDetailView
+          shell={shell}
+          detail={detail}
+          myRegistration={myRegistration}
+          myMatches={myMatches}
+          bracketSides={bracketSides}
+          groupView={groupView}
+        />
+      </>
     );
   }
 
   return (
-    <TournamentDetailView
+    <>
+      <TorneoPlayerRealtime tournamentId={tournamentId} />
+      <TournamentDetailView
       detail={detail}
       clubName={clubName}
       clubCity={clubCity}
@@ -59,5 +70,6 @@ export function TorneoPageRouter({
       categoryRegistrationCounts={categoryRegistrationCounts}
       scheduleBlocks={scheduleBlocks}
     />
+    </>
   );
 }

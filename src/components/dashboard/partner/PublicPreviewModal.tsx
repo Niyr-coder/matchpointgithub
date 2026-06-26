@@ -40,55 +40,68 @@ export function PublicPreviewModal({
   categories,
   blocks,
   prizes = [],
+  compact = false,
 }: {
   preview: Preview;
   categories: CategoryLite[];
   blocks: ScheduleLite[];
   prizes?: PrizeLite[];
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="card"
-        style={{
-          padding: 18,
-          textDecoration: "none",
-          color: "inherit",
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          textAlign: "left",
-          background: "var(--card-bg, #fff)",
-          border: "1px solid var(--border)",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          width: "100%",
-        }}
-      >
-        <div
+      {compact ? (
+        <button type="button" className="mp-partner-torneo-rail-link" onClick={() => setOpen(true)}>
+          <Icon name="eye" size={14} />
+          <span>
+            <b>Preview público</b>
+            <small>Lo que ven los jugadores</small>
+          </span>
+          <Icon name="chevron-right" size={14} className="mp-partner-torneo-rail-link-chevron" />
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="card"
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "var(--muted)",
-            display: "inline-flex",
+            padding: 18,
+            textDecoration: "none",
+            color: "inherit",
+            display: "flex",
+            gap: 12,
             alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            textAlign: "left",
+            background: "var(--card-bg, #fff)",
+            border: "1px solid var(--border)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            width: "100%",
           }}
         >
-          <Icon name="eye" size={16} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 900 }}>Vista pública del torneo</div>
-          <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
-            Lo que ven los jugadores en el detalle (preview en modal, sin salir).
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: "var(--muted)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="eye" size={16} />
           </div>
-        </div>
-      </button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 900 }}>Vista pública del torneo</div>
+            <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2 }}>
+              Lo que ven los jugadores en el detalle (preview en modal, sin salir).
+            </div>
+          </div>
+        </button>
+      )}
 
       {open && (
         <div

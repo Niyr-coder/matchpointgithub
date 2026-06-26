@@ -7,6 +7,7 @@ import {
   MpSkillLevelSchema,
   MpSportSchema,
   SlugSchema,
+  StoredSlugSchema,
   UuidSchema,
 } from "./common";
 
@@ -335,7 +336,7 @@ export const TournamentListParamsSchema = z
 export const TournamentFeaturedSchema = z
   .object({
     id: UuidSchema,
-    slug: SlugSchema,
+    slug: StoredSlugSchema,
     name: z.string(),
     startsAt: IsoDateTimeSchema,
     endsAt: IsoDateTimeSchema.nullable(),

@@ -24,6 +24,7 @@ export default async function TorneoPlayerPage({
         scheduleBlocks={data.scheduleBlocks}
         myMatches={data.myMatches}
         bracketSides={data.bracketSides}
+        groupView={data.groupView}
       />
     </div>
   );

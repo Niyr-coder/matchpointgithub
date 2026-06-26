@@ -12,7 +12,7 @@ import { PLAYER_TONES } from "./_shared/playerTones";
 import type { PlayerTone } from "./_shared/playerTones";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 import type { MyRegistration } from "@/components/dashboard/eventos/TournamentDetailView";
-import type { TournamentBracketSideView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
+import type { TournamentBracketSideView, TournamentPlayerGroupView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
 import { cancelMyRegistration } from "@/server/actions/tournaments";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
@@ -35,6 +35,7 @@ type Props = {
   myRegistration: MyRegistration;
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
+  groupView?: TournamentPlayerGroupView | null;
   /** Override status (preview / dev). */
   previewStatus?: TorneoPlayerStatus;
   backHref?: string;
@@ -53,6 +54,7 @@ export function TorneoDetailView({
   myRegistration,
   myMatches = [],
   bracketSides = [],
+  groupView = null,
   previewStatus,
   backHref = "/dashboard/user/eventos",
 }: Props) {
@@ -153,7 +155,7 @@ export function TorneoDetailView({
         />
       )}
       {tab === "completo" && (
-        <CompletoTab format={format} bracketSides={bracketSides} />
+        <CompletoTab format={format} bracketSides={bracketSides} groupView={groupView} />
       )}
       {tab === "detalles" && (
         <DetallesTab tone={tone} format={format} feeLabel={shell.feeLabel} detail={detail} />
@@ -291,10 +293,13 @@ function TorneoMatchRow({ m, tone }: { m: TournamentPlayerMatchView; tone: Playe
       }}
     >
       <div className="font-heading tabular" style={{ fontSize: 13, fontWeight: 900, color: "var(--muted-fg)", textAlign: "center" }}>
-        R{m.round}
+        {m.phase === "group" ? `F${m.round}` : `R${m.round}`}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ fontSize: 12, fontWeight: 800 }}>vs. {m.opponentLabel}</div>
+        {m.groupName && (
+          <div style={{ fontSize: 10, color: "var(--muted-fg)", fontWeight: 700 }}>{m.groupName}</div>
+        )}
         {m.scheduledLabel && (
           <div style={{ fontSize: 10.5, color: "var(--muted-fg)", fontWeight: 600 }}>{m.scheduledLabel}</div>
         )}
@@ -315,10 +320,45 @@ function TorneoMatchRow({ m, tone }: { m: TournamentPlayerMatchView; tone: Playe
 function CompletoTab({
   format,
   bracketSides,
+  groupView,
 }: {
   format: TorneoPlayerFormat;
   bracketSides: TournamentBracketSideView[];
+  groupView: TournamentPlayerGroupView | null;
 }) {
+  if (bracketSides.length === 0 && groupView) {
+    return (
+      <div className="card" style={{ padding: 14 }}>
+        <div className="label-mp">Posiciones · {groupView.groupName}</div>
+        <p style={{ margin: "6px 0 12px", fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.45 }}>
+          Pasan los {groupView.advancePerGroup} primeros. Solo cuentan partidos confirmados por el organizador.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {groupView.standings.map((row) => (
+            <div
+              key={row.registrationId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "28px 1fr auto auto",
+                gap: 8,
+                padding: "8px 0",
+                borderBottom: "1px solid var(--border)",
+                fontSize: 12,
+                fontWeight: row.involvesMe ? 800 : 600,
+                background: row.involvesMe ? "rgba(251,191,36,0.08)" : undefined,
+              }}
+            >
+              <span style={{ color: "var(--muted-fg)", fontWeight: 900 }}>{row.rank}</span>
+              <span>{row.label}{row.involvesMe ? " (tú)" : ""}</span>
+              <span className="tabular" style={{ color: "var(--muted-fg)" }}>{row.wins}G</span>
+              <span className="tabular" style={{ color: "var(--muted-fg)" }}>{row.losses}P</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (bracketSides.length === 0) {
     return (
       <PlayerEmptyPanel

@@ -114,4 +114,16 @@ describe("validateGroupPlayoffConfig", () => {
     );
     expect(err).toMatch(/mejores 3/);
   });
+
+  it("rechaza mejores terceros si solo clasifica 1 por grupo", () => {
+    const err = validateGroupPlayoffConfig(
+      {
+        groupsCount: 4,
+        advancePerGroup: 1,
+        wildcards: { mode: "best_thirds_global", count: 1 },
+      },
+      16,
+    );
+    expect(err).toMatch(/al menos 2 por grupo/);
+  });
 });

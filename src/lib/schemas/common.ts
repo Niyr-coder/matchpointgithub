@@ -22,6 +22,9 @@ export const SlugSchema = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "lowercase letters, digits and dashes only")
   .openapi({ example: "club-norte-pickleball" });
 
+/** Slug persistido en BD — lecturas públicas toleran legacy (mayúsculas, guiones bajos). */
+export const StoredSlugSchema = z.string().min(1).max(120);
+
 export const UsernameSchema = z
   .string()
   .min(3)

@@ -7,8 +7,22 @@ import type { GroupStageSummary } from "@/server/actions/tournament-group-stage"
 
 type GroupMatch = GroupStageSummary["groups"][number]["matches"][number];
 
-function isMatchDone(status: string): boolean {
-  return status === "reported" || status === "confirmed";
+function isMatchConfirmed(status: string): boolean {
+  return status === "confirmed";
+}
+
+function isMatchAwaitingConfirm(status: string): boolean {
+  return status === "reported";
+}
+
+function isMatchPendingPlay(status: string): boolean {
+  return !isMatchConfirmed(status) && !isMatchAwaitingConfirm(status);
+}
+
+function matchListSortOrder(status: string): number {
+  if (isMatchPendingPlay(status)) return 0;
+  if (isMatchAwaitingConfirm(status)) return 1;
+  return 2;
 }
 
 function parseSetsWon(score: unknown, side: "a" | "b"): number | null {
@@ -23,18 +37,22 @@ export function GroupStageScheduleView({
   summary,
   registrationLabels,
   canEditScores,
-  matchFilter,
   reportingMatchId,
-  busy,
+  confirmingMatchId,
+  reportingBusy,
+  confirmingBusy,
   onScoreSubmit,
+  onConfirmMatch,
 }: {
   summary: GroupStageSummary;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
-  matchFilter: "pending" | "all";
   reportingMatchId: string | null;
-  busy: boolean;
+  confirmingMatchId: string | null;
+  reportingBusy: boolean;
+  confirmingBusy: boolean;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
+  onConfirmMatch: (matchId: string) => void;
 }) {
   const courtLabels = useMemo(() => {
     const m = new Map<string, string>();
@@ -54,20 +72,15 @@ export function GroupStageScheduleView({
     return list;
   }, [summary.groups]);
 
-  const filtered = useMemo(() => {
-    if (matchFilter === "all") return allMatches;
-    return allMatches.filter((m) => !isMatchDone(m.status));
-  }, [allMatches, matchFilter]);
-
   const byRound = useMemo(() => {
-    const map = new Map<number, typeof filtered>();
-    for (const m of filtered) {
+    const map = new Map<number, typeof allMatches>();
+    for (const m of allMatches) {
       const list = map.get(m.roundNo) ?? [];
       list.push(m);
       map.set(m.roundNo, list);
     }
     return [...map.entries()].sort(([a], [b]) => a - b);
-  }, [filtered]);
+  }, [allMatches]);
 
   if (!selectedCourtIds.length) {
     return (
@@ -78,21 +91,26 @@ export function GroupStageScheduleView({
     );
   }
 
-  if (filtered.length === 0) {
-    return (
-      <p className="mp-grp-empty">
-        {matchFilter === "pending"
-          ? "No hay partidos pendientes con el filtro actual."
-          : "No hay partidos programados."}
-      </p>
-    );
+  if (allMatches.length === 0) {
+    return <p className="mp-grp-empty">No hay partidos programados.</p>;
   }
 
   return (
     <div className="mp-grp-schedule">
+      {canEditScores && (
+        <p className="mp-grp-match-legend mp-grp-match-legend--schedule" aria-hidden>
+          <span className="mp-grp-legend-pill is-pending">Por jugar</span>
+          <span className="mp-grp-legend-pill is-awaiting">Por confirmar</span>
+          <span className="mp-grp-legend-pill is-done">Confirmado</span>
+        </p>
+      )}
       {byRound.map(([roundNo, roundMatches]) => {
-        const waves = new Map<number, typeof roundMatches>();
-        for (const m of roundMatches) {
+        const sortedRound = [...roundMatches].sort(
+          (a, b) =>
+            matchListSortOrder(a.status) - matchListSortOrder(b.status) || a.matchNo - b.matchNo,
+        );
+        const waves = new Map<number, typeof sortedRound>();
+        for (const m of sortedRound) {
           const w = m.waveNo ?? 0;
           const list = waves.get(w) ?? [];
           list.push(m);
@@ -133,22 +151,28 @@ export function GroupStageScheduleView({
                 >
                   {selectedCourtIds.map((courtId) => {
                     const slotMatch = (waves.get(waveNo) ?? []).find((m) => m.courtId === courtId);
+                    const courtLabel = courtLabels.get(courtId) ?? "Cancha";
+                    const showCourtTime = Boolean(slotMatch?.scheduledAt) && waveNos.length <= 1;
                     return (
                       <div key={courtId} className="mp-grp-schedule-court">
-                        <div className="mp-grp-schedule-court-head">
-                          <span>{courtLabels.get(courtId) ?? "Cancha"}</span>
-                          {slotMatch?.scheduledAt && (
-                            <span>{fmtScheduleTime(slotMatch.scheduledAt)}</span>
-                          )}
-                        </div>
+                        {!slotMatch && (
+                          <div className="mp-grp-schedule-court-head">
+                            <span>{courtLabel}</span>
+                          </div>
+                        )}
                         {slotMatch ? (
                           <ScheduleMatchCard
                             match={slotMatch}
+                            courtLabel={courtLabel}
+                            showTime={showCourtTime}
                             registrationLabels={registrationLabels}
                             canEditScores={canEditScores}
                             reportingMatchId={reportingMatchId}
-                            busy={busy}
+                            confirmingMatchId={confirmingMatchId}
+                            reportingBusy={reportingBusy}
+                            confirmingBusy={confirmingBusy}
                             onScoreSubmit={onScoreSubmit}
+                            onConfirmMatch={onConfirmMatch}
                           />
                         ) : (
                           <div className="mp-grp-schedule-court-empty">Libre</div>
@@ -168,24 +192,38 @@ export function GroupStageScheduleView({
 
 function ScheduleMatchCard({
   match,
+  courtLabel,
+  showTime,
   registrationLabels,
   canEditScores,
   reportingMatchId,
-  busy,
+  confirmingMatchId,
+  reportingBusy,
+  confirmingBusy,
   onScoreSubmit,
+  onConfirmMatch,
 }: {
   match: GroupMatch & { groupName: string };
+  courtLabel: string;
+  showTime: boolean;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
   reportingMatchId: string | null;
-  busy: boolean;
+  confirmingMatchId: string | null;
+  reportingBusy: boolean;
+  confirmingBusy: boolean;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
+  onConfirmMatch: (matchId: string) => void;
 }) {
-  const done = isMatchDone(match.status);
-  const labelA =
-    registrationLabels[match.sideARegistrationId] ?? "Equipo A";
-  const labelB =
-    registrationLabels[match.sideBRegistrationId] ?? "Equipo B";
+  const pending = isMatchPendingPlay(match.status);
+  const awaiting = isMatchAwaitingConfirm(match.status);
+  const confirmed = isMatchConfirmed(match.status);
+  const labelA = registrationLabels[match.sideARegistrationId] ?? "Equipo A";
+  const labelB = registrationLabels[match.sideBRegistrationId] ?? "Equipo B";
+  const metaParts = [courtLabel, `Grupo ${match.groupName}`];
+  if (showTime && match.scheduledAt) {
+    metaParts.push(fmtScheduleTime(match.scheduledAt));
+  }
 
   return (
     <ScoreMatchCard
@@ -195,11 +233,17 @@ function ScheduleMatchCard({
       scoreA={parseSetsWon(match.score, "a")}
       scoreB={parseSetsWon(match.score, "b")}
       winnerSide={match.winnerSide === "a" || match.winnerSide === "b" ? match.winnerSide : null}
-      editable={canEditScores && !done}
-      correctable={canEditScores && done}
-      busy={reportingMatchId === match.id && busy}
-      dimmed={done}
-      meta={`Grupo ${match.groupName}`}
+      editable={canEditScores && pending}
+      correctable={canEditScores && (awaiting || confirmed)}
+      confirmable={canEditScores && awaiting}
+      onConfirm={() => onConfirmMatch(match.id)}
+      busy={
+        (reportingMatchId === match.id && reportingBusy) ||
+        (confirmingMatchId === match.id && confirmingBusy)
+      }
+      dimmed={confirmed}
+      embedded
+      meta={metaParts.join(" · ")}
       onScoreSubmit={onScoreSubmit}
     />
   );

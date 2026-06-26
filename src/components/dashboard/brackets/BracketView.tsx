@@ -88,7 +88,8 @@ type Props = {
   thirdPlaceMatch?: BracketNode | null;
   /** Partner: guarda sets ganados directo desde la tarjeta. */
   onScoreSubmit?: (matchId: string, setsA: number, setsB: number) => void;
-  reportingMatchId?: string | null;
+  /** IDs de partidos con guardado en vuelo (puede haber varios a la vez). */
+  savingMatchIds?: ReadonlySet<string>;
 };
 
 function clampZoom(value: number): number {
@@ -145,7 +146,7 @@ function BracketZoomToolbar({
   );
 }
 
-export function BracketView({ columns, champion, thirdPlaceMatch, onScoreSubmit, reportingMatchId }: Props) {
+export function BracketView({ columns, champion, thirdPlaceMatch, onScoreSubmit, savingMatchIds }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(BK_ZOOM_DEFAULT);
@@ -363,7 +364,7 @@ export function BracketView({ columns, champion, thirdPlaceMatch, onScoreSubmit,
                       winnerSide={m.a.isWinner ? "a" : m.b.isWinner ? "b" : null}
                       editable={!!m.reportable && !!onScoreSubmit}
                       correctable={!!m.correctable && !!onScoreSubmit}
-                      busy={reportingMatchId === m.id}
+                      busy={savingMatchIds?.has(m.id) ?? false}
                       live={m.live}
                       highlight={m.highlight}
                       dimmed={m.dimmed}
@@ -393,7 +394,7 @@ export function BracketView({ columns, champion, thirdPlaceMatch, onScoreSubmit,
                   }
                   editable={!!thirdPlaceMatch.reportable && !!onScoreSubmit}
                   correctable={!!thirdPlaceMatch.correctable && !!onScoreSubmit}
-                  busy={reportingMatchId === thirdPlaceMatch.id}
+                  busy={savingMatchIds?.has(thirdPlaceMatch.id) ?? false}
                   live={thirdPlaceMatch.live}
                   dimmed={thirdPlaceMatch.dimmed}
                   meta={thirdPlaceMatch.meta}

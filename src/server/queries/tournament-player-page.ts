@@ -7,6 +7,7 @@ import type { TournamentDetail } from "@/lib/schemas/tournaments";
 import {
   loadTournamentPlayerBracketData,
   type TournamentBracketSideView,
+  type TournamentPlayerGroupView,
   type TournamentPlayerMatchView,
 } from "@/lib/torneos/player-matches";
 import { loadTournamentScheduleBlocks } from "@/server/queries/tournament-schedule";
@@ -23,6 +24,7 @@ export type TournamentDashboardPageData = {
   scheduleBlocks: TournamentScheduleBlockView[];
   myMatches: TournamentPlayerMatchView[];
   bracketSides: TournamentBracketSideView[];
+  groupView: TournamentPlayerGroupView | null;
 };
 
 export async function loadTournamentDashboardPageData(
@@ -112,6 +114,7 @@ export async function loadTournamentDashboardPageData(
     supabase,
     detailRes.data.tournament.id,
     myRegistration?.id ?? null,
+    myRegistration?.categoryId ?? null,
   );
   const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
@@ -126,5 +129,6 @@ export async function loadTournamentDashboardPageData(
     scheduleBlocks,
     myMatches: bracketData.myMatches,
     bracketSides: bracketData.bracketSides,
+    groupView: bracketData.groupView,
   };
 }

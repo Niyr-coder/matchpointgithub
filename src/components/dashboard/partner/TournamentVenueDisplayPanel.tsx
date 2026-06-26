@@ -19,11 +19,13 @@ export function TournamentVenueDisplayPanel({
   slug,
   initialToken,
   readOnly,
+  className,
 }: {
   tournamentId: string;
   slug: string;
   initialToken: string | null;
   readOnly?: boolean;
+  className?: string;
 }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
@@ -72,7 +74,7 @@ export function TournamentVenueDisplayPanel({
   };
 
   return (
-    <div className="card" style={{ padding: 18 }}>
+    <div className={`card mp-partner-torneo-rail-card mp-tv-rail-panel${className ? ` ${className}` : ""}`} style={{ padding: 18 }}>
       <div style={{ marginBottom: 12 }}>
         <div className="label-mp">Pantalla del venue</div>
         <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.5 }}>
@@ -95,10 +97,10 @@ export function TournamentVenueDisplayPanel({
           >
             {liveUrl}
           </code>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary mp-tv-rail-btn"
               disabled={busy}
               onClick={() => copy(liveUrl, "Link TV")}
             >
@@ -109,7 +111,7 @@ export function TournamentVenueDisplayPanel({
               href={liveUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn"
+              className="btn mp-tv-rail-btn"
               style={{ background: "#fff", border: "1px solid var(--border)" }}
             >
               <Icon name="external-link" size={12} />
@@ -118,7 +120,7 @@ export function TournamentVenueDisplayPanel({
             {!readOnly && (
               <button
                 type="button"
-                className="btn"
+                className="btn mp-tv-rail-btn"
                 disabled={busy}
                 style={{ background: "#fff", border: "1px solid var(--border)" }}
                 onClick={onRotate}

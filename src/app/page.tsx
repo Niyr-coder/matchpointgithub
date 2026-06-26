@@ -57,6 +57,7 @@ function eventDateLabel(startsAt: string, endsAt: string | null): { d: string; m
 function adaptClubs(rows: ClubFeatured[], ratingByClub: Map<string, number>) {
   return rows.map((c, i) => ({
     n: c.name,
+    slug: c.slug,
     city: c.city,
     rating: ratingByClub.get(c.id) ?? 0,
     courts: c.courtsCount,
@@ -74,6 +75,7 @@ function adaptTournaments(rows: TournamentFeatured[]) {
         : `${t.registrationsCount}`;
     const club = [t.clubName, t.clubCity].filter(Boolean).join(" · ") || "Multi-club";
     return {
+      slug: t.slug,
       d,
       m,
       n: t.name,
@@ -90,6 +92,7 @@ function adaptTournaments(rows: TournamentFeatured[]) {
 const CLUB_PROMOS = [
   {
     n: "Tu club aquí",
+    slug: "soy-club",
     city: "Onboarding en 48 horas · sin costo",
     rating: 0,
     courts: 0,
@@ -100,6 +103,7 @@ const CLUB_PROMOS = [
   },
   {
     n: "Invita a tus amigos",
+    slug: "signup",
     city: "Más jugadores · mejores partidos",
     rating: 0,
     courts: 0,
@@ -113,6 +117,7 @@ const CLUB_PROMOS = [
 const EVENT_PROMOS = [
   {
     n: "Crea tu torneo",
+    slug: "soy-club",
     d: "+",
     m: "NEW",
     club: "Para clubes y partners",
@@ -125,6 +130,7 @@ const EVENT_PROMOS = [
   },
   {
     n: "Únete al ranking",
+    slug: "signup",
     d: "MP",
     m: "2.5+",
     club: "Empieza a sumar puntos hoy",

@@ -1,6 +1,6 @@
 // Client view de PartnerBracketsScreen — layout 1:1 (RoleScreens.jsx 507-562).
 "use client";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader } from "../widgets/RS";
@@ -9,6 +9,7 @@ import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { generateBracket } from "@/server/actions/tournaments";
 import { reportBracketMatch, correctBracketMatch } from "@/server/actions/tournament-group-stage";
+import { REALTIME_DEBOUNCE } from "@/lib/realtime/debounce";
 import { BracketView, type BracketNode } from "../brackets/BracketView";
 
 export type BracketMatch = {
@@ -40,6 +41,25 @@ export type BracketsData = {
   thirdPlaceMatch?: BracketMatch | null;
 };
 
+type MatchOptimistic = Pick<
+  BracketMatch,
+  "sa" | "sb" | "w" | "status" | "reportable" | "correctable"
+>;
+
+function findBracketMatch(data: BracketsData, matchId: string): BracketMatch | null {
+  if (data.thirdPlaceMatch?.id === matchId) return data.thirdPlaceMatch;
+  for (const col of data.columns) {
+    const m = col.matches.find((x) => x.id === matchId);
+    if (m) return m;
+  }
+  return null;
+}
+
+function withOptimistic(m: BracketMatch, patch: MatchOptimistic | undefined): BracketMatch {
+  if (!patch) return m;
+  return { ...m, ...patch };
+}
+
 function toNode(m: BracketMatch, placeholder: boolean): BracketNode {
   return {
     id: m.id,
@@ -56,18 +76,70 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
   const router = useRouter();
   const toast = useToast();
   const [, startTx] = useTransition();
-  const [reportingId, setReportingId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [optimistic, setOptimistic] = useState<Record<string, MatchOptimistic>>({});
+  const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
+  const skipRealtimeUntil = useRef(0);
+
+  // Limpia parches cuando el server ya reflejó el mismo marcador.
+  useEffect(() => {
+    setOptimistic((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const id of Object.keys(prev)) {
+        const server = findBracketMatch(data, id);
+        if (!server) continue;
+        const patch = prev[id];
+        if (
+          (server.status === "reported" || server.status === "confirmed") &&
+          String(server.sa) === String(patch.sa) &&
+          String(server.sb) === String(patch.sb)
+        ) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data]);
+
+  const syncFromServer = useCallback(() => {
+    startTx(() => router.refresh());
+  }, [router, startTx]);
 
   useRealtimeRefresh(
     data.partnerId
       ? [{ table: "bracket_matches" }, { table: "brackets" }]
       : [],
-    { enabled: !!data.partnerId },
+    {
+      enabled: !!data.partnerId,
+      debounceMs: REALTIME_DEBOUNCE.LIVE,
+      onChange: () => {
+        if (Date.now() < skipRealtimeUntil.current) return;
+        syncFromServer();
+      },
+    },
+  );
+
+  const mergedThird = useMemo(
+    () =>
+      data.thirdPlaceMatch
+        ? withOptimistic(data.thirdPlaceMatch, optimistic[data.thirdPlaceMatch.id])
+        : null,
+    [data.thirdPlaceMatch, optimistic],
+  );
+
+  const mergedColumns = useMemo(
+    () =>
+      data.columns.map((col) => ({
+        ...col,
+        matches: col.matches.map((m) => withOptimistic(m, optimistic[m.id])),
+      })),
+    [data.columns, optimistic],
   );
 
   const hasBracket = data.hasBracket;
-  const bracketColumns = data.columns.map((col) => ({
+  const bracketColumns = mergedColumns.map((col) => ({
     label: col.label,
     matches: col.matches.map((m) => toNode(m, !hasBracket)),
   }));
@@ -77,7 +149,7 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
     : "Partner · Brackets";
 
   const submitScore = (matchId: string, a: number, b: number) => {
-    if (!data.tournamentId || busy) return;
+    if (!data.tournamentId || savingIds.has(matchId)) return;
     if (a === b) {
       toast({
         icon: "alert-triangle",
@@ -87,38 +159,61 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
       });
       return;
     }
-    const row =
-      data.thirdPlaceMatch?.id === matchId
-        ? data.thirdPlaceMatch
-        : data.columns.flatMap((c) => c.matches).find((x) => x.id === matchId);
+
+    const mergedData: BracketsData = { ...data, columns: mergedColumns, thirdPlaceMatch: mergedThird };
+    const row = findBracketMatch(mergedData, matchId);
     const isCorrection = row?.correctable ?? false;
-    setBusy(true);
-    setReportingId(matchId);
+    const winnerSide = (a > b ? "a" : "b") as "a" | "b";
+
+    const patch: MatchOptimistic = {
+      sa: a,
+      sb: b,
+      w: winnerSide,
+      status: "reported",
+      reportable: false,
+      correctable: true,
+    };
+
+    setOptimistic((prev) => ({ ...prev, [matchId]: patch }));
+    setSavingIds((prev) => new Set(prev).add(matchId));
+    skipRealtimeUntil.current = Date.now() + 2500;
+
     startTx(async () => {
       const payload = {
         tournamentId: data.tournamentId!,
         matchId,
-        winnerSide: (a > b ? "a" : "b") as "a" | "b",
+        winnerSide,
         score: { sets: [{ a, b }] },
       };
-      const res = isCorrection
-        ? await correctBracketMatch(payload)
-        : await reportBracketMatch(payload);
-      setBusy(false);
-      setReportingId(null);
-      if (res.ok) {
-        toast({
-          icon: "check",
-          title: isCorrection ? "Marcador corregido" : "Resultado registrado",
-          durationMs: TOAST_SCORE_MS,
-        });
-        router.refresh();
-      } else {
-        toast({
-          icon: "alert-triangle",
-          title: "No se pudo",
-          sub: res.error.message,
-          tone: "error",
+      try {
+        const res = isCorrection
+          ? await correctBracketMatch(payload)
+          : await reportBracketMatch(payload);
+        if (res.ok) {
+          toast({
+            icon: "check",
+            title: isCorrection ? "Marcador corregido" : "Resultado registrado",
+            durationMs: TOAST_SCORE_MS,
+          });
+          syncFromServer();
+        } else {
+          setOptimistic((prev) => {
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+          toast({
+            icon: "alert-triangle",
+            title: "No se pudo",
+            sub: res.error.message,
+            tone: "error",
+          });
+        }
+      } finally {
+        setSavingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(matchId);
+          return next;
         });
       }
     });
@@ -189,12 +284,10 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
           when: data.championWhen,
         }}
         thirdPlaceMatch={
-          data.thirdPlaceMatch
-            ? toNode(data.thirdPlaceMatch, false)
-            : undefined
+          mergedThird ? toNode(mergedThird, false) : undefined
         }
         onScoreSubmit={hasBracket ? submitScore : undefined}
-        reportingMatchId={reportingId}
+        savingMatchIds={savingIds}
       />
     </>
   );

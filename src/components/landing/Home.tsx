@@ -9,8 +9,8 @@ import { Icon } from "@/components/Icon";
 import type { PaywallTrigger } from "./Paywall";
 import { Counter } from "./widgets/Counter";
 
-type ClubCard = { n: string; city: string; rating: number; courts: number; price: number; color: string; href?: string; promo?: { ctaLabel: string } };
-type EventCard = { n: string; d: string; m: string; club: string; prize: string; insc: string; tag: string; color: string; href?: string; promo?: { ctaLabel: string } };
+type ClubCard = { n: string; slug?: string; city: string; rating: number; courts: number; price: number; color: string; href?: string; promo?: { ctaLabel: string } };
+type EventCard = { n: string; slug?: string; d: string; m: string; club: string; prize: string; insc: string; tag: string; color: string; href?: string; promo?: { ctaLabel: string } };
 
 type LandingStats = { players: string; clubs: string; gmv: string; rating: string };
 
@@ -377,7 +377,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
             {EVENTS.map((e) => (
               <Link
                 key={e.n}
-                href={e.href ?? `/eventos/${slug(e.n)}`}
+                href={e.href ?? (e.slug ? `/eventos/${e.slug}` : `/eventos/${slug(e.n)}`)}
                 className="mp-card-hover"
                 style={{
                   padding: 0,
@@ -566,7 +566,7 @@ export function Home({ onPaywall, clubs, events, stats, marqueeClubs }: Props) {
           {CLUBS_FEATURED.map((c) => (
             <Link
               key={c.n}
-              href={c.href ?? `/clubes/${slug(c.n)}`}
+              href={c.href ?? (c.slug ? `/clubes/${c.slug}` : `/clubes/${slug(c.n)}`)}
               className="card mp-card-hover"
               style={{
                 overflow: "hidden",

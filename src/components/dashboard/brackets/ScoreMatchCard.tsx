@@ -13,11 +13,16 @@ export type ScoreMatchCardProps = {
   editable?: boolean;
   /** Partido ya reportado: permite entrar en modo corrección. */
   correctable?: boolean;
+  /** Partido reportado: el partner puede confirmar el marcador. */
+  confirmable?: boolean;
+  onConfirm?: () => void;
   busy?: boolean;
   live?: boolean;
   highlight?: boolean;
   dimmed?: boolean;
   meta?: string | null;
+  /** Sin borde propio: va dentro de un slot de programación (vista por cancha). */
+  embedded?: boolean;
   onScoreSubmit?: (matchId: string, setsA: number, setsB: number) => void;
 };
 
@@ -34,11 +39,14 @@ export function ScoreMatchCard({
   winnerSide,
   editable = false,
   correctable = false,
+  confirmable = false,
+  onConfirm,
   busy = false,
   live = false,
   highlight = false,
   dimmed = false,
   meta,
+  embedded = false,
   onScoreSubmit,
 }: ScoreMatchCardProps) {
   const [setsA, setSetsA] = useState("");
@@ -72,15 +80,69 @@ export function ScoreMatchCard({
 
   return (
     <div
-      className={`mp-bk-match${live ? " is-live" : ""}${dimmed && !correctionMode ? " is-dimmed" : ""}${
+      className={`mp-bk-match${embedded ? " is-embedded" : ""}${live ? " is-live" : ""}${dimmed && !correctionMode ? " is-dimmed" : ""}${
         highlight ? " is-mine" : ""
       }${inputMode ? " is-editable" : ""}${busy ? " is-saving" : ""}${
         correctionMode ? " is-correcting" : ""
+      }${correctable && !editable ? " has-edit" : ""}${
+        confirmable && !editable ? " is-awaiting-confirm" : ""
       }`}
       onBlur={inputMode ? onBlurCard : undefined}
     >
       {live && <span className="mp-bk-live">● LIVE</span>}
       {highlight && !live && <span className="mp-bk-mine-tag">TÚ</span>}
+      {(correctable && !editable) || correctionMode || confirmable ? (
+        <div className="mp-bk-match-head">
+          {confirmable && !editable && !correctionMode && (
+            <button
+              type="button"
+              className="mp-bk-confirm-btn"
+              disabled={busy}
+              onClick={() => onConfirm?.()}
+            >
+              <Icon name="check" size={11} />
+              Confirmar
+            </button>
+          )}
+          {correctable && !editable && !correctionMode && (
+            <button
+              type="button"
+              className="mp-bk-edit-btn"
+              disabled={busy}
+              aria-label="Editar marcador"
+              onClick={() => setCorrectionMode(true)}
+            >
+              <Icon name="pencil" size={11} />
+              Editar
+            </button>
+          )}
+          {correctionMode && (
+            <div className="mp-bk-correct-actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={busy}
+                onClick={trySubmit}
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={busy}
+                onClick={() => {
+                  setCorrectionMode(false);
+                  setSetsA(hasScore(scoreA) ? String(scoreA) : "");
+                  setSetsB(hasScore(scoreB) ? String(scoreB) : "");
+                  setTouched(false);
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
       <SeatRow
         label={labelA}
         isWinner={winnerSide === "a"}
@@ -111,42 +173,6 @@ export function ScoreMatchCard({
         onEnter={trySubmit}
       />
       {meta && <div className="mp-bk-meta">{meta}</div>}
-      {correctable && !editable && !correctionMode && (
-        <button
-          type="button"
-          className="mp-bk-correct-btn"
-          disabled={busy}
-          onClick={() => setCorrectionMode(true)}
-        >
-          <Icon name="pencil" size={11} />
-          Corregir marcador
-        </button>
-      )}
-      {correctionMode && (
-        <div className="mp-bk-correct-actions">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={busy}
-            onClick={trySubmit}
-          >
-            Guardar corrección
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            disabled={busy}
-            onClick={() => {
-              setCorrectionMode(false);
-              setSetsA(hasScore(scoreA) ? String(scoreA) : "");
-              setSetsB(hasScore(scoreB) ? String(scoreB) : "");
-              setTouched(false);
-            }}
-          >
-            Cancelar
-          </button>
-        </div>
-      )}
     </div>
   );
 }
