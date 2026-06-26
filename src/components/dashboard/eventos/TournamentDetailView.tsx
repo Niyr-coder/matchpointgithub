@@ -85,6 +85,14 @@ function formatMoney(cents: number | null | undefined): string {
   return n >= 1000 ? `$${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : `$${n}`;
 }
 
+const REG_STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente de aprobación",
+  approved: "Inscripción aprobada",
+  rejected: "Rechazada",
+  cancelled: "Cancelada",
+  waitlisted: "En lista de espera",
+};
+
 function levelRange(cats: TournamentDetail["categories"]): string | null {
   const levels = cats.map((c) => c.level).filter((l): l is NonNullable<typeof l> => l != null);
   if (levels.length === 0) return null;
@@ -247,6 +255,8 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
       if (res.ok) {
         setMyReg(null);
         router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error?.message ?? "Intenta de nuevo." });
       }
     });
   };
@@ -334,7 +344,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
               <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 Estás inscrito
               </div>
-              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Status: {myReg.status}</div>
+              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>{REG_STATUS_LABEL[myReg.status] ?? myReg.status}</div>
             </div>
           </div>
           <button

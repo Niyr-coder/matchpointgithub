@@ -15,6 +15,16 @@ const STATUS: Record<string, { label: string; bg: string; color?: string }> = {
   archived: { label: "Archivado", bg: "var(--muted)", color: "var(--muted-fg)" },
 };
 
+const LEAGUE_STATUS: Record<string, string> = {
+  draft: "Borrador",
+  published: "Publicado",
+  registration_open: "Inscripciones abiertas",
+  registration_closed: "Inscripciones cerradas",
+  live: "En curso",
+  finished: "Finalizado",
+  cancelled: "Cancelado",
+};
+
 function money(cents: number): string {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
@@ -160,7 +170,7 @@ function PartnerDetail({ row }: { row: AdminPartnerRow }) {
           {row.leagues.slice(0, 6).map((league) => (
             <div key={league.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
               <span style={{ fontWeight: 800 }}>{league.name}</span>
-              <span style={{ color: "var(--muted-fg)" }}>{league.status}</span>
+              <span style={{ color: "var(--muted-fg)" }}>{LEAGUE_STATUS[league.status] ?? league.status}</span>
             </div>
           ))}
         </MiniList>

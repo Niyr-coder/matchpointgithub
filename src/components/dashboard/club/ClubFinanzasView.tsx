@@ -191,7 +191,7 @@ export function ClubFinanzasView({ data }: { data: FinanzasData }) {
             <span className="mp-pol-hero-period" aria-hidden="true">
               {PERIOD_LABEL[period]}
             </span>
-            <button type="button" className="btn mp-pol-hero-action" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Estado de cuenta · próximamente")}>
+            <button type="button" className="btn mp-pol-hero-action" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} disabled title="Próximamente">
               <Icon name="file-text" size={13} color="#fff" />
               Estado de cuenta
             </button>

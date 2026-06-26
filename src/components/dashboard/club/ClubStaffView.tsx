@@ -88,8 +88,8 @@ export function ClubStaffView({ clubId, canAssign }: { clubId?: string | null; c
         sub="Quién está en turno, quién entra, cómo van. La gente que hace que el club funcione."
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Calendario de turnos · próximamente")}><Icon name="calendar-clock" size={13} color="#fff" />Calendario de turnos</button>
-            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} onClick={() => soon("Nómina del mes · próximamente")}><Icon name="file-text" size={13} color="#fff" />Nómina del mes</button>
+            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} disabled title="Próximamente"><Icon name="calendar-clock" size={13} color="#fff" />Calendario de turnos</button>
+            <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }} disabled title="Próximamente"><Icon name="file-text" size={13} color="#fff" />Nómina del mes</button>
             <button className="btn btn-primary" onClick={() => (canAssign && clubId ? setAssignOpen(true) : soon("Solo el dueño del club puede asignar staff"))}><Icon name="user-plus" size={13} color="#fff" />Asignar staff</button>
           </div>
         }

@@ -343,13 +343,8 @@ export function AcademiaScreenView({
                     <button
                       className="btn btn-primary"
                       style={{ flex: 1, fontSize: 10.5 }}
-                      onClick={() =>
-                        toast({
-                          icon: "calendar-plus",
-                          title: "Reserva 1 a 1 — próximamente",
-                          sub: `Te avisamos cuando habilitemos el flujo con ${c.name.split(" ")[0]}.`,
-                        })
-                      }
+                      disabled
+                      title="Próximamente"
                     >
                       <Icon name="calendar-plus" size={11} color="#fff" />
                       Reservar

@@ -84,6 +84,14 @@ function fmtPct(value: number): string {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 }
 
+const PAYOUT_STATUS: Record<string, string> = {
+  pending: "Pendiente",
+  processing: "Procesando",
+  paid: "Pagado",
+  failed: "Fallido",
+  cancelled: "Cancelado",
+};
+
 const PLACEHOLDER_COUNT = 4;
 const TX_PLACEHOLDER_COLS = "120px 1fr 110px 120px 100px 50px";
 
@@ -867,7 +875,7 @@ function PendingPayoutsSection({
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 850 }}>{p.label}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
-                    {p.status} · {p.id.slice(0, 8)}
+                    {PAYOUT_STATUS[p.status] ?? p.status} · {p.id.slice(0, 8)}
                   </div>
                 </div>
                 <div
