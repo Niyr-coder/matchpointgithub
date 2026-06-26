@@ -238,6 +238,20 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: true,
   },
 
+  {
+    key: "tournament_monitors_enabled",
+    label: "Monitores de cancha",
+    description:
+      "Habilita el sistema de monitores para torneos: el partner asigna usuarios a canchas, los monitores llevan el marcador y envían el resultado al organizador. Apagado = feature invisible (estado inicial).",
+    surfaces: [
+      "src/server/actions/tournament-monitors.ts (todas las acciones)",
+      "/t/[slug]/monitor/page.tsx",
+      "TournamentMonitorsPanel (partner dashboard)",
+    ],
+    impact: "med",
+    wired: true,
+  },
+
   // ── Legacy / huérfanos en DB ───────────────────────────────────────────
   {
     key: "profile_customization",
