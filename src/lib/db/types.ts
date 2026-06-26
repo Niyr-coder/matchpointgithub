@@ -243,6 +243,7 @@ export type Database = {
           bracket_id: string
           court_id: string | null
           id: string
+          is_bronze: boolean
           match_result_id: string | null
           position: number
           round: number
@@ -257,6 +258,7 @@ export type Database = {
           bracket_id: string
           court_id?: string | null
           id?: string
+          is_bronze?: boolean
           match_result_id?: string | null
           position: number
           round: number
@@ -271,6 +273,7 @@ export type Database = {
           bracket_id?: string
           court_id?: string | null
           id?: string
+          is_bronze?: boolean
           match_result_id?: string | null
           position?: number
           round?: number
@@ -2783,6 +2786,7 @@ export type Database = {
           logo_url: string | null
           longitude: number | null
           name: string
+          partner_link_code: string
           phone: string | null
           plan_expires_at: string | null
           plan_tier: Database["public"]["Enums"]["mp_club_plan"]
@@ -2812,6 +2816,7 @@ export type Database = {
           logo_url?: string | null
           longitude?: number | null
           name: string
+          partner_link_code?: string
           phone?: string | null
           plan_expires_at?: string | null
           plan_tier?: Database["public"]["Enums"]["mp_club_plan"]
@@ -2841,6 +2846,7 @@ export type Database = {
           logo_url?: string | null
           longitude?: number | null
           name?: string
+          partner_link_code?: string
           phone?: string | null
           plan_expires_at?: string | null
           plan_tier?: Database["public"]["Enums"]["mp_club_plan"]
@@ -4845,6 +4851,9 @@ export type Database = {
           mode: Database["public"]["Enums"]["mp_match_mode"]
           notes: string | null
           partner_id: string | null
+          partner_status:
+            | Database["public"]["Enums"]["mp_match_seek_partner_status"]
+            | null
           ranked: boolean
           skill_max: number | null
           skill_min: number | null
@@ -4865,6 +4874,9 @@ export type Database = {
           mode: Database["public"]["Enums"]["mp_match_mode"]
           notes?: string | null
           partner_id?: string | null
+          partner_status?:
+            | Database["public"]["Enums"]["mp_match_seek_partner_status"]
+            | null
           ranked?: boolean
           skill_max?: number | null
           skill_min?: number | null
@@ -4885,6 +4897,9 @@ export type Database = {
           mode?: Database["public"]["Enums"]["mp_match_mode"]
           notes?: string | null
           partner_id?: string | null
+          partner_status?:
+            | Database["public"]["Enums"]["mp_match_seek_partner_status"]
+            | null
           ranked?: boolean
           skill_max?: number | null
           skill_min?: number | null
@@ -4948,6 +4963,7 @@ export type Database = {
       }
       matches: {
         Row: {
+          accepted_by: string[]
           cancelled_at: string | null
           cancelled_by: string | null
           cancelled_reason: string | null
@@ -4975,6 +4991,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          accepted_by?: string[]
           cancelled_at?: string | null
           cancelled_by?: string | null
           cancelled_reason?: string | null
@@ -5002,6 +5019,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          accepted_by?: string[]
           cancelled_at?: string | null
           cancelled_by?: string | null
           cancelled_reason?: string | null
@@ -5718,6 +5736,44 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_webhook_events: {
+        Row: {
+          event_type: string
+          id: string
+          payload: Json
+          provider: string
+          provider_event_id: string
+          received_at: string
+          transaction_id: string | null
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          payload?: Json
+          provider: string
+          provider_event_id: string
+          received_at?: string
+          transaction_id?: string | null
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          payload?: Json
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_webhook_events_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payouts: {
         Row: {
           club_id: string | null
@@ -5860,44 +5916,6 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
-      }
-      payment_webhook_events: {
-        Row: {
-          event_type: string
-          id: string
-          payload: Json
-          provider: string
-          provider_event_id: string
-          received_at: string
-          transaction_id: string | null
-        }
-        Insert: {
-          event_type: string
-          id?: string
-          payload?: Json
-          provider: string
-          provider_event_id: string
-          received_at?: string
-          transaction_id?: string | null
-        }
-        Update: {
-          event_type?: string
-          id?: string
-          payload?: Json
-          provider?: string
-          provider_event_id?: string
-          received_at?: string
-          transaction_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_webhook_events_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: false
-            referencedRelation: "transactions"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       platform_config: {
         Row: {
@@ -6307,6 +6325,53 @@ export type Database = {
           },
         ]
       }
+      profile_referrals: {
+        Row: {
+          created_at: string
+          referred_user_id: string
+          referrer_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          referred_user_id: string
+          referrer_user_id: string
+        }
+        Update: {
+          created_at?: string
+          referred_user_id?: string
+          referrer_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_referrals_referred_user_id_fkey"
+            columns: ["referred_user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_referrals_referred_user_id_fkey"
+            columns: ["referred_user_id"]
+            isOneToOne: true
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_referrals_referrer_user_id_fkey"
+            columns: ["referrer_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_referrals_referrer_user_id_fkey"
+            columns: ["referrer_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           accent_color: string | null
@@ -6318,6 +6383,7 @@ export type Database = {
           city: string | null
           country: string | null
           created_at: string
+          deletion_reason: string | null
           display_name: string
           dominant_hand: Database["public"]["Enums"]["mp_dominant_hand"] | null
           favorite_club_id: string | null
@@ -6332,6 +6398,7 @@ export type Database = {
           plan_expires_at: string | null
           plan_tier: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport: Database["public"]["Enums"]["mp_sport"] | null
+          scheduled_deletion_at: string | null
           skill_level: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at: string
           username: string
@@ -6346,6 +6413,7 @@ export type Database = {
           city?: string | null
           country?: string | null
           created_at?: string
+          deletion_reason?: string | null
           display_name: string
           dominant_hand?: Database["public"]["Enums"]["mp_dominant_hand"] | null
           favorite_club_id?: string | null
@@ -6360,6 +6428,7 @@ export type Database = {
           plan_expires_at?: string | null
           plan_tier?: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
+          scheduled_deletion_at?: string | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at?: string
           username: string
@@ -6374,6 +6443,7 @@ export type Database = {
           city?: string | null
           country?: string | null
           created_at?: string
+          deletion_reason?: string | null
           display_name?: string
           dominant_hand?: Database["public"]["Enums"]["mp_dominant_hand"] | null
           favorite_club_id?: string | null
@@ -6388,6 +6458,7 @@ export type Database = {
           plan_expires_at?: string | null
           plan_tier?: Database["public"]["Enums"]["mp_player_plan"]
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
+          scheduled_deletion_at?: string | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           updated_at?: string
           username?: string
@@ -6413,7 +6484,6 @@ export type Database = {
         Row: {
           court_label: string | null
           created_at: string
-          finished_at: string | null
           id: string
           level_label: string | null
           max_slots: number | null
@@ -6421,13 +6491,11 @@ export type Database = {
           quedada_id: string
           sort_order: number
           starts_at: string | null
-          status: string
           target_points: number | null
         }
         Insert: {
           court_label?: string | null
           created_at?: string
-          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -6435,13 +6503,11 @@ export type Database = {
           quedada_id: string
           sort_order?: number
           starts_at?: string | null
-          status?: string
           target_points?: number | null
         }
         Update: {
           court_label?: string | null
           created_at?: string
-          finished_at?: string | null
           id?: string
           level_label?: string | null
           max_slots?: number | null
@@ -6449,7 +6515,6 @@ export type Database = {
           quedada_id?: string
           sort_order?: number
           starts_at?: string | null
-          status?: string
           target_points?: number | null
         }
         Relationships: [
@@ -9461,6 +9526,7 @@ export type Database = {
           id: string
           level: Database["public"]["Enums"]["mp_skill_level"] | null
           max_teams: number | null
+          modality: Database["public"]["Enums"]["mp_tournament_modality"] | null
           mpr_max: number | null
           mpr_min: number | null
           name: string
@@ -9475,6 +9541,9 @@ export type Database = {
           id?: string
           level?: Database["public"]["Enums"]["mp_skill_level"] | null
           max_teams?: number | null
+          modality?:
+            | Database["public"]["Enums"]["mp_tournament_modality"]
+            | null
           mpr_max?: number | null
           mpr_min?: number | null
           name: string
@@ -9489,6 +9558,9 @@ export type Database = {
           id?: string
           level?: Database["public"]["Enums"]["mp_skill_level"] | null
           max_teams?: number | null
+          modality?:
+            | Database["public"]["Enums"]["mp_tournament_modality"]
+            | null
           mpr_max?: number | null
           mpr_min?: number | null
           name?: string
@@ -9653,6 +9725,7 @@ export type Database = {
       }
       tournament_prizes: {
         Row: {
+          category_id: string | null
           created_at: string
           id: string
           place_label: string
@@ -9663,6 +9736,7 @@ export type Database = {
           value_cents: number | null
         }
         Insert: {
+          category_id?: string | null
           created_at?: string
           id?: string
           place_label: string
@@ -9673,6 +9747,7 @@ export type Database = {
           value_cents?: number | null
         }
         Update: {
+          category_id?: string | null
           created_at?: string
           id?: string
           place_label?: string
@@ -9683,6 +9758,13 @@ export type Database = {
           value_cents?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tournament_prizes_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tournament_prizes_tournament_id_fkey"
             columns: ["tournament_id"]
@@ -9776,6 +9858,7 @@ export type Database = {
           created_by: string
           currency: Database["public"]["Enums"]["mp_currency"] | null
           description: string | null
+          display_token: string | null
           ends_at: string | null
           entry_fee_cents: number
           format: Database["public"]["Enums"]["mp_tournament_format"]
@@ -9805,6 +9888,7 @@ export type Database = {
           created_by: string
           currency?: Database["public"]["Enums"]["mp_currency"] | null
           description?: string | null
+          display_token?: string | null
           ends_at?: string | null
           entry_fee_cents?: number
           format: Database["public"]["Enums"]["mp_tournament_format"]
@@ -9834,6 +9918,7 @@ export type Database = {
           created_by?: string
           currency?: Database["public"]["Enums"]["mp_currency"] | null
           description?: string | null
+          display_token?: string | null
           ends_at?: string | null
           entry_fee_cents?: number
           format?: Database["public"]["Enums"]["mp_tournament_format"]
@@ -10375,6 +10460,7 @@ export type Database = {
           created_at: string | null
           display_name: string | null
           id: string | null
+          is_system: boolean | null
           preferred_sport: Database["public"]["Enums"]["mp_sport"] | null
           skill_level: Database["public"]["Enums"]["mp_skill_level"] | null
           username: string | null
@@ -10386,6 +10472,7 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           id?: string | null
+          is_system?: boolean | null
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           username?: string | null
@@ -10397,34 +10484,12 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           id?: string | null
+          is_system?: boolean | null
           preferred_sport?: Database["public"]["Enums"]["mp_sport"] | null
           skill_level?: Database["public"]["Enums"]["mp_skill_level"] | null
           username?: string | null
         }
         Relationships: []
-      }
-      v_unread_notifications: {
-        Row: {
-          recipient_role: Database["public"]["Enums"]["mp_role"] | null
-          recipient_user_id: string | null
-          unread: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_recipient_user_id_fkey"
-            columns: ["recipient_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_recipient_user_id_fkey"
-            columns: ["recipient_user_id"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
     }
     Functions: {
@@ -10629,6 +10694,13 @@ export type Database = {
         Returns: string
       }
       fn_dispatch_inapp_notifications: { Args: never; Returns: number }
+      fn_dispatch_scheduled_broadcasts: {
+        Args: never
+        Returns: {
+          dispatched: number
+          recipients: number
+        }[]
+      }
       fn_enqueue_notification: {
         Args: {
           p_body?: string
@@ -10671,7 +10743,7 @@ export type Database = {
         Returns: boolean
       }
       fn_materialize_club_from_application: {
-        Args: { p_app_id: string; p_actor_id?: string }
+        Args: { p_actor_id?: string; p_app_id: string }
         Returns: string
       }
       fn_multisport_enabled: { Args: never; Returns: boolean }
@@ -10755,6 +10827,7 @@ export type Database = {
           ok: boolean
         }[]
       }
+      gen_club_partner_link_code: { Args: never; Returns: string }
       gen_quedada_invite_code: { Args: never; Returns: string }
       gen_team_invite_code: { Args: never; Returns: string }
       geometry: { Args: { "": string }; Returns: unknown }
@@ -10871,6 +10944,10 @@ export type Database = {
       longtransactionsenabled: { Args: never; Returns: boolean }
       mp_active_club_id: { Args: never; Returns: string }
       mp_active_role: { Args: never; Returns: string }
+      mp_are_friends: {
+        Args: { p_target: string; p_viewer: string }
+        Returns: boolean
+      }
       mp_clear_audit_actor: { Args: never; Returns: undefined }
       mp_club_effective_plan: {
         Args: { p_club_id: string }
@@ -10914,6 +10991,23 @@ export type Database = {
         Returns: boolean
       }
       mp_partner_has_club: { Args: { p_club_id: string }; Returns: boolean }
+      mp_profile_co_registered: {
+        Args: { p_target: string; p_viewer: string }
+        Returns: boolean
+      }
+      mp_profile_friend_request_visible: {
+        Args: { p_target: string; p_viewer: string }
+        Returns: boolean
+      }
+      mp_profile_shares_conversation: {
+        Args: { p_target: string; p_viewer: string }
+        Returns: boolean
+      }
+      mp_profile_visible_to_club_staff: {
+        Args: { p_target: string; p_viewer: string }
+        Returns: boolean
+      }
+      mp_profiles_strict_rls_enabled: { Args: never; Returns: boolean }
       mp_quedada_can_manage: {
         Args: { p_quedada: string; p_user: string }
         Returns: boolean
@@ -11624,6 +11718,7 @@ export type Database = {
         | "finished"
         | "cancelled"
       mp_match_mode: "singles" | "doubles"
+      mp_match_seek_partner_status: "pending" | "accepted" | "rejected"
       mp_match_seek_status: "open" | "matched" | "expired" | "cancelled"
       mp_match_status:
         | "scheduled"
@@ -11887,6 +11982,7 @@ export const Constants = {
         "cancelled",
       ],
       mp_match_mode: ["singles", "doubles"],
+      mp_match_seek_partner_status: ["pending", "accepted", "rejected"],
       mp_match_seek_status: ["open", "matched", "expired", "cancelled"],
       mp_match_status: [
         "scheduled",
