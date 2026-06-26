@@ -47,7 +47,7 @@ function canCancel(status: string): boolean {
 }
 
 export function AdminReservasScreenView({ rows }: { rows: AdminReservationRow[] }) {
-  useRealtimeRefresh([{ table: "reservations" }], { debounceMs: 1000 });
+  useRealtimeRefresh([{ table: "reservations" }], { debounceMs: 3000 });
   const router = useRouter();
   const toast = useToast();
   const { ask } = usePromptModal();

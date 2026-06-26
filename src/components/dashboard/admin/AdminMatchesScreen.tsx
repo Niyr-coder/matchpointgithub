@@ -69,7 +69,7 @@ export function AdminMatchesScreen() {
       { table: "match_no_shows" },
       { table: "player_reliability" },
     ],
-    { debounceMs: 1200 },
+    { debounceMs: 3000 },
   );
 
   const router = useRouter();

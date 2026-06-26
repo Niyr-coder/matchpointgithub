@@ -52,7 +52,7 @@ export function AdminFlagsView({ data }: { data: FlagsData }) {
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [pending, startTransition] = useTransition();
-  useRealtimeRefresh([{ table: "feature_flags" }, { table: "feature_flag_assignments" }], { debounceMs: 1500 });
+  useRealtimeRefresh([{ table: "feature_flags" }, { table: "feature_flag_assignments" }], { debounceMs: 4000 });
 
   const [search, setSearch] = useState("");
   const [stateF, setStateF] = useState<"all" | FlagRow["state"]>("all");

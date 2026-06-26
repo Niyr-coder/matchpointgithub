@@ -20,7 +20,7 @@ export function AdminEventDetailView({ data }: { data: AdminEventDetail }) {
     { table: "events", filter: `id=eq.${data.event.id}` },
     { table: "event_registrations", filter: `event_id=eq.${data.event.id}` },
     { table: "transactions", filter: `ref_id=eq.${data.event.id}` },
-  ]);
+  ], { debounceMs: 3000 });
 
   const activeRegs = data.registrations.filter(
     (r) => r.status === "registered" || r.status === "attended",

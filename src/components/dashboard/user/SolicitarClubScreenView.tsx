@@ -3508,7 +3508,7 @@ export function SolicitarClubScreenView({
   review: ApplicationReviewState | null;
 }) {
   // Realtime: cualquier cambio en mi application (RLS limita rows).
-  useRealtimeRefresh([{ table: "club_applications" }]);
+  useRealtimeRefresh([{ table: "club_applications" }], { debounceMs: 5000 });
 
   const inReview = ["submitted", "docs_review", "field_verification", "final_review"].includes(status);
   const initialView: ViewMode = status === "approved"

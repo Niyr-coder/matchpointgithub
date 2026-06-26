@@ -108,7 +108,7 @@ export function AdminSalesScreenView({ initialData }: { initialData: AdminSalesD
   const [draftFollowUp, setDraftFollowUp] = useState(toInputDateTime(initialData.leads[0]?.nextFollowUpAt ?? null));
   const [pending, startTransition] = useTransition();
 
-  useRealtimeRefresh([{ table: "sales_leads" }], { debounceMs: 1500 });
+  useRealtimeRefresh([{ table: "sales_leads" }], { debounceMs: 4000 });
 
   const filtered = useMemo(() => {
     return data.leads.filter((lead) => {
