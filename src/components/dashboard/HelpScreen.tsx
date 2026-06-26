@@ -42,22 +42,22 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "calendar",
         title: "Cronograma del día",
-        body: "Desde la página de gestión podés crear bloques tipo 'Sábado 10:00 — Categoría B fase grupos'. Los bloques pueden tener categoría asociada y notas (cancha, referee). Se muestran en el preview público agrupados por día.",
+        body: "Desde la página de gestión puedes crear bloques tipo 'Sábado 10:00 — Categoría B fase grupos'. Los bloques pueden tener categoría asociada y notas (cancha, referee). Se muestran en el preview público agrupados por día.",
       },
       {
         icon: "dollar-sign",
         title: "Cobro de inscripciones",
-        body: "MATCHPOINT no procesa pagos con tarjeta. Las cuotas se cobran por transferencia bancaria o DeUna (Ecuador). Tenés tres modos:",
+        body: "MATCHPOINT no procesa pagos con tarjeta. Las cuotas se cobran por transferencia bancaria o DeUna (Ecuador). Tienes tres modos:",
         bullets: [
           "Online (prepay): el jugador transfiere y sube comprobante. Auto-aprobado al subir (sin revisión).",
-          "En club (onsite): el jugador llega, paga en mostrador, y vos marcas 'Pagado' desde la tabla de inscritos.",
+          "En club (onsite): el jugador llega, paga en mostrador, y marcas 'Pagado' desde la tabla de inscritos.",
           "Flexible: el jugador elige entre online o en club al inscribirse.",
         ],
       },
       {
         icon: "x-circle",
         title: "Cancelaciones y reembolsos",
-        body: "Si cancelás el torneo, todos los inscritos reciben notificación inapp automáticamente. La devolución de cuotas la hacés vos por fuera (transferencia/DeUna), en un máximo de 7 días según las reglas que aceptaste al crear el torneo. MATCHPOINT NO procesa refunds.",
+        body: "Si cancelas el torneo, todos los inscritos reciben notificación inapp automáticamente. La devolución de cuotas la haces tú por fuera (transferencia/DeUna), en un máximo de 7 días según las reglas que aceptaste al crear el torneo. MATCHPOINT NO procesa refunds.",
       },
       {
         icon: "star",
@@ -73,22 +73,22 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
   },
   owner: {
     intro:
-      "Como dueño del club, controlás todo lo que pasa en tu sede: canchas, reservas, staff, clientes, finanzas y la presencia pública de tu club en MATCHPOINT.",
+      "Como dueño del club, controlas todo lo que pasa en tu sede: canchas, reservas, staff, clientes, finanzas y la presencia pública de tu club en MATCHPOINT.",
     sections: [
       {
         icon: "building-2",
         title: "Configurar el club",
-        body: "Desde 'Configuración' subís el logo, fotos, ubicación en mapa (MapLibre), horarios y servicios. Esta es la información que ven los jugadores en /clubes/[tu-slug].",
+        body: "Desde 'Configuración' subes el logo, fotos, ubicación en mapa (MapLibre), horarios y servicios. Esta es la información que ven los jugadores en /clubes/[tu-slug].",
       },
       {
         icon: "calendar",
         title: "Canchas y reservas",
-        body: "Cada cancha tiene tipo (pickleball/pádel), tarifa por hora, y horarios disponibles. Las reservas entran como 'pending' y vos confirmás. Los walk-ins también se registran desde el panel de Caja.",
+        body: "Cada cancha tiene tipo (pickleball/pádel), tarifa por hora, y horarios disponibles. Las reservas entran como 'pending' y tú confirmas. Los walk-ins también se registran desde el panel de Caja.",
       },
       {
         icon: "users",
         title: "Staff: managers, coaches, empleados",
-        body: "Invitás a tu equipo desde 'Staff'. Cada rol tiene permisos distintos: managers ven todo menos finanzas detalladas, coaches gestionan sus clases, empleados solo check-in y caja.",
+        body: "Invitas a tu equipo desde 'Staff'. Cada rol tiene permisos distintos: managers ven todo menos finanzas detalladas, coaches gestionan sus clases, empleados solo check-in y caja.",
       },
       {
         icon: "dollar-sign",
@@ -109,7 +109,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "calendar",
         title: "Reservas del día",
-        body: "El panel principal muestra las reservas confirmadas y pendientes. Podés confirmar/rechazar pending, mover horarios y registrar walk-ins.",
+        body: "El panel principal muestra las reservas confirmadas y pendientes. Puedes confirmar/rechazar pending, mover horarios y registrar walk-ins.",
       },
       {
         icon: "users",
@@ -119,12 +119,12 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "trophy",
         title: "Eventos del club",
-        body: "Coordiná torneos internos, clínicas y eventos sociales. Si necesitás cobrar inscripciones por DeUna/transferencia, el flujo es el mismo que el de partner.",
+        body: "Coordina torneos internos, clínicas y eventos sociales. Si necesitas cobrar inscripciones por DeUna/transferencia, el flujo es el mismo que el de partner.",
       },
       {
         icon: "shield",
-        title: "Lo que NO podés hacer",
-        body: "Como manager no tenés acceso a finanzas detalladas, ni a editar configuración del club, ni a invitar staff. Esos son privilegios del owner.",
+        title: "Lo que NO puedes hacer",
+        body: "Como manager no tienes acceso a finanzas detalladas, ni a editar configuración del club, ni a invitar staff. Esos son privilegios del owner.",
       },
     ],
   },
@@ -135,17 +135,17 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "calendar",
         title: "Programar clases",
-        body: "Creá clases individuales o grupales con cupo, precio, nivel mínimo. Aparecen en /academia para que los jugadores se inscriban.",
+        body: "Crea clases individuales o grupales con cupo, precio, nivel mínimo. Aparecen en /academia para que los jugadores se inscriban.",
       },
       {
         icon: "users",
         title: "Alumnos y progreso",
-        body: "Cada alumno tiene su ficha con historial de clases, asistencia y notas privadas tuyas. Podés marcar su MPR actualizado.",
+        body: "Cada alumno tiene su ficha con historial de clases, asistencia y notas privadas tuyas. Puedes marcar su MPR actualizado.",
       },
       {
         icon: "dollar-sign",
         title: "Pagos y comisiones",
-        body: "Los alumnos pagan por clase vía transferencia/DeUna (igual que el resto de pagos en MATCHPOINT). Vos confirmás recibido. El club puede cobrar comisión sobre tus clases si así lo acordaste con el owner.",
+        body: "Los alumnos pagan por clase vía transferencia/DeUna (igual que el resto de pagos en MATCHPOINT). Tú confirmas recibido. El club puede cobrar comisión sobre tus clases si así lo acordaste con el owner.",
       },
     ],
   },
@@ -156,12 +156,12 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "check-circle-2",
         title: "Check-in",
-        body: "Validás que cada reserva confirmada llegó a tiempo. Marcás presente/ausente, lo cual alimenta las métricas de no-show.",
+        body: "Validas que cada reserva confirmada llegó a tiempo. Marcas presente/ausente, lo cual alimenta las métricas de no-show.",
       },
       {
         icon: "user-plus",
         title: "Walk-ins",
-        body: "Registrás jugadores que llegan sin reserva. Cobra en caja y asigna cancha disponible.",
+        body: "Registras jugadores que llegan sin reserva. Cobra en caja y asigna cancha disponible.",
       },
       {
         icon: "dollar-sign",
@@ -177,12 +177,12 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "calendar",
         title: "Reservar cancha",
-        body: "Buscá un club en /clubes, elegí cancha y horario. Algunas reservas son automáticas, otras requieren confirmación del club. Tu lista vive en 'Mis reservas'.",
+        body: "Busca un club en /clubes, elige cancha y horario. Algunas reservas son automáticas, otras requieren confirmación del club. Tu lista vive en 'Mis reservas'.",
       },
       {
         icon: "trophy",
         title: "Inscribirse a un torneo",
-        body: "En /eventos ves los torneos publicados. Click → elegís categoría (si aplica) → elegís método de pago (online o en club) → subís comprobante si es transferencia. Las inscripciones se aprueban automáticamente al subir el comprobante.",
+        body: "En /eventos ves los torneos publicados. Click → elige categoría (si aplica) → elige método de pago (online o en club) → sube comprobante si es transferencia. Las inscripciones se aprueban automáticamente al subir el comprobante.",
       },
       {
         icon: "x-circle",
@@ -203,7 +203,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
   },
   admin: {
     intro:
-      "Como admin global tenés override sobre toda la plataforma. Acá los atajos clave para soporte y gestión.",
+      "Como admin global tienes override sobre toda la plataforma. Acá los atajos clave para soporte y gestión.",
     sections: [
       {
         icon: "shield",
@@ -223,7 +223,7 @@ const ROLE_HELP: Partial<Record<RoleKey, RoleHelp>> = {
       {
         icon: "crown",
         title: "MATCHPOINT+ a usuarios",
-        body: "Desde 'Usuarios' podés activar/extender/revocar el plan premium de cualquier user. Todas las acciones quedan en el audit log.",
+        body: "Desde 'Usuarios' puedes activar/extender/revocar el plan premium de cualquier user. Todas las acciones quedan en el audit log.",
       },
       {
         icon: "alert-triangle",

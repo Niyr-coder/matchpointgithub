@@ -3,7 +3,7 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { processScheduledAccountDeletions } from "@/server/actions/account-privacy";
+import { processScheduledAccountDeletions } from "@/server/account/account-deletion-worker";
 import { authorizeCron } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";

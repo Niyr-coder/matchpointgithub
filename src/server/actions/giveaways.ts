@@ -5,7 +5,7 @@
 import "server-only";
 
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
@@ -798,6 +798,7 @@ export async function createGiveawayPayEntry(
     }
 
     const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
     const { data: entry } = await admin
       .from("club_giveaway_entries")
       .select("user_id")

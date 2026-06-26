@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
+import { requireAdminUserId } from "@/lib/auth/session";
 
 const ROLE = z.enum(["admin", "partner", "owner", "manager", "coach", "employee", "user"]);
 const LEVEL = z.enum(["all", "limited", "own", "public", "none"]);
@@ -22,6 +23,7 @@ export async function updateRoleCapability(input: unknown): Promise<ActionResult
       if (role === "admin") {
         throw new MpError("ROLES.ADMIN_IMMUTABLE", "El rol admin tiene acceso total y no se puede editar.", 422);
       }
+      await requireAdminUserId();
       const supabase = await getServerClient();
       const { error } = await supabase
         .from("role_capabilities")

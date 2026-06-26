@@ -6,7 +6,7 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
@@ -931,9 +931,10 @@ export async function toggleFollowClub(
 
 export async function suspendClub(input: unknown): Promise<ActionResult<Club>> {
   return runAction(z.object({ clubId: UuidSchema }), input, async ({ clubId }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data, error } = await supabase
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    const { data, error } = await admin
       .from("clubs")
       .update({ status: "suspended" } as never)
       .eq("id", clubId)
@@ -946,9 +947,10 @@ export async function suspendClub(input: unknown): Promise<ActionResult<Club>> {
 
 export async function activateClub(input: unknown): Promise<ActionResult<Club>> {
   return runAction(z.object({ clubId: UuidSchema }), input, async ({ clubId }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-    const { data, error } = await supabase
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    const { data, error } = await admin
       .from("clubs")
       .update({ status: "active" } as never)
       .eq("id", clubId)

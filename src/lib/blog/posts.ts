@@ -121,11 +121,11 @@ MATCHPOINT te ayuda con la parte 1: el ranking automático muestra el nivel de c
 
 ## Reservas y disponibilidad
 
-Todos estos clubes están en MATCHPOINT con [calendario en vivo de disponibilidad](/clubes). Reservas desde la app, pagás por transferencia o DeUna, y nadie te tira sin previo aviso.
+Todos estos clubes están en MATCHPOINT con [calendario en vivo de disponibilidad](/clubes). Reservas desde la app, pagas por transferencia o DeUna, y nadie te tira sin previo aviso.
 
 ### Cómo elegir el primer club
 
-Si recién arrancás, mi consejo: probá dos clubes distintos antes de fijar el habitual. La comunidad pesa más que las canchas — un club con 30 jugadores activos te da más matches que uno con 6 canchas pero 8 jugadores.`,
+Si recién arrancas, mi consejo: prueba dos clubes distintos antes de fijar el habitual. La comunidad pesa más que las canchas — un club con 30 jugadores activos te da más matches que uno con 6 canchas pero 8 jugadores.`,
   },
   {
     slug: "como-leer-tu-ranking-mejorar-rapido",
@@ -139,14 +139,14 @@ Si recién arrancás, mi consejo: probá dos clubes distintos antes de fijar el 
     coverImage: "/blog/como-leer-tu-ranking-mejorar-rapido.jpg",
     coverAlt: "Captura del ranking MATCHPOINT con tres barras de progreso",
     ctaContext: {
-      label: "Mirá tu ranking actualizado",
+      label: "Mira tu ranking actualizado",
       href: "/ranking",
     },
     relatedSlugs: [
       "como-armar-un-doble-mixto-sin-pelear",
       "guia-pago-deuna-clubes-y-jugadores",
     ],
-    body: `La pregunta más común que recibimos de jugadores recreativos es "¿cómo subo de 3.0 a 3.5?". La respuesta no es "jugar más"; es "jugar mejor lo que ya juegás mal".
+    body: `La pregunta más común que recibimos de jugadores recreativos es "¿cómo subo de 3.0 a 3.5?". La respuesta no es "jugar más"; es "jugar mejor lo que ya juegas mal".
 
 ## Qué mide el ranking MATCHPOINT
 
@@ -156,19 +156,19 @@ El ranking MATCHPOINT se compone de tres factores:
 2. Nivel de los rivales (30%).
 3. Consistencia mensual (20%).
 
-Si solo mirás el número global, te perdés la mitad de la información.
+Si solo miras el número global, te pierdes la mitad de la información.
 
 ## Diagnóstico rápido
 
-Entrá a tu perfil → ranking → expandir. Vas a ver tres barras: **ataque**, **defensa** y **consistencia**. La que está más baja es tu próxima asignatura.
+Entra a tu perfil → ranking → expandir. Vas a ver tres barras: **ataque**, **defensa** y **consistencia**. La que está más baja es tu próxima asignatura.
 
 ### Si tu barra de ataque está baja
 
-Te falta cierre. Trabajá drives y volea de derecha. 30 min de drills por sesión durante 6 semanas suben drásticamente este indicador.
+Te falta cierre. Trabaja drives y volea de derecha. 30 min de drills por sesión durante 6 semanas suben drásticamente este indicador.
 
 ### Si tu barra de defensa está baja
 
-Te ganan en la transición. Trabajá resets desde el fondo y dinks angulados. Inscribite en una [clínica grupal](/coaches) antes de pedir clase 1 a 1 — es más barato y aprendés mirando.
+Te ganan en la transición. Trabaja resets desde el fondo y dinks angulados. Inscríbete en una [clínica grupal](/coaches) antes de pedir clase 1 a 1 — es más barato y aprendes mirando.
 
 ### Si tu barra de consistencia está baja
 
@@ -178,7 +178,7 @@ No es técnico, es de calendario. Necesitás jugar al menos 2 veces por semana, 
 
 ## El plan de 3 meses
 
-Subir 0.5 puntos en 3 meses es realista si atacás la barra más baja con foco. Si trabajás las tres a la vez, vas a quedar igual pero más cansado.`,
+Subir 0.5 puntos en 3 meses es realista si atacas la barra más baja con foco. Si trabajas las tres a la vez, vas a quedar igual pero más cansado.`,
   },
   {
     slug: "guia-pago-deuna-clubes-y-jugadores",
@@ -192,7 +192,7 @@ Subir 0.5 puntos en 3 meses es realista si atacás la barra más baja con foco. 
     coverImage: "/blog/guia-pago-deuna-clubes-y-jugadores.jpg",
     coverAlt: "QR de DeUna pegado en la recepción de un club deportivo",
     ctaContext: {
-      label: "Configurá tu club en MATCHPOINT",
+      label: "Configura tu club en MATCHPOINT",
       href: "/soy-club",
     },
     relatedSlugs: [
@@ -207,15 +207,15 @@ La wallet del Banco Pichincha permite enviar y recibir hasta USD 1,000 al día s
 
 ## Para clubes
 
-- Pedile el QR estático a tu ejecutivo de Pichincha.
-- Pegalo en tu perfil MATCHPOINT en [Soy Club → Pagos](/soy-club).
+- Pídele el QR estático a tu ejecutivo de Pichincha.
+- Pégalo en tu perfil MATCHPOINT en [Soy Club → Pagos](/soy-club).
 - Los jugadores escanean al inscribirse y suben el screenshot del comprobante.
 
 ## Para jugadores
 
-1. Descargá DeUna desde tu banco.
-2. Asociá tu cuenta.
-3. Al pagar una reserva, abrí el QR del club, confirmá el monto exacto, y compartí el screenshot directamente desde la app.
+1. Descarga DeUna desde tu banco.
+2. Asocia tu cuenta.
+3. Al pagar una reserva, abre el QR del club, confirma el monto exacto, y comparte el screenshot directamente desde la app.
 
 ## Qué hace (y qué no hace) MATCHPOINT
 

@@ -3339,7 +3339,7 @@ function PricingTab({
           padding: "8px 4px",
         }}
       >
-        Editá las franjas de tarifa por cancha. Podés definir múltiples franjas
+        Edita las franjas de tarifa por cancha. Puedes definir múltiples franjas
         por día (ej. diurna/nocturna, fin de semana). Los cambios se aplican al
         guardar — el calendario de reservas refleja la nueva tarifa al instante.
       </div>

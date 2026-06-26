@@ -1220,12 +1220,13 @@ export async function setTournamentFeatured(
   input: unknown,
 ): Promise<ActionResult<{ id: string; isFeatured: boolean }>> {
   return runAction(SetFeaturedSchema, input, async ({ tournamentId, featured }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
     if (featured) {
       // Solo un torneo estelar activo en portada / calendario.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: clearErr } = await (supabase as any)
+      const { error: clearErr } = await (admin as any)
         .from("tournaments")
         .update({ is_featured: false })
         .eq("is_featured", true)
@@ -1233,7 +1234,7 @@ export async function setTournamentFeatured(
       if (clearErr) throw new MpError("TOURNAMENTS.UPDATE_FAILED", clearErr.message, 500);
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
+    const { data, error } = await (admin as any)
       .from("tournaments")
       .update({ is_featured: featured })
       .eq("id", tournamentId)

@@ -281,7 +281,7 @@ function CancelConfirmModal({
         </h3>
         <p style={{ fontSize: 13, color: "#404040", lineHeight: 1.55, margin: "0 0 18px" }}>
           Vas a salir de <b style={{ color: "#0a0a0a" }}>{tournamentName}</b>.
-          Liberás tu cupo y otro jugador puede tomarlo. Si querés volver,
+          Liberas tu cupo y otro jugador puede tomarlo. Si quieres volver,
           tendrás que inscribirte de nuevo y respetar el orden.
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

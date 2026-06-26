@@ -238,20 +238,21 @@ function tallyTeam(
   if (winnerSide === side) e.matchesWon += 1;
 }
 
-async function registrationLabels(
+/** Carga todos los registrations del torneo en 2 queries y devuelve un mapa regId → label. */
+async function buildRegistrationLabelMap(
   admin: ReturnType<typeof getAdminClient>,
-  regIds: string[],
+  tournamentId: string,
 ): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (regIds.length === 0) return out;
   const { data: regs } = await admin
     .from("registrations")
     .select("id,team_id,player_ids,teams(name)")
-    .in("id", regIds);
+    .eq("tournament_id", tournamentId);
+
   const playerIdSet = new Set<string>();
   for (const r of regs ?? []) {
     for (const p of (r.player_ids as string[] | null) ?? []) playerIdSet.add(p);
   }
+
   const profById = new Map<string, string>();
   if (playerIdSet.size > 0) {
     const { data: profs } = await admin
@@ -262,6 +263,8 @@ async function registrationLabels(
       profById.set(p.id as string, (p.display_name as string | null) ?? "Jugador");
     }
   }
+
+  const out = new Map<string, string>();
   for (const r of regs ?? []) {
     const pids = (r.player_ids as string[] | null) ?? [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -306,6 +309,9 @@ export async function getTournamentLiveDisplay(
 
     const tournamentId = t.id;
 
+    // Carga todos los registrations del torneo en 2 queries para evitar N+1 por grupo/bracket.
+    const nameByReg = await buildRegistrationLabelMap(admin, tournamentId);
+
     const allMatches: TournamentLiveMatch[] = [];
     const groupTables: TournamentLiveGroupTable[] = [];
     const categoryNames: string[] = [];
@@ -338,13 +344,6 @@ export async function getTournamentLiveDisplay(
             "id,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,court_id,courts(code,name)",
           )
           .eq("group_id", g.id as string);
-
-        const regIds = new Set<string>();
-        for (const m of gm ?? []) {
-          if (m.side_a_registration_id) regIds.add(m.side_a_registration_id as string);
-          if (m.side_b_registration_id) regIds.add(m.side_b_registration_id as string);
-        }
-        const nameByReg = await registrationLabels(admin, Array.from(regIds));
 
         for (const m of gm ?? []) {
           const { a, b } = formatSetScore(m.score);
@@ -435,12 +434,6 @@ export async function getTournamentLiveDisplay(
         courts?: { code?: string; name?: string } | null;
       }>;
 
-      const regIds = new Set<string>();
-      for (const m of bm ?? []) {
-        if (m.side_a_registration_id) regIds.add(m.side_a_registration_id);
-        if (m.side_b_registration_id) regIds.add(m.side_b_registration_id);
-      }
-      const nameByReg = await registrationLabels(admin, Array.from(regIds));
       const lbl = (id: string | null) => (id ? nameByReg.get(id) ?? "—" : "TBD");
 
       for (const m of bm ?? []) {

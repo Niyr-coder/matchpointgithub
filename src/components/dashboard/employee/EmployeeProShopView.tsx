@@ -928,15 +928,15 @@ function payMethodLabel(m: PaymentMethod): string {
 function friendlySaleError(code: string, message: string): string {
   switch (code) {
     case "PROSHOP.OUT_OF_STOCK":
-      return "Stock insuficiente. Refrescá el catálogo (otro vendedor pudo haber vendido).";
+      return "Stock insuficiente. Refresca el catálogo (otro vendedor pudo haber vendido).";
     case "PROSHOP.INACTIVE":
-      return "Algún producto fue desactivado. Quitalo del carrito.";
+      return "Algún producto fue desactivado. Quítalo del carrito.";
     case "PROSHOP.CURRENCY_MIXED":
       return "Los productos deben ser de la misma moneda.";
     case "CASH.SESSION_CLOSED":
-      return "Abrí una sesión de caja antes de vender en efectivo.";
+      return "Abre una sesión de caja antes de vender en efectivo.";
     case "AUTH.ROLE_REQUIRED":
-      return "No tenés permiso para vender en este club.";
+      return "No tienes permiso para vender en este club.";
     default:
       return message || "Error desconocido";
   }
@@ -965,7 +965,7 @@ function InventarioTab({
         validate: (v) => {
           const n = Number(v.trim());
           if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n))
-            return "Ingresá un entero positivo";
+            return "Ingresa un entero positivo";
           return null;
         },
         confirmLabel: "Sumar al stock",
@@ -988,14 +988,14 @@ function InventarioTab({
     startTransition(async () => {
       const raw = await ask({
         title: `Ajustar stock · ${p.name}`,
-        label: `Stock actual: ${p.stock}. Ingresá delta (puede ser negativo)`,
+        label: `Stock actual: ${p.stock}. Ingresa delta (puede ser negativo)`,
         initialValue: "-1",
         placeholder: "Ej. -2 (merma) o +5 (corrección)",
         required: true,
         validate: (v) => {
           const n = Number(v.trim());
           if (!Number.isFinite(n) || n === 0 || !Number.isInteger(n))
-            return "Ingresá un entero distinto de 0";
+            return "Ingresa un entero distinto de 0";
           if ((p.stock + n) < 0) return `Stock no puede quedar negativo (actual ${p.stock})`;
           return null;
         },
@@ -1236,7 +1236,7 @@ function InventarioTab({
                   fontSize: 11.5,
                 }}
               >
-                Aún no hay productos. Cargá uno desde la pestaña Catálogo.
+                Aún no hay productos. Carga uno desde la pestaña Catálogo.
               </div>
             )}
             {data.products.map((p, i) => {
@@ -1429,7 +1429,7 @@ function CatalogoTab({ data }: { data: ProShopData }) {
     }
     const name = form.name.trim();
     if (!name) {
-      toast({ icon: "alert-triangle", title: "Ingresá un nombre" });
+      toast({ icon: "alert-triangle", title: "Ingresa un nombre" });
       return;
     }
     const priceFloat = Number(form.price.replace(",", "."));
@@ -1477,7 +1477,7 @@ function CatalogoTab({ data }: { data: ProShopData }) {
       if (p.active) {
         const ok = await confirm({
           title: `Desactivar ${p.name}?`,
-          body: "El producto deja de aparecer en el POS y en la tienda pública. El stock no se modifica. Podés reactivarlo cuando quieras.",
+          body: "El producto deja de aparecer en el POS y en la tienda pública. El stock no se modifica. Puedes reactivarlo cuando quieras.",
           confirmLabel: "Desactivar",
         });
         if (!ok) return;
@@ -1669,7 +1669,7 @@ function CatalogoTab({ data }: { data: ProShopData }) {
               background: "#fafafa",
             }}
           >
-            Sin productos. Subí el primero desde el form de la izquierda.
+            Sin productos. Sube el primero desde el form de la izquierda.
           </div>
         ) : (
           <div className="mp-shop-catgrid mp-grid-form-3 gap-2.5">

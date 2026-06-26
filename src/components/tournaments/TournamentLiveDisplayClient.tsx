@@ -14,6 +14,7 @@ const SCENE_MS = 14000;
 const REFRESH_MS = 12000;
 const STALE_MS = 45000;
 const BUMP_MS = 800;
+const REALTIME_DEBOUNCE_MS = 1000;
 
 const PUBLIC_SITE =
   process.env.NEXT_PUBLIC_APP_URL ??
@@ -51,6 +52,7 @@ export function TournamentLiveDisplayClient({
   const [now, setNow] = useState<number>(() => Date.now());
   const [bumped, setBumped] = useState<Set<string>>(() => new Set());
   const prevSig = useRef<Map<string, string>>(new Map());
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
     (async () => {
@@ -62,6 +64,13 @@ export function TournamentLiveDisplayClient({
     })();
   }, [slug, token]);
 
+  // Debounce realtime events: las tablas sin filter (group_matches, bracket_matches)
+  // pueden disparar decenas de eventos seguidos. Esperar 1s antes de refetch.
+  const debouncedRefresh = useCallback(() => {
+    if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+    realtimeTimer.current = setTimeout(refresh, REALTIME_DEBOUNCE_MS);
+  }, [refresh]);
+
   useRealtimeRefresh(
     [
       { table: "tournament_group_matches" },
@@ -69,12 +78,15 @@ export function TournamentLiveDisplayClient({
       { table: "tournament_categories" },
       { table: "tournaments", filter: `id=eq.${initial.tournamentId}` },
     ],
-    { enabled: true, onChange: () => refresh() },
+    { enabled: true, onChange: debouncedRefresh },
   );
 
   useEffect(() => {
     const t = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+    };
   }, [refresh]);
 
   useEffect(() => {

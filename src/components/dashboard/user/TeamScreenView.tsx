@@ -1807,7 +1807,7 @@ function TeamSettings({ team, onBack, onLeave, meUserId }: { team: TeamLite; onB
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, color: "#9a3412" }}>
-                Elegí el nuevo capitán
+                Elige el nuevo capitán
               </div>
               <select
                 value={transferTarget}
@@ -2249,7 +2249,7 @@ function TeamInvite({
                 }}
               >
                 {availableFriends.length === 0
-                  ? "Todavía no tenés amigos para invitar."
+                  ? "Todavía no tienes amigos para invitar."
                   : "No hay amigos que coincidan con la búsqueda."}
               </div>
             )}
