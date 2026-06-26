@@ -83,18 +83,21 @@ export const mercadoPagoProvider: PaymentProviderAdapter = {
 
   async verifyWebhookRequest(req: Request, rawBody: string): Promise<NormalizedWebhookEvent> {
     const secret = webhookSecret();
-    if (secret) {
-      const signature = req.headers.get("x-signature");
-      const requestId = req.headers.get("x-request-id");
-      if (!signature || !requestId) {
-        throw new MpError("PSP.WEBHOOK_INVALID", "Faltan headers de Mercado Pago.", 401);
-      }
-      const expected = createHmac("sha256", secret).update(`${requestId}:${rawBody}`).digest("hex");
-      const sigBuf = Buffer.from(signature, "hex");
-      const expBuf = Buffer.from(expected, "hex");
-      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-        throw new MpError("PSP.WEBHOOK_INVALID", "Firma Mercado Pago inválida.", 401);
-      }
+    // Fail-closed: sin secret configurado, rechazamos todo evento.
+    // Configurar MP_WEBHOOK_SECRET antes de habilitar psp_checkout_enabled.
+    if (!secret) {
+      throw new MpError("PSP.WEBHOOK_INVALID", "Webhook de Mercado Pago no configurado en este entorno.", 401);
+    }
+    const signature = req.headers.get("x-signature");
+    const requestId = req.headers.get("x-request-id");
+    if (!signature || !requestId) {
+      throw new MpError("PSP.WEBHOOK_INVALID", "Faltan headers de Mercado Pago.", 401);
+    }
+    const expected = createHmac("sha256", secret).update(`${requestId}:${rawBody}`).digest("hex");
+    const sigBuf = Buffer.from(signature, "hex");
+    const expBuf = Buffer.from(expected, "hex");
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+      throw new MpError("PSP.WEBHOOK_INVALID", "Firma Mercado Pago inválida.", 401);
     }
 
     const payload = JSON.parse(rawBody) as {
