@@ -424,3 +424,46 @@ La final usa `finalScoringOverride` si existe; el resto de rondas knockout usan
 `groups_to_knockout`; mezclar partidos de grupo en `quedada_games`; olvidar
 `player_ids[]` (nunca `player_id` singular); olvidar sync en landing + user +
 partner + admin (§7).
+
+## 14. Pantalla de venue / TV (`/t/[slug]/live`)
+
+Link público read-only que el club abre en sus **pantallas/monitores** para
+mostrar el torneo en vivo. **No** es vista responsive de móvil: está pensada
+para pantalla grande horizontal, glanceable a distancia. **No** es feature
+pagada (no confundir con `is_featured`/"estelar").
+
+### 14.1 Acceso y token
+
+- URL: `/t/[slug]/live?k=<display_token>`. Sin login.
+- `tournaments.display_token` (uuid) se genera/rota desde el panel partner
+  (`TournamentVenueDisplayPanel`) vía `ensureTournamentDisplayToken` /
+  `rotateTournamentDisplayToken`. Guard: `requireTournamentEditor` (admin o
+  owner/admin del partner). Lectura pública valida `slug + token` con
+  `getAdminClient` (RLS no aplica al ser service-role tras validar token).
+- Bloqueada si el torneo está `draft` o `cancelled`. Página marcada
+  `robots: noindex`.
+
+### 14.2 Qué muestra
+
+`getTournamentLiveDisplay` arma, desde group + bracket matches:
+
+| Dato | Detalle |
+|---|---|
+| **Tablero por cancha** | Vista principal: por cancha, partido **actual** (`live`) con score por set + **siguiente** (`scheduled`, por `scheduled_at`). |
+| **En juego / Resultados** | Cards con scoreboard (games por set + sets ganados). |
+| **Próximos** | `scheduled` ordenados por hora, con cancha. |
+| **Tablas de grupo** | Standings (`confirmed`), líneas neutras (sin barras verdes). |
+| **Campeón** | Cuando la final está `reported`/`confirmed`. |
+| **QR** | A `/eventos/[slug]` para que el público siga el torneo. |
+
+El cliente (`TournamentLiveDisplayClient`) intercala el tablero por cancha
+entre cada slide secundaria y rota cada 15 s. Realtime: escucha
+`tournament_group_matches`, `bracket_matches`, `tournament_categories`,
+`tournaments` (filter por id) + refetch cada 12 s + indicador "actualizado
+hace X / reconectando".
+
+**Cosas que rompen seguido:** olvidar que standings solo cuentan `confirmed`
+(reportados se ven en el marcador pero no mueven tabla); identidad visual sigue
+el Design System MATCHPOINT — emerald como único color de marca (en superficie
+oscura, emerald-400 `#34d399`), negro + near-whites, Plus Jakarta 900 uppercase.
+No introducir un segundo hue.

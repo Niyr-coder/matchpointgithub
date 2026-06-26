@@ -1,19 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getTournamentLiveDisplay,
   type TournamentLiveDisplay,
+  type TournamentLiveMatch,
+  type TournamentLiveCourt,
+  type TournamentLiveBracketRound,
 } from "@/server/actions/tournament-live";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 
-const SLIDE_MS = 15000;
+const SCENE_MS = 14000;
+const REFRESH_MS = 12000;
+const STALE_MS = 45000;
+const BUMP_MS = 800;
 
-type Slide =
-  | { kind: "live"; title: string }
-  | { kind: "recent"; title: string }
-  | { kind: "groups"; title: string; index: number }
-  | { kind: "champion"; title: string };
+const PUBLIC_SITE =
+  process.env.NEXT_PUBLIC_APP_URL ??
+  (typeof window !== "undefined" ? window.location.origin : "");
+
+type Scene =
+  | { kind: "court"; idx: number }
+  | { kind: "bracket" }
+  | { kind: "champion" }
+  | { kind: "upnext" };
+
+function fmtTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
+}
+
+function scoreSig(m: TournamentLiveMatch): string {
+  return `${m.scoreA}-${m.scoreB}-${m.sets.map((s) => `${s.a}/${s.b}`).join(",")}`;
+}
 
 export function TournamentLiveDisplayClient({
   slug,
@@ -25,14 +46,20 @@ export function TournamentLiveDisplayClient({
   initial: TournamentLiveDisplay;
 }) {
   const [data, setData] = useState(initial);
-  const [slideIdx, setSlideIdx] = useState(0);
-  const [, startTx] = useTransition();
+  const [sceneIdx, setSceneIdx] = useState(0);
+  const [lastSync, setLastSync] = useState<number>(() => Date.now());
+  const [now, setNow] = useState<number>(() => Date.now());
+  const [bumped, setBumped] = useState<Set<string>>(() => new Set());
+  const prevSig = useRef<Map<string, string>>(new Map());
 
   const refresh = useCallback(() => {
-    startTx(async () => {
+    (async () => {
       const res = await getTournamentLiveDisplay({ slug, token });
-      if (res.ok) setData(res.data);
-    });
+      if (res.ok) {
+        setData(res.data);
+        setLastSync(Date.now());
+      }
+    })();
   }, [slug, token]);
 
   useRealtimeRefresh(
@@ -46,127 +73,343 @@ export function TournamentLiveDisplayClient({
   );
 
   useEffect(() => {
-    const t = setInterval(refresh, SLIDE_MS);
+    const t = setInterval(refresh, REFRESH_MS);
     return () => clearInterval(t);
   }, [refresh]);
 
-  const slides: Slide[] = [];
-  if (data.liveMatches.length > 0) slides.push({ kind: "live", title: "En juego" });
-  if (data.recentMatches.length > 0) slides.push({ kind: "recent", title: "Últimos resultados" });
-  data.groupTables.forEach((_, i) => {
-    slides.push({ kind: "groups", title: "Tablas de grupo", index: i });
-  });
-  if (data.championLabel) slides.push({ kind: "champion", title: "Campeón" });
-  if (slides.length === 0) slides.push({ kind: "live", title: data.tournamentName });
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Marcadores que cambiaron por realtime → animar solo esos
+  useEffect(() => {
+    const scored = [
+      ...data.liveMatches,
+      ...data.courts.map((c) => c.current).filter((m): m is TournamentLiveMatch => !!m),
+    ];
+    const next = new Map<string, string>();
+    const changed = new Set<string>();
+    for (const m of scored) {
+      const sig = scoreSig(m);
+      next.set(m.id, sig);
+      const prev = prevSig.current.get(m.id);
+      if (prev !== undefined && prev !== sig) changed.add(m.id);
+    }
+    prevSig.current = next;
+    if (changed.size > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBumped(changed);
+      const t = setTimeout(() => setBumped(new Set()), BUMP_MS);
+      return () => clearTimeout(t);
+    }
+  }, [data]);
+
+  // Canchas con partido EN JUEGO → un scoreboard broadcast por cancha
+  const liveCourts = data.courts.filter((c) => c.current && c.current.status === "live");
+
+  const scenes: Scene[] = [];
+  liveCourts.forEach((_, i) => scenes.push({ kind: "court", idx: i }));
+  if (data.phase === "knockout" && data.bracketRounds.length > 0) scenes.push({ kind: "bracket" });
+  if (data.championLabel) scenes.push({ kind: "champion" });
+  if (scenes.length === 0) scenes.push({ kind: "upnext" });
 
   useEffect(() => {
-    if (slides.length <= 1) return;
-    const t = setInterval(() => setSlideIdx((i) => (i + 1) % slides.length), SLIDE_MS);
+    if (scenes.length <= 1) return;
+    const t = setInterval(() => setSceneIdx((i) => (i + 1) % scenes.length), SCENE_MS);
     return () => clearInterval(t);
-  }, [slides.length]);
+  }, [scenes.length]);
 
-  const slide = slides[slideIdx % slides.length] ?? slides[0]!;
+  const scene = scenes[sceneIdx % scenes.length] ?? scenes[0]!;
+  const liveCount = data.liveMatches.length;
+  const secondsAgo = Math.max(0, Math.floor((now - lastSync) / 1000));
+  const stale = now - lastSync > STALE_MS;
+  const publicUrl = PUBLIC_SITE ? `${PUBLIC_SITE}/eventos/${slug}` : "";
+  const qrSrc = publicUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=6&data=${encodeURIComponent(publicUrl)}`
+    : "";
+  const subtitle =
+    data.phase === "knockout"
+      ? "Eliminatorias"
+      : data.categoryNames.slice(0, 2).join(" · ") || "Fase de grupos";
+
+  // Ticker: otras canchas en juego + próximos
+  const tickerItems: string[] = [];
+  for (const c of liveCourts) {
+    const m = c.current!;
+    const games = m.sets.map((s) => `${s.a}-${s.b}`).join("  ");
+    tickerItems.push(`${c.courtLabel.toUpperCase()} · ${m.labelA} vs ${m.labelB}  ${games}`);
+  }
+  for (const u of data.upcomingMatches.slice(0, 4)) {
+    const t = fmtTime(u.scheduledAt);
+    tickerItems.push(
+      `PRÓXIMO${u.courtLabel ? ` ${u.courtLabel.toUpperCase()}` : ""}${t ? ` ${t}` : ""} · ${u.labelA} vs ${u.labelB}`,
+    );
+  }
+  tickerItems.push(data.tournamentName.toUpperCase());
+  if (tickerItems.length === 0) tickerItems.push(data.tournamentName.toUpperCase());
 
   return (
-    <div className="mp-tv-live">
-      <header className="mp-tv-live-header">
-        <div className="mp-tv-live-brand">MATCHPOINT</div>
-        <h1 className="mp-tv-live-title">{data.tournamentName}</h1>
-        <div className="mp-tv-live-slide-label">{slide.title}</div>
+    <div className="mp-tvb">
+      <header className="mp-tvb-top">
+        <div className="mp-tvb-brand">
+          <span className="mp-tvb-brand-dot" aria-hidden />
+          MATCHPOINT
+          <span className="mp-tvb-brand-series">Pro Series</span>
+        </div>
+        <div className="mp-tvb-title">
+          <div className="mp-tvb-title-name">{data.tournamentName}</div>
+          <div className="mp-tvb-title-sub">{subtitle}</div>
+        </div>
+        <div className="mp-tvb-status-wrap">
+          {liveCount > 0 && !stale && (
+            <span className="mp-tvb-live">
+              <span className="mp-tvb-live-dot" aria-hidden />
+              Live
+            </span>
+          )}
+          <span className={`mp-tvb-sync${stale ? " is-stale" : ""}`}>
+            {stale ? "Reconectando…" : `Act. ${secondsAgo}s`}
+          </span>
+        </div>
       </header>
 
-      <main className="mp-tv-live-main">
-        {slide.kind === "live" && (
-          <MatchGrid
-            matches={data.liveMatches}
-            empty="No hay partidos en juego ahora mismo."
+      <main className="mp-tvb-stage" key={sceneIdx}>
+        {scene.kind === "court" && liveCourts[scene.idx] && (
+          <CourtBroadcast court={liveCourts[scene.idx]!} bump={bumped} />
+        )}
+        {scene.kind === "bracket" && (
+          <BracketFull
+            rounds={data.bracketRounds}
+            finalists={data.finalists}
+            championLabel={data.championLabel}
           />
         )}
-        {slide.kind === "recent" && (
-          <MatchGrid matches={data.recentMatches} empty="Aún no hay resultados." />
+        {scene.kind === "champion" && (
+          <ChampionScene championLabel={data.championLabel} finalists={data.finalists} />
         )}
-        {slide.kind === "groups" && data.groupTables[slide.index] && (
-          <GroupTableView table={data.groupTables[slide.index]!} />
-        )}
-        {slide.kind === "champion" && (
-          <div className="mp-tv-live-champion">
-            <div className="mp-tv-live-champion-label">Campeón</div>
-            <div className="mp-tv-live-champion-name">{data.championLabel}</div>
-          </div>
+        {scene.kind === "upnext" && (
+          <UpNextScene upcoming={data.upcomingMatches} recent={data.recentMatches} name={data.tournamentName} />
         )}
       </main>
 
-      {slides.length > 1 && (
-        <footer className="mp-tv-live-dots" aria-hidden>
-          {slides.map((_, i) => (
-            <span key={i} className={i === slideIdx % slides.length ? "is-active" : ""} />
-          ))}
-        </footer>
+      <footer className="mp-tvb-ticker">
+        <div className="mp-tvb-ticker-tag">En vivo</div>
+        <div className="mp-tvb-ticker-track">
+          <div className="mp-tvb-ticker-row">
+            {[...tickerItems, ...tickerItems].map((it, i) => (
+              <span className="mp-tvb-ticker-item" key={i}>
+                {it}
+                <span className="mp-tvb-ticker-sep" aria-hidden>
+                  ●
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+        {qrSrc && (
+          <div className="mp-tvb-ticker-qr">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrSrc} alt="QR para seguir el torneo" width={52} height={52} />
+          </div>
+        )}
+      </footer>
+    </div>
+  );
+}
+
+function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set<string> }) {
+  const m = court.current!;
+  const sets = m.sets;
+  const cur = sets.length - 1;
+  const leadA = Number(m.scoreA) > Number(m.scoreB);
+  const leadB = Number(m.scoreB) > Number(m.scoreA);
+  const isBumped = bump.has(m.id);
+  const meta = `${court.courtLabel}${m.groupName ? ` · Grupo ${m.groupName}` : " · Eliminatoria"}`;
+  const rows = [
+    { label: m.labelA, side: "a" as const, lead: leadA },
+    { label: m.labelB, side: "b" as const, lead: leadB },
+  ];
+  return (
+    <div className="mp-tvb-board">
+      <div className="mp-tvb-board-court">{meta}</div>
+      <div className="mp-tvb-sb">
+        {rows.map((r) => (
+          <div
+            key={r.side}
+            className={`mp-tvb-sb-row${r.lead ? " is-lead" : ""}${isBumped ? " is-bump" : ""}`}
+          >
+            <div className="mp-tvb-sb-team">{r.label}</div>
+            <div className="mp-tvb-sb-games">
+              {sets.map((s, i) => {
+                const mine = r.side === "a" ? s.a : s.b;
+                const won = r.side === "a" ? s.a > s.b : s.b > s.a;
+                return (
+                  <span
+                    key={i}
+                    className={`mp-tvb-g${i === cur ? " is-cur" : ""}${won ? " is-won" : ""}`}
+                  >
+                    {mine}
+                  </span>
+                );
+              })}
+              {sets.length === 0 && <span className="mp-tvb-g is-cur">0</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mp-tvb-board-foot">
+        {sets.length > 0 ? `Game ${sets.length}` : "Por comenzar"} · {meta}
+      </div>
+    </div>
+  );
+}
+
+function ChampionScene({
+  championLabel,
+  finalists,
+}: {
+  championLabel: string | null;
+  finalists: { a: string; b: string } | null;
+}) {
+  return (
+    <div className="mp-tvb-champ">
+      <div className="mp-tvb-champ-trophy" aria-hidden>
+        <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+          <path d="M4 22h16" />
+          <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+          <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+        </svg>
+      </div>
+      <div className="mp-tvb-champ-label">Campeón</div>
+      <div className="mp-tvb-champ-name">{championLabel}</div>
+      {finalists && (
+        <div className="mp-tvb-champ-final">
+          Final: <b>{finalists.a}</b> vs <b>{finalists.b}</b>
+        </div>
       )}
     </div>
   );
 }
 
-function MatchGrid({
-  matches,
-  empty,
+function UpNextScene({
+  upcoming,
+  recent,
+  name,
 }: {
-  matches: TournamentLiveDisplay["liveMatches"];
-  empty: string;
+  upcoming: TournamentLiveMatch[];
+  recent: TournamentLiveMatch[];
+  name: string;
 }) {
-  if (matches.length === 0) {
-    return <p className="mp-tv-live-empty">{empty}</p>;
+  const next = upcoming.slice(0, 5);
+  const last = recent.slice(0, 5);
+  if (next.length === 0 && last.length === 0) {
+    return (
+      <div className="mp-tvb-upnext">
+        <div className="mp-tvb-upnext-hero">{name}</div>
+        <div className="mp-tvb-upnext-sub">Los partidos en vivo aparecerán aquí.</div>
+      </div>
+    );
   }
   return (
-    <div className="mp-tv-live-grid">
-      {matches.map((m) => (
-        <div key={m.id} className={`mp-tv-live-card${m.status === "live" ? " is-live" : ""}`}>
-          {m.groupName && <div className="mp-tv-live-meta">{m.groupName}</div>}
-          {m.courtLabel && <div className="mp-tv-live-meta">{m.courtLabel}</div>}
-          <div className="mp-tv-live-row">
-            <span className="mp-tv-live-team">{m.labelA}</span>
-            <span className="mp-tv-live-score">{m.scoreA}</span>
+    <div className="mp-tvb-upnext-grid">
+      <div className="mp-tvb-upnext-col">
+        <div className="mp-tvb-col-h">Próximos</div>
+        {next.length === 0 ? (
+          <div className="mp-tvb-col-empty">Sin partidos programados.</div>
+        ) : (
+          <div className="mp-tvb-rows mp-tv-stagger">
+            {next.map((m) => (
+              <div className="mp-tvb-row" key={m.id}>
+                <span className="mp-tvb-row-time">{fmtTime(m.scheduledAt) ?? "—"}</span>
+                <span className="mp-tvb-row-teams">
+                  {m.labelA} <i>vs</i> {m.labelB}
+                </span>
+              </div>
+            ))}
           </div>
-          <div className="mp-tv-live-row">
-            <span className="mp-tv-live-team">{m.labelB}</span>
-            <span className="mp-tv-live-score">{m.scoreB}</span>
+        )}
+      </div>
+      <div className="mp-tvb-upnext-col">
+        <div className="mp-tvb-col-h">Últimos resultados</div>
+        {last.length === 0 ? (
+          <div className="mp-tvb-col-empty">Aún no hay resultados.</div>
+        ) : (
+          <div className="mp-tvb-rows mp-tv-stagger">
+            {last.map((m) => (
+              <div className="mp-tvb-row" key={m.id}>
+                <span className="mp-tvb-row-teams">
+                  {m.labelA} <b>{m.scoreA}</b>–<b>{m.scoreB}</b> {m.labelB}
+                </span>
+              </div>
+            ))}
           </div>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
   );
 }
 
-function GroupTableView({
-  table,
+function BracketFull({
+  rounds,
+  finalists,
+  championLabel,
 }: {
-  table: TournamentLiveDisplay["groupTables"][number];
+  rounds: TournamentLiveBracketRound[];
+  finalists: { a: string; b: string } | null;
+  championLabel: string | null;
 }) {
+  if (rounds.length === 0) {
+    return <p className="mp-tvb-empty">El cuadro se genera al cerrar la fase de grupos.</p>;
+  }
   return (
-    <div className="mp-tv-live-table-wrap">
-      <div className="mp-tv-live-table-title">
-        {table.categoryName} · Grupo {table.groupName}
+    <section className="mp-tv-bk-wrap">
+      <div className="mp-tv-bk-heads">
+        {rounds.map((r) => (
+          <div className="mp-tv-bk-head" key={r.name}>
+            {r.name}
+          </div>
+        ))}
+        {championLabel && <div className="mp-tv-bk-head">Campeón</div>}
       </div>
-      <table className="mp-tv-live-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Equipo</th>
-            <th>G</th>
-            <th>Sets</th>
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((r) => (
-            <tr key={r.rank}>
-              <td>{r.rank}</td>
-              <td>{r.label}</td>
-              <td>{r.wins}</td>
-              <td>{r.sets}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      <div className="mp-tv-bk">
+        {rounds.map((r) => (
+          <div className="mp-tv-bk-col" key={r.name}>
+            {r.matches.map((m) => (
+              <div className="mp-tv-bk-m" key={m.id}>
+                <div className={`mp-tv-bk-card${m.status === "live" ? " is-live" : ""}`}>
+                  <div className={`mp-tv-bk-side${m.winner === "a" ? " is-win" : ""}`}>
+                    <span className="mp-tv-bk-team">{m.labelA}</span>
+                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{m.scoreA}</b>}
+                  </div>
+                  <div className={`mp-tv-bk-side${m.winner === "b" ? " is-win" : ""}`}>
+                    <span className="mp-tv-bk-team">{m.labelB}</span>
+                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{m.scoreB}</b>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+        {championLabel && (
+          <div className="mp-tv-bk-col mp-tv-bk-champ-col">
+            <div className="mp-tv-bk-champ">
+              <span className="mp-tv-bk-champ-trophy" aria-hidden>
+                🏆
+              </span>
+              <span className="mp-tv-bk-champ-name">{championLabel}</span>
+            </div>
+          </div>
+        )}
+      </div>
+      {!championLabel && finalists && (
+        <div className="mp-tv-bk-foot">
+          Final: <b>{finalists.a}</b> vs <b>{finalists.b}</b>
+        </div>
+      )}
+    </section>
   );
 }
