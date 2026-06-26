@@ -10,6 +10,7 @@ import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { requirePlanWithFlag } from "@/lib/auth/plan";
 import { notify } from "@/server/notifications/dispatch";
 import { quedadaNotifyContext } from "@/server/notifications/enrich";
 import {
@@ -204,6 +205,7 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
   return runAction(CreateQuedadaSchema, input, async (d) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
+    await requirePlanWithFlag(supabase, userId, "paywall_enforce_quedadas", "premium");
     const { data: row, error } = await supabase
       .from("quedadas")
       .insert({

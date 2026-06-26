@@ -229,6 +229,15 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: false,
   },
 
+  {
+    key: "paywall_enforce_quedadas",
+    label: "Paywall · Quedadas",
+    description: "Encendido = solo usuarios MATCHPOINT+ pueden crear quedadas. Apagado = todos pueden (estado inicial).",
+    surfaces: ["src/server/actions/quedadas.ts (createQuedada)"],
+    impact: "med",
+    wired: true,
+  },
+
   // ── Legacy / huérfanos en DB ───────────────────────────────────────────
   {
     key: "profile_customization",
