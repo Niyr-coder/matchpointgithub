@@ -237,8 +237,8 @@ export async function setCourtMaintenance(
 }
 
 // ── clearCourtMaintenance (staff) ───────────────────────────────────────
-// Quita el mantenimiento: active=true + nulls. Si querés solo limpiar el
-// motivo manteniendo bloqueada, usá updateCourt con active=false explícito.
+// Quita el mantenimiento: active=true + nulls. Si quieres solo limpiar el
+// motivo manteniendo bloqueada, usa updateCourt con active=false explícito.
 // Mig 169: cierra el log activo (ended_at = now, ended_by = caller).
 export async function clearCourtMaintenance(
   input: unknown,
