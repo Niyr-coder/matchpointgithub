@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { ScoreMatchCard } from "@/components/dashboard/brackets/ScoreMatchCard";
-import { useToast } from "../ToastProvider";
+import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import {
   closeGroupStage,
@@ -13,6 +13,7 @@ import {
   generateKnockoutFromGroups,
   getGroupStageSummary,
   reportGroupMatch,
+  correctGroupMatch,
   saveGroupStageScheduling,
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
@@ -199,7 +200,11 @@ export function GroupStagePanel({
       try {
         const res = (await fn()) as { ok: boolean; error?: { message: string } };
         if (res.ok) {
-          toast({ icon: "check", title: ok });
+          toast({
+            icon: "check",
+            title: ok,
+            durationMs: key === "report" || key === "correct" ? TOAST_SCORE_MS : undefined,
+          });
           if (activeCategoryId) await reloadSummary(activeCategoryId);
           router.refresh();
           after?.();
@@ -300,17 +305,32 @@ export function GroupStagePanel({
   const onScoreSubmit = (matchId: string, setsA: number, setsB: number) => {
     if (busy) return;
     const winnerSide = setsA > setsB ? "a" : "b";
+    let isCorrection = false;
+    for (const g of groups) {
+      const m = g.matches.find((x) => x.id === matchId);
+      if (m) {
+        isCorrection = isMatchDone(m.status);
+        break;
+      }
+    }
     setReportingMatchId(matchId);
     wrap(
-      "report",
+      isCorrection ? "correct" : "report",
       () =>
-        reportGroupMatch({
-          tournamentId,
-          matchId,
-          winnerSide,
-          score: { sets: [{ a: setsA, b: setsB }] },
-        }),
-      "Resultado registrado",
+        isCorrection
+          ? correctGroupMatch({
+              tournamentId,
+              matchId,
+              winnerSide,
+              score: { sets: [{ a: setsA, b: setsB }] },
+            })
+          : reportGroupMatch({
+              tournamentId,
+              matchId,
+              winnerSide,
+              score: { sets: [{ a: setsA, b: setsB }] },
+            }),
+      isCorrection ? "Marcador corregido" : "Resultado registrado",
     );
   };
 
@@ -871,6 +891,7 @@ function GroupMatchesPane({
                   scoreB={parseSetsWon(m.score, "b")}
                   winnerSide={m.winnerSide === "a" || m.winnerSide === "b" ? m.winnerSide : null}
                   editable={canEditScores && !done}
+                  correctable={canEditScores && done}
                   busy={reportingMatchId === m.id && busy}
                   dimmed={done && matchFilter === "all"}
                   meta={`Partido ${m.matchNo}`}

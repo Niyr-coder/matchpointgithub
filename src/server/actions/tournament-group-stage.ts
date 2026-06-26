@@ -13,7 +13,10 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-import { ScoringConfigSchema } from "@/lib/schemas/tournaments";
+import {
+  GroupPlayoffConfigSchema,
+  GroupSchedulingConfigSchema,
+} from "@/lib/schemas/tournaments";
 import {
   buildGroupCourtSchedule,
   normalizeSchedulingConfig,
@@ -26,23 +29,21 @@ import {
   distributeToGroups,
   groupLabel,
   nextPowerOfTwo,
-  pickQualifiers,
+  pickAllQualifiers,
   rankQualifiersGlobally,
   standardBracketPairings,
   validateGroupPlayoffConfig,
+  wildcardCount,
   type GroupMatchResult,
   type GroupPlayoffConfig,
   type GroupSchedulingConfig,
   type GroupStandingRow,
 } from "@/lib/tournaments/group-stage";
-import { GroupSchedulingConfigSchema } from "@/lib/schemas/tournaments";
-
-const GroupPlayoffConfigSchema = z.object({
-  groupsCount: z.number().int().min(1).max(16),
-  advancePerGroup: z.number().int().min(1).max(16),
-  finalScoringOverride: ScoringConfigSchema.nullable().optional(),
-  scheduling: GroupSchedulingConfigSchema.nullable().optional(),
-});
+import {
+  isScoredMatchStatus,
+  nextBracketFeederSlot,
+} from "@/lib/tournaments/match-score";
+import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
 
 const MatchScoreSchema = z.object({
   sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })).min(1),
@@ -483,6 +484,55 @@ export async function reportGroupMatch(
   });
 }
 
+const CorrectGroupMatchSchema = ReportGroupMatchSchema;
+
+/** Corrige un marcador ya reportado en fase de grupos (recalcula tabla). */
+export async function correctGroupMatch(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  return runAction(CorrectGroupMatchSchema, input, async ({ tournamentId, matchId, winnerSide, score }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const gdb = groupDb(getAdminClient());
+
+    const { data: match } = await gdb
+      .from("tournament_group_matches")
+      .select("id,group_id,status,side_a_registration_id,side_b_registration_id")
+      .eq("id", matchId)
+      .single();
+    if (!match) throw new MpError("GROUPS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    if (!isScoredMatchStatus(match.status as string)) {
+      throw new MpError("GROUPS.NOT_SCORED", "Este partido aún no tiene marcador para corregir", 409);
+    }
+
+    const { data: group } = await gdb
+      .from("tournament_groups")
+      .select("category_id")
+      .eq("id", match.group_id as string)
+      .single();
+    if (!group) throw new MpError("GROUPS.NOT_FOUND", "Grupo no encontrado", 404);
+
+    const { cat } = await loadCategoryContext(group.category_id as string);
+    if ((cat.tournament_id as string) !== tournamentId) {
+      throw new MpError("GROUPS.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
+    }
+    if ((cat.stage as string) !== "group_stage") {
+      throw new MpError("GROUPS.STAGE_CLOSED", "La fase de grupos ya está cerrada", 409);
+    }
+
+    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    const { error } = await gdb
+      .from("tournament_group_matches")
+      .update({
+        winner_side: winnerSide,
+        score,
+        status: "reported",
+      } as never)
+      .eq("id", matchId);
+    if (error) throw new MpError("GROUPS.CORRECT_FAILED", error.message, 500);
+    return { id: matchId };
+  });
+}
+
 const CloseGroupStageSchema = z.object({
   tournamentId: UuidSchema,
   categoryId: UuidSchema,
@@ -519,7 +569,7 @@ export async function closeGroupStage(
       }
     }
 
-    const qualified = pickQualifiers(
+    const qualified = pickAllQualifiers(
       summary.data.groups.map((g) => ({
         id: g.id,
         name: g.name,
@@ -533,7 +583,7 @@ export async function closeGroupStage(
           status: m.status,
         })),
       })),
-      config.advancePerGroup,
+      config,
     );
     if (qualified.length < 2) {
       throw new MpError("GROUPS.NOT_ENOUGH_QUALIFIED", "Se necesitan al menos 2 clasificados", 422);
@@ -554,6 +604,61 @@ const GenerateKnockoutSchema = z.object({
   tournamentId: UuidSchema,
   categoryId: UuidSchema,
 });
+
+function mapGroupsForQualifiers(
+  groups: Array<{
+    id: string;
+    name: string;
+    sortOrder: number;
+    members: Array<{ registrationId: string }>;
+    matches: Array<{
+      sideARegistrationId: string;
+      sideBRegistrationId: string;
+      winnerSide: string | null;
+      score: unknown;
+      status: string;
+    }>;
+  }>,
+): Array<{
+  id: string;
+  name: string;
+  sortOrder: number;
+  memberIds: string[];
+  matches: GroupMatchResult[];
+}> {
+  return groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    sortOrder: g.sortOrder,
+    memberIds: g.members.map((m) => m.registrationId),
+    matches: g.matches.map((m) => ({
+      sideARegistrationId: m.sideARegistrationId,
+      sideBRegistrationId: m.sideBRegistrationId,
+      winnerSide: (m.winnerSide as "a" | "b" | "d" | null) ?? null,
+      score: (m.score as GroupMatchResult["score"]) ?? null,
+      status: m.status,
+    })),
+  }));
+}
+
+async function feedBronzeMatchLoser(
+  admin: ReturnType<typeof getAdminClient>,
+  bracketId: string,
+  loserRegId: string,
+): Promise<void> {
+  const { data: bronze } = await admin
+    .from("bracket_matches")
+    .select("id,side_a_registration_id,side_b_registration_id")
+    .eq("bracket_id", bracketId)
+    .eq("is_bronze" as never, true)
+    .maybeSingle();
+  if (!bronze) return;
+  const patch: Record<string, unknown> = {};
+  if (!bronze.side_a_registration_id) patch.side_a_registration_id = loserRegId;
+  else if (!bronze.side_b_registration_id) patch.side_b_registration_id = loserRegId;
+  else return;
+  await admin.from("bracket_matches").update(patch as never).eq("id", bronze.id as string);
+}
 
 /** Genera cuadro eliminatorio desde clasificados de grupos. */
 export async function generateKnockoutFromGroups(
@@ -581,33 +686,21 @@ export async function generateKnockoutFromGroups(
     const summary = await getGroupStageSummary({ tournamentId, categoryId });
     if (!summary.ok) throw new MpError("GROUPS.LOAD_FAILED", summary.error.message, 500);
 
-    const qualified = pickQualifiers(
-      summary.data.groups.map((g) => ({
-        id: g.id,
-        name: g.name,
-        sortOrder: g.sortOrder,
-        memberIds: g.members.map((m) => m.registrationId),
-        matches: g.matches.map((m) => ({
-          sideARegistrationId: m.sideARegistrationId,
-          sideBRegistrationId: m.sideBRegistrationId,
-          winnerSide: (m.winnerSide as "a" | "b" | "d" | null) ?? null,
-          score: (m.score as GroupMatchResult["score"]) ?? null,
-          status: m.status,
-        })),
-      })),
-      config.advancePerGroup,
-    );
+    const qualified = pickAllQualifiers(mapGroupsForQualifiers(summary.data.groups), config);
 
     const ranked = rankQualifiersGlobally(qualified);
     const size = nextPowerOfTwo(ranked.length);
-    const firstRoundPairs =
-      config.advancePerGroup >= 2 && config.groupsCount >= 2
-        ? crossGroupFirstRound(qualified, config.groupsCount, config.advancePerGroup)
-        : standardBracketPairings(size).map(([s1, s2]) => {
-            const seeds: Array<string | null> = ranked.map((e) => e.registrationId);
-            while (seeds.length < size) seeds.push(null);
-            return [seeds[s1 - 1] ?? null, seeds[s2 - 1] ?? null] as [string | null, string | null];
-          });
+    const useCrossGroup =
+      wildcardCount(config) === 0 &&
+      config.advancePerGroup >= 2 &&
+      config.groupsCount >= 2;
+    const firstRoundPairs = useCrossGroup
+      ? crossGroupFirstRound(qualified, config.groupsCount, config.advancePerGroup)
+      : standardBracketPairings(size).map(([s1, s2]) => {
+          const seeds: Array<string | null> = ranked.map((e) => e.registrationId);
+          while (seeds.length < size) seeds.push(null);
+          return [seeds[s1 - 1] ?? null, seeds[s2 - 1] ?? null] as [string | null, string | null];
+        });
 
     while (firstRoundPairs.length < size / 2) {
       firstRoundPairs.push([null, null]);
@@ -647,6 +740,16 @@ export async function generateKnockoutFromGroups(
       }
     }
 
+    if (config.knockoutExtras?.thirdPlaceMatch && size >= 4) {
+      matches.push({
+        bracket_id: bracketId,
+        round: 0,
+        position: 0,
+        status: "scheduled",
+        is_bronze: true,
+      });
+    }
+
     const { error: mErr } = await db.from("bracket_matches").insert(matches as never);
     if (mErr) throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
 
@@ -675,13 +778,24 @@ export async function reportBracketMatch(
     const editor = await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
 
-    const { data: match } = await admin
+    const { data: matchRaw } = await admin
       .from("bracket_matches")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select(
-        "id,bracket_id,round,position,side_a_registration_id,side_b_registration_id,status",
+        "id,bracket_id,round,position,side_a_registration_id,side_b_registration_id,status,is_bronze" as any,
       )
       .eq("id", matchId)
       .single();
+    const match = matchRaw as unknown as {
+      id: string;
+      bracket_id: string;
+      round: number;
+      position: number;
+      side_a_registration_id: string | null;
+      side_b_registration_id: string | null;
+      status: string;
+      is_bronze?: boolean;
+    } | null;
     if (!match) throw new MpError("BRACKETS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
 
     const { data: bracket } = await admin
@@ -712,9 +826,10 @@ export async function reportBracketMatch(
     const position = match.position as number;
     const size = bracket.size as number;
     const numRounds = Math.log2(size);
+    const isBronze = (match.is_bronze as boolean | null) ?? false;
     let advanced = false;
 
-    if (round < numRounds) {
+    if (!isBronze && round < numRounds) {
       const nextRound = round + 1;
       const nextPos = Math.floor(position / 2);
       const isSideA = position % 2 === 0;
@@ -730,12 +845,139 @@ export async function reportBracketMatch(
         .eq("position", nextPos);
       if (advErr) throw new MpError("BRACKETS.ADVANCE_FAILED", advErr.message, 500);
       advanced = true;
-    } else if (bracket.category_id) {
+
+      if (round === numRounds - 1 && bracket.category_id) {
+        const { data: catRow } = await admin
+          .from("tournament_categories")
+          .select("group_playoff_config")
+          .eq("id", bracket.category_id as string)
+          .maybeSingle();
+        const cfg = catRow?.group_playoff_config as GroupPlayoffConfig | null;
+        if (cfg?.knockoutExtras?.thirdPlaceMatch) {
+          const loserRegId =
+            winnerSide === "a"
+              ? (match.side_b_registration_id as string | null)
+              : (match.side_a_registration_id as string | null);
+          if (loserRegId) {
+            await feedBronzeMatchLoser(admin, bracket.id as string, loserRegId);
+          }
+        }
+      }
+    } else if (!isBronze && round === numRounds && bracket.category_id) {
       await groupDb(getAdminClient())
         .from("tournament_categories")
         .update({ stage: "complete" } as never)
         .eq("id", bracket.category_id as string);
     }
+
+    return { id: matchId, advanced };
+  });
+}
+
+const CorrectBracketMatchSchema = ReportBracketMatchSchema;
+
+/** Corrige marcador en eliminatoria. Bloquea si la ronda siguiente ya tiene resultado. */
+export async function correctBracketMatch(
+  input: unknown,
+): Promise<ActionResult<{ id: string; advanced: boolean }>> {
+  return runAction(CorrectBracketMatchSchema, input, async ({ tournamentId, matchId, winnerSide, score }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const admin = getAdminClient();
+
+    const { data: match } = await admin
+      .from("bracket_matches")
+      .select(
+        "id,bracket_id,round,position,side_a_registration_id,side_b_registration_id,status,winner_side",
+      )
+      .eq("id", matchId)
+      .single();
+    if (!match) throw new MpError("BRACKETS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    if (!isScoredMatchStatus(match.status as string)) {
+      throw new MpError("BRACKETS.NOT_SCORED", "Este partido aún no tiene marcador para corregir", 409);
+    }
+
+    const { data: bracket } = await admin
+      .from("brackets")
+      .select("id,tournament_id,category_id,size")
+      .eq("id", match.bracket_id as string)
+      .single();
+    if (!bracket || (bracket.tournament_id as string) !== tournamentId) {
+      throw new MpError("BRACKETS.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
+    }
+
+    if (bracket.category_id) {
+      const { data: cat } = await admin
+        .from("tournament_categories")
+        .select("stage")
+        .eq("id", bracket.category_id as string)
+        .single();
+      const stage = cat?.stage as string | undefined;
+      if (stage && stage !== "knockout" && stage !== "complete") {
+        throw new MpError("BRACKETS.STAGE_CLOSED", "La eliminatoria no está activa", 409);
+      }
+    }
+
+    const round = match.round as number;
+    const position = match.position as number;
+    const size = bracket.size as number;
+    const numRounds = Math.log2(size);
+
+    const oldWinnerSide = match.winner_side as "a" | "b" | null;
+    const oldWinnerRegId =
+      oldWinnerSide === "a"
+        ? (match.side_a_registration_id as string | null)
+        : oldWinnerSide === "b"
+          ? (match.side_b_registration_id as string | null)
+          : null;
+    const newWinnerRegId =
+      winnerSide === "a"
+        ? (match.side_a_registration_id as string | null)
+        : (match.side_b_registration_id as string | null);
+    if (!newWinnerRegId) {
+      throw new MpError("BRACKETS.NO_SIDE", "No hay inscripción en el lado ganador", 422);
+    }
+
+    let advanced = false;
+
+    if (round < numRounds) {
+      const { nextRound, nextPos, feederSide } = nextBracketFeederSlot(round, position);
+      const { data: nextMatch } = await admin
+        .from("bracket_matches")
+        .select("id,status")
+        .eq("bracket_id", bracket.id as string)
+        .eq("round", nextRound)
+        .eq("position", nextPos)
+        .maybeSingle();
+
+      if (nextMatch && isScoredMatchStatus(nextMatch.status as string)) {
+        const roundLabel = knockoutRoundLabel(nextRound - 1, numRounds);
+        throw new MpError(
+          "BRACKETS.NEXT_ROUND_SCORED",
+          `Corrige primero el partido de ${roundLabel} antes de cambiar este marcador.`,
+          409,
+        );
+      }
+
+      if (nextMatch && oldWinnerRegId !== newWinnerRegId) {
+        const patch: Record<string, unknown> = {};
+        if (feederSide === "a") patch.side_a_registration_id = newWinnerRegId;
+        else patch.side_b_registration_id = newWinnerRegId;
+
+        const { error: advErr } = await admin
+          .from("bracket_matches")
+          .update(patch as never)
+          .eq("id", nextMatch.id as string);
+        if (advErr) throw new MpError("BRACKETS.ADVANCE_FAILED", advErr.message, 500);
+        advanced = true;
+      }
+    }
+
+    await setAuditActor(admin, editor.userId, editor.actorRole);
+    const { error: upErr } = await admin
+      .from("bracket_matches")
+      .update({ winner_side: winnerSide, score, status: "reported" } as never)
+      .eq("id", matchId);
+    if (upErr) throw new MpError("BRACKETS.CORRECT_FAILED", upErr.message, 500);
 
     return { id: matchId, advanced };
   });

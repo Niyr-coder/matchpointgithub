@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
 
 export type ScoreMatchCardProps = {
   matchId: string;
@@ -10,6 +11,8 @@ export type ScoreMatchCardProps = {
   scoreB?: number | string | null;
   winnerSide?: "a" | "b" | null;
   editable?: boolean;
+  /** Partido ya reportado: permite entrar en modo corrección. */
+  correctable?: boolean;
   busy?: boolean;
   live?: boolean;
   highlight?: boolean;
@@ -30,6 +33,7 @@ export function ScoreMatchCard({
   scoreB,
   winnerSide,
   editable = false,
+  correctable = false,
   busy = false,
   live = false,
   highlight = false,
@@ -40,15 +44,19 @@ export function ScoreMatchCard({
   const [setsA, setSetsA] = useState("");
   const [setsB, setSetsB] = useState("");
   const [touched, setTouched] = useState(false);
+  const [correctionMode, setCorrectionMode] = useState(false);
 
   useEffect(() => {
     setSetsA(hasScore(scoreA) ? String(scoreA) : "");
     setSetsB(hasScore(scoreB) ? String(scoreB) : "");
     setTouched(false);
+    setCorrectionMode(false);
   }, [matchId, scoreA, scoreB]);
 
+  const inputMode = editable || correctionMode;
+
   const trySubmit = () => {
-    if (!editable || busy) return;
+    if (!inputMode || busy) return;
     const a = Number(setsA);
     const b = Number(setsB);
     if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b < 0 || a === b) return;
@@ -56,7 +64,7 @@ export function ScoreMatchCard({
   };
 
   const onBlurCard = (e: React.FocusEvent<HTMLDivElement>) => {
-    if (!editable || busy || !touched) return;
+    if (!inputMode || busy || !touched) return;
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
       trySubmit();
     }
@@ -64,17 +72,19 @@ export function ScoreMatchCard({
 
   return (
     <div
-      className={`mp-bk-match${live ? " is-live" : ""}${dimmed ? " is-dimmed" : ""}${
+      className={`mp-bk-match${live ? " is-live" : ""}${dimmed && !correctionMode ? " is-dimmed" : ""}${
         highlight ? " is-mine" : ""
-      }${editable ? " is-editable" : ""}${busy ? " is-saving" : ""}`}
-      onBlur={editable ? onBlurCard : undefined}
+      }${inputMode ? " is-editable" : ""}${busy ? " is-saving" : ""}${
+        correctionMode ? " is-correcting" : ""
+      }`}
+      onBlur={inputMode ? onBlurCard : undefined}
     >
       {live && <span className="mp-bk-live">● LIVE</span>}
       {highlight && !live && <span className="mp-bk-mine-tag">TÚ</span>}
       <SeatRow
         label={labelA}
         isWinner={winnerSide === "a"}
-        editable={editable}
+        editable={inputMode}
         value={setsA}
         displayScore={scoreA}
         disabled={busy}
@@ -89,7 +99,7 @@ export function ScoreMatchCard({
       <SeatRow
         label={labelB}
         isWinner={winnerSide === "b"}
-        editable={editable}
+        editable={inputMode}
         value={setsB}
         displayScore={scoreB}
         disabled={busy}
@@ -101,6 +111,42 @@ export function ScoreMatchCard({
         onEnter={trySubmit}
       />
       {meta && <div className="mp-bk-meta">{meta}</div>}
+      {correctable && !editable && !correctionMode && (
+        <button
+          type="button"
+          className="mp-bk-correct-btn"
+          disabled={busy}
+          onClick={() => setCorrectionMode(true)}
+        >
+          <Icon name="pencil" size={11} />
+          Corregir marcador
+        </button>
+      )}
+      {correctionMode && (
+        <div className="mp-bk-correct-actions">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={busy}
+            onClick={trySubmit}
+          >
+            Guardar corrección
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={busy}
+            onClick={() => {
+              setCorrectionMode(false);
+              setSetsA(hasScore(scoreA) ? String(scoreA) : "");
+              setSetsB(hasScore(scoreB) ? String(scoreB) : "");
+              setTouched(false);
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
     </div>
   );
 }

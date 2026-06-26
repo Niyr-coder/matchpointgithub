@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 
 // Reemplaza window.mpToast del prototipo. Misma API: mpToast({ icon, title, sub }).
@@ -7,6 +7,10 @@ export type ToastPayload = {
   icon?: string;
   title: string;
   sub?: string;
+  /** Duración visible en ms. Por defecto según tono. */
+  durationMs?: number;
+  /** success = 4.5s, error = 7s */
+  tone?: "success" | "error" | "default";
 };
 
 type Toast = ToastPayload & { id: number };
@@ -19,20 +23,45 @@ export function useToast(): ToastCtx {
   return useContext(Ctx);
 }
 
+function resolveDuration(t: ToastPayload): number {
+  if (t.durationMs != null) return t.durationMs;
+  if (t.tone === "error" || t.icon === "alert-triangle" || t.icon === "x") return 7000;
+  return 4500;
+}
+
+/** Duración recomendada para acciones de marcador / torneo en cancha. */
+export const TOAST_SCORE_MS = 8000;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-  const push = useCallback((t: ToastPayload) => {
-    const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { ...t, id }]);
-    setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 3200);
+  const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
-  // Compat shim: también exponemos window.mpToast para código legacy que lo use.
+  const push = useCallback(
+    (t: ToastPayload) => {
+      const id = Date.now() + Math.random();
+      setToasts((prev) => [...prev, { ...t, id }]);
+      const ms = resolveDuration(t);
+      const timer = setTimeout(() => dismiss(id), ms);
+      timers.current.set(id, timer);
+    },
+    [dismiss],
+  );
+
   useEffect(() => {
     (window as unknown as { mpToast?: (t: ToastPayload) => void }).mpToast = push;
     return () => {
       delete (window as unknown as { mpToast?: (t: ToastPayload) => void }).mpToast;
+      for (const timer of timers.current.values()) clearTimeout(timer);
+      timers.current.clear();
     };
   }, [push]);
 
@@ -57,6 +86,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           {toasts.map((t) => (
             <div
               key={t.id}
+              role="status"
+              onClick={() => dismiss(t.id)}
               style={{
                 background: "#0a0a0a",
                 color: "#fff",
@@ -70,6 +101,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 minWidth: 280,
                 maxWidth: 420,
                 pointerEvents: "auto",
+                cursor: "pointer",
               }}
             >
               {t.icon && (

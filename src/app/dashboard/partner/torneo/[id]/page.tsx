@@ -12,6 +12,11 @@ import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel"
 import { getGroupStageSummary } from "@/server/actions/tournament-group-stage";
 import { MarkPaidInline } from "@/components/dashboard/partner/MarkPaidInline";
 import { CategoriesPanel, type CategoryRow } from "@/components/dashboard/partner/CategoriesPanel";
+import {
+  CategoryGroupConfigPanel,
+  type GroupConfigCategoryRow,
+} from "@/components/dashboard/partner/CategoryGroupConfigPanel";
+import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
 import { PublicPreviewModal } from "@/components/dashboard/partner/PublicPreviewModal";
 import { AdminOverridesPanel } from "@/components/dashboard/partner/AdminOverridesPanel";
@@ -22,6 +27,8 @@ import {
   isTournamentSetupLocked,
   tournamentSetupLockMessage,
 } from "@/lib/tournaments/setup-lock";
+import { GroupPlayoffConfigSchema } from "@/lib/schemas/tournaments";
+import type { GroupPlayoffConfig } from "@/lib/tournaments/group-stage";
 
 function formatSportLabel(sport: string): string {
   if (!sport) return "—";
@@ -96,8 +103,9 @@ export default async function PartnerTorneoPage({
 
   const { data: tRaw } = await supabase
     .from("tournaments")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select(
-      "id,slug,name,status,sport,format,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,clubs(name,city)",
+      "id,slug,name,status,sport,format,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,display_token,clubs(name,city)" as any,
     )
     .eq("id", id)
     .maybeSingle();
@@ -289,14 +297,32 @@ export default async function PartnerTorneoPage({
     acceptedByCategory.set(cid, (acceptedByCategory.get(cid) ?? 0) + 1);
   }
 
-  const groupStageCategories = ((catsRaw ?? []) as unknown as CatRow[])
+  const groupConfigCategories: GroupConfigCategoryRow[] = ((catsRaw ?? []) as unknown as CatRow[])
     .filter((c) => hasGroupPlayoffConfig(c.group_playoff_config))
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      stage: c.stage ?? "pending_groups",
-      acceptedCount: acceptedByCategory.get(c.id) ?? 0,
-    }));
+    .map((c) => {
+      const parsed = GroupPlayoffConfigSchema.safeParse(c.group_playoff_config);
+      const config: GroupPlayoffConfig = parsed.success
+        ? parsed.data
+        : { groupsCount: 2, advancePerGroup: 2, finalScoringOverride: null };
+      return {
+        id: c.id,
+        name: c.name,
+        stage: c.stage ?? "pending_groups",
+        acceptedCount: acceptedByCategory.get(c.id) ?? 0,
+        maxTeams: c.max_teams ?? null,
+        config,
+      };
+    });
+
+  const tournamentSlug = (t.slug as string) ?? "";
+  const displayToken = (t.display_token as string | null) ?? null;
+
+  const groupStageCategories = groupConfigCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    stage: c.stage,
+    acceptedCount: c.acceptedCount,
+  }));
 
   let clubCourts: Array<{ id: string; label: string }> = [];
   const tournamentClubId = (t.club_id as string | null) ?? null;
@@ -691,6 +717,14 @@ export default async function PartnerTorneoPage({
             />
           )}
 
+          {tournamentFormat === "groups_to_knockout" && !isClosed && groupConfigCategories.length > 0 && (
+            <CategoryGroupConfigPanel
+              tournamentId={t.id as string}
+              categories={groupConfigCategories}
+              readOnly={configReadOnly}
+            />
+          )}
+
           {tournamentFormat === "groups_to_knockout" && !isClosed && groupStageCategories.length > 0 && (
             <GroupStagePanel
               tournamentId={t.id as string}
@@ -699,6 +733,15 @@ export default async function PartnerTorneoPage({
               registrationLabels={registrationLabels}
               initialCategoryId={initialGroupCategoryId}
               initial={groupStageInitial}
+            />
+          )}
+
+          {!isClosed && (
+            <TournamentVenueDisplayPanel
+              tournamentId={t.id as string}
+              slug={tournamentSlug}
+              initialToken={displayToken}
+              readOnly={configReadOnly}
             />
           )}
 

@@ -44,12 +44,27 @@ export const GroupSchedulingConfigSchema = z
   })
   .openapi("GroupSchedulingConfig");
 
+export const GroupWildcardConfigSchema = z
+  .object({
+    mode: z.literal("best_thirds_global"),
+    count: z.number().int().min(0).max(16),
+  })
+  .openapi("GroupWildcardConfig");
+
+export const KnockoutExtrasConfigSchema = z
+  .object({
+    thirdPlaceMatch: z.boolean(),
+  })
+  .openapi("KnockoutExtrasConfig");
+
 export const GroupPlayoffConfigSchema = z
   .object({
     groupsCount: z.number().int().min(1).max(16),
     advancePerGroup: z.number().int().min(1).max(16),
     finalScoringOverride: ScoringConfigSchema.nullable().optional(),
     scheduling: GroupSchedulingConfigSchema.nullable().optional(),
+    wildcards: GroupWildcardConfigSchema.nullable().optional(),
+    knockoutExtras: KnockoutExtrasConfigSchema.nullable().optional(),
   })
   .openapi("GroupPlayoffConfig");
 

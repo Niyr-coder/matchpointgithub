@@ -196,6 +196,7 @@ function ScheduleMatchCard({
       scoreB={parseSetsWon(match.score, "b")}
       winnerSide={match.winnerSide === "a" || match.winnerSide === "b" ? match.winnerSide : null}
       editable={canEditScores && !done}
+      correctable={canEditScores && done}
       busy={reportingMatchId === match.id && busy}
       dimmed={done}
       meta={`Grupo ${match.groupName}`}

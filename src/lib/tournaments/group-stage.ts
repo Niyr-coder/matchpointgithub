@@ -16,11 +16,22 @@ export type GroupSchedulingConfig = {
   fechaGapHours?: number;
 };
 
+export type GroupWildcardConfig = {
+  mode: "best_thirds_global";
+  count: number;
+};
+
+export type KnockoutExtrasConfig = {
+  thirdPlaceMatch: boolean;
+};
+
 export type GroupPlayoffConfig = {
   groupsCount: number;
   advancePerGroup: number;
   finalScoringOverride?: ScoringConfig | null;
   scheduling?: GroupSchedulingConfig | null;
+  wildcards?: GroupWildcardConfig | null;
+  knockoutExtras?: KnockoutExtrasConfig | null;
 };
 
 export type MatchScore = {
@@ -56,6 +67,8 @@ export type QualifiedEntry = {
   wins: number;
   setsDiff: number;
   gamesDiff: number;
+  /** Mejor N.º del grupo fuera del corte directo (wildcard). */
+  isWildcard?: boolean;
 };
 
 const GROUP_NAMES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -224,6 +237,82 @@ export function pickQualifiers(
   return out;
 }
 
+/** Cuántos mejores terceros globales entran como wildcards. */
+export function wildcardCount(config: GroupPlayoffConfig): number {
+  if (config.wildcards?.mode === "best_thirds_global") {
+    return config.wildcards.count ?? 0;
+  }
+  return 0;
+}
+
+/** Mejores N terceros entre todos los grupos (estilo fútbol). */
+export function pickBestThirdsGlobal(
+  groups: Array<{
+    id: string;
+    name: string;
+    sortOrder: number;
+    memberIds: string[];
+    matches: GroupMatchResult[];
+  }>,
+  advancePerGroup: number,
+  count: number,
+): QualifiedEntry[] {
+  if (count <= 0) return [];
+  const thirds: QualifiedEntry[] = [];
+  for (const g of groups) {
+    const standings = computeGroupStandings(g.memberIds, g.matches);
+    const row = standings.find((s) => s.rank === advancePerGroup + 1);
+    if (!row) continue;
+    thirds.push({
+      registrationId: row.registrationId,
+      groupId: g.id,
+      groupName: g.name,
+      groupSortOrder: g.sortOrder,
+      rankInGroup: row.rank,
+      wins: row.wins,
+      setsDiff: row.setsWon - row.setsLost,
+      gamesDiff: row.gamesWon - row.gamesLost,
+      isWildcard: true,
+    });
+  }
+  return rankQualifiersGlobally(thirds).slice(0, count);
+}
+
+/** Clasificados directos + wildcards (mejores terceros). */
+export function pickAllQualifiers(
+  groups: Array<{
+    id: string;
+    name: string;
+    sortOrder: number;
+    memberIds: string[];
+    matches: GroupMatchResult[];
+  }>,
+  config: GroupPlayoffConfig,
+): QualifiedEntry[] {
+  const primary = pickQualifiers(groups, config.advancePerGroup);
+  const wc = wildcardCount(config);
+  if (wc <= 0) return primary;
+  const wildcards = pickBestThirdsGlobal(groups, config.advancePerGroup, wc);
+  return [...primary, ...wildcards];
+}
+
+/** Preview legible para la UI de config. */
+export function previewGroupPlayoff(config: GroupPlayoffConfig, acceptedCount: number) {
+  const minGroupSize = acceptedCount > 0 ? Math.floor(acceptedCount / config.groupsCount) : 0;
+  const maxGroupSize = acceptedCount > 0 ? Math.ceil(acceptedCount / config.groupsCount) : 0;
+  const wc = wildcardCount(config);
+  const qualified = config.groupsCount * config.advancePerGroup + wc;
+  const bracketSize = qualified >= 2 ? nextPowerOfTwo(qualified) : 0;
+  return {
+    minGroupSize,
+    maxGroupSize,
+    qualified,
+    bracketSize,
+    byes: bracketSize > 0 ? bracketSize - qualified : 0,
+    wildcardCount: wc,
+  };
+}
+
 /** Orden global de clasificados para seeds. */
 export function rankQualifiersGlobally(entries: QualifiedEntry[]): QualifiedEntry[] {
   return [...entries].sort((a, b) => {
@@ -316,7 +405,11 @@ export function validateGroupPlayoffConfig(
   if (config.advancePerGroup >= minGroupSize) {
     return `advancePerGroup (${config.advancePerGroup}) debe ser menor que el tamaño mínimo del grupo (${minGroupSize})`;
   }
-  const total = config.groupsCount * config.advancePerGroup;
+  const wc = wildcardCount(config);
+  if (wc > config.groupsCount) {
+    return `No puedes tener más mejores 3.º (${wc}) que grupos (${config.groupsCount})`;
+  }
+  const total = config.groupsCount * config.advancePerGroup + wc;
   if (total < 2) return "Se necesitan al menos 2 clasificados para la llave";
   return null;
 }

@@ -75,6 +75,7 @@ const PLACEHOLDER_MATCH: BracketMatch = {
   sb: "-",
   status: "scheduled",
   reportable: false,
+  correctable: false,
 };
 
 function placeholderColumns(entryCount: number): BracketsData["columns"] {
@@ -101,6 +102,8 @@ async function loadData(): Promise<BracketsData> {
     partnerId: null,
     tournamentId: null,
     tournamentName: null,
+    tournamentSlug: null,
+    displayToken: null,
     tournamentFormat: "single_elim",
     canGenerateRandomBracket: true,
     columns: placeholderColumns(8),
@@ -115,16 +118,33 @@ async function loadData(): Promise<BracketsData> {
   const supabase = await getServerClient();
   const now = new Date();
 
-  const { data: tours } = await supabase
+  const { data: toursRaw } = await supabase
     .from("tournaments")
-    .select("id,name,format,starts_at,ends_at")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
     .eq("partner_id", partnerId)
     .neq("status", "draft")
     .neq("status", "cancelled")
     .order("starts_at", { ascending: true })
     .limit(20);
+  type TourPick = {
+    id: string;
+    name: string;
+    format: string;
+    starts_at: string;
+    ends_at: string | null;
+    slug: string;
+    display_token: string | null;
+  };
+  const tours = (toursRaw ?? []) as unknown as TourPick[];
 
-  let chosen: { id: string; name: string; format: string } | null = null;
+  let chosen: {
+    id: string;
+    name: string;
+    format: string;
+    slug: string;
+    displayToken: string | null;
+  } | null = null;
   for (const t of tours ?? []) {
     const s = new Date(t.starts_at as string);
     const e = t.ends_at ? new Date(t.ends_at as string) : s;
@@ -133,6 +153,8 @@ async function loadData(): Promise<BracketsData> {
         id: t.id as string,
         name: (t.name as string) ?? "—",
         format: (t.format as string) ?? "single_elim",
+        slug: (t.slug as string) ?? "",
+        displayToken: (t.display_token as string | null) ?? null,
       };
       break;
     }
@@ -142,6 +164,8 @@ async function loadData(): Promise<BracketsData> {
       id: tours[0].id as string,
       name: (tours[0].name as string) ?? "—",
       format: (tours[0].format as string) ?? "single_elim",
+      slug: (tours[0].slug as string) ?? "",
+      displayToken: (tours[0].display_token as string | null) ?? null,
     };
   }
 
@@ -164,6 +188,8 @@ async function loadData(): Promise<BracketsData> {
       partnerId,
       tournamentId: chosen.id,
       tournamentName: chosen.name,
+      tournamentSlug: chosen.slug,
+      displayToken: chosen.displayToken,
       tournamentFormat: chosen.format,
       canGenerateRandomBracket,
       columns: placeholderColumns(Math.max(regCount, 2)),
@@ -177,32 +203,45 @@ async function loadData(): Promise<BracketsData> {
 
   const { data: bm } = await supabase
     .from("bracket_matches")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select(
-      "id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at",
+      "id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,is_bronze" as any,
     )
     .eq("bracket_id", bracketId)
     .order("round", { ascending: true })
     .order("position", { ascending: true });
 
+  type RawMatch = {
+    id: string;
+    round: number;
+    position: number;
+    side_a_registration_id: string | null;
+    side_b_registration_id: string | null;
+    score: unknown;
+    status: string;
+    winner_side: string | null;
+    scheduled_at: string | null;
+    is_bronze?: boolean;
+  };
+  const bmList = (bm ?? []) as unknown as RawMatch[];
+
   const regIds = new Set<string>();
-  for (const m of bm ?? []) {
-    if (m.side_a_registration_id) regIds.add(m.side_a_registration_id as string);
-    if (m.side_b_registration_id) regIds.add(m.side_b_registration_id as string);
+  for (const m of bmList) {
+    if (m.side_a_registration_id) regIds.add(m.side_a_registration_id);
+    if (m.side_b_registration_id) regIds.add(m.side_b_registration_id);
   }
   const nameByReg = await registrationLabels(supabase, Array.from(regIds));
 
-  type RawMatch = NonNullable<typeof bm>[number];
-
   function mkMatch(raw: RawMatch): BracketMatch {
     const aName = raw.side_a_registration_id
-      ? nameByReg.get(raw.side_a_registration_id as string) ?? "—"
+      ? nameByReg.get(raw.side_a_registration_id) ?? "—"
       : "TBD";
     const bName = raw.side_b_registration_id
-      ? nameByReg.get(raw.side_b_registration_id as string) ?? "—"
+      ? nameByReg.get(raw.side_b_registration_id) ?? "—"
       : "TBD";
     const { sa, sb } = formatSetScore(raw.score);
     const w = raw.winner_side === "a" ? "a" : raw.winner_side === "b" ? "b" : undefined;
-    const status = raw.status as string;
+    const status = raw.status;
     const hasBoth =
       !!raw.side_a_registration_id &&
       !!raw.side_b_registration_id &&
@@ -212,8 +251,11 @@ async function loadData(): Promise<BracketsData> {
       status !== "reported" &&
       status !== "confirmed" &&
       status !== "cancelled";
+    const correctable =
+      hasBoth &&
+      (status === "reported" || status === "confirmed");
     return {
-      id: raw.id as string,
+      id: raw.id,
       a: aName,
       b: bName,
       sa,
@@ -222,11 +264,15 @@ async function loadData(): Promise<BracketsData> {
       live: status === "live",
       status,
       reportable,
+      correctable,
     };
   }
 
+  const bronzeRaw = bmList.find((m) => m.is_bronze);
+  const mainBm = bmList.filter((m) => !m.is_bronze);
+
   const byRound = new Map<number, RawMatch[]>();
-  for (const m of bm ?? []) {
+  for (const m of mainBm) {
     const r = m.round as number;
     if (!byRound.has(r)) byRound.set(r, []);
     byRound.get(r)!.push(m);
@@ -261,6 +307,8 @@ async function loadData(): Promise<BracketsData> {
     partnerId,
     tournamentId: chosen.id,
     tournamentName: chosen.name,
+    tournamentSlug: chosen.slug,
+    displayToken: chosen.displayToken,
     tournamentFormat: chosen.format,
     canGenerateRandomBracket,
     columns,
@@ -268,6 +316,7 @@ async function loadData(): Promise<BracketsData> {
     championLabel,
     championWhen,
     finalHasWinner: !!finalMatch?.w,
+    thirdPlaceMatch: bronzeRaw ? mkMatch(bronzeRaw) : null,
   };
 }
 

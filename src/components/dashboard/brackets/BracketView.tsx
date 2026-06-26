@@ -59,7 +59,10 @@ export type BracketNode = {
   a: BracketSeat;
   b: BracketSeat;
   live?: boolean;
+  /** Partner puede cargar sets en partidos pendientes. */
   reportable?: boolean;
+  /** Partner puede corregir marcador ya reportado. */
+  correctable?: boolean;
   /** Atenúa la tarjeta (placeholder / aún sin definir). */
   dimmed?: boolean;
   /** Resalta la tarjeta (ej. "tu partido" en la vista del jugador). */
@@ -82,6 +85,7 @@ export type BracketChampion = {
 type Props = {
   columns: BracketColumn[];
   champion?: BracketChampion | null;
+  thirdPlaceMatch?: BracketNode | null;
   /** Partner: guarda sets ganados directo desde la tarjeta. */
   onScoreSubmit?: (matchId: string, setsA: number, setsB: number) => void;
   reportingMatchId?: string | null;
@@ -141,7 +145,7 @@ function BracketZoomToolbar({
   );
 }
 
-export function BracketView({ columns, champion, onScoreSubmit, reportingMatchId }: Props) {
+export function BracketView({ columns, champion, thirdPlaceMatch, onScoreSubmit, reportingMatchId }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(BK_ZOOM_DEFAULT);
@@ -358,6 +362,7 @@ export function BracketView({ columns, champion, onScoreSubmit, reportingMatchId
                       scoreB={m.b.score}
                       winnerSide={m.a.isWinner ? "a" : m.b.isWinner ? "b" : null}
                       editable={!!m.reportable && !!onScoreSubmit}
+                      correctable={!!m.correctable && !!onScoreSubmit}
                       busy={reportingMatchId === m.id}
                       live={m.live}
                       highlight={m.highlight}
@@ -371,6 +376,33 @@ export function BracketView({ columns, champion, onScoreSubmit, reportingMatchId
             </div>
           );
         })}
+
+        {thirdPlaceMatch && (
+          <div className="mp-bk-round is-straight">
+            <div className="mp-bk-round-label">3er puesto</div>
+            <div className="mp-bk-cells">
+              <div className="mp-bk-cell">
+                <ScoreMatchCard
+                  matchId={thirdPlaceMatch.id}
+                  labelA={thirdPlaceMatch.a.label}
+                  labelB={thirdPlaceMatch.b.label}
+                  scoreA={thirdPlaceMatch.a.score}
+                  scoreB={thirdPlaceMatch.b.score}
+                  winnerSide={
+                    thirdPlaceMatch.a.isWinner ? "a" : thirdPlaceMatch.b.isWinner ? "b" : null
+                  }
+                  editable={!!thirdPlaceMatch.reportable && !!onScoreSubmit}
+                  correctable={!!thirdPlaceMatch.correctable && !!onScoreSubmit}
+                  busy={reportingMatchId === thirdPlaceMatch.id}
+                  live={thirdPlaceMatch.live}
+                  dimmed={thirdPlaceMatch.dimmed}
+                  meta={thirdPlaceMatch.meta}
+                  onScoreSubmit={onScoreSubmit}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {champion && (
           <div

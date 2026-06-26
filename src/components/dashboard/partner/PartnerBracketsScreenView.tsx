@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
-import { useToast } from "../ToastProvider";
+import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { generateBracket } from "@/server/actions/tournaments";
-import { reportBracketMatch } from "@/server/actions/tournament-group-stage";
+import { reportBracketMatch, correctBracketMatch } from "@/server/actions/tournament-group-stage";
 import { BracketView, type BracketNode } from "../brackets/BracketView";
 
 export type BracketMatch = {
@@ -21,12 +21,15 @@ export type BracketMatch = {
   live?: boolean;
   status: string;
   reportable: boolean;
+  correctable: boolean;
 };
 
 export type BracketsData = {
   partnerId: string | null;
   tournamentId: string | null;
   tournamentName: string | null;
+  tournamentSlug: string | null;
+  displayToken: string | null;
   tournamentFormat: string;
   canGenerateRandomBracket: boolean;
   columns: { label: string; matches: BracketMatch[] }[];
@@ -34,6 +37,7 @@ export type BracketsData = {
   championLabel: string;
   championWhen: string;
   finalHasWinner?: boolean;
+  thirdPlaceMatch?: BracketMatch | null;
 };
 
 function toNode(m: BracketMatch, placeholder: boolean): BracketNode {
@@ -43,6 +47,7 @@ function toNode(m: BracketMatch, placeholder: boolean): BracketNode {
     b: { label: m.b, score: m.sb, isWinner: m.w === "b" },
     live: m.live,
     reportable: !placeholder && m.reportable,
+    correctable: !placeholder && m.correctable,
     dimmed: placeholder,
   };
 }
@@ -78,32 +83,62 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
         icon: "alert-triangle",
         title: "Marcador inválido",
         sub: "Indica sets ganados por cada lado (no pueden empatar).",
+        tone: "error",
       });
       return;
     }
+    const row =
+      data.thirdPlaceMatch?.id === matchId
+        ? data.thirdPlaceMatch
+        : data.columns.flatMap((c) => c.matches).find((x) => x.id === matchId);
+    const isCorrection = row?.correctable ?? false;
     setBusy(true);
     setReportingId(matchId);
     startTx(async () => {
-      const res = await reportBracketMatch({
+      const payload = {
         tournamentId: data.tournamentId!,
         matchId,
-        winnerSide: a > b ? "a" : "b",
+        winnerSide: (a > b ? "a" : "b") as "a" | "b",
         score: { sets: [{ a, b }] },
-      });
+      };
+      const res = isCorrection
+        ? await correctBracketMatch(payload)
+        : await reportBracketMatch(payload);
       setBusy(false);
       setReportingId(null);
       if (res.ok) {
-        toast({ icon: "check", title: "Resultado registrado" });
+        toast({
+          icon: "check",
+          title: isCorrection ? "Marcador corregido" : "Resultado registrado",
+          durationMs: TOAST_SCORE_MS,
+        });
         router.refresh();
       } else {
         toast({
           icon: "alert-triangle",
           title: "No se pudo",
           sub: res.error.message,
+          tone: "error",
         });
       }
     });
   };
+
+  const copyShare = async (url: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ icon: "check", title: `${label} copiado` });
+    } catch {
+      toast({ icon: "alert-triangle", title: "No se pudo copiar", tone: "error" });
+    }
+  };
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const publicUrl = data.tournamentSlug ? `${origin}/eventos/${data.tournamentSlug}` : null;
+  const liveUrl =
+    data.tournamentSlug && data.displayToken
+      ? `${origin}/t/${data.tournamentSlug}/live?k=${data.displayToken}`
+      : null;
 
   return (
     <>
@@ -115,7 +150,14 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
             {!hasBracket && data.tournamentId && data.canGenerateRandomBracket && (
               <GenerateBracketButton tournamentId={data.tournamentId} />
             )}
-            <button className="btn btn-primary" disabled={!hasBracket}>
+            <button
+              className="btn btn-primary"
+              disabled={!hasBracket}
+              onClick={() => {
+                if (liveUrl) copyShare(liveUrl, "Link pantalla TV");
+                else if (publicUrl) copyShare(publicUrl, "Link público");
+              }}
+            >
               <Icon name="share-2" size={13} color="#fff" />
               Compartir
             </button>
@@ -146,6 +188,11 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
           decided: hasBracket && !!data.finalHasWinner,
           when: data.championWhen,
         }}
+        thirdPlaceMatch={
+          data.thirdPlaceMatch
+            ? toNode(data.thirdPlaceMatch, false)
+            : undefined
+        }
         onScoreSubmit={hasBracket ? submitScore : undefined}
         reportingMatchId={reportingId}
       />

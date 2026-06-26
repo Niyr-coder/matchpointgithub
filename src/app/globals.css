@@ -4537,17 +4537,42 @@ select.mp-input:disabled {
   border-color: rgba(16, 185, 129, 0.55);
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
 }
-.mp-bk-mine-tag {
-  position: absolute;
-  top: -8px;
-  right: 10px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--primary);
-  color: #04130d;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
+.mp-bk-match.is-correcting {
+  opacity: 1;
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--border));
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25);
+}
+.mp-bk-correct-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-fg);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+.mp-bk-correct-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  color: var(--fg);
+}
+.mp-bk-correct-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mp-bk-correct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 .mp-bk-live {
   position: absolute;
@@ -7544,4 +7569,153 @@ input[type="range"].mp-mpr,
     width: 100%;
     justify-content: center;
   }
+}
+
+/* ── Pantalla TV torneo (/t/[slug]/live) ─────────────────────────────── */
+.mp-tv-live-root,
+.mp-tv-live {
+  min-height: 100dvh;
+  background: #050505;
+  color: #f5f5f5;
+}
+.mp-tv-live {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 3vw, 40px);
+  box-sizing: border-box;
+}
+.mp-tv-live-header {
+  text-align: center;
+  margin-bottom: clamp(20px, 4vw, 48px);
+}
+.mp-tv-live-brand {
+  font-size: clamp(10px, 1.2vw, 12px);
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  color: #10b981;
+  margin-bottom: 8px;
+}
+.mp-tv-live-title {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 56px);
+  font-weight: 900;
+  line-height: 1.05;
+  font-family: var(--font-heading, inherit);
+}
+.mp-tv-live-slide-label {
+  margin-top: 10px;
+  font-size: clamp(12px, 1.6vw, 16px);
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mp-tv-live-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mp-tv-live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: clamp(12px, 2vw, 24px);
+  width: min(1200px, 100%);
+}
+.mp-tv-live-card {
+  padding: clamp(14px, 2vw, 22px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+.mp-tv-live-card.is-live {
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.25);
+}
+.mp-tv-live-meta {
+  font-size: clamp(10px, 1.2vw, 12px);
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mp-tv-live-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+.mp-tv-live-team {
+  font-size: clamp(16px, 2.4vw, 28px);
+  font-weight: 800;
+}
+.mp-tv-live-score {
+  font-size: clamp(22px, 3vw, 36px);
+  font-weight: 900;
+  color: #10b981;
+  min-width: 1.5ch;
+  text-align: right;
+}
+.mp-tv-live-empty {
+  font-size: clamp(16px, 2vw, 22px);
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+.mp-tv-live-table-wrap {
+  width: min(900px, 100%);
+}
+.mp-tv-live-table-title {
+  font-size: clamp(18px, 2.5vw, 28px);
+  font-weight: 900;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.mp-tv-live-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(14px, 1.8vw, 20px);
+}
+.mp-tv-live-table th,
+.mp-tv-live-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+.mp-tv-live-table th {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mp-tv-live-champion {
+  text-align: center;
+}
+.mp-tv-live-champion-label {
+  font-size: clamp(14px, 1.6vw, 18px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 12px;
+}
+.mp-tv-live-champion-name {
+  font-size: clamp(32px, 6vw, 72px);
+  font-weight: 900;
+  color: #fbbf24;
+}
+.mp-tv-live-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 24px;
+}
+.mp-tv-live-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+.mp-tv-live-dots span.is-active {
+  background: #10b981;
 }
