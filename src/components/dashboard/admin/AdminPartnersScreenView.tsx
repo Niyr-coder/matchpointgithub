@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "@/components/dashboard/ToastProvider";
 import { CreatePartnerModal } from "./CreatePartnerModal";
+import { AdminLinkClubModal } from "./AdminLinkClubModal";
+import { adminUnlinkClubFromPartner } from "@/server/actions/admin/partner-club-links";
 import type { AdminPartnerRow, AdminPartnersData } from "@/server/actions/admin/partners";
 
 const STATUS: Record<string, { label: string; bg: string; color?: string }> = {
@@ -107,12 +111,31 @@ function MiniList({
   );
 }
 
-function PartnerDetail({ row }: { row: AdminPartnerRow }) {
+function PartnerDetail({ row, partnerId }: { row: AdminPartnerRow; partnerId: string }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const handleUnlink = (clubId: string) => {
+    startTransition(async () => {
+      const res = await adminUnlinkClubFromPartner({ partnerId, clubId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "Error al desvincular", sub: res.error.message, tone: "error" });
+        return;
+      }
+      toast({ icon: "check", title: "Club desvinculado" });
+      setUnlinkingId(null);
+      router.refresh();
+    });
+  };
+
   return (
     <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
         <div>
-          <div className="label-mp">Detalle read-only</div>
+          <div className="label-mp">Detalle</div>
           <h2 className="font-heading" style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 900 }}>
             {row.name}
           </h2>
@@ -146,14 +169,113 @@ function PartnerDetail({ row }: { row: AdminPartnerRow }) {
             ))}
         </MiniList>
 
-        <MiniList title="Clubes linkeados" empty="Sin clubes asociados.">
-          {row.clubs.slice(0, 6).map((club) => (
-            <div key={club.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 800 }}>{club.name}</span>
-              <span style={{ color: "var(--muted-fg)" }}>{club.revenueSharePct}% rev share</span>
+        {/* Clubes linkeados — interactivo */}
+        <div className="card" style={{ padding: 14, minHeight: 120 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <div className="label-mp">Clubes linkeados</div>
+            <button
+              type="button"
+              className="btn"
+              style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}
+              onClick={() => setLinkOpen(true)}
+            >
+              <Icon name="plus" size={11} />
+              Vincular club
+            </button>
+          </div>
+
+          {row.clubs.length === 0 ? (
+            <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>Sin clubes asociados.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {row.clubs.map((club) => (
+                <div key={club.id}>
+                  {unlinkingId === club.id ? (
+                    <div
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #fca5a5",
+                        background: "#fef2f2",
+                        fontSize: 12,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ color: "#991b1b", fontWeight: 600 }}>
+                        ¿Desvincular {club.name}?
+                      </span>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={pending}
+                          onClick={() => handleUnlink(club.id)}
+                          style={{ fontSize: 11, padding: "3px 10px", background: "#ef4444", color: "#fff", border: "none" }}
+                        >
+                          {pending ? "…" : "Sí"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={pending}
+                          onClick={() => setUnlinkingId(null)}
+                          style={{ fontSize: 11, padding: "3px 10px" }}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                        fontSize: 12,
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 800 }}>{club.name}</span>
+                        <span style={{ color: "var(--muted-fg)", marginLeft: 6 }}>
+                          {club.revenueSharePct}% rev share
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setUnlinkingId(club.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--muted-fg)",
+                          fontSize: 11,
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ef4444"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-fg)"; }}
+                      >
+                        Desvincular
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </MiniList>
+          )}
+        </div>
 
         <MiniList title="Torneos recientes" empty="Sin torneos asociados.">
           {row.tournaments.slice(0, 6).map((t) => (
@@ -186,6 +308,13 @@ function PartnerDetail({ row }: { row: AdminPartnerRow }) {
           ))}
         </MiniList>
       </div>
+
+      <AdminLinkClubModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        partnerId={partnerId}
+        onSuccess={() => router.refresh()}
+      />
     </div>
   );
 }
@@ -395,13 +524,11 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
         <KpiCard label="Payouts pendientes" value={money(data.totals.pendingPayoutsCents)} hint="Scope partner: pending/approved/processing." icon="arrow-up-right" />
       </div>
 
-      <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>
-        Vista read-only basada en backend existente: partners, miembros, roles, clubes, torneos, ligas, transacciones y payouts.
-      </p>
+
 
       <RSTable cols={cols} rows={filtered} rowKey={(row) => row.id} rowOnClick={(row) => setSelectedId(row.id)} />
 
-      {selected ? <PartnerDetail row={selected} /> : null}
+      {selected ? <PartnerDetail row={selected} partnerId={selected.id} /> : null}
     </div>
     {createOpen ? <CreatePartnerModal onClose={() => setCreateOpen(false)} /> : null}
     </>

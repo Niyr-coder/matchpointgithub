@@ -48,9 +48,11 @@ export function PartnerTorneoGestionShell({
             ))}
           </div>
           <div className="mp-partner-torneo-gestion-panel" role="tabpanel">
-            {tab === "operacion" && operacion}
-            {tab === "configuracion" && configuracion}
-            {tab === "inscritos" && inscritos}
+            {tab === "operacion"
+              ? operacion
+              : tab === "configuracion"
+                ? configuracion
+                : inscritos}
           </div>
         </div>
         <aside className="mp-partner-torneo-gestion-rail" aria-label="Resumen y acciones">

@@ -166,6 +166,7 @@ lista exacta de qué falta.
 | Aprobar comprobante | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Marcar pago onsite cobrado | ❌ | ✅ su torneo | ✅ su club | ✅ su club | ❌ | ❌ | ✅ |
 | Gestionar membresías del club | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Vincular/desvincular club a partner org | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Gestionar patrocinadores | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Gestionar Help CMS | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Ver tickets del club | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
