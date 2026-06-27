@@ -163,8 +163,10 @@ export function AuthModal({
         className="card"
         style={{
           width: "100%",
-          maxWidth: 460,
-          overflow: "hidden",
+          maxWidth: 540,
+          maxHeight: "min(90dvh, 720px)",
+          overflowY: "auto",
+          overflowX: "hidden",
           padding: 0,
           animation: "lpMpFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
@@ -335,31 +337,33 @@ function SignUpForm({ next, onSwitch }: { next?: string; onSwitch: () => void })
         </FieldLabel>
       </div>
 
-      <FieldLabel label="Email" error={f?.email?.[0]}>
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="tu@email.com"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={inp}
-        />
-      </FieldLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <FieldLabel label="Email" error={f?.email?.[0]}>
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="tu@email.com"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={inp}
+          />
+        </FieldLabel>
 
-      <FieldLabel label="Contraseña" error={f?.password?.[0]}>
-        <PasswordInput
-          name="password"
-          value={password}
-          onChange={setPassword}
-          show={showPassword}
-          onToggle={() => setShowPassword((s) => !s)}
-          autoComplete="new-password"
-          minHint="Mínimo 8 caracteres, con letras y números"
-        />
-        {password.length > 0 && <PasswordStrengthBar level={strength} />}
-      </FieldLabel>
+        <FieldLabel label="Contraseña" error={f?.password?.[0]}>
+          <PasswordInput
+            name="password"
+            value={password}
+            onChange={setPassword}
+            show={showPassword}
+            onToggle={() => setShowPassword((s) => !s)}
+            autoComplete="new-password"
+            minHint="Mínimo 8 caracteres, con letras y números"
+          />
+          {password.length > 0 && <PasswordStrengthBar level={strength} />}
+        </FieldLabel>
+      </div>
 
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
 
@@ -612,12 +616,6 @@ function GoogleOAuthSection({
         </button>
       </form>
       {state && !state.ok && <ErrorBanner message={state.error.message} />}
-      {intent === "signup" ? (
-        <LegalDocLinks
-          prefix="Al continuar con Google aceptas nuestros"
-          style={{ fontSize: 10.5, lineHeight: 1.5, color: "var(--muted-fg)", textAlign: "center" }}
-        />
-      ) : null}
       <AuthDivider label="o usa tu email" />
     </div>
   );
