@@ -163,13 +163,13 @@ export function RSTable<R extends Record<string, unknown>>({
   rows,
   rowKey,
   rowOnClick,
+  selectedKey,
 }: {
   cols: RSColumn<R>[];
   rows: R[];
   rowKey?: (row: R, i: number) => string | number;
-  // Si se pasa, cada fila es clickeable y dispara este callback. Útil para
-  // navegar a /detalle del item (admin events, admin clubs, etc).
   rowOnClick?: (row: R, i: number) => void;
+  selectedKey?: string | number;
 }) {
   const primaryColKey = cols[0]?.k;
   const actionColKey = cols.find((c) => !c.l.trim())?.k ?? cols[cols.length - 1]?.k;
@@ -208,14 +208,19 @@ export function RSTable<R extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.map((r, i) => {
+              const key = rowKey ? rowKey(r, i) : i;
+              const isSelected = selectedKey !== undefined && key === selectedKey;
+              return (
               <tr
-                key={rowKey ? rowKey(r, i) : i}
+                key={key}
                 className="mp-rs-table-row"
                 onClick={rowOnClick ? () => rowOnClick(r, i) : undefined}
                 style={{
                   borderTop: RS_BORDER,
                   cursor: rowOnClick ? "pointer" : undefined,
+                  background: isSelected ? "color-mix(in srgb, var(--primary) 7%, var(--bg, #fff))" : undefined,
+                  borderLeft: isSelected ? "3px solid var(--primary)" : "3px solid transparent",
                 }}
               >
                 {cols.map((c) => {
@@ -250,7 +255,8 @@ export function RSTable<R extends Record<string, unknown>>({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

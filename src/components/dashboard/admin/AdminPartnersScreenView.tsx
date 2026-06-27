@@ -13,20 +13,20 @@ import { adminUnlinkClubFromPartner } from "@/server/actions/admin/partner-club-
 import type { AdminPartnerRow, AdminPartnersData } from "@/server/actions/admin/partners";
 
 const STATUS: Record<string, { label: string; bg: string; color?: string }> = {
-  active: { label: "Activo", bg: "#ecfdf5", color: "#047857" },
-  pending: { label: "Pendiente", bg: "#fef3c7", color: "#92400e" },
+  active:    { label: "Activo",     bg: "#ecfdf5", color: "#047857" },
+  pending:   { label: "Pendiente",  bg: "#fef3c7", color: "#92400e" },
   suspended: { label: "Suspendido", bg: "#fee2e2", color: "#991b1b" },
-  archived: { label: "Archivado", bg: "var(--muted)", color: "var(--muted-fg)" },
+  archived:  { label: "Archivado",  bg: "var(--muted)", color: "var(--muted-fg)" },
 };
 
 const LEAGUE_STATUS: Record<string, string> = {
-  draft: "Borrador",
-  published: "Publicado",
-  registration_open: "Inscripciones abiertas",
-  registration_closed: "Inscripciones cerradas",
-  live: "En curso",
-  finished: "Finalizado",
-  cancelled: "Cancelado",
+  draft:                "Borrador",
+  published:            "Publicado",
+  registration_open:    "Inscripciones abiertas",
+  registration_closed:  "Inscripciones cerradas",
+  live:                 "En curso",
+  finished:             "Finalizado",
+  cancelled:            "Cancelado",
 };
 
 function money(cents: number): string {
@@ -50,62 +50,42 @@ function statusPill(status: string) {
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  icon: string;
-}) {
+function KpiCard({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: string }) {
   return (
     <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <span className="label-mp">{label}</span>
-        <span
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 10,
-            background: "var(--muted)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--muted-fg)",
-          }}
-        >
+        <span style={{ width: 30, height: 30, borderRadius: 10, background: "var(--muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--muted-fg)" }}>
           <Icon name={icon} size={14} />
         </span>
       </div>
-      <div className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>
-        {value}
-      </div>
+      <div className="font-heading" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>{value}</div>
       <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 11.5 }}>{hint}</p>
     </div>
   );
 }
 
-function MiniList({
-  title,
-  empty,
-  children,
-}: {
-  title: string;
-  empty: string;
-  children: ReactNode[];
-}) {
+function StatLine({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="card" style={{ padding: 14, minHeight: 120 }}>
-      <div className="label-mp" style={{ marginBottom: 10 }}>
-        {title}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--muted-fg)" }}>
+        {label}
+      </span>
+      <span className="font-heading" style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em", color: accent ?? "var(--fg)" }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ActivityList({ title, empty, children }: { title: string; empty: string; children: ReactNode[] }) {
+  return (
+    <div className="card" style={{ padding: 12 }}>
+      <div className="label-mp" style={{ marginBottom: 8 }}>{title}</div>
       {children.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>{children}</div>
       ) : (
-        <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>{empty}</p>
+        <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 11 }}>{empty}</p>
       )}
     </div>
   );
@@ -131,55 +111,85 @@ function PartnerDetail({ row, partnerId }: { row: AdminPartnerRow; partnerId: st
     });
   };
 
+  // Fusiona partner_members + role_assignments en una vista única de equipo.
+  // Un usuario puede estar en ambas; si está en ambas se muestra una sola fila.
+  const teamMap = new Map<string, { name: string; orgRole: string | null; hasAccess: boolean }>();
+  for (const m of row.members) {
+    teamMap.set(m.userId, { name: m.name, orgRole: m.role, hasAccess: false });
+  }
+  for (const r of row.roleAssignments.filter((r) => !r.revokedAt)) {
+    const existing = teamMap.get(r.userId);
+    if (existing) {
+      existing.hasAccess = true;
+    } else {
+      teamMap.set(r.userId, { name: r.name, orgRole: null, hasAccess: true });
+    }
+  }
+  const team = Array.from(teamMap.values());
+
   return (
-    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Encabezado */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
         <div>
-          <div className="label-mp">Detalle</div>
-          <h2 className="font-heading" style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 900 }}>
+          <h2 className="font-heading" style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em" }}>
             {row.name}
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--muted-fg)", fontSize: 12 }}>
-            /{row.slug} · creado {dateLabel(row.createdAt)}
+            /{row.slug}
             {row.contactEmail ? ` · ${row.contactEmail}` : ""}
+            {" · desde "}{dateLabel(row.createdAt)}
           </p>
         </div>
         {statusPill(row.status)}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-        <MiniList title="Miembros partner_members" empty="Sin miembros registrados.">
-          {row.members.slice(0, 6).map((m) => (
-            <div key={m.userId} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 800 }}>{m.name}</span>
-              <span style={{ color: "var(--muted-fg)" }}>{m.role}</span>
+      {/* Stats en línea */}
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", paddingBottom: 16, borderBottom: "1px solid var(--border)" }}>
+        <StatLine label="Torneos activos" value={String(row.activeTournamentCount)} />
+        <StatLine label="Inscritos" value={String(row.registrationCount)} />
+        <StatLine label="Revenue capturado" value={money(row.capturedRevenueCents)} accent="var(--primary)" />
+        <StatLine
+          label="Payouts pendientes"
+          value={money(row.payoutPendingCents)}
+          accent={row.payoutPendingCents > 0 ? "#f59e0b" : undefined}
+        />
+      </div>
+
+      {/* Grid principal: Equipo + Clubes */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {/* Equipo */}
+        <div className="card" style={{ padding: 14 }}>
+          <div className="label-mp" style={{ marginBottom: 10 }}>Equipo</div>
+          {team.length === 0 ? (
+            <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>Sin miembros registrados.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {team.slice(0, 8).map((m, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+                  <span style={{ fontWeight: 800 }}>{m.name}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {m.orgRole && (
+                      <span style={{ fontSize: 10, color: "var(--muted-fg)", textTransform: "capitalize" }}>
+                        {m.orgRole}
+                      </span>
+                    )}
+                    {m.hasAccess ? (
+                      <RSPill bg="#d1fae5" color="#047857">Acceso</RSPill>
+                    ) : (
+                      <RSPill bg="var(--muted)" color="var(--muted-fg)">Sin acceso</RSPill>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </MiniList>
+          )}
+        </div>
 
-        <MiniList title="Roles MATCHPOINT" empty="Sin role_assignments partner activas.">
-          {row.roleAssignments
-            .filter((r) => !r.revokedAt)
-            .slice(0, 6)
-            .map((r) => (
-              <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-                <span style={{ fontWeight: 800 }}>{r.name}</span>
-                <span style={{ color: "var(--muted-fg)" }}>{dateLabel(r.grantedAt)}</span>
-              </div>
-            ))}
-        </MiniList>
-
-        {/* Clubes linkeados — interactivo */}
-        <div className="card" style={{ padding: 14, minHeight: 120 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 10,
-            }}
-          >
-            <div className="label-mp">Clubes linkeados</div>
+        {/* Clubes del partner */}
+        <div className="card" style={{ padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div className="label-mp">Clubes del partner</div>
             <button
               type="button"
               className="btn"
@@ -187,88 +197,49 @@ function PartnerDetail({ row, partnerId }: { row: AdminPartnerRow; partnerId: st
               onClick={() => setLinkOpen(true)}
             >
               <Icon name="plus" size={11} />
-              Vincular club
+              Vincular
             </button>
           </div>
 
           {row.clubs.length === 0 ? (
-            <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>Sin clubes asociados.</p>
+            <p style={{ margin: 0, color: "var(--muted-fg)", fontSize: 12 }}>Sin clubes vinculados.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {row.clubs.map((club) => (
                 <div key={club.id}>
                   {unlinkingId === club.id ? (
-                    <div
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #fca5a5",
-                        background: "#fef2f2",
-                        fontSize: 12,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ color: "#991b1b", fontWeight: 600 }}>
-                        ¿Desvincular {club.name}?
-                      </span>
+                    <div style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #fca5a5", background: "#fef2f2", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ color: "#991b1b", fontWeight: 700 }}>¿Desvincular {club.name}?</span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={pending}
-                          onClick={() => handleUnlink(club.id)}
-                          style={{ fontSize: 11, padding: "3px 10px", background: "#ef4444", color: "#fff", border: "none" }}
-                        >
+                        <button type="button" className="btn" disabled={pending} onClick={() => handleUnlink(club.id)}
+                          style={{ fontSize: 11, padding: "2px 8px", background: "#ef4444", color: "#fff", border: "none" }}>
                           {pending ? "…" : "Sí"}
                         </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={pending}
-                          onClick={() => setUnlinkingId(null)}
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                        >
+                        <button type="button" className="btn" disabled={pending} onClick={() => setUnlinkingId(null)}
+                          style={{ fontSize: 11, padding: "2px 8px" }}>
                           No
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 10,
-                        fontSize: 12,
-                      }}
-                    >
-                      <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+                      <div style={{ minWidth: 0 }}>
                         <span style={{ fontWeight: 800 }}>{club.name}</span>
-                        <span style={{ color: "var(--muted-fg)", marginLeft: 6 }}>
-                          {club.revenueSharePct}% rev share
-                        </span>
+                        {club.city && <span style={{ color: "var(--muted-fg)", marginLeft: 5 }}>{club.city}</span>}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setUnlinkingId(club.id)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--muted-fg)",
-                          fontSize: 11,
-                          padding: "2px 6px",
-                          borderRadius: 4,
-                          flexShrink: 0,
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ef4444"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-fg)"; }}
-                      >
-                        Desvincular
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{ padding: "2px 8px", borderRadius: 9999, background: "#f0fdf4", color: "#166534", fontSize: 10, fontWeight: 800 }}>
+                          {club.revenueSharePct}% comisión
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setUnlinkingId(club.id)}
+                          aria-label={`Desvincular ${club.name}`}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted-fg)", padding: 2, lineHeight: 1, display: "flex" }}
+                        >
+                          <Icon name="x" size={12} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -276,45 +247,56 @@ function PartnerDetail({ row, partnerId }: { row: AdminPartnerRow; partnerId: st
             </div>
           )}
         </div>
-
-        <MiniList title="Torneos recientes" empty="Sin torneos asociados.">
-          {row.tournaments.slice(0, 6).map((t) => (
-            <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 800 }}>{t.name}</span>
-              <span style={{ color: "var(--muted-fg)" }}>
-                {t.registrations} insc. · {money(t.capturedRevenueCents)}
-              </span>
-            </div>
-          ))}
-        </MiniList>
-
-        <MiniList title="Ligas" empty="Sin ligas asociadas.">
-          {row.leagues.slice(0, 6).map((league) => (
-            <div key={league.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 800 }}>{league.name}</span>
-              <span style={{ color: "var(--muted-fg)" }}>{LEAGUE_STATUS[league.status] ?? league.status}</span>
-            </div>
-          ))}
-        </MiniList>
-
-        <MiniList title="Payouts partner" empty="Sin payouts para este partner.">
-          {row.payouts.slice(0, 6).map((p) => (
-            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 800 }}>{dateLabel(p.periodEnd)}</span>
-              <span style={{ color: "var(--muted-fg)" }}>
-                {money(p.netCents)} · {p.status}
-              </span>
-            </div>
-          ))}
-        </MiniList>
       </div>
 
-      <AdminLinkClubModal
-        open={linkOpen}
-        onClose={() => setLinkOpen(false)}
-        partnerId={partnerId}
-        onSuccess={() => router.refresh()}
-      />
+      {/* Actividad reciente: Torneos · Ligas · Payouts */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <ActivityList title="Torneos recientes" empty="Sin torneos.">
+          {row.tournaments.slice(0, 5).map((t) => (
+            <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+              <span style={{ fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {t.name}
+              </span>
+              <span style={{ color: "var(--muted-fg)", flexShrink: 0 }}>
+                {t.registrations} · {money(t.capturedRevenueCents)}
+              </span>
+            </div>
+          ))}
+        </ActivityList>
+
+        <ActivityList title="Ligas" empty="Sin ligas.">
+          {row.leagues.slice(0, 5).map((l) => (
+            <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+              <span style={{ fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {l.name}
+              </span>
+              <span style={{ color: "var(--muted-fg)", flexShrink: 0, fontSize: 10 }}>
+                {LEAGUE_STATUS[l.status] ?? l.status}
+              </span>
+            </div>
+          ))}
+        </ActivityList>
+
+        <ActivityList title="Payouts" empty="Sin payouts.">
+          {row.payouts.slice(0, 5).map((p) => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+              <span style={{ fontWeight: 700 }}>{dateLabel(p.periodEnd)}</span>
+              <span style={{ fontWeight: 700, flexShrink: 0, color: p.status === "paid" ? "var(--primary)" : "#f59e0b" }}>
+                {money(p.netCents)}
+              </span>
+            </div>
+          ))}
+        </ActivityList>
+      </div>
+
+      {linkOpen && (
+        <AdminLinkClubModal
+          open={linkOpen}
+          onClose={() => setLinkOpen(false)}
+          partnerId={partnerId}
+          onSuccess={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }
@@ -348,7 +330,7 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
         q.length === 0 ||
         row.name.toLowerCase().includes(q) ||
         row.slug.toLowerCase().includes(q) ||
-        row.owners.some((owner) => owner.toLowerCase().includes(q));
+        row.owners.some((o) => o.toLowerCase().includes(q));
       return matchesStatus && matchesQuery;
     });
   }, [data.rows, query, status]);
@@ -364,46 +346,23 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
         <div>
           <div style={{ fontWeight: 900 }}>{row.name}</div>
           <div style={{ color: "var(--muted-fg)", fontSize: 10 }}>
-            /{row.slug}
-            {row.owners.length ? ` · owner: ${row.owners[0]}` : ""}
+            /{row.slug}{row.owners.length ? ` · ${row.owners[0]}` : ""}
           </div>
         </div>
       ),
     },
     { k: "status", l: "Estado", render: (row) => statusPill(row.status) },
     {
-      k: "members",
-      l: "Miembros",
-      align: "center",
-      render: (row) => (
-        <b className="font-heading">
-          {row.memberCount}
-          {row.roleAssignmentCount !== row.memberCount ? ` / ${row.roleAssignmentCount} roles` : ""}
-        </b>
-      ),
-    },
-    {
-      k: "clubs",
+      k: "clubCount",
       l: "Clubes",
       align: "center",
       render: (row) => <b className="font-heading">{row.clubCount}</b>,
     },
     {
-      k: "events",
-      l: "Torneos / ligas",
+      k: "activeTournamentCount",
+      l: "Torneos activos",
       align: "center",
-      render: (row) => (
-        <span>
-          <b className="font-heading">{row.tournamentCount}</b>
-          <span style={{ color: "var(--muted-fg)" }}> / {row.leagueCount}</span>
-        </span>
-      ),
-    },
-    {
-      k: "registrations",
-      l: "Inscritos",
-      align: "center",
-      render: (row) => <b className="font-heading">{row.registrationCount}</b>,
+      render: (row) => <b className="font-heading">{row.activeTournamentCount}</b>,
     },
     {
       k: "capturedRevenueCents",
@@ -419,23 +378,21 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
       k: "payoutPendingCents",
       l: "Payouts pendientes",
       align: "right",
-      render: (row) => <b>{money(row.payoutPendingCents)}</b>,
+      render: (row) => (
+        <b style={{ color: row.payoutPendingCents > 0 ? "#f59e0b" : "var(--muted-fg)" }}>
+          {money(row.payoutPendingCents)}
+        </b>
+      ),
     },
   ];
 
-  const isEmpty = data.rows.length === 0;
-
-  if (isEmpty) {
+  if (data.rows.length === 0) {
     return (
       <>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <RSHeader
             label="Plataforma · Partners"
-            title={
-              <>
-                Partners <span className="dot">●</span> 0
-              </>
-            }
+            title={<>Partners <span className="dot">●</span> 0</>}
             action={
               <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
                 <Icon name="plus" size={13} color="#fff" />
@@ -446,7 +403,7 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
           <EmptyState
             icon="handshake"
             title="Sin partners registrados"
-            hint="Crea el primer organizador externo. Busca al owner entre usuarios registrados y asigna nombre + slug."
+            hint="Crea el primer organizador externo. Busca al owner entre usuarios registrados y asigna nombre y slug."
             action={
               <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
                 <Icon name="user-plus" size={13} color="#fff" />
@@ -455,82 +412,67 @@ export function AdminPartnersScreenView({ data }: { data: AdminPartnersData }) {
             }
           />
         </div>
-        {createOpen ? <CreatePartnerModal onClose={() => setCreateOpen(false)} /> : null}
+        {createOpen && <CreatePartnerModal onClose={() => setCreateOpen(false)} />}
       </>
     );
   }
 
   return (
     <>
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <RSHeader
-        label="Plataforma · Partners"
-        title={
-          <>
-            Partners <span className="dot">●</span> {data.totals.partners}
-          </>
-        }
-        action={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-              <Icon name="plus" size={13} color="#fff" />
-              Nuevo partner
-            </button>
-            <div style={{ position: "relative" }}>
-              <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
-                <Icon name="search" size={13} />
-              </span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar partner u owner..."
-                style={{
-                  padding: "8px 14px 8px 32px",
-                  borderRadius: 9999,
-                  border: "1px solid var(--border)",
-                  fontSize: 12,
-                  minWidth: 220,
-                }}
-              />
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <RSHeader
+          label="Plataforma · Partners"
+          title={<>Partners <span className="dot">●</span> {data.totals.partners}</>}
+          action={
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icon name="plus" size={13} color="#fff" />
+                Nuevo partner
+              </button>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 12, top: 10, color: "var(--muted-fg)" }}>
+                  <Icon name="search" size={13} />
+                </span>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar partner u owner..."
+                  style={{ padding: "8px 14px 8px 32px", borderRadius: 9999, border: "1px solid var(--border)", fontSize: 12, minWidth: 220 }}
+                />
+              </div>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", fontSize: 12, fontWeight: 800 }}
+              >
+                <option value="all">Todos los estados</option>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>{STATUS[s]?.label ?? s}</option>
+                ))}
+              </select>
             </div>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 9999,
-                border: "1px solid var(--border)",
-                background: "#fff",
-                fontSize: 12,
-                fontWeight: 800,
-              }}
-            >
-              <option value="all">Todos los estados</option>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS[s]?.label ?? s}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      />
+          }
+        />
 
-      <div className="mp-admin-kpis-5">
-        <KpiCard label="Partners activos" value={`${data.totals.activePartners}`} hint="Organizadores con estado active." icon="handshake" />
-        <KpiCard label="Clubes linkeados" value={`${data.totals.clubs}`} hint="Vía partner_club_links." icon="building-2" />
-        <KpiCard label="Torneos activos" value={`${data.totals.activeTournaments}`} hint={`${data.totals.tournaments} torneos totales.`} icon="trophy" />
-        <KpiCard label="Ingreso capturado" value={money(data.totals.capturedRevenueCents)} hint="Transactions kind=tournament." icon="wallet" />
-        <KpiCard label="Payouts pendientes" value={money(data.totals.pendingPayoutsCents)} hint="Scope partner: pending/approved/processing." icon="arrow-up-right" />
+        <div className="mp-admin-kpis-5">
+          <KpiCard label="Partners activos"     value={`${data.totals.activePartners}`}               hint="Organizadores con estado activo."             icon="handshake" />
+          <KpiCard label="Clubes vinculados"    value={`${data.totals.clubs}`}                        hint="Clubes con al menos un partner activo."       icon="building-2" />
+          <KpiCard label="Torneos activos"      value={`${data.totals.activeTournaments}`}            hint={`${data.totals.tournaments} torneos en total.`} icon="trophy" />
+          <KpiCard label="Ingreso capturado"    value={money(data.totals.capturedRevenueCents)}       hint="Transacciones de tipo torneo capturadas."     icon="wallet" />
+          <KpiCard label="Payouts pendientes"   value={money(data.totals.pendingPayoutsCents)}        hint="Payouts en estado pendiente o en proceso."    icon="arrow-up-right" />
+        </div>
+
+        <RSTable
+          cols={cols}
+          rows={filtered}
+          rowKey={(row) => row.id}
+          rowOnClick={(row) => setSelectedId(row.id)}
+          selectedKey={selected?.id}
+        />
+
+        {selected && <PartnerDetail row={selected} partnerId={selected.id} />}
       </div>
-
-
-
-      <RSTable cols={cols} rows={filtered} rowKey={(row) => row.id} rowOnClick={(row) => setSelectedId(row.id)} />
-
-      {selected ? <PartnerDetail row={selected} partnerId={selected.id} /> : null}
-    </div>
-    {createOpen ? <CreatePartnerModal onClose={() => setCreateOpen(false)} /> : null}
+      {createOpen && <CreatePartnerModal onClose={() => setCreateOpen(false)} />}
     </>
   );
 }

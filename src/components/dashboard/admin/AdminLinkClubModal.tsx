@@ -95,7 +95,7 @@ export function AdminLinkClubModal({ open, onClose, partnerId, onSuccess }: Prop
         <div style={{ marginBottom: 16 }}>
           <div className="label-mp">Vincular club</div>
           <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 2 }}>
-            Busca el club por nombre o slug y define el porcentaje de revenue share.
+            Busca el club por nombre o slug y define la comisión que recibe el partner.
           </div>
         </div>
 
@@ -230,7 +230,7 @@ export function AdminLinkClubModal({ open, onClose, partnerId, onSuccess }: Prop
               marginBottom: 6,
             }}
           >
-            Rev. share %
+            Comisión %
           </label>
           <input
             type="number"
