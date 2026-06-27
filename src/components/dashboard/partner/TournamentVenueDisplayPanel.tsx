@@ -9,10 +9,8 @@ import {
   rotateTournamentDisplayToken,
 } from "@/server/actions/tournament-live";
 
-const SITE_URL =
-  typeof window !== "undefined"
-    ? window.location.origin
-    : process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top";
+const TV_URL =
+  process.env.NEXT_PUBLIC_TV_URL ?? "https://tv.matchpoint.top";
 
 export function TournamentVenueDisplayPanel({
   tournamentId,
@@ -41,8 +39,8 @@ export function TournamentVenueDisplayPanel({
     });
   }, [token, readOnly, tournamentId]);
 
-  const liveUrl = token ? `${SITE_URL}/t/${slug}/live?k=${token}` : null;
-  const publicUrl = `${SITE_URL}/eventos/${slug}`;
+  const liveUrl = token ? `${TV_URL}/${slug}?k=${token}` : null;
+  const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top"}/eventos/${slug}`;
 
   const copy = async (url: string, label: string) => {
     try {
