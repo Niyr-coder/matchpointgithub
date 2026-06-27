@@ -26,15 +26,14 @@ const ACTIVE_COOKIE_OPTS = {
 };
 
 export async function proxy(request: NextRequest) {
-  // tv.matchpoint.top/[slug]?k=[token] → /t/[slug]/live?k=[token]
+  // tv.matchpoint.top — pantalla de venue
   const host = request.headers.get("host") ?? "";
   if (/^tv\./.test(host)) {
     const slug = request.nextUrl.pathname.replace(/^\//, "").split("/")[0];
-    if (slug) {
-      const rewriteUrl = request.nextUrl.clone();
-      rewriteUrl.pathname = `/t/${slug}/live`;
-      return NextResponse.rewrite(rewriteUrl);
-    }
+    const rewriteUrl = request.nextUrl.clone();
+    // Sin slug → empty state de tv
+    rewriteUrl.pathname = slug ? `/t/${slug}/live` : "/tv";
+    return NextResponse.rewrite(rewriteUrl);
   }
 
   const { pathname } = request.nextUrl;
