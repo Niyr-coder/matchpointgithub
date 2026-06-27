@@ -8,10 +8,12 @@ import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
 import { assignTicket, autoAssignTickets } from "@/server/actions/support";
+import { revokeRole } from "@/server/actions/roles";
 
 export type TeamRole = "Admin" | "Moderador" | "Soporte" | "Finanzas";
 export type MemberRow = {
   id: string;
+  assignmentId: string;
   n: string;
   email: string;
   role: TeamRole;
@@ -144,6 +146,20 @@ export function AdminTeamScreenView({
       icon: "user-plus",
       title: "Gestiona admins desde Permisos & Roles",
       sub: "Usa Asignar rol para dar acceso admin a una cuenta existente.",
+    });
+  };
+
+  const handleRevoke = async (assignmentId: string, name: string) => {
+    const ok = await confirm({
+      title: `Revocar acceso admin a ${name}`,
+      body: "Esta persona perderá acceso al panel de administración. La acción queda registrada en el audit log.",
+      confirmLabel: "Revocar",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const res = await revokeRole({ assignmentId });
+      if (res.ok) toast({ icon: "user-minus", title: `Acceso admin revocado a ${name}` });
+      else toast({ icon: "alert-triangle", title: "Error al revocar", sub: res.error.message });
     });
   };
 
@@ -354,18 +370,15 @@ export function AdminTeamScreenView({
                       className="btn"
                       style={{
                         background: "#fff",
-                        border: "1px solid var(--border)",
+                        border: "1px solid #fca5a5",
                         fontSize: 10.5,
+                        color: "#dc2626",
                       }}
-                      onClick={() =>
-                        toast({
-                          icon: "more-horizontal",
-                          title: "Más acciones pendientes",
-                          sub: "La gestión fina de permisos se hace desde Permisos & Roles.",
-                        })
-                      }
+                      onClick={() => handleRevoke(p.assignmentId, p.n)}
+                      disabled={isPending}
                     >
-                      <Icon name="more-horizontal" size={11} />
+                      <Icon name="user-minus" size={11} color="#dc2626" />
+                      Revocar
                     </button>
                   </div>
                 )}

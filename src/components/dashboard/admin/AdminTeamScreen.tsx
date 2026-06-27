@@ -32,11 +32,14 @@ async function loadData(): Promise<TeamData> {
 
   const { data: assignments } = await supabase
     .from("role_assignments")
-    .select("user_id,granted_at")
+    .select("id,user_id,granted_at")
     .eq("role", "admin")
     .is("revoked_at", null);
 
   const adminIds = Array.from(new Set((assignments ?? []).map((a) => a.user_id as string)));
+  const assignmentIdByUser = new Map<string, string>(
+    (assignments ?? []).map((a) => [a.user_id as string, a.id as string]),
+  );
   if (adminIds.length === 0) {
     return {
       rows: [],
@@ -99,6 +102,7 @@ async function loadData(): Promise<TeamData> {
     const name = p?.display_name ?? "Sin nombre";
     return {
       id,
+      assignmentId: assignmentIdByUser.get(id) ?? "",
       n: name,
       email: p?.username ? `@${p.username}` : "—",
       role: "Admin",
