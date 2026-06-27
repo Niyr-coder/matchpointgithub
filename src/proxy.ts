@@ -26,6 +26,17 @@ const ACTIVE_COOKIE_OPTS = {
 };
 
 export async function proxy(request: NextRequest) {
+  // tv.matchpoint.top/[slug]?k=[token] → /t/[slug]/live?k=[token]
+  const host = request.headers.get("host") ?? "";
+  if (/^tv\./.test(host)) {
+    const slug = request.nextUrl.pathname.replace(/^\//, "").split("/")[0];
+    if (slug) {
+      const rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = `/t/${slug}/live`;
+      return NextResponse.rewrite(rewriteUrl);
+    }
+  }
+
   const { pathname } = request.nextUrl;
   const isProtected = pathname.startsWith("/dashboard");
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
