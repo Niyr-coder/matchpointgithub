@@ -252,6 +252,20 @@ export const KNOWN_FLAGS: KnownFlag[] = [
     wired: true,
   },
 
+  {
+    key: "tournament_player_ops_enabled",
+    label: "Sustituciones y walkover",
+    description:
+      "Habilita la sustitución de jugadores por lesión/no-show/cambio de pareja y la declaración de walkover en partidos. Apagado = operaciones no disponibles en el panel partner.",
+    surfaces: [
+      "src/server/actions/tournament-player-ops.ts (todas las acciones)",
+      "SubstitutePlayerModal (partner dashboard)",
+      "DeclareWalkoverModal (partner dashboard)",
+    ],
+    impact: "high",
+    wired: true,
+  },
+
   // ── Legacy / huérfanos en DB ───────────────────────────────────────────
   {
     key: "profile_customization",
