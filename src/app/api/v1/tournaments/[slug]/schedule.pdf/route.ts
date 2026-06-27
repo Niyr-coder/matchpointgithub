@@ -6,6 +6,13 @@ import { createElement } from "react";
 
 export const dynamic = "force-dynamic";
 
+function jsonError(status: number, msg: string) {
+  return new Response(JSON.stringify({ error: msg }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -15,26 +22,16 @@ export async function GET(
   // Autenticar
   const supabase = await getServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: "No autenticado" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!user) return jsonError(401, "No autenticado");
 
   // Buscar torneo por slug
   const { data: t } = await supabase
     .from("tournaments")
-    .select("id,name,slug,partner_id,starts_at,ends_at,sport,format,status")
+    .select("id,name,slug,partner_id,starts_at,ends_at,sport,format")
     .eq("slug", slug)
     .maybeSingle();
 
-  if (!t) {
-    return new Response(JSON.stringify({ error: "Torneo no encontrado" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!t) return jsonError(404, "Torneo no encontrado");
 
   // Verificar autorización: admin o partner member
   const { data: adminRow } = await supabase
@@ -48,105 +45,123 @@ export async function GET(
 
   if (!isAdmin) {
     const partnerId = (t.partner_id as string | null) ?? null;
-    if (!partnerId) {
-      return new Response(JSON.stringify({ error: "Sin acceso" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (!partnerId) return jsonError(403, "Sin acceso");
     const { data: member } = await supabase
       .from("partner_members")
       .select("user_id")
       .eq("partner_id", partnerId)
       .eq("user_id", user.id)
       .maybeSingle();
-    if (!member) {
-      return new Response(JSON.stringify({ error: "Sin acceso" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (!member) return jsonError(403, "Sin acceso");
   }
 
-  // Leer datos del torneo via admin (RLS puede bloquear sub-tablas)
-  const admin = getAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = getAdminClient() as any;
   const tournamentId = t.id as string;
 
   // Bloques de cronograma
-  const { data: scheduleBlocksRaw } = await (admin as any)
+  const { data: scheduleBlocksRaw } = await admin
     .from("tournament_schedule_blocks")
     .select("id,datetime,label,notes,tournament_categories(name)")
     .eq("tournament_id", tournamentId)
     .order("datetime", { ascending: true });
 
-  const scheduleBlocks = (scheduleBlocksRaw ?? []).map((b: any) => ({
+  const scheduleBlocks = ((scheduleBlocksRaw as any[]) ?? []).map((b) => ({
     id: b.id as string,
     datetime: b.datetime as string | null,
     label: b.label as string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     category_name: (b.tournament_categories as any)?.name ?? null,
     notes: b.notes as string | null,
   }));
 
-  // Partidos de grupos
-  const { data: groupMatchesRaw } = await (admin as any)
-    .from("tournament_group_matches")
-    .select(
-      "id,side_a_registration_id,side_b_registration_id,status,scheduled_at,tournament_groups(name,tournament_categories(name)),tournament_registrations!tournament_group_matches_side_a_registration_id_fkey(teams(name),profiles(display_name)),trb:tournament_registrations!tournament_group_matches_side_b_registration_id_fkey(teams(name),profiles(display_name))"
-    )
-    .eq("tournament_id", tournamentId)
-    .order("scheduled_at", { ascending: true, nullsFirst: false });
+  // Registraciones del torneo → mapa id → nombre
+  const { data: regsRaw } = await admin
+    .from("tournament_registrations")
+    .select("id,teams(name),profiles(display_name)")
+    .eq("tournament_id", tournamentId);
 
-  // Bracket matches
-  const { data: bracketsRaw } = await (admin as any)
+  const nameByReg = new Map<string, string>();
+  for (const r of (regsRaw as any[]) ?? []) {
+    const name = r.teams?.name ?? r.profiles?.display_name ?? "Por definir";
+    nameByReg.set(r.id as string, name as string);
+  }
+
+  // Categorías del torneo → IDs
+  const { data: catsRaw } = await admin
+    .from("tournament_categories")
+    .select("id")
+    .eq("tournament_id", tournamentId);
+  const catIds = ((catsRaw as any[]) ?? []).map((c) => c.id as string);
+
+  // Grupos → IDs mapeados a nombre
+  const groupNameById = new Map<string, string>();
+  const groupIds: string[] = [];
+  if (catIds.length > 0) {
+    const { data: groupsRaw } = await admin
+      .from("tournament_groups")
+      .select("id,name")
+      .in("category_id", catIds);
+    for (const g of (groupsRaw as any[]) ?? []) {
+      groupNameById.set(g.id as string, g.name as string);
+      groupIds.push(g.id as string);
+    }
+  }
+
+  // Partidos de grupos
+  const groupMatches: PdfTournamentData["matches"] = [];
+  if (groupIds.length > 0) {
+    const { data: gmRaw } = await admin
+      .from("tournament_group_matches")
+      .select("id,group_id,side_a_registration_id,side_b_registration_id,status,scheduled_at")
+      .in("group_id", groupIds)
+      .order("scheduled_at", { ascending: true, nullsFirst: false });
+
+    for (const m of (gmRaw as any[]) ?? []) {
+      groupMatches.push({
+        id: m.id as string,
+        phase: "group",
+        groupName: groupNameById.get(m.group_id as string) ?? "Grupo",
+        labelA: nameByReg.get(m.side_a_registration_id as string) ?? "Por definir",
+        labelB: nameByReg.get(m.side_b_registration_id as string) ?? "Por definir",
+        scheduledAt: m.scheduled_at as string | null,
+        status: m.status as string,
+      });
+    }
+  }
+
+  // Bracket (knockout)
+  const bracketMatches: PdfTournamentData["matches"] = [];
+  const { data: bracketsRaw } = await admin
     .from("brackets")
     .select("id")
     .eq("tournament_id", tournamentId)
     .order("generated_at", { ascending: false })
     .limit(1);
 
-  const bracketId = bracketsRaw?.[0]?.id as string | undefined;
-  let bracketMatchesRaw: any[] = [];
-
+  const bracketId = (bracketsRaw as any[])?.[0]?.id as string | undefined;
   if (bracketId) {
-    const { data: bm } = await (admin as any)
+    const { data: bmRaw } = await admin
       .from("bracket_matches")
-      .select(
-        "id,round,position,side_a_registration_id,side_b_registration_id,status,scheduled_at,tournament_registrations!bracket_matches_side_a_registration_id_fkey(teams(name),profiles(display_name)),trb:tournament_registrations!bracket_matches_side_b_registration_id_fkey(teams(name),profiles(display_name))"
-      )
+      .select("id,round,side_a_registration_id,side_b_registration_id,status,scheduled_at")
       .eq("bracket_id", bracketId)
+      .eq("is_bronze", false)
       .order("round", { ascending: true });
-    bracketMatchesRaw = bm ?? [];
+
+    for (const m of (bmRaw as any[]) ?? []) {
+      bracketMatches.push({
+        id: m.id as string,
+        phase: "bracket",
+        round: m.round as number,
+        labelA: nameByReg.get(m.side_a_registration_id as string) ?? "Por definir",
+        labelB: nameByReg.get(m.side_b_registration_id as string) ?? "Por definir",
+        scheduledAt: m.scheduled_at as string | null,
+        status: m.status as string,
+      });
+    }
   }
 
-  function getLabel(reg: any): string {
-    if (!reg) return "Por definir";
-    const team = reg?.teams?.name;
-    const profile = reg?.profiles?.display_name;
-    return (team ?? profile ?? "Por definir") as string;
-  }
-
-  const groupMatches = (groupMatchesRaw ?? []).map((m: any) => ({
-    id: m.id as string,
-    phase: "group" as const,
-    groupName: (m.tournament_groups as any)?.name ?? "Grupo",
-    labelA: getLabel(m.tournament_registrations),
-    labelB: getLabel(m.trb),
-    scheduledAt: m.scheduled_at as string | null,
-    status: m.status as string,
-  }));
-
-  const bracketMatches = bracketMatchesRaw.map((m: any) => ({
-    id: m.id as string,
-    phase: "bracket" as const,
-    round: m.round as number,
-    labelA: getLabel(m.tournament_registrations),
-    labelB: getLabel(m.trb),
-    scheduledAt: m.scheduled_at as string | null,
-    status: m.status as string,
-  }));
-
-  const now = new Date();
-  const generatedAt = now.toLocaleDateString("es-EC", {
+  const generatedAt = new Date().toLocaleDateString("es-EC", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -164,27 +179,23 @@ export async function GET(
     generatedAt,
   };
 
-  let buffer: Uint8Array;
+  let pdfBuffer: ArrayBuffer;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = await renderToBuffer(
-      createElement(TournamentSchedulePdf, { data }) as any
-    );
-    buffer = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+    const raw = await renderToBuffer(createElement(TournamentSchedulePdf, { data }) as any);
+    // .slice() produce un ArrayBuffer nuevo con SOLO los bytes del PDF,
+    // sin el overhead del pool de memoria de Node.js
+    pdfBuffer = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
   } catch (err) {
     console.error("[schedule.pdf] renderToBuffer error:", err);
-    return new Response(JSON.stringify({ error: "Error generando PDF" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(500, "Error al generar el PDF");
   }
 
-  const filename = `calendario-${slug}.pdf`;
-  return new Response(buffer.buffer as ArrayBuffer, {
+  return new Response(pdfBuffer, {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="calendario-${slug}.pdf"`,
       "Cache-Control": "no-store",
     },
   });
