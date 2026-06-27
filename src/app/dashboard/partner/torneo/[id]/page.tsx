@@ -9,7 +9,6 @@ import { Icon } from "@/components/Icon";
 import { PartnerTorneoActions } from "@/components/dashboard/partner/PartnerTorneoActions";
 import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel";
 import { getGroupStageSummary } from "@/server/actions/tournament-group-stage";
-import { MarkPaidInline } from "@/components/dashboard/partner/MarkPaidInline";
 import { CategoriesPanel, type CategoryRow } from "@/components/dashboard/partner/CategoriesPanel";
 import {
   CategoryGroupConfigPanel,
@@ -17,6 +16,7 @@ import {
 } from "@/components/dashboard/partner/CategoryGroupConfigPanel";
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { TournamentMonitorsPanel } from "@/components/dashboard/partner/TournamentMonitorsPanel";
+import { TorneoInscritosInteractivo } from "@/components/dashboard/partner/TorneoInscritosInteractivo";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
 import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
@@ -63,6 +63,8 @@ type RegRow = {
   createdAt: string;
   label: string;
   avatarUrl: string | null;
+  playerIds: string[];
+  players: Array<{ id: string; name: string }>;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -243,6 +245,11 @@ export default async function PartnerTorneoPage({
       createdAt: r.created_at as string,
       label,
       avatarUrl: firstProf?.avatar ?? null,
+      playerIds: pids,
+      players: pids.map((pid) => ({
+        id: pid,
+        name: profById.get(pid)?.name ?? "Jugador",
+      })),
     };
   });
 
@@ -537,6 +544,9 @@ export default async function PartnerTorneoPage({
   const { data: flagsData } = await supabase.rpc("fn_my_effective_flags");
   const monitorsEnabled = (flagsData ?? []).some(
     (f: { key: string; enabled: boolean }) => f.key === "tournament_monitors_enabled" && f.enabled,
+  );
+  const playerOpsEnabled = (flagsData ?? []).some(
+    (f: { key: string; enabled: boolean }) => f.key === "tournament_player_ops_enabled" && f.enabled,
   );
 
   return (
@@ -838,6 +848,7 @@ export default async function PartnerTorneoPage({
                     registrationLabels={registrationLabels}
                     initialCategoryId={initialGroupCategoryId}
                     initial={groupStageInitial}
+                    playerOpsEnabled={playerOpsEnabled}
                   />
                 )}
               </PartnerTorneoOperacionPanel>
@@ -901,87 +912,12 @@ export default async function PartnerTorneoPage({
                     Cuando alguien se inscriba aparecerá aquí.
                   </div>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div className="mp-partner-torneo-regs-head">
-                      <div>Jugador</div>
-                      <div style={{ textAlign: "center" }}>Estado</div>
-                      <div style={{ textAlign: "center" }}>Modo</div>
-                      <div style={{ textAlign: "center" }}>Pago</div>
-                      <div style={{ textAlign: "right" }}>Inscrito</div>
-                    </div>
-                    {regs.slice(0, 20).map((r) => {
-                      const name = r.label;
-                      const dt = new Date(r.createdAt);
-                      const paymentModeLabel =
-                        r.paymentMode === "online"
-                          ? "Online"
-                          : r.paymentMode === "onsite"
-                            ? "En club"
-                            : r.paymentMode === "free"
-                              ? "Gratis"
-                              : "—";
-                      const hidePaymentMode =
-                        r.paymentMode === "free" &&
-                        (r.payStatus === "free" || r.payStatus === "paid" || r.payStatus === null);
-                      return (
-                        <div key={r.id} className="mp-partner-torneo-regs-row">
-                          <div className="mp-partner-torneo-regs-player">
-                            <div
-                              className="mp-partner-torneo-regs-avatar"
-                              style={{
-                                background: r.avatarUrl
-                                  ? `url(${r.avatarUrl}) center/cover`
-                                  : "linear-gradient(135deg,#10b981,#047857)",
-                              }}
-                            >
-                              {!r.avatarUrl && name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <b className="mp-partner-torneo-regs-name">{name}</b>
-                          </div>
-                          <div className="mp-partner-torneo-regs-badges">
-                            <div className="mp-partner-torneo-regs-status">
-                              <RegStatus value={r.status} />
-                            </div>
-                            {!hidePaymentMode && (
-                              <div className="mp-partner-torneo-regs-mode">
-                                <span className="mp-partner-torneo-regs-mode-label">
-                                  {paymentModeLabel}
-                                </span>
-                              </div>
-                            )}
-                            <div className="mp-partner-torneo-regs-pay">
-                              {r.payStatus === "onsite_pending" && !isCancelled ? (
-                                <MarkPaidInline registrationId={r.id} />
-                              ) : (
-                                <PayStatus value={r.payStatus} />
-                              )}
-                            </div>
-                          </div>
-                          <time className="mp-partner-torneo-regs-date" dateTime={r.createdAt}>
-                            {dt.toLocaleDateString("es-EC", { day: "2-digit", month: "short" })}
-                          </time>
-                        </div>
-                      );
-                    })}
-                    {regs.length > 20 && (
-                      <div
-                        style={{
-                          textAlign: "center",
-                          padding: "10px 0 4px",
-                          fontSize: 11,
-                          color: "var(--muted-fg)",
-                        }}
-                      >
-                        Mostrando 20 de {regs.length} ·{" "}
-                        <Link
-                          href="/dashboard/partner/p-inscritos"
-                          style={{ color: "#0a0a0a", fontWeight: 800 }}
-                        >
-                          ver todos
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+                  <TorneoInscritosInteractivo
+                    regs={regs}
+                    tournamentId={t.id as string}
+                    playerOpsEnabled={playerOpsEnabled}
+                    isClosed={isClosed}
+                  />
                 )}
               </div>
             }

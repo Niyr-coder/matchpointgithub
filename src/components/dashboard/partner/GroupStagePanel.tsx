@@ -20,6 +20,7 @@ import {
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
 import { GroupStageScheduleView } from "./GroupStageScheduleView";
+import { DeclareWalkoverModal } from "./DeclareWalkoverModal";
 
 export type GroupStageCategory = {
   id: string;
@@ -35,6 +36,7 @@ type Props = {
   registrationLabels: Record<string, string>;
   initialCategoryId: string | null;
   initial: GroupStageSummary | null;
+  playerOpsEnabled?: boolean;
 };
 
 type GroupRow = GroupStageSummary["groups"][number];
@@ -102,6 +104,7 @@ export function GroupStagePanel({
   registrationLabels,
   initialCategoryId,
   initial,
+  playerOpsEnabled = false,
 }: Props) {
   const router = useRouter();
   const toast = useToast();
@@ -110,6 +113,11 @@ export function GroupStagePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [reportingMatchId, setReportingMatchId] = useState<string | null>(null);
   const [confirmingMatchId, setConfirmingMatchId] = useState<string | null>(null);
+  const [walkoverTarget, setWalkoverTarget] = useState<{
+    matchId: string;
+    teamA: string;
+    teamB: string;
+  } | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("groups");
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
@@ -461,6 +469,7 @@ export function GroupStagePanel({
   const showScheduling = stage === "pending_groups" || stage === "group_stage";
 
   return (
+    <>
     <div className="card mp-grp-panel">
       <div className="mp-grp-panel-head">
         <div>
@@ -786,6 +795,10 @@ export function GroupStagePanel({
                             confirmingBusy={busy === "confirm"}
                             onScoreSubmit={onScoreSubmit}
                             onConfirmMatch={onConfirmMatch}
+                            playerOpsEnabled={playerOpsEnabled}
+                            onDeclareWalkover={(matchId, teamA, teamB) =>
+                              setWalkoverTarget({ matchId, teamA, teamB })
+                            }
                           />
                         </div>
                       </div>
@@ -798,6 +811,20 @@ export function GroupStagePanel({
         </>
       )}
     </div>
+
+    {walkoverTarget && (
+      <DeclareWalkoverModal
+        open
+        onClose={() => setWalkoverTarget(null)}
+        matchId={walkoverTarget.matchId}
+        matchType="group"
+        teamA={walkoverTarget.teamA}
+        teamB={walkoverTarget.teamB}
+        tournamentId={tournamentId}
+        onSuccess={() => { setWalkoverTarget(null); if (activeCategoryId) reloadSummary(activeCategoryId); }}
+      />
+    )}
+    </>
   );
 }
 
@@ -971,6 +998,8 @@ function GroupMatchesPane({
   confirmingBusy,
   onScoreSubmit,
   onConfirmMatch,
+  playerOpsEnabled = false,
+  onDeclareWalkover,
 }: {
   matches: GroupRow["matches"];
   totalCount: number;
@@ -982,6 +1011,8 @@ function GroupMatchesPane({
   confirmingBusy: boolean;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
   onConfirmMatch: (matchId: string) => void;
+  playerOpsEnabled?: boolean;
+  onDeclareWalkover?: (matchId: string, teamA: string, teamB: string) => void;
 }) {
   const rounds = useMemo(() => {
     const map = new Map<number, typeof matches>();
@@ -1007,29 +1038,53 @@ function GroupMatchesPane({
               const pending = isMatchPendingPlay(m.status);
               const awaiting = isMatchAwaitingConfirm(m.status);
               const confirmed = isMatchConfirmed(m.status);
+              const isWalkover = m.status === "walkover";
               const labelA = registrationLabels[m.sideARegistrationId] ?? "Equipo A";
               const labelB = registrationLabels[m.sideBRegistrationId] ?? "Equipo B";
               return (
-                <ScoreMatchCard
-                  key={m.id}
-                  matchId={m.id}
-                  labelA={labelA}
-                  labelB={labelB}
-                  scoreA={parseSetsWon(m.score, "a")}
-                  scoreB={parseSetsWon(m.score, "b")}
-                  winnerSide={m.winnerSide === "a" || m.winnerSide === "b" ? m.winnerSide : null}
-                  editable={canEditScores && pending}
-                  correctable={canEditScores && (awaiting || confirmed)}
-                  confirmable={canEditScores && awaiting}
-                  onConfirm={() => onConfirmMatch(m.id)}
-                  busy={
-                    (reportingMatchId === m.id && reportingBusy) ||
-                    (confirmingMatchId === m.id && confirmingBusy)
-                  }
-                  dimmed={confirmed}
-                  meta={`Partido ${m.matchNo}`}
-                  onScoreSubmit={onScoreSubmit}
-                />
+                <div key={m.id} style={{ position: "relative" }}>
+                  <ScoreMatchCard
+                    matchId={m.id}
+                    labelA={labelA}
+                    labelB={labelB}
+                    scoreA={parseSetsWon(m.score, "a")}
+                    scoreB={parseSetsWon(m.score, "b")}
+                    winnerSide={m.winnerSide === "a" || m.winnerSide === "b" ? m.winnerSide : null}
+                    editable={canEditScores && pending}
+                    correctable={canEditScores && (awaiting || confirmed)}
+                    confirmable={canEditScores && awaiting}
+                    onConfirm={() => onConfirmMatch(m.id)}
+                    busy={
+                      (reportingMatchId === m.id && reportingBusy) ||
+                      (confirmingMatchId === m.id && confirmingBusy)
+                    }
+                    dimmed={confirmed || isWalkover}
+                    meta={isWalkover ? `W/O · Partido ${m.matchNo}` : `Partido ${m.matchNo}`}
+                    onScoreSubmit={onScoreSubmit}
+                  />
+                  {playerOpsEnabled && pending && onDeclareWalkover && (
+                    <button
+                      type="button"
+                      onClick={() => onDeclareWalkover(m.id, labelA, labelB)}
+                      style={{
+                        position: "absolute",
+                        bottom: 6,
+                        right: 8,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        border: "1px solid #ef4444",
+                        background: "#fff",
+                        color: "#ef4444",
+                        cursor: "pointer",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      W/O
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>

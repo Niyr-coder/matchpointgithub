@@ -15,6 +15,7 @@ import { TournamentRegistrationsTable } from "./tournament-detail/TournamentRegi
 import { TournamentTransactionsTable } from "./tournament-detail/TournamentTransactionsTable";
 import { TournamentAuditLog } from "./tournament-detail/TournamentAuditLog";
 import { TournamentBracketsPanel } from "./tournament-detail/TournamentBracketsPanel";
+import { TournamentSubstitutionsTable } from "./tournament-detail/TournamentSubstitutionsTable";
 import { AdminOverridesPanel } from "../partner/AdminOverridesPanel";
 
 export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetail }) {
@@ -134,6 +135,12 @@ export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetai
       <TournamentRegistrationsTable regs={data.registrations} />
       <TournamentBracketsPanel data={data} />
       <TournamentTransactionsTable transactions={data.transactions} />
+
+      <div className="card" style={{ marginTop: 16, padding: 18 }}>
+        <div className="label-mp" style={{ marginBottom: 12 }}>Sustituciones de jugadores</div>
+        <TournamentSubstitutionsTable tournamentId={data.tournament.id} />
+      </div>
+
       <TournamentAuditLog tournamentId={data.tournament.id} />
     </>
   );
