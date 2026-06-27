@@ -812,7 +812,7 @@ export function MonitorAppClient({
   const finalWinner = getWinner(live.setsA, live.setsB);
   const winnerName = finalWinner === "a" ? teamA : finalWinner === "b" ? teamB : "—";
   const duration = live.startedAt > 0 ? formatDuration(Date.now() - live.startedAt) : "—";
-  const monitorInitials = initials(context.positionLabel ?? "Monitor");
+  const monitorInitials = initials(context.monitorDisplayName);
 
   return (
     <div

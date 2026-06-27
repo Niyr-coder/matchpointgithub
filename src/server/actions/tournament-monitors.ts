@@ -45,6 +45,7 @@ export type MonitorContext = {
   courtCode: string | null;
   courtName: string | null;
   positionLabel: string | null;
+  monitorDisplayName: string;
   currentMatch: MonitorCurrentMatch | null;
 };
 
@@ -244,6 +245,12 @@ export async function getMonitorContext(
     const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
     const assignment = assignments[0];
 
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("display_name")
+      .eq("id", userId)
+      .maybeSingle();
+
     const { data: court } = await admin
       .from("courts")
       .select("id, code, name")
@@ -325,6 +332,7 @@ export async function getMonitorContext(
       courtCode: (court?.code as string | null) ?? null,
       courtName: (court?.name as string | null) ?? null,
       positionLabel: assignment.position_label,
+      monitorDisplayName: (profile?.display_name as string | null) ?? "Monitor",
       currentMatch,
     };
   });
