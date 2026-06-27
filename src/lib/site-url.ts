@@ -1,6 +1,6 @@
 /** URL pública del sitio (metadata, sitemap, emails). Acepta host sin protocolo. */
 
-const DEFAULT_SITE_URL = "https://matchpointgithub.vercel.app";
+const DEFAULT_SITE_URL = "https://matchpoint.top";
 
 export function resolveSiteUrl(
   raw?: string | null,

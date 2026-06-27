@@ -12,7 +12,7 @@ import {
 const SITE_URL =
   typeof window !== "undefined"
     ? window.location.origin
-    : process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpointgithub.vercel.app";
+    : process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top";
 
 export function TournamentVenueDisplayPanel({
   tournamentId,

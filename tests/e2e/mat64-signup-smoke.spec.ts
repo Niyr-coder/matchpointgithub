@@ -1,6 +1,6 @@
 // MAT-64 — acceptance #1 + #3 verification.
 //
-// Drives the real AuthModal flow against prod (matchpointgithub.vercel.app):
+// Drives the real AuthModal flow against prod (matchpoint.top):
 //   1) Open the landing, click "Crear cuenta", fill the signup form, submit.
 //   2) Confirm we navigate off the landing into an authenticated route (the
 //      brand-new user lands on /onboarding?next=/dashboard/user by design;
@@ -17,7 +17,7 @@
 // confirmation link.
 //
 // Run:
-//   MATCHPOINT_E2E_BASE_URL=https://matchpointgithub.vercel.app \
+//   MATCHPOINT_E2E_BASE_URL=https://matchpoint.top \
 //   MATCHPOINT_E2E_REUSE_SERVER=1 \
 //   npx playwright test tests/e2e/mat64-signup-smoke.spec.ts --project=chromium
 

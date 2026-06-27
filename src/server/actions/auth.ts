@@ -400,7 +400,7 @@ async function requestOrigin(): Promise<string> {
   const host = h.get("x-forwarded-host") || h.get("host");
   const proto = h.get("x-forwarded-proto") || (process.env.NODE_ENV === "production" ? "https" : "http");
   if (host) return `${proto}://${host}`;
-  return "https://matchpointgithub.vercel.app";
+  return "https://matchpoint.top";
 }
 
 // ── signOut ─────────────────────────────────────────────────────────────
