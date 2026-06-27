@@ -725,44 +725,34 @@ function TorneosPanel({ tournaments }: { tournaments: TournamentFeatured[] }) {
                 </span>
               </div>
               <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 900,
-                    letterSpacing: "0.15em",
-                    textTransform: "uppercase",
-                    color: isCancelled
-                      ? "#dc2626"
-                      : isFinished
-                        ? "var(--muted-fg)"
-                        : "var(--primary)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  {isCancelled ? (
-                    <>
-                      <span
-                        style={{
-                          padding: "2px 6px",
-                          background: "#dc2626",
-                          color: "#fff",
-                          borderRadius: 4,
-                          fontSize: 9,
-                          letterSpacing: "0.08em",
-                        }}
-                      >
-                        CANCELADO
-                      </span>
-                      {day} {mon}
-                    </>
-                  ) : isFinished ? (
-                    <>FINALIZADO · {day} {mon}</>
-                  ) : (
-                    <>{tagFromFormat(it.format)} · {day} {mon}</>
-                  )}
-                </div>
+                {isCancelled && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: "0.15em",
+                      textTransform: "uppercase",
+                      color: "#dc2626",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginBottom: 2,
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "2px 6px",
+                        background: "#dc2626",
+                        color: "#fff",
+                        borderRadius: 4,
+                        fontSize: 9,
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      CANCELADO
+                    </span>
+                  </div>
+                )}
                 <div
                   className="mp-tournament-name"
                   style={{
