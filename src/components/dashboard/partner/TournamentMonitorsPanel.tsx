@@ -19,12 +19,14 @@ export function TournamentMonitorsPanel({
   slug,
   courts,
   readOnly,
+  hasClub,
   className,
 }: {
   tournamentId: string;
   slug: string;
   courts: Array<{ id: string; label: string }>;
   readOnly?: boolean;
+  hasClub?: boolean;
   className?: string;
 }) {
   const toast = useToast();
@@ -130,6 +132,53 @@ export function TournamentMonitorsPanel({
           Asigna un monitor a cada cancha para llevar el marcador desde su teléfono.
         </div>
       </div>
+
+      {/* Empty state: sin canchas configuradas */}
+      {courts.length === 0 && (
+        <div
+          style={{
+            padding: "14px 16px",
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon name="square" size={14} color="var(--muted-fg)" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>
+              {hasClub ? "Sin canchas configuradas" : "Torneo sin club vinculado"}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted-fg)", lineHeight: 1.6 }}>
+            {hasClub
+              ? "Para asignar monitores necesitas configurar las canchas de tu club primero."
+              : "Este torneo no tiene un club vinculado. Edítalo y selecciona un club con canchas para activar los monitores."}
+          </div>
+          {hasClub && (
+            <a
+              href="/dashboard/owner/club-canchas"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--primary)",
+                textDecoration: "none",
+                marginTop: 2,
+              }}
+            >
+              <Icon name="external-link" size={11} color="var(--primary)" />
+              Ir a configuración de canchas
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Contenido activo: solo cuando hay canchas */}
+      {courts.length > 0 && <>
 
       {/* Caja del link compartible */}
       <div
@@ -465,6 +514,9 @@ export function TournamentMonitorsPanel({
           )}
         </>
       )}
+
+      {/* Fin del bloque condicional de canchas */}
+      </>}
     </div>
   );
 }

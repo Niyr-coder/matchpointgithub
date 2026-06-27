@@ -832,12 +832,13 @@ export default async function PartnerTorneoPage({
                   />
                 )}
 
-                {!isClosed && monitorsEnabled && clubCourts.length > 0 && (
+                {!isClosed && monitorsEnabled && (
                   <TournamentMonitorsPanel
                     tournamentId={t.id as string}
                     slug={tournamentSlug}
                     courts={clubCourts}
                     readOnly={configReadOnly}
+                    hasClub={!!tournamentClubId}
                   />
                 )}
               </>
