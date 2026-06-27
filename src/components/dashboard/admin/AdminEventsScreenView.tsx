@@ -1,12 +1,16 @@
 // Client view de AdminEventsScreen — layout 1:1 (RoleScreens2.jsx 6-31).
 "use client";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill, RSTable, type RSColumn } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
 import { setTournamentFeatured } from "@/server/actions/tournaments";
+import {
+  adminSeedTournaments,
+  adminClearSeedTournaments,
+} from "@/server/actions/admin/seed-tournaments";
 
 export type EvStatus = "EN VIVO" | "EN CURSO" | "ABIERTO" | "LLENO";
 export type EvKind = "event" | "tournament";
@@ -80,8 +84,10 @@ export function AdminEventsScreenView({ data }: { data: EventsData }) {
   const router = useRouter();
   const toast = useToast();
   const [, startTransition] = useTransition();
-  // Optimistic state local: si toggleamos, no esperamos al realtime para
-  // mostrar el cambio. El realtime después confirma o revierte.
+  const [seedPending, startSeed] = useTransition();
+  const [seedOpen, setSeedOpen] = useState(false);
+  const [seedCount, setSeedCount] = useState(12);
+  const seedRef = useRef<HTMLDivElement>(null);
   const [featuredOverride, setFeaturedOverride] = useState<Map<string, boolean>>(new Map());
   useRealtimeRefresh(
     [
@@ -111,6 +117,32 @@ export function AdminEventsScreenView({ data }: { data: EventsData }) {
           title: next ? "Marcado como estelar" : "Removido de estelares",
         });
       }
+    });
+  };
+
+  const handleSeed = () => {
+    startSeed(async () => {
+      const res = await adminSeedTournaments({ count: seedCount });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "Error al seedear", sub: res.error.message, tone: "error" });
+        return;
+      }
+      toast({ icon: "check", title: `${res.data.created} torneos seed creados` });
+      setSeedOpen(false);
+      router.refresh();
+    });
+  };
+
+  const handleClear = () => {
+    startSeed(async () => {
+      const res = await adminClearSeedTournaments();
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "Error al limpiar", sub: res.error.message, tone: "error" });
+        return;
+      }
+      toast({ icon: "trash-2", title: `${res.data.deleted} torneos seed eliminados` });
+      setSeedOpen(false);
+      router.refresh();
     });
   };
 
@@ -206,10 +238,104 @@ export function AdminEventsScreenView({ data }: { data: EventsData }) {
           </>
         }
         action={
-          <button className="btn btn-primary">
-            <Icon name="filter" size={13} />
-            Filtrar
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Seed de torneos para testing */}
+            <div ref={seedRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setSeedOpen((v) => !v)}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                title="Herramientas de testing"
+              >
+                <Icon name="flask-conical" size={13} />
+                Seed
+              </button>
+
+              {seedOpen && (
+                <>
+                  {/* overlay para cerrar al hacer click afuera */}
+                  <div
+                    style={{ position: "fixed", inset: 0, zIndex: 99 }}
+                    onClick={() => setSeedOpen(false)}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      zIndex: 100,
+                      background: "#fff",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 16,
+                      width: 220,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.10)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <div className="label-mp" style={{ fontSize: 9 }}>
+                      Herramientas de testing
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 10, color: "var(--muted-fg)", display: "block", marginBottom: 5 }}>
+                        Cantidad de torneos
+                      </label>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {[5, 10, 20, 30].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setSeedCount(n)}
+                            style={{
+                              flex: 1,
+                              padding: "5px 0",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              borderRadius: 6,
+                              border: "1px solid var(--border)",
+                              background: seedCount === n ? "var(--primary)" : "#fff",
+                              color: seedCount === n ? "#fff" : "var(--fg)",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={seedPending}
+                      onClick={handleSeed}
+                      style={{ fontSize: 12, justifyContent: "center" }}
+                    >
+                      <Icon name="plus" size={12} color="#fff" />
+                      {seedPending ? "Creando…" : `Crear ${seedCount} torneos`}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={seedPending}
+                      onClick={handleClear}
+                      style={{ fontSize: 12, justifyContent: "center", color: "#dc2626", borderColor: "#fca5a5" }}
+                    >
+                      <Icon name="trash-2" size={12} color="#dc2626" />
+                      {seedPending ? "Limpiando…" : "Limpiar seeds"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button className="btn btn-primary">
+              <Icon name="filter" size={13} />
+              Filtrar
+            </button>
+          </div>
         }
       />
       <div className="mp-partner-torneo-kpis">
