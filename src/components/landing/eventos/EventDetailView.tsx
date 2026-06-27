@@ -345,6 +345,7 @@ export function EventDetailView({
   const insc = registrationCount;
   const pct = slots > 0 ? Math.min(100, (insc / slots) * 100) : 0;
   const remaining = slots > 0 ? slots - insc : null;
+  const isFull = remaining !== null && remaining <= 0;
   const accent = (t.name.split(" ")[0] ?? "OPEN").toUpperCase().slice(0, 6);
   const club = [clubName, clubCity].filter(Boolean).join(" · ") || "Multi-club";
   const fee = Math.round(t.entryFeeCents / 100);
@@ -548,6 +549,22 @@ export function EventDetailView({
                 <Icon name={isCancelled ? "x" : "flag"} size={14} color="rgba(255,255,255,0.6)" />
                 {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
               </button>
+            ) : isFull && !registered ? (
+              <button
+                className="btn"
+                disabled
+                style={{
+                  padding: "15px 26px",
+                  fontSize: 13,
+                  background: "rgba(255,255,255,0.1)",
+                  color: "rgba(255,255,255,0.6)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  cursor: "not-allowed",
+                }}
+              >
+                <Icon name="users" size={14} color="rgba(255,255,255,0.6)" />
+                Cupo lleno
+              </button>
             ) : registered ? (
               <button
                 className="btn"
@@ -612,10 +629,12 @@ export function EventDetailView({
                   marginBottom: 6,
                 }}
               >
-                <span>Cupos restantes</span>
-                {remaining != null && remaining > 0 && remaining <= 6 && (
+                <span>{isFull ? "Cupo lleno" : "Cupos restantes"}</span>
+                {isFull ? (
+                  <span style={{ color: "#f87171", fontWeight: 800 }}>0 disponibles</span>
+                ) : (remaining != null && remaining > 0 && remaining <= 6) ? (
                   <span style={{ color: "#fbbf24", fontWeight: 800 }}>¡Solo {remaining}!</span>
-                )}
+                ) : null}
               </div>
               <div
                 style={{
@@ -762,6 +781,23 @@ export function EventDetailView({
               >
                 <Icon name={isCancelled ? "x" : "flag"} size={13} />
                 {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
+              </button>
+            ) : isFull && !registered ? (
+              <button
+                className="btn"
+                disabled
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  justifyContent: "center",
+                  background: "var(--muted)",
+                  color: "var(--muted-fg)",
+                  border: "1px solid var(--border)",
+                  cursor: "not-allowed",
+                }}
+              >
+                <Icon name="users" size={13} />
+                Cupo lleno
               </button>
             ) : registered ? (
               <button
