@@ -729,7 +729,10 @@ export default async function PartnerTorneoPage({
               </span>
             </div>
             <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-              <TournamentSchedulePdfButton slug={tournamentSlug} />
+              <TournamentSchedulePdfButton
+                slug={tournamentSlug}
+                disabled={!hasBracket && (groupMatchStats?.total ?? 0) === 0 && blocks.length === 0}
+              />
             </div>
           </div>
 

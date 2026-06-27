@@ -2,10 +2,17 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 
-export function TournamentSchedulePdfButton({ slug }: { slug: string }) {
+export function TournamentSchedulePdfButton({
+  slug,
+  disabled,
+}: {
+  slug: string;
+  disabled?: boolean;
+}) {
   const [loading, setLoading] = useState(false);
 
   const handleClick = async () => {
+    if (disabled || loading) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/v1/tournaments/${slug}/schedule.pdf`);
@@ -31,16 +38,23 @@ export function TournamentSchedulePdfButton({ slug }: { slug: string }) {
       type="button"
       className="btn"
       onClick={handleClick}
-      disabled={loading}
+      disabled={disabled || loading}
+      title={
+        disabled
+          ? "Genera el cronograma o el bracket primero para exportar el PDF"
+          : "Descargar el calendario de partidos en PDF"
+      }
       style={{
-        background: "#fff",
-        border: "1px solid var(--border)",
+        background: disabled ? "var(--muted)" : "#fff",
+        border: `1px solid ${disabled ? "var(--border)" : "var(--border)"}`,
+        color: disabled ? "var(--muted-fg)" : "inherit",
         fontSize: 11,
         fontWeight: 700,
         letterSpacing: "0.04em",
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
-      <Icon name={loading ? "loader" : "file-text"} size={12} />
+      <Icon name={loading ? "loader" : "file-text"} size={12} color={disabled ? "var(--muted-fg)" : "currentColor"} />
       {loading ? "Generando…" : "GENERAR PDF"}
     </button>
   );
