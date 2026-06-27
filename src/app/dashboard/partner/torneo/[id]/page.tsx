@@ -25,6 +25,7 @@ import { PartnerTorneoPlaybook } from "@/components/dashboard/partner/PartnerTor
 import { AdminOverridesPanel } from "@/components/dashboard/partner/AdminOverridesPanel";
 import { PrizesPanel, type PrizeRow } from "@/components/dashboard/partner/PrizesPanel";
 import { TournamentGestionRealtime } from "@/components/dashboard/partner/TournamentGestionRealtime";
+import { TournamentSchedulePdfButton } from "@/components/dashboard/partner/TournamentSchedulePdfButton";
 import { formatPaymentPolicy, formatTournamentFormat } from "@/lib/events/player-event-config";
 import {
   isTournamentSetupLocked,
@@ -726,6 +727,9 @@ export default async function PartnerTorneoPage({
                 <Icon name="dollar-sign" size={11} color="currentColor" />
                 <span className="mp-partner-torneo-meta-tag">{paymentLabel}</span>
               </span>
+            </div>
+            <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+              <TournamentSchedulePdfButton slug={tournamentSlug} />
             </div>
           </div>
 
