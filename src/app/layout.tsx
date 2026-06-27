@@ -1,5 +1,34 @@
 import type { Metadata, Viewport } from "next";
+import { Plus_Jakarta_Sans, Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-plus-jakarta",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 import { SportsProvider } from "@/components/SportsProvider";
 import { LegalComplianceShell } from "@/components/legal/LegalComplianceShell";
 import { getMultisportEnabled } from "@/lib/sports.server";
@@ -70,8 +99,15 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const multisport = await getMultisportEnabled();
+  const fontVars = [
+    plusJakarta.variable,
+    inter.variable,
+    spaceGrotesk.variable,
+    jetbrainsMono.variable,
+  ].join(" ");
+
   return (
-    <html lang="es" className="h-full antialiased">
+    <html lang="es" className={`${fontVars} h-full antialiased`}>
       <body className="min-h-full">
         <SportsProvider multisport={multisport}>
           {children}
