@@ -16,6 +16,7 @@ import {
   type GroupConfigCategoryRow,
 } from "@/components/dashboard/partner/CategoryGroupConfigPanel";
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
+import { TournamentMonitorsPanel } from "@/components/dashboard/partner/TournamentMonitorsPanel";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
 import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
@@ -533,6 +534,11 @@ export default async function PartnerTorneoPage({
       : null,
   }));
 
+  const { data: flagsData } = await supabase.rpc("fn_my_effective_flags");
+  const monitorsEnabled = (flagsData ?? []).some(
+    (f: { key: string; enabled: boolean }) => f.key === "tournament_monitors_enabled" && f.enabled,
+  );
+
   return (
     <main className="mp-partner-torneo-page-main">
       <TournamentGestionRealtime tournamentId={t.id as string} />
@@ -805,6 +811,15 @@ export default async function PartnerTorneoPage({
                     tournamentId={t.id as string}
                     slug={tournamentSlug}
                     initialToken={displayToken}
+                    readOnly={configReadOnly}
+                  />
+                )}
+
+                {!isClosed && monitorsEnabled && clubCourts.length > 0 && (
+                  <TournamentMonitorsPanel
+                    tournamentId={t.id as string}
+                    slug={tournamentSlug}
+                    courts={clubCourts}
                     readOnly={configReadOnly}
                   />
                 )}

@@ -457,6 +457,30 @@ export async function listCourtMonitors(
   });
 }
 
+// ── 8. Resolver usuario por username (panel de asignación) ───────────────────
+
+const ResolveUserSchema = z.object({ username: z.string().min(3).max(24) });
+
+export async function resolveUserByUsername(
+  input: unknown,
+): Promise<ActionResult<{ id: string; displayName: string; username: string } | null>> {
+  return runAction(ResolveUserSchema, input, async ({ username }) => {
+    const admin: AnyClient = getAdminClient();
+    const { data } = await admin
+      .from("profiles")
+      .select("id, display_name, username")
+      .ilike("username", username)
+      .limit(1)
+      .maybeSingle();
+    if (!data) return null;
+    return {
+      id: data.id as string,
+      displayName: (data.display_name as string) ?? (data.username as string),
+      username: data.username as string,
+    };
+  });
+}
+
 // ── Helper: labels de inscripciones ──────────────────────────────────────────
 
 async function buildRegLabels(

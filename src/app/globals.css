@@ -9370,3 +9370,60 @@ input[type="range"].mp-mpr,
     animation: none;
   }
 }
+
+/* ── Monitor app ──────────────────────────────────────────────────────────── */
+.mp-monitor-root { min-height: 100dvh; background: #000; }
+
+.mp-monitor-btn-tap {
+  transition: transform 160ms var(--ease-out, cubic-bezier(0.23,1,0.32,1));
+}
+@media (hover: hover) and (pointer: fine) {
+  .mp-monitor-btn-tap:hover { filter: brightness(1.1); }
+}
+.mp-monitor-btn-tap:active { transform: scale(0.97); }
+
+.mp-monitor-score-panel {
+  transition: background 150ms var(--ease-out, cubic-bezier(0.23,1,0.32,1));
+}
+.mp-monitor-score-panel:active { background: rgba(16,185,129,0.08) !important; }
+
+.mp-monitor-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: #18181b;
+  border-radius: 24px 24px 0 0;
+  padding: 14px 14px 22px;
+  z-index: 91;
+  box-shadow: 0 -10px 30px rgba(0,0,0,0.4);
+  transform: translateY(0);
+  transition: transform 280ms var(--ease-drawer, cubic-bezier(0.32,0.72,0,1));
+}
+.mp-monitor-sheet-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 90;
+  animation: mpMonitorOverlayIn 200ms ease-out both;
+}
+@keyframes mpMonitorOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.mp-monitor-banner {
+  animation: mpMonitorBannerIn 200ms var(--ease-out, cubic-bezier(0.23,1,0.32,1)) both;
+}
+@keyframes mpMonitorBannerIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mp-monitor-phase {
+  animation: mpMonitorPhaseIn 220ms var(--ease-out, cubic-bezier(0.23,1,0.32,1)) both;
+}
+@keyframes mpMonitorPhaseIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mp-monitor-btn-tap, .mp-monitor-score-panel { transition: none; }
+  .mp-monitor-sheet { transition: none; }
+  .mp-monitor-banner, .mp-monitor-phase, .mp-monitor-sheet-overlay { animation: none; }
+}
