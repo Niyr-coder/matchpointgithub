@@ -12,6 +12,8 @@ import {
   setTournamentFeatured,
   generateBracket,
 } from "@/server/actions/tournaments";
+import { closeTournament } from "@/server/actions/tournament-close";
+import type { CategoryWinner } from "@/server/actions/tournament-close";
 import {
   EditTournamentModal,
   type EditableTournament,
@@ -28,6 +30,7 @@ type Props = {
   setupLocked: boolean;
   setupLockMessage?: string | null;
   editable: EditableTournament;
+  categoryWinners?: CategoryWinner[];
 };
 
 export function PartnerTorneoActions({
@@ -41,6 +44,7 @@ export function PartnerTorneoActions({
   setupLocked,
   setupLockMessage,
   editable,
+  categoryWinners = [],
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const router = useRouter();
@@ -124,6 +128,25 @@ export function PartnerTorneoActions({
     );
   };
 
+  const onFinalizar = async () => {
+    const winnerLines =
+      categoryWinners.length > 0
+        ? "\n\nCampeones detectados:\n" +
+          categoryWinners
+            .map((c) => `• ${c.categoryName}: ${c.winnerLabel ?? "Sin ganador definido"}`)
+            .join("\n")
+        : "";
+    const ok = await confirm({
+      title: "Finalizar torneo",
+      body:
+        `El torneo se marcará como finalizado y se notificará a todos los inscritos.${winnerLines}\n\n¿Deseas continuar?`,
+      confirmLabel: "Finalizar torneo",
+      destructive: true,
+    });
+    if (!ok) return;
+    wrap("finalizar", () => closeTournament({ tournamentId }), "Torneo finalizado", "flag");
+  };
+
   const isGroupsFormat = format === "groups_to_knockout";
 
   const onGenerar = () => {
@@ -202,6 +225,15 @@ export function PartnerTorneoActions({
             label="Generar bracket"
             onClick={onGenerar}
             loading={busy === "bracket"}
+            primary
+          />
+        )}
+        {status === "live" && (
+          <ActionBtn
+            icon="flag"
+            label="Finalizar torneo"
+            onClick={onFinalizar}
+            loading={busy === "finalizar"}
             primary
           />
         )}

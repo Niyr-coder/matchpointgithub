@@ -9,6 +9,8 @@ import { Icon } from "@/components/Icon";
 import { PartnerTorneoActions } from "@/components/dashboard/partner/PartnerTorneoActions";
 import { GroupStagePanel } from "@/components/dashboard/partner/GroupStagePanel";
 import { getGroupStageSummary } from "@/server/actions/tournament-group-stage";
+import { getDerivedCategoryWinners } from "@/server/actions/tournament-close";
+import type { CategoryWinner } from "@/server/actions/tournament-close";
 import { CategoriesPanel, type CategoryRow } from "@/components/dashboard/partner/CategoriesPanel";
 import {
   CategoryGroupConfigPanel,
@@ -548,6 +550,9 @@ export default async function PartnerTorneoPage({
       : null,
   }));
 
+  const categoryWinners: CategoryWinner[] =
+    dbStatus === "live" ? await getDerivedCategoryWinners(id) : [];
+
   const { data: flagsData } = await supabase.rpc("fn_my_effective_flags");
   const monitorsEnabled = (flagsData ?? []).some(
     (f: { key: string; enabled: boolean }) => f.key === "tournament_monitors_enabled" && f.enabled,
@@ -792,6 +797,7 @@ export default async function PartnerTorneoPage({
                     hasBracket={hasBracket}
                     setupLocked={setupLocked}
                     setupLockMessage={setupLockMessage}
+                    categoryWinners={categoryWinners}
                     editable={{
                       id: t.id as string,
                       name: t.name as string,
