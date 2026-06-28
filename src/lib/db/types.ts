@@ -246,6 +246,7 @@ export type Database = {
           is_bronze: boolean
           match_result_id: string | null
           position: number
+          rating_applied_at: string | null
           round: number
           scheduled_at: string | null
           score: Json | null
@@ -262,6 +263,7 @@ export type Database = {
           is_bronze?: boolean
           match_result_id?: string | null
           position: number
+          rating_applied_at?: string | null
           round: number
           scheduled_at?: string | null
           score?: Json | null
@@ -278,6 +280,7 @@ export type Database = {
           is_bronze?: boolean
           match_result_id?: string | null
           position?: number
+          rating_applied_at?: string | null
           round?: number
           scheduled_at?: string | null
           score?: Json | null
@@ -9733,6 +9736,7 @@ export type Database = {
           group_id: string
           id: string
           match_no: number
+          rating_applied_at: string | null
           round_no: number
           scheduled_at: string | null
           score: Json | null
@@ -9747,6 +9751,7 @@ export type Database = {
           group_id: string
           id?: string
           match_no: number
+          rating_applied_at?: string | null
           round_no: number
           scheduled_at?: string | null
           score?: Json | null
@@ -9761,6 +9766,7 @@ export type Database = {
           group_id?: string
           id?: string
           match_no?: number
+          rating_applied_at?: string | null
           round_no?: number
           scheduled_at?: string | null
           score?: Json | null

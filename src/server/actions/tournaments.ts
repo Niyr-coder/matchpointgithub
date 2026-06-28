@@ -14,6 +14,7 @@ import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
+import { requirePlanWithFlag } from "@/lib/auth/plan";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
@@ -374,11 +375,24 @@ export async function getTournament(input: unknown): Promise<ActionResult<Tourna
   );
 }
 
+const PARTNER_TOURNAMENT_CAP = 3;
+const DONE_STATUSES = ["cancelled", "finished", "completed"] as const;
+
 export async function createTournament(input: unknown): Promise<ActionResult<Tournament>> {
   return runAction(TournamentCreateSchema, input, async (data) => {
     const userId = await requirePartnerAdmin(data.partnerId);
     await assertRateLimit({ key: `tournament:create:${userId}`, ...RATE_LIMITS.tournamentCreate });
     const supabase = await getServerClient();
+
+    // Cap de torneos activos para partners sin premium.
+    const { count: activeCount } = await supabase
+      .from("tournaments")
+      .select("id", { count: "exact", head: true })
+      .eq("partner_id", data.partnerId)
+      .not("status", "in", `(${DONE_STATUSES.map((s) => `"${s}"`).join(",")})`);
+    if ((activeCount ?? 0) >= PARTNER_TOURNAMENT_CAP) {
+      await requirePlanWithFlag(supabase, userId, "paywall_enforce_partner_tournaments_cap", "premium");
+    }
     const resolvedPolicy =
       data.entryFeeCents === 0
         ? "free"

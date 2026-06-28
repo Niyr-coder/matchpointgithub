@@ -18,6 +18,7 @@ import Link from "next/link";
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
 import { getProfileSummary, isPlanActive } from "@/lib/auth/profile";
+import { isPaywallFlagEnabled } from "@/lib/auth/plan";
 import { Icon } from "@/components/Icon";
 import { MpBadge } from "@/components/dashboard/widgets/MpBadge";
 import { ProfileV3ScreenView } from "@/components/dashboard/user/profile-v3/ProfileV3ScreenView";
@@ -62,13 +63,16 @@ export default async function PublicPlayerProfilePage({
 
   // Cap del match history según plan del viewer. Free: últimos 10.
   // Premium: ilimitado. Guest sin sesión: cap conservador de 10.
-  let viewerIsPremium = false;
+  // Si paywall_enforce_player_history está OFF, todos ven ilimitado.
+  const historyPaywallOn = await isPaywallFlagEnabled(supabase, "paywall_enforce_player_history");
+  let viewerIsPremium = !historyPaywallOn;
   let initialFriendship: "none" | "pending" | "friends" = "none";
   let visitorRetarContext = null;
   if (session.authenticated) {
-    const viewerSummary = await getProfileSummary(session.session.userId);
-    viewerIsPremium = isPlanActive(viewerSummary).tier === "premium";
-
+    if (historyPaywallOn) {
+      const viewerSummary = await getProfileSummary(session.session.userId);
+      viewerIsPremium = isPlanActive(viewerSummary).tier === "premium";
+    }
     // Estado inicial de amistad viewer ↔ target, leído del server para
     // que la UI arranque con el CTA correcto (no flash optimista).
     const viewerId = session.session.userId;
