@@ -208,6 +208,13 @@ export async function deleteUserAccount(
       );
     }
 
+    // Anonimizar referencias financieras antes de borrar el perfil
+    // (transactions.customer_user_id → profiles(id) sin ON DELETE SET NULL).
+    await admin
+      .from("transactions")
+      .update({ customer_user_id: null } as never)
+      .eq("customer_user_id", userId);
+
     const { error } = await admin.auth.admin.deleteUser(userId);
     if (error) {
       throw new MpError("ACCOUNT.DELETE_FAILED", error.message, 500);
