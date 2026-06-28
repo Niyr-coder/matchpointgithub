@@ -21,6 +21,7 @@ import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partne
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
 import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
 import { PartnerTorneoOperacionPanel } from "@/components/dashboard/partner/PartnerTorneoOperacionPanel";
+import { LigaOperacionPanel } from "@/components/dashboard/partner/LigaOperacionPanel";
 import { PartnerTorneoPlaybook } from "@/components/dashboard/partner/PartnerTorneoPlaybook";
 import { AdminOverridesPanel } from "@/components/dashboard/partner/AdminOverridesPanel";
 import { PrizesPanel, type PrizeRow } from "@/components/dashboard/partner/PrizesPanel";
@@ -497,6 +498,11 @@ export default async function PartnerTorneoPage({
     tournamentFormat === "groups_to_knockout" &&
     !isClosed &&
     groupStageCategories.length > 0;
+
+  const LIGA_FORMATS = new Set(["round_robin", "swiss"]);
+  const hasLigaOperacion = LIGA_FORMATS.has(tournamentFormat) && !isClosed && categories.length > 0;
+  const ligaCategoryId = categories[0]?.id ?? null;
+  const ligaCategoryName = categories[0]?.name ?? "Categoría";
   const defaultGestionTab =
     hasGroupOperacion || hasBracket || dbStatus === "in_progress" || dbStatus === "active"
       ? ("operacion" as const)
@@ -845,7 +851,7 @@ export default async function PartnerTorneoPage({
             }
             operacion={
               <PartnerTorneoOperacionPanel
-                showBracketsFallback={!hasGroupOperacion}
+                showBracketsFallback={!hasGroupOperacion && !hasLigaOperacion}
                 hasBracket={hasBracket}
                 tournamentFormat={tournamentFormat}
               >
@@ -858,6 +864,15 @@ export default async function PartnerTorneoPage({
                     initialCategoryId={initialGroupCategoryId}
                     initial={groupStageInitial}
                     playerOpsEnabled={playerOpsEnabled}
+                  />
+                )}
+                {hasLigaOperacion && ligaCategoryId && (
+                  <LigaOperacionPanel
+                    tournamentId={t.id as string}
+                    categoryId={ligaCategoryId}
+                    categoryName={ligaCategoryName}
+                    tournamentFormat={tournamentFormat}
+                    registrationLabels={registrationLabels}
                   />
                 )}
               </PartnerTorneoOperacionPanel>
