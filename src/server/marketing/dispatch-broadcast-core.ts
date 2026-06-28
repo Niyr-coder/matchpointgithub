@@ -177,16 +177,26 @@ export async function executeBroadcastDispatch(
     user_id: string;
     notification_id: string | null;
   }> = [];
-  for (const userId of targets) {
-    const notifId = await notify({
-      userId,
-      role,
-      kind: "broadcast",
-      title: row.title,
-      body: row.body,
-      payload: { broadcastId },
-    });
-    recipientRows.push({ broadcast_id: broadcastId, user_id: userId, notification_id: notifId });
+
+  // Fan-out en paralelo con ventana de 50 concurrent para no saturar el pool
+  // de conexiones. Secuencial = 1000 usuarios × 50 ms ≈ 50 s → timeout en Vercel.
+  const FAN_CHUNK = 50;
+  for (let i = 0; i < targets.length; i += FAN_CHUNK) {
+    const chunk = targets.slice(i, i + FAN_CHUNK);
+    const results = await Promise.all(
+      chunk.map(async (userId) => {
+        const notifId = await notify({
+          userId,
+          role,
+          kind: "broadcast",
+          title: row.title,
+          body: row.body,
+          payload: { broadcastId },
+        });
+        return { broadcast_id: broadcastId, user_id: userId, notification_id: notifId };
+      }),
+    );
+    recipientRows.push(...results);
   }
 
   if (recipientRows.length > 0) {

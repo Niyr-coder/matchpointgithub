@@ -1,13 +1,13 @@
 // Server: finanzas del partner — revenue mensual, breakdown, payouts, top torneos.
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
+import { getTakeRatePct } from "@/server/queries/platform-config";
 import {
   PartnerFinanzasScreenView,
   type FinanzasData,
   type RevenueRow,
 } from "./PartnerFinanzasScreenView";
 
-const MP_FEE_PCT = 10; // comisión MATCHPOINT fija
 
 const COLORS = ["#0a0a0a", "var(--primary)", "#0c4a6e", "#7c3aed", "#db2777", "#0ea5e9"];
 
@@ -126,7 +126,8 @@ async function loadData(): Promise<FinanzasData> {
     inscritosPrev = (regsPrev ?? []).length;
   }
 
-  const mpFeeCents = Math.round((monthRevenueCents * MP_FEE_PCT) / 100);
+  const mpFeePct = await getTakeRatePct();
+  const mpFeeCents = Math.round((monthRevenueCents * mpFeePct) / 100);
   const clubsShareCents = Array.from(clubsShareByTour.values()).reduce((s, v) => s + v, 0);
   const netCents = monthRevenueCents - mpFeeCents - clubsShareCents;
   const deltaPct =

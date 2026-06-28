@@ -6,10 +6,14 @@
 
 ## 1. Helpers Postgres (re-usables en todas las policies)
 
+Todos los helpers están en el schema `public` con prefijo `mp_` y son `SECURITY DEFINER`
+(evitan recursión infinita cuando las policies de `role_assignments` los invocan).
+Ver mig 030 para la implementación exacta.
+
 ```sql
 -- ¿La sesión tiene acceso al club con cierto rol?
-create or replace function auth.has_club_access(p_club_id uuid, p_role mp_role default null)
-returns boolean language sql stable as $$
+create or replace function mp_has_club_access(p_club_id uuid, p_role mp_role default null)
+returns boolean language sql stable security definer set search_path = public as $$
   select exists(
     select 1 from role_assignments ra
     where ra.user_id = auth.uid()
@@ -20,46 +24,53 @@ returns boolean language sql stable as $$
 $$;
 
 -- Atajos por rol específico
-create or replace function auth.is_admin() returns boolean
-language sql stable as $$
+create or replace function mp_is_admin() returns boolean
+language sql stable security definer set search_path = public as $$
   select exists(select 1 from role_assignments where user_id=auth.uid() and role='admin' and revoked_at is null);
 $$;
 
-create or replace function auth.is_owner_of(p_club_id uuid) returns boolean
-language sql stable as $$ select auth.has_club_access(p_club_id, 'owner'); $$;
-
-create or replace function auth.is_manager_of(p_club_id uuid) returns boolean
-language sql stable as $$ select auth.has_club_access(p_club_id, 'manager'); $$;
-
-create or replace function auth.is_employee_of(p_club_id uuid) returns boolean
-language sql stable as $$ select auth.has_club_access(p_club_id, 'employee'); $$;
-
-create or replace function auth.is_coach_in(p_club_id uuid) returns boolean
-language sql stable as $$ select auth.has_club_access(p_club_id, 'coach'); $$;
-
-create or replace function auth.club_staff(p_club_id uuid) returns boolean
-language sql stable as $$
-  select auth.is_admin()
-      or auth.is_owner_of(p_club_id)
-      or auth.is_manager_of(p_club_id);
+create or replace function mp_is_owner_of(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mp_has_club_access(p_club_id, 'owner'::mp_role);
 $$;
 
--- Rol activo. Nota app: hoy Supabase JS/PostgREST no setea este GUC de forma
--- global por request; usarlo solo en tests/RPCs que hagan SET LOCAL dentro de
--- la misma transacción.
-create or replace function auth.active_role() returns mp_role
-language sql stable as $$
-  select nullif(current_setting('app.active_role', true), '')::mp_role
+create or replace function mp_is_manager_of(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mp_has_club_access(p_club_id, 'manager'::mp_role);
 $$;
 
-create or replace function auth.active_club_id() returns uuid
-language sql stable as $$
+create or replace function mp_is_employee_of(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mp_has_club_access(p_club_id, 'employee'::mp_role);
+$$;
+
+create or replace function mp_is_coach_in(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mp_has_club_access(p_club_id, 'coach'::mp_role);
+$$;
+
+create or replace function mp_club_staff(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mp_is_admin()
+      or mp_is_owner_of(p_club_id)
+      or mp_is_manager_of(p_club_id);
+$$;
+
+-- Rol activo (GUC). Nota app: PostgREST no setea este GUC globalmente por request;
+-- usarlo solo en tests/RPCs que hagan SET LOCAL dentro de la misma transacción.
+create or replace function mp_active_role() returns text
+language sql stable security definer set search_path = public as $$
+  select nullif(current_setting('app.active_role', true), '')
+$$;
+
+create or replace function mp_active_club_id() returns uuid
+language sql stable security definer set search_path = public as $$
   select nullif(current_setting('app.active_club_id', true), '')::uuid
 $$;
 
 -- ¿El user es partner cuyos clubes incluyen este club_id?
-create or replace function auth.partner_has_club(p_club_id uuid) returns boolean
-language sql stable as $$
+create or replace function mp_partner_has_club(p_club_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
   select exists(
     select 1 from partner_club_links pcl
     join partner_members pm on pm.partner_id = pcl.partner_id
@@ -67,6 +78,10 @@ language sql stable as $$
   );
 $$;
 ```
+
+> **⚠️ Error histórico**: Supabase no expone el claim `role='admin'` en el JWT — siempre
+> devuelve `'authenticated'`. Nunca usar `auth.jwt() ->> 'role' = 'admin'` en policies;
+> usar `mp_is_admin()` que lee `role_assignments` directamente.
 
 ---
 
@@ -175,7 +190,7 @@ create policy messages_owner_delete on messages for delete
   using ( sender_id = auth.uid() );
 
 create policy messages_admin_all on messages for all
-  using ( auth.is_admin() );
+  using ( mp_is_admin() );
 ```
 
 ---
@@ -194,7 +209,7 @@ create policy profiles_self on profiles for all
   using ( id = auth.uid() ) with check ( id = auth.uid() );
 
 create policy profiles_admin on profiles for all
-  using ( auth.is_admin() );
+  using ( mp_is_admin() );
 
 -- Vista pública (no RLS aquí, se sirve a anon)
 create view v_public_profiles as
@@ -210,7 +225,7 @@ create policy ra_self_select on role_assignments for select
   using ( user_id = auth.uid() );
 
 create policy ra_admin_all on role_assignments for all
-  using ( auth.is_admin() );
+  using ( mp_is_admin() );
 
 create policy ra_owner_select_club on role_assignments for select
   using ( club_id is not null and auth.is_owner_of(club_id) );
@@ -235,7 +250,7 @@ alter table clubs enable row level security;
 
 create policy clubs_public_select on clubs for select using ( status='active' );
 create policy clubs_staff_select on clubs for select using ( auth.club_staff(id) );
-create policy clubs_admin_all on clubs for all using ( auth.is_admin() );
+create policy clubs_admin_all on clubs for all using ( mp_is_admin() );
 create policy clubs_owner_update on clubs for update
   using ( auth.is_owner_of(id) ) with check ( auth.is_owner_of(id) );
 
@@ -251,33 +266,33 @@ create policy app_applicant_all on club_applications for all
   with check ( applicant_id = auth.uid() and status in ('draft','submitted','withdrawn') );
 
 create policy app_admin_all on club_applications for all
-  using ( auth.is_admin() );
+  using ( mp_is_admin() );
 
 -- Solo admin puede mover entre estados de revisión
 create policy app_admin_status_transitions on club_applications for update
-  using ( auth.is_admin() )
-  with check ( auth.is_admin() );
+  using ( mp_is_admin() )
+  with check ( mp_is_admin() );
 
 alter table club_application_documents enable row level security;
 create policy app_docs_applicant on club_application_documents for all
   using ( exists(select 1 from club_applications a where a.id=application_id and a.applicant_id=auth.uid()) );
 create policy app_docs_admin on club_application_documents for all
-  using ( auth.is_admin() );
+  using ( mp_is_admin() );
 
 alter table club_application_courts enable row level security;
 create policy app_courts_applicant on club_application_courts for all
   using ( exists(select 1 from club_applications a where a.id=application_id and a.applicant_id=auth.uid()) );
-create policy app_courts_admin on club_application_courts for all using ( auth.is_admin() );
+create policy app_courts_admin on club_application_courts for all using ( mp_is_admin() );
 
 alter table club_application_photos enable row level security;
 create policy app_photos_applicant on club_application_photos for all
   using ( exists(select 1 from club_applications a where a.id=application_id and a.applicant_id=auth.uid()) );
-create policy app_photos_admin on club_application_photos for all using ( auth.is_admin() );
+create policy app_photos_admin on club_application_photos for all using ( mp_is_admin() );
 
 alter table club_application_events enable row level security;
 create policy app_events_visible on club_application_events for select
   using (
-    auth.is_admin()
+    mp_is_admin()
     or exists(select 1 from club_applications a where a.id=application_id and a.applicant_id=auth.uid())
   );
 -- escritura solo vía SECURITY DEFINER functions
@@ -335,7 +350,7 @@ create policy res_update on reservations for update
   );
 
 -- Cancel/delete: organizer puede cancel; delete real solo admin
-create policy res_delete_admin on reservations for delete using ( auth.is_admin() );
+create policy res_delete_admin on reservations for delete using ( mp_is_admin() );
 
 alter table reservation_participants enable row level security;
 create policy rp_select on reservation_participants for select
@@ -439,7 +454,7 @@ alter table coach_profiles enable row level security;
 create policy coach_public_select on coach_profiles for select using ( true );
 create policy coach_self_write on coach_profiles for all
   using ( id = auth.uid() ) with check ( id = auth.uid() );
-create policy coach_admin_all on coach_profiles for all using ( auth.is_admin() );
+create policy coach_admin_all on coach_profiles for all using ( mp_is_admin() );
 
 alter table classes enable row level security;
 create policy classes_public_select on classes for select using ( active );
@@ -666,7 +681,7 @@ create policy mr_confirm on match_results for update
   using (
     side_a @> jsonb_build_array(jsonb_build_object('user_id', auth.uid()::text))
     or side_b @> jsonb_build_array(jsonb_build_object('user_id', auth.uid()::text))
-    or auth.is_admin()
+    or mp_is_admin()
   );
 
 alter table player_stats enable row level security;
@@ -687,7 +702,7 @@ create policy t_partner_write on tournaments for all
   using ( partner_id is not null and exists(
             select 1 from partner_members pm where pm.partner_id=tournaments.partner_id
               and pm.user_id=auth.uid() and pm.role in ('owner','admin')) );
-create policy t_admin_all on tournaments for all using ( auth.is_admin() );
+create policy t_admin_all on tournaments for all using ( mp_is_admin() );
 
 alter table registrations enable row level security;
 create policy reg_visible on registrations for select
@@ -696,7 +711,7 @@ create policy reg_visible on registrations for select
     or auth.uid() = any(player_ids)
     or exists(select 1 from tournaments t join partner_members pm on pm.partner_id=t.partner_id
               where t.id=tournament_id and pm.user_id=auth.uid())
-    or auth.is_admin()
+    or mp_is_admin()
   );
 create policy reg_self_register on registrations for insert
   with check ( registered_by = auth.uid() and auth.uid() = any(player_ids) );
@@ -777,7 +792,7 @@ alter table notification_kinds enable row level security;
 create policy nkinds_public_select on notification_kinds for select using ( true );
 
 alter table notification_jobs enable row level security;
-create policy njobs_admin_all on notification_jobs for all using ( auth.is_admin() );
+create policy njobs_admin_all on notification_jobs for all using ( mp_is_admin() );
 -- workers usan service role, bypassing RLS
 ```
 
@@ -785,7 +800,7 @@ create policy njobs_admin_all on notification_jobs for all using ( auth.is_admin
 
 ```sql
 alter table broadcasts enable row level security;
-create policy bc_admin_all on broadcasts for all using ( auth.is_admin() );
+create policy bc_admin_all on broadcasts for all using ( mp_is_admin() );
 create policy bc_owner_club on broadcasts for all
   using ( scope='club' and club_id is not null and auth.club_staff(club_id) )
   with check ( scope='club' and club_id is not null and auth.club_staff(club_id) );
@@ -801,7 +816,7 @@ create policy bc_partner on broadcasts for all
 ```sql
 alter table reports enable row level security;
 create policy reports_reporter_select on reports for select using ( reporter_id = auth.uid() );
-create policy reports_admin_all on reports for all using ( auth.is_admin() );
+create policy reports_admin_all on reports for all using ( mp_is_admin() );
 create policy reports_owner_select_own_club on reports for select
   using (
     entity = 'club' and exists(select 1 from clubs c
@@ -811,10 +826,10 @@ create policy reports_owner_select_own_club on reports for select
 create policy reports_open on reports for insert with check ( reporter_id = auth.uid() );
 
 alter table moderation_actions enable row level security;
-create policy ma_admin_all on moderation_actions for all using ( auth.is_admin() );
+create policy ma_admin_all on moderation_actions for all using ( mp_is_admin() );
 
 alter table audit_log enable row level security;
-create policy audit_admin_select on audit_log for select using ( auth.is_admin() );
+create policy audit_admin_select on audit_log for select using ( mp_is_admin() );
 create policy audit_owner_select on audit_log for select using ( club_id is not null and auth.is_owner_of(club_id) );
 -- INSERT solo desde trigger SECURITY DEFINER tg_audit
 revoke insert, update, delete on audit_log from authenticated, anon;
@@ -838,7 +853,7 @@ create policy tk_assignee_update on tickets for update
   with check (assignee_id = auth.uid());
 create policy tk_club_staff_delete on tickets for delete
   using ( club_id is not null and auth.club_staff(club_id) );
-create policy tk_admin_all on tickets for all using ( auth.is_admin() );
+create policy tk_admin_all on tickets for all using ( mp_is_admin() );
 create policy tk_user_open on tickets for insert with check ( opener_id = auth.uid() );
 
 alter table ticket_messages enable row level security;
@@ -846,7 +861,7 @@ create policy tm_visible on ticket_messages for select
   using ( exists(select 1 from tickets t where t.id=ticket_id and
                  (t.opener_id=auth.uid() or t.assignee_id=auth.uid()
                   or (t.club_id is not null and (auth.club_staff(t.club_id) or auth.is_employee_of(t.club_id)))
-                  or auth.is_admin()))
+                  or mp_is_admin()))
           and ( internal = false or auth.uid() <> (select opener_id from tickets where id=ticket_id) )
   );
 create policy tm_post on ticket_messages for insert with check (
@@ -862,10 +877,10 @@ create policy tm_post on ticket_messages for insert with check (
 ```sql
 alter table feature_flags enable row level security;
 create policy ff_authn_select on feature_flags for select using ( auth.uid() is not null );
-create policy ff_admin_all on feature_flags for all using ( auth.is_admin() );
+create policy ff_admin_all on feature_flags for all using ( mp_is_admin() );
 
 alter table feature_flag_assignments enable row level security;
-create policy ffa_admin_all on feature_flag_assignments for all using ( auth.is_admin() );
+create policy ffa_admin_all on feature_flag_assignments for all using ( mp_is_admin() );
 -- la pantalla "qué flags tengo yo" se consulta vía función security definer fn_my_effective_flags()
 ```
 
@@ -875,7 +890,7 @@ create policy ffa_admin_all on feature_flag_assignments for all using ( auth.is_
 alter table partner_orgs enable row level security;
 create policy po_member_select on partner_orgs for select
   using ( exists(select 1 from partner_members pm where pm.partner_id=id and pm.user_id=auth.uid()) );
-create policy po_admin_all on partner_orgs for all using ( auth.is_admin() );
+create policy po_admin_all on partner_orgs for all using ( mp_is_admin() );
 
 alter table partner_members enable row level security;
 create policy pm_self_select on partner_members for select using ( user_id = auth.uid() );
@@ -890,7 +905,7 @@ create policy pcl_partner_select on partner_club_links for select
                  where pm.partner_id=partner_club_links.partner_id and pm.user_id=auth.uid()) );
 create policy pcl_club_select on partner_club_links for select
   using ( auth.is_owner_of(club_id) );
-create policy pcl_admin_all on partner_club_links for all using ( auth.is_admin() );
+create policy pcl_admin_all on partner_club_links for all using ( mp_is_admin() );
 ```
 
 ### 4.22 payouts
@@ -920,7 +935,7 @@ create policy po_coach_select on payouts for select
   using ( coach_id = auth.uid() );
 ```
 
-> Nota: el código usa los helpers `mp_is_admin()` / `mp_club_staff()` (prefijo `mp_`) introducidos junto con el resto de tablas role-gap. Son equivalentes funcionales de `auth.is_admin()` / `auth.club_staff()` definidos en §1.
+> Nota: el código usa los helpers `mp_is_admin()` / `mp_club_staff()` (prefijo `mp_`) introducidos junto con el resto de tablas role-gap. Son equivalentes funcionales de `mp_is_admin()` / `auth.club_staff()` definidos en §1.
 
 ### 4.23 shifts
 
@@ -996,7 +1011,7 @@ create policy kyc_read_self on storage.objects for select
   );
 create policy kyc_read_admin on storage.objects for select
   to authenticated using (
-    bucket_id = 'kyc-docs' and auth.is_admin()
+    bucket_id = 'kyc-docs' and mp_is_admin()
   );
 
 -- resources: signed URLs (no policies de SELECT, se sirven vía URL firmada)

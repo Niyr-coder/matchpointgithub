@@ -321,7 +321,11 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
           const evClubId = (event.club_id as string | null) ?? null;
           const evDiscountPct = evClubId ? await getActiveClubDiscountPct(userId, evClubId) : 0;
           const evChargeCents = applyDiscount(priceCents, evDiscountPct);
-          const { data: tx, error: txErr } = await supabase
+          // Usar admin client: cuando el evento no tiene club (club_id=null),
+          // el server client no tiene ninguna policy RLS que permita el INSERT.
+          const txAdmin = getAdminClient();
+          await setAuditActor(txAdmin, userId, "user");
+          const { data: tx, error: txErr } = await txAdmin
             .from("transactions")
             .insert({
               club_id: evClubId,

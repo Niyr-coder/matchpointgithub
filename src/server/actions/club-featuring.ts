@@ -12,12 +12,16 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
-import type { Json } from "@/lib/db/types";
 import { notifyClubStaff } from "@/lib/notifications/helpers";
+import {
+  activateClubFeaturingInternal,
+  type ClubFeaturingActivateResult,
+} from "@/server/club-featuring/activate-club-featuring";
 
 // Precio base: USD 200 por 30 días. Para duraciones distintas se prorratea
 // linealmente: amountCents = round(PRICE * durationDays / 30).
@@ -168,124 +172,10 @@ export async function approveClubFeaturingAdmin(
   input: unknown,
 ): Promise<ActionResult<ClubFeaturingApproveResult>> {
   return runAction(ApproveSchema, input, async ({ subscriptionId }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-
-    const { data: sub, error: readErr } = await supabase
-      .from("club_featuring_subscriptions")
-      .select("id,club_id,status,duration_days,transaction_id")
-      .eq("id", subscriptionId)
-      .single();
-    if (readErr || !sub) {
-      throw new MpError(
-        "CLUB_FEATURING.SUB_NOT_FOUND",
-        "Suscripción de featuring no encontrada",
-        404,
-      );
-    }
-    if (sub.status !== "pending") {
-      throw new MpError(
-        "CLUB_FEATURING.INVALID_STATE",
-        `Solo se aprueba desde 'pending' (actual: '${sub.status}')`,
-        409,
-      );
-    }
-
-    const clubId = sub.club_id as string;
-    const durationDays = sub.duration_days as number;
-
-    // Si clubs.featured_until está en el futuro, extendemos desde ahí;
-    // si no, arranca desde ahora.
-    const { data: club, error: clubReadErr } = await supabase
-      .from("clubs")
-      .select("featured_until")
-      .eq("id", clubId)
-      .single();
-    if (clubReadErr || !club) {
-      throw new MpError(
-        "CLUB_FEATURING.CLUB_NOT_FOUND",
-        "Club no encontrado al aprobar featuring",
-        404,
-      );
-    }
-
-    const now = new Date();
-    const currentExpiry = club.featured_until
-      ? new Date(club.featured_until as string)
-      : null;
-    const startsAt = currentExpiry && currentExpiry > now ? currentExpiry : now;
-    const newExpiry = new Date(startsAt);
-    newExpiry.setUTCDate(newExpiry.getUTCDate() + durationDays);
-
-    // 1. Activar subscription.
-    const { error: subUpdErr } = await supabase
-      .from("club_featuring_subscriptions")
-      .update({
-        status: "active",
-        starts_at: startsAt.toISOString(),
-        expires_at: newExpiry.toISOString(),
-        updated_at: now.toISOString(),
-      } as never)
-      .eq("id", subscriptionId);
-    if (subUpdErr) {
-      throw new MpError(
-        "CLUB_FEATURING.SUB_UPDATE_FAILED",
-        subUpdErr.message,
-        500,
-      );
-    }
-
-    // 2. Extender clubs.featured_until.
-    const { error: clubUpdErr } = await supabase
-      .from("clubs")
-      .update({ featured_until: newExpiry.toISOString() } as never)
-      .eq("id", clubId);
-    if (clubUpdErr) {
-      throw new MpError(
-        "CLUB_FEATURING.CLUB_UPDATE_FAILED",
-        clubUpdErr.message,
-        500,
-      );
-    }
-
-    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
-      p_entity: "club_featuring_subscriptions",
-      p_entity_id: subscriptionId,
-      p_action: "club_featuring.admin_approve",
-      p_diff: {
-        clubId,
-        durationDays,
-        expiresAt: newExpiry.toISOString(),
-      } as Json,
-    });
-    if (auditErr) {
-      console.error(
-        "[approveClubFeaturingAdmin] [ok=false] audit_log_failed (action=club_featuring.admin_approve):",
-        auditErr.message,
-      );
-    }
-
-    const { data: clubRow } = await supabase.from("clubs").select("name").eq("id", clubId).maybeSingle();
-    await notifyClubStaff({
-      clubId,
-      kind: "club_featuring_activated",
-      title: "Featuring activado",
-      body: `Tu club ${(clubRow?.name as string | null) ?? ""} ya aparece destacado hasta ${newExpiry.toLocaleDateString("es-EC")}.`,
-      payload: {
-        clubId,
-        club_name: clubRow?.name,
-        subscriptionId,
-        expires_at: newExpiry.toISOString(),
-      },
-      roles: ["owner"],
-    });
-
-    return {
-      subscriptionId,
-      clubId,
-      startsAt: startsAt.toISOString(),
-      expiresAt: newExpiry.toISOString(),
-    };
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    return activateClubFeaturingInternal(admin, subscriptionId);
   });
 }
 

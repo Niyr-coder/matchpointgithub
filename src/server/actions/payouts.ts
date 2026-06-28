@@ -8,33 +8,15 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError, requireAdminUserId } from "@/lib/auth/session";
+import { requireAdminUserId, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { getTakeRatePct } from "@/server/queries/platform-config";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 
-async function requireClubStaff(clubId: string): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role,club_id")
-    .eq("user_id", user.id)
-    .is("revoked_at", null);
-  const ok = (roles ?? []).some(
-    (r) =>
-      r.role === "admin" ||
-      (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
-  );
-  if (!ok) throw new AuthError("AUTH.ROLE_REQUIRED", "Se requiere staff del club");
-  return user.id;
-}
 
 // ── listPayouts ────────────────────────────────────────────────────────
 const ListSchema = z.object({
@@ -47,6 +29,7 @@ const ListSchema = z.object({
 
 export async function listPayouts(input: unknown): Promise<ActionResult<unknown[]>> {
   return runAction(ListSchema, input, async (params) => {
+    await requireUserId();
     const supabase = await getServerClient();
     let q = supabase
       .from("payouts")
@@ -208,19 +191,16 @@ export async function processRefund(
   input: unknown,
 ): Promise<ActionResult<{ ok: true; refundId: string }>> {
   return runAction(RefundSchema, input, async ({ transactionId, amountCents, reason }) => {
-    const supabase = await getServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Debes iniciar sesión");
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
 
-    const { data: tx } = await supabase
+    const { data: tx } = await admin
       .from("transactions")
       .select("club_id,amount_cents,status")
       .eq("id", transactionId)
       .single();
     if (!tx) throw new MpError("REFUNDS.TX_NOT_FOUND", "Transacción no encontrada", 404);
-    await requireClubStaff(tx.club_id as string);
     if (tx.status !== "captured") {
       throw new MpError(
         "REFUNDS.NOT_CAPTURED",
@@ -232,21 +212,20 @@ export async function processRefund(
       throw new MpError("REFUNDS.AMOUNT_EXCEEDS", "El reembolso excede el monto de la transacción", 422);
     }
 
-    const { data: refund, error } = await supabase
+    const { data: refund, error } = await admin
       .from("refunds")
       .insert({
         transaction_id: transactionId,
         amount_cents: amountCents,
         reason,
-        created_by: user.id,
+        created_by: adminId,
       } as never)
       .select("id")
       .single();
     if (error) throw new MpError("REFUNDS.CREATE_FAILED", error.message, 500);
 
-    // Marca la transacción como reembolsada solo si el reembolso cubre el total.
     if (amountCents === (tx.amount_cents as number)) {
-      await supabase
+      await admin
         .from("transactions")
         .update({ status: "refunded" } as never)
         .eq("id", transactionId);

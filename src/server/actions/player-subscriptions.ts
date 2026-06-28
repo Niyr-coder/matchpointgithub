@@ -19,34 +19,10 @@ import { UuidSchema } from "@/lib/schemas/common";
 import type { Json } from "@/lib/db/types";
 import { notify } from "@/server/notifications/dispatch";
 import { grantMatchPointPlusInternal } from "@/server/plan/grant-matchpoint-plus";
+import { activatePendingPlanSubscriptionInternal } from "@/server/plan/activate-plan-subscription";
 
 // Precio por mes en centavos. MATCHPOINT+ = USD 6.99/mes.
 const PREMIUM_PRICE_CENTS_PER_MONTH = 699;
-
-async function notifyPremiumActivated(args: {
-  userId: string;
-  subscriptionId: string;
-  expiresAt: string;
-  source: "payment" | "admin_grant";
-}) {
-  const expiresLabel = new Date(args.expiresAt).toLocaleDateString("es-EC", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  await notify({
-    userId: args.userId,
-    role: "user",
-    kind: "mp_plus_activated",
-    title: "MATCHPOINT+ activado",
-    body: `Tu plan MATCHPOINT+ está activo hasta el ${expiresLabel}.`,
-    payload: {
-      subscriptionId: args.subscriptionId,
-      expiresAt: args.expiresAt,
-      source: args.source,
-    },
-  });
-}
 
 // ── requestPlanUpgrade ─────────────────────────────────────────────────
 const RequestUpgradeSchema = z.object({
@@ -90,7 +66,10 @@ export async function requestPlanUpgrade(
     const amountCents = PREMIUM_PRICE_CENTS_PER_MONTH * durationMonths;
 
     // 1. Crear transaction pending_proof (sin club, kind 'plan').
-    const { data: tx, error: txErr } = await supabase
+    // Usa admin client: RLS bloquea INSERT en transactions con club_id=null.
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+    const { data: tx, error: txErr } = await admin
       .from("transactions")
       .insert({
         club_id: null,
@@ -155,124 +134,14 @@ export async function approvePlanSubscriptionAdmin(
   input: unknown,
 ): Promise<ActionResult<{ subscriptionId: string; newTier: string; expiresAt: string }>> {
   return runAction(ApproveSchema, input, async ({ subscriptionId }) => {
-    await requireAdminUserId();
-    const supabase = await getServerClient();
-
-    const { data: sub, error: readErr } = await supabase
-      .from("player_subscriptions")
-      .select("id,user_id,tier,status,duration_months,transaction_id")
-      .eq("id", subscriptionId)
-      .single();
-    if (readErr || !sub) {
-      throw new MpError("PLAN.SUB_NOT_FOUND", "Suscripcion no encontrada", 404);
-    }
-    if (sub.status !== "pending") {
-      throw new MpError(
-        "PLAN.INVALID_STATE",
-        `Solo se aprueba desde 'pending' (actual: '${sub.status}')`,
-        409,
-      );
-    }
-
-    // Si el plan_expires_at actual del user está en el futuro, extendemos
-    // desde ahí. Si no, arrancamos desde ahora.
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("plan_expires_at")
-      .eq("id", sub.user_id as string)
-      .single();
-    const now = new Date();
-    const currentExpiry = profile?.plan_expires_at
-      ? new Date(profile.plan_expires_at as string)
-      : null;
-    const startsAt = currentExpiry && currentExpiry > now ? currentExpiry : now;
-    const newExpiry = new Date(startsAt);
-    newExpiry.setMonth(newExpiry.getMonth() + (sub.duration_months as number));
-
-    // 1. Activar la subscription.
-    const { error: subUpdErr } = await supabase
-      .from("player_subscriptions")
-      .update({
-        status: "active",
-        starts_at: startsAt.toISOString(),
-        expires_at: newExpiry.toISOString(),
-        updated_at: now.toISOString(),
-      } as never)
-      .eq("id", subscriptionId);
-    if (subUpdErr) {
-      throw new MpError("PLAN.SUB_UPDATE_FAILED", subUpdErr.message, 500);
-    }
-
-    // 2. Actualizar profile.plan_tier y plan_expires_at.
-    const { error: profUpdErr } = await supabase
-      .from("profiles")
-      .update({
-        plan_tier: sub.tier,
-        plan_expires_at: newExpiry.toISOString(),
-      } as never)
-      .eq("id", sub.user_id as string);
-    if (profUpdErr) {
-      throw new MpError("PLAN.PROFILE_UPDATE_FAILED", profUpdErr.message, 500);
-    }
-
-    // Welcome DM de premium activado. Fire-and-forget.
-    try {
-      const [{ getProfileSummary }, { sendSystemMessage, renderTemplate }] = await Promise.all([
-        import("@/lib/auth/profile"),
-        import("@/lib/messages/system"),
-      ]);
-      const profile = await getProfileSummary(sub.user_id as string);
-      const firstName = (profile.displayName ?? "jugador").split(" ")[0];
-      const expiresLabel = newExpiry.toLocaleDateString("es-EC", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      await sendSystemMessage({
-        recipientUserId: sub.user_id as string,
-        kind: "welcome_premium_activated",
-        body: renderTemplate("welcome_premium_activated", {
-          firstName,
-          expiresAt: expiresLabel,
-        }),
-        payload: { subscriptionId, expiresAt: newExpiry.toISOString() },
-      });
-    } catch (e) {
-      console.error(
-        "[approvePlanSubscriptionAdmin] [ok=false] approve_notification_failed",
-        e,
-      );
-    }
-
-    await notifyPremiumActivated({
-      userId: sub.user_id as string,
+    const adminId = await requireAdminUserId();
+    const admin = getAdminClient();
+    await setAuditActor(admin, adminId, "admin");
+    const { userId: _userId, ...result } = await activatePendingPlanSubscriptionInternal(
+      admin,
       subscriptionId,
-      expiresAt: newExpiry.toISOString(),
-      source: "payment",
-    });
-
-    const { error: auditErr } = await supabase.rpc("fn_admin_audit_log", {
-      p_entity: "player_subscriptions",
-      p_entity_id: subscriptionId,
-      p_action: "plan_subscription.admin_approve",
-      p_diff: {
-        tier: sub.tier,
-        durationMonths: sub.duration_months,
-        expiresAt: newExpiry.toISOString(),
-      } as Json,
-    });
-    if (auditErr) {
-      console.error(
-        "[approvePlanSubscriptionAdmin] [ok=false] audit_log_failed (action=plan_subscription.admin_approve):",
-        auditErr.message,
-      );
-    }
-
-    return {
-      subscriptionId,
-      newTier: sub.tier as string,
-      expiresAt: newExpiry.toISOString(),
-    };
+    );
+    return result;
   });
 }
 

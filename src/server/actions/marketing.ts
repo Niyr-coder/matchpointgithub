@@ -291,15 +291,21 @@ export async function resendToNonOpeners(
       .slice(0, BROADCAST_BATCH_LIMIT);
     if (nonOpeners.length === 0) return { resent: 0 };
 
-    for (const userId of nonOpeners) {
-      await notify({
-        userId,
-        role: "user",
-        kind: "broadcast",
-        title: bc.title as string,
-        body: bc.body as string,
-        payload: { broadcastId: id, resend: true },
-      });
+    const FAN_CHUNK = 50;
+    for (let i = 0; i < nonOpeners.length; i += FAN_CHUNK) {
+      const chunk = nonOpeners.slice(i, i + FAN_CHUNK);
+      await Promise.all(
+        chunk.map((userId) =>
+          notify({
+            userId,
+            role: "user",
+            kind: "broadcast",
+            title: bc.title as string,
+            body: bc.body as string,
+            payload: { broadcastId: id, resend: true },
+          }),
+        ),
+      );
     }
     return { resent: nonOpeners.length };
   });

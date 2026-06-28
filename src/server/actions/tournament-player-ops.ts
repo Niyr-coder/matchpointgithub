@@ -31,8 +31,7 @@ export type RegistrationSubstitution = {
 
 // ── Helpers internos ─────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = any;
+type AnyClient = ReturnType<typeof getAdminClient>;
 
 async function requirePlayerOpsEnabled(): Promise<void> {
   const supabase = await getServerClient();

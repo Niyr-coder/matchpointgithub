@@ -252,6 +252,7 @@ export type Database = {
           side_a_registration_id: string | null
           side_b_registration_id: string | null
           status: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason: string | null
           winner_side: string | null
         }
         Insert: {
@@ -267,6 +268,7 @@ export type Database = {
           side_a_registration_id?: string | null
           side_b_registration_id?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason?: string | null
           winner_side?: string | null
         }
         Update: {
@@ -282,6 +284,7 @@ export type Database = {
           side_a_registration_id?: string | null
           side_b_registration_id?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason?: string | null
           winner_side?: string | null
         }
         Relationships: [
@@ -7504,6 +7507,78 @@ export type Database = {
           },
         ]
       }
+      registration_substitutions: {
+        Row: {
+          authorized_by: string
+          created_at: string
+          id: string
+          in_player_id: string
+          notes: string | null
+          out_player_id: string
+          reason: string
+          registration_id: string
+          tournament_id: string
+        }
+        Insert: {
+          authorized_by: string
+          created_at?: string
+          id?: string
+          in_player_id: string
+          notes?: string | null
+          out_player_id: string
+          reason: string
+          registration_id: string
+          tournament_id: string
+        }
+        Update: {
+          authorized_by?: string
+          created_at?: string
+          id?: string
+          in_player_id?: string
+          notes?: string | null
+          out_player_id?: string
+          reason?: string
+          registration_id?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registration_substitutions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_out_player_id_fkey"
+            columns: ["out_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_in_player_id_fkey"
+            columns: ["in_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservation_payments: {
         Row: {
           amount_cents: number
@@ -9590,6 +9665,68 @@ export type Database = {
           },
         ]
       }
+      tournament_court_monitors: {
+        Row: {
+          assigned_by: string
+          court_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          position_label: string | null
+          tournament_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by: string
+          court_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          position_label?: string | null
+          tournament_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string
+          court_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          position_label?: string | null
+          tournament_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_court_monitors_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_court_monitors_court_id_fkey"
+            columns: ["court_id"]
+            isOneToOne: false
+            referencedRelation: "courts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_court_monitors_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_court_monitors_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_group_matches: {
         Row: {
           court_id: string | null
@@ -9602,6 +9739,7 @@ export type Database = {
           side_a_registration_id: string
           side_b_registration_id: string
           status: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason: string | null
           winner_side: string | null
         }
         Insert: {
@@ -9615,6 +9753,7 @@ export type Database = {
           side_a_registration_id: string
           side_b_registration_id: string
           status?: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason?: string | null
           winner_side?: string | null
         }
         Update: {
@@ -9628,6 +9767,7 @@ export type Database = {
           side_a_registration_id?: string
           side_b_registration_id?: string
           status?: Database["public"]["Enums"]["mp_match_status"]
+          walkover_reason?: string | null
           winner_side?: string | null
         }
         Relationships: [

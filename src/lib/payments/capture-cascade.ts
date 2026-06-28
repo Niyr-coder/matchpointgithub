@@ -5,8 +5,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/db/types";
 import { notify } from "@/server/notifications/dispatch";
-import { approvePlanSubscriptionAdmin } from "@/server/actions/player-subscriptions";
-import { approveClubFeaturingAdmin } from "@/server/actions/club-featuring";
+import { activatePendingPlanSubscriptionInternal } from "@/server/plan/activate-plan-subscription";
+import { activateClubFeaturingInternal } from "@/server/club-featuring/activate-club-featuring";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -73,12 +73,7 @@ export async function runTransactionCaptureCascade(
         .eq("status", "pending")
         .maybeSingle();
       if (pendingSub) {
-        const activateResult = await approvePlanSubscriptionAdmin({
-          subscriptionId: pendingSub.id as string,
-        });
-        if (!activateResult.ok) {
-          console.error("[capture-cascade] plan auto-activate failed:", activateResult.error);
-        }
+        await activatePendingPlanSubscriptionInternal(supabase, pendingSub.id as string);
       }
     } catch (err) {
       console.error("[capture-cascade] plan auto-activate failed:", err);
@@ -92,12 +87,7 @@ export async function runTransactionCaptureCascade(
         .eq("status", "pending")
         .maybeSingle();
       if (pendingSub) {
-        const activateResult = await approveClubFeaturingAdmin({
-          subscriptionId: pendingSub.id as string,
-        });
-        if (!activateResult.ok) {
-          console.error("[capture-cascade] club_featuring auto-activate failed:", activateResult.error);
-        }
+        await activateClubFeaturingInternal(supabase, pendingSub.id as string);
       }
     } catch (err) {
       console.error("[capture-cascade] club_featuring auto-activate failed:", err);

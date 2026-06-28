@@ -5,7 +5,7 @@
 import "server-only";
 
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -462,6 +462,7 @@ export async function drawClubGiveawayWinners(
     }
 
     const admin = getAdminClient();
+    await setAuditActor(admin, userId, "owner");
     const { data: entries, error: entErr } = await admin
       .from("club_giveaway_entries")
       .select("user_id")
