@@ -201,6 +201,69 @@ export async function listFeaturedClubs(
   });
 }
 
+// ── listClubsForMap (authenticated, para el overlay de mapa de clubes) ────
+export async function listClubsForMap(): Promise<ActionResult<ClubFeatured[]>> {
+  return runAction(z.object({}), {}, async () => {
+    const supabase = await getServerClient();
+    const { data, error } = await supabase
+      .from("clubs_public_summary")
+      .select("*")
+      .order("courts_count", { ascending: false });
+    if (error) throw new MpError("CLUBS.DB_ERROR", error.message, 500);
+
+    const rows = data ?? [];
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.id as string);
+
+    const { data: geoRows } = await supabase
+      .from("clubs")
+      .select("id,latitude,longitude")
+      .in("id", ids);
+    const geoById = new Map<string, { lat: number | null; lng: number | null }>();
+    for (const g of geoRows ?? []) {
+      const lat = g.latitude as number | null;
+      const lng = g.longitude as number | null;
+      geoById.set(g.id as string, {
+        lat: lat != null && Number.isFinite(Number(lat)) ? Number(lat) : null,
+        lng: lng != null && Number.isFinite(Number(lng)) ? Number(lng) : null,
+      });
+    }
+
+    const { data: settingsRows } = await supabase
+      .from("club_settings")
+      .select("club_id,open_hours")
+      .in("club_id", ids);
+    type HoursInfo = { range: string | null; isOpenNow: boolean };
+    const hoursById = new Map<string, HoursInfo>();
+    for (const s of settingsRows ?? []) {
+      hoursById.set(s.club_id as string, computeTodayHours(s.open_hours as unknown));
+    }
+
+    return rows.map((row) => {
+      const geo = geoById.get(row.id as string);
+      return ClubFeaturedSchema.parse({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        city: row.city,
+        coverUrl: row.cover_url ?? null,
+        sports: row.sports ?? [],
+        currency: row.currency,
+        courtsCount: row.courts_count ?? 0,
+        minPriceCents: row.min_price_cents ?? null,
+        description: null,
+        address: null,
+        latitude: geo?.lat ?? null,
+        longitude: geo?.lng ?? null,
+        featuredUntil: null,
+        openHoursToday: hoursById.get(row.id as string)?.range ?? null,
+        isOpenNow: hoursById.get(row.id as string)?.isOpenNow ?? false,
+      });
+    });
+  });
+}
+
 // Calcula horario de hoy en Ecuador (UTC-5) y si el club está abierto ahora.
 // Acepta el jsonb tal cual viene de la DB. Formato esperado:
 // { monday: { open: "HH:MM", close: "HH:MM" }, ... }

@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import type { ClubFeatured } from "@/lib/schemas/clubs";
+import { listClubsForMap } from "@/server/actions/clubs";
+import { VerMapaOverlay } from "@/components/dashboard/modals/VerMapaOverlay";
 
 export type RatingInfo = { rating: number; reviews: number };
 
@@ -63,6 +65,9 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
   const [q, setQ] = useState("");
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const toast = useToast();
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapClubs, setMapClubs] = useState<ClubFeatured[] | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
 
   useEffect(() => {
     const fromUrl = searchParams.get("q")?.trim();
@@ -113,7 +118,21 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
       }),
     );
 
-  const openMapa = () => window.dispatchEvent(new Event("mp-open-mapa"));
+  const openMapa = () => setMapOpen(true);
+
+  useEffect(() => {
+    if (!mapOpen || mapClubs !== null) return;
+    let active = true;
+    setMapLoading(true);
+    void listClubsForMap().then((res) => {
+      if (!active) return;
+      setMapClubs(res.ok ? res.data : []);
+      setMapLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [mapOpen, mapClubs]);
 
   const cityOptions = useMemo(
     () => Array.from(new Set(clubs.map((c) => c.city).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es")),
@@ -285,6 +304,14 @@ export function ClubesScreenClient({ clubs, meCity, ratingByClubId }: Props) {
           ),
         )}
       </div>
+
+      {mapOpen && (
+        <VerMapaOverlay
+          clubs={mapClubs ?? []}
+          loading={mapLoading}
+          onClose={() => setMapOpen(false)}
+        />
+      )}
     </div>
   );
 }

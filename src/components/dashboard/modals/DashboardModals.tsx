@@ -13,7 +13,6 @@ import { RetarModal } from "./RetarModal";
 import type { RetarHeroWho } from "@/lib/match/retar-hero-present";
 import { CrearMatchModal } from "./CrearMatchModal";
 import { ReservarCanchaDrawer } from "./ReservarCanchaDrawer";
-import { VerMapaOverlay } from "./VerMapaOverlay";
 import { CrearEventoModal } from "./CrearEventoModal";
 import { InscribirClaseModal } from "./InscribirClaseModal";
 // El wizard de onboarding ya no se monta aquí. Ahora vive en /onboarding
@@ -37,7 +36,6 @@ export function DashboardModals({
       <RetarModal currentUserId={currentUserId} initialYou={initialRetarYou} />
       <CrearMatchModal currentUserId={currentUserId} />
       <ReservarCanchaDrawer />
-      <VerMapaOverlay />
       {shopEnabled && <CarritoModal />}
       <CrearEventoModal />
       <InscribirClaseModal />

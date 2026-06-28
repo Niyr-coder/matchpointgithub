@@ -1,74 +1,129 @@
-// VerMapaOverlay — migrado 1:1 desde ui_kits/dashboard/ClubesActionsModals.jsx (líneas 219-364)
-// Overlay fullscreen con sidebar de clubes + mapa SVG. Escucha 'mp-open-mapa'.
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import type { ClubFeatured } from "@/lib/schemas/clubs";
+import { ClubesMultiMap } from "@/components/dashboard/clubes/ClubesMultiMap";
 
-type Pin = {
-  x: string;
-  y: string;
-  label: string;
-  name: string;
-  city: string;
-  dist: string;
-  rating: number;
-  courts: number;
+const SPORT_LABEL: Record<string, string> = {
+  pickleball: "Pickleball",
+  padel: "Pádel",
+  tennis: "Tenis",
 };
 
-const PINS: Pin[] = [
-  { x: "28%", y: "38%", label: "$14", name: "Club Norte Pickleball", city: "Cumbayá", dist: "1.2 km", rating: 4.9, courts: 8 },
-  { x: "54%", y: "24%", label: "$12", name: "Padel Club LC", city: "La Carolina", dist: "4 km", rating: 4.7, courts: 6 },
-  { x: "46%", y: "58%", label: "$11", name: "Pickle Garden", city: "Cumbayá", dist: "3.4 km", rating: 4.8, courts: 5 },
-  { x: "68%", y: "46%", label: "$13", name: "Smash Sport", city: "Cumbayá", dist: "5.1 km", rating: 4.5, courts: 10 },
-  { x: "34%", y: "70%", label: "$15", name: "Court 21", city: "Lo Barnechea", dist: "6 km", rating: 4.9, courts: 3 },
-  { x: "74%", y: "70%", label: "$10", name: "MATCHPOINT Ñ", city: "Ñuñoa", dist: "7.2 km", rating: 4.6, courts: 4 },
-  { x: "60%", y: "78%", label: "$9", name: "Top Spin", city: "San Miguel", dist: "8.4 km", rating: 4.4, courts: 7 },
-];
+function sportLabel(s: string): string {
+  return SPORT_LABEL[s] ?? s;
+}
 
-const BUILDINGS: [number, number, number, number][] = [
-  [120, 80, 80, 60],
-  [330, 60, 90, 80],
-  [560, 90, 90, 70],
-  [80, 260, 90, 80],
-  [330, 360, 100, 80],
-  [580, 330, 80, 70],
-  [60, 460, 90, 60],
-];
+function priceLabel(cents: number | null): string {
+  return cents != null ? `$${Math.round(cents / 100)}` : "$—";
+}
 
-const caGhost = { background: "#fff", border: "1px solid var(--border)" };
+function chipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "5px 10px",
+    borderRadius: 9999,
+    fontSize: 10,
+    fontWeight: 800,
+    fontFamily: "inherit",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    cursor: "pointer",
+    background: active ? "#0a0a0a" : "#fff",
+    color: active ? "#fff" : "#0a0a0a",
+    border: "1px solid " + (active ? "#0a0a0a" : "var(--border)"),
+  };
+}
 
-export function VerMapaOverlay() {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(0);
+type Props = {
+  clubs: ClubFeatured[];
+  loading: boolean;
+  onClose: () => void;
+};
+
+export function VerMapaOverlay({ clubs, loading, onClose }: Props) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sportFilter, setSportFilter] = useState<string | null>(null);
+  const [mobileList, setMobileList] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handler = () => {
-      setOpen(true);
-      setSelected(0);
-    };
-    window.addEventListener("mp-open-mapa", handler);
-    return () => window.removeEventListener("mp-open-mapa", handler);
+    const mq = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mq.matches);
+    const fn = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
   }, []);
 
-  if (!open) return null;
-  const sel = PINS[selected];
-  const close = () => setOpen(false);
-  const reservarSel = () => {
-    close();
+  const allSports = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of clubs) {
+      for (const s of c.sports) set.add(s);
+    }
+    return Array.from(set).sort();
+  }, [clubs]);
+
+  const visibleClubs = useMemo(() => {
+    if (!sportFilter) return clubs;
+    return clubs.filter((c) => c.sports.some((s) => s === sportFilter));
+  }, [clubs, sportFilter]);
+
+  const visibleIds = useMemo(
+    () => new Set(visibleClubs.map((c) => c.id)),
+    [visibleClubs],
+  );
+
+  const selectedClub = selectedId
+    ? visibleClubs.find((c) => c.id === selectedId) ?? null
+    : null;
+
+  // Clear selection when the selected club is filtered out
+  useEffect(() => {
+    if (selectedId && !visibleIds.has(selectedId)) {
+      setSelectedId(null);
+    }
+  }, [visibleIds, selectedId]);
+
+  // Scroll the selected item into view in the sidebar list
+  useEffect(() => {
+    if (!selectedId || !listRef.current) return;
+    const el = listRef.current.querySelector<HTMLElement>(
+      `[data-club-id="${selectedId}"]`,
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedId]);
+
+  const handleMarkerSelect = (id: string) => {
+    setSelectedId(id);
+    if (isMobile) setMobileList(true);
+  };
+
+  const openReservar = (club: ClubFeatured) => {
+    onClose();
     setTimeout(
       () =>
         window.dispatchEvent(
           new CustomEvent("mp-open-reservar", {
             detail: {
-              name: sel.name,
-              city: sel.city,
-              price: parseInt(sel.label.replace("$", ""), 10),
+              clubId: club.id,
+              clubSlug: club.slug,
+              name: club.name,
+              city: `${club.city} · ${club.courtsCount} canchas`,
+              price:
+                club.minPriceCents != null
+                  ? Math.round(club.minPriceCents / 100)
+                  : 0,
+              sport: club.sports?.[0],
             },
-          })
+          }),
         ),
-      50
+      50,
     );
   };
+
+  const showLeftRail = !isMobile || mobileList;
+  const showMap = !isMobile || !mobileList;
 
   return (
     <div
@@ -91,53 +146,79 @@ export function VerMapaOverlay() {
           padding: "14px 24px",
           borderBottom: "1px solid var(--border)",
           background: "#fff",
+          flexShrink: 0,
         }}
       >
         <div style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
-          <span style={{ color: "var(--primary)", fontSize: 18, fontWeight: 900 }}>●</span>
-          <span
-            className="font-heading"
-            style={{
-              fontSize: 13,
-              fontWeight: 900,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
-            MATCHPOINT
-          </span>
-          <span style={{ width: 1, height: 18, background: "var(--border)" }} />
-          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
-            Clubes · <b style={{ color: "#0a0a0a" }}>Vista mapa</b>
-          </span>
+          {isMobile && mobileList ? (
+            <button
+              onClick={() => setMobileList(false)}
+              style={{
+                background: "transparent",
+                border: 0,
+                cursor: "pointer",
+                padding: "2px 4px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 800,
+                fontFamily: "inherit",
+              }}
+            >
+              <Icon name="arrow-left" size={14} />
+              Mapa
+            </button>
+          ) : (
+            <>
+              <span style={{ color: "var(--primary)", fontSize: 18, fontWeight: 900 }}>●</span>
+              <span
+                className="font-heading"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                MATCHPOINT
+              </span>
+              <span style={{ width: 1, height: 18, background: "var(--border)" }} />
+              <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+                Clubes ·{" "}
+                <b style={{ color: "#0a0a0a" }}>Vista mapa</b>
+              </span>
+            </>
+          )}
         </div>
-        <button onClick={close} className="btn" style={caGhost}>
+        <button
+          onClick={onClose}
+          className="btn"
+          style={{ background: "#fff", border: "1px solid var(--border)" }}
+        >
           <Icon name="x" size={12} />
-          Cerrar mapa
+          Cerrar
         </button>
       </div>
 
-      <div className="mp-map-overlay-layout" style={{ display: "grid", gridTemplateColumns: "340px 1fr", flex: 1, minHeight: 0 }}>
+      {/* Body */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
         {/* Left rail */}
-        <div
-          style={{
-            background: "#fff",
-            borderRight: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ padding: "18px 18px 12px" }}>
-            <div className="label-mp">Mapa de clubes</div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-end",
-                marginTop: 4,
-              }}
-            >
+        {showLeftRail && (
+          <div
+            style={{
+              background: "#fff",
+              borderRight: isMobile ? 0 : "1px solid var(--border)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              width: isMobile ? "100%" : 340,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ padding: "18px 18px 12px", flexShrink: 0 }}>
+              <div className="label-mp">Mapa de clubes</div>
               <div
                 className="font-heading"
                 style={{
@@ -146,415 +227,401 @@ export function VerMapaOverlay() {
                   letterSpacing: "-0.02em",
                   textTransform: "uppercase",
                   lineHeight: 1.05,
+                  marginTop: 4,
                 }}
               >
-                {PINS.length} cerca de ti<span style={{ color: "var(--primary)" }}>.</span>
+                {loading ? (
+                  "Cargando…"
+                ) : (
+                  <>
+                    {visibleClubs.length}{" "}
+                    {visibleClubs.length === 1 ? "club" : "clubes"}
+                    <span style={{ color: "var(--primary)" }}>.</span>
+                  </>
+                )}
               </div>
+              {allSports.length > 0 && (
+                <div
+                  style={{ display: "flex", gap: 5, marginTop: 10, flexWrap: "wrap" }}
+                >
+                  <button
+                    onClick={() => setSportFilter(null)}
+                    style={chipStyle(sportFilter === null)}
+                  >
+                    Todos
+                  </button>
+                  {allSports.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSportFilter(sportFilter === s ? null : s)}
+                      style={chipStyle(sportFilter === s)}
+                    >
+                      {sportLabel(s)}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", gap: 5, marginTop: 10, flexWrap: "wrap" }}>
-              {["Todos", "Pickle", "Pádel", "Outdoor"].map((f, i) => (
-                <button
-                  key={f}
+
+            <div
+              ref={listRef}
+              style={{
+                flex: 1,
+                overflow: "auto",
+                padding: "8px 14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      height: 62,
+                      borderRadius: 10,
+                      background: "var(--muted)",
+                      opacity: 0.55,
+                    }}
+                  />
+                ))
+              ) : visibleClubs.length === 0 ? (
+                <div
                   style={{
-                    padding: "5px 10px",
-                    borderRadius: 9999,
-                    fontSize: 10,
-                    fontWeight: 800,
-                    fontFamily: "inherit",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    cursor: "pointer",
-                    background: i === 0 ? "#0a0a0a" : "#fff",
-                    color: i === 0 ? "#fff" : "#0a0a0a",
-                    border: "1px solid " + (i === 0 ? "#0a0a0a" : "var(--border)"),
+                    textAlign: "center",
+                    padding: "40px 20px",
+                    color: "var(--muted-fg)",
+                    fontSize: 12.5,
                   }}
                 >
-                  {f}
-                </button>
-              ))}
+                  <Icon name="map-pin" size={32} color="var(--muted-fg)" />
+                  <p style={{ marginTop: 10 }}>
+                    Sin clubes para este filtro.
+                  </p>
+                </div>
+              ) : (
+                visibleClubs.map((club) => {
+                  const isSel = club.id === selectedId;
+                  const hasGeo =
+                    club.latitude != null && club.longitude != null;
+                  return (
+                    <button
+                      key={club.id}
+                      data-club-id={club.id}
+                      onClick={() => setSelectedId(isSel ? null : club.id)}
+                      style={{
+                        padding: 11,
+                        borderRadius: 10,
+                        border: isSel
+                          ? "2px solid var(--primary)"
+                          : "1px solid var(--border)",
+                        background: isSel ? "#ecfdf5" : "#fff",
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: "inherit",
+                        width: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          background: isSel ? "var(--primary)" : "#0a0a0a",
+                          color: "#fff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontFamily: "Plus Jakarta Sans",
+                          fontWeight: 900,
+                          fontSize: 11,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {priceLabel(club.minPriceCents)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 900,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {club.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            color: "var(--muted-fg)",
+                            marginTop: 2,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {club.courtsCount} canchas ·{" "}
+                          {club.isOpenNow ? (
+                            <span
+                              style={{
+                                color: "var(--primary)",
+                                fontWeight: 800,
+                              }}
+                            >
+                              Abierto
+                            </span>
+                          ) : (
+                            "Cerrado"
+                          )}
+                          {!hasGeo && (
+                            <span
+                              style={{
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: "var(--muted)",
+                                fontSize: 8.5,
+                                fontWeight: 700,
+                                color: "var(--muted-fg)",
+                              }}
+                            >
+                              Sin ubicación
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Icon
+                        name="chevron-right"
+                        size={13}
+                        color="var(--muted-fg)"
+                      />
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
-          <div
-            style={{
-              padding: "4px 18px",
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 10,
-              color: "var(--muted-fg)",
-            }}
-          >
-            <span>
-              Ordenar: <b style={{ color: "#0a0a0a" }}>Distancia</b>
-            </span>
-            <span>
-              Radio: <b style={{ color: "#0a0a0a" }}>10 km</b>
-            </span>
-          </div>
+        )}
+
+        {/* Map area */}
+        {showMap && (
           <div
             style={{
               flex: 1,
-              overflow: "auto",
-              padding: "12px 14px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
+              position: "relative",
+              overflow: "hidden",
+              minWidth: 0,
             }}
           >
-            {PINS.map((p, i) => (
-              <button
-                key={p.name}
-                onClick={() => setSelected(i)}
+            {loading ? (
+              <div
                 style={{
-                  padding: 11,
-                  borderRadius: 10,
-                  border: i === selected ? "2px solid var(--primary)" : "1px solid var(--border)",
-                  background: i === selected ? "#ecfdf5" : "#fff",
+                  width: "100%",
+                  height: "100%",
+                  background:
+                    "linear-gradient(180deg,#f0f4ff 0%,#e0e7ff 100%)",
                   display: "flex",
-                  gap: 10,
                   alignItems: "center",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  fontFamily: "inherit",
+                  justifyContent: "center",
+                  color: "var(--muted-fg)",
+                  fontSize: 13,
+                  gap: 10,
                 }}
               >
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: i === selected ? "var(--primary)" : "#0a0a0a",
-                    color: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontFamily: "Plus Jakarta Sans",
-                    fontWeight: 900,
-                    fontSize: 11,
-                    flexShrink: 0,
-                  }}
-                >
-                  {p.label}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 900 }}>{p.name}</div>
-                  <div style={{ fontSize: 9.5, color: "var(--muted-fg)" }}>
-                    {p.courts} canchas · ★ {p.rating} · {p.dist}
-                  </div>
-                </div>
-                <Icon name="chevron-right" size={13} color="var(--muted-fg)" />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Map */}
-        <div
-          style={{
-            position: "relative",
-            background: "linear-gradient(180deg, #f0f4ff 0%, #e0e7ff 50%, #c7d2fe 100%)",
-            overflow: "hidden",
-          }}
-        >
-          <svg
-            width="100%"
-            height="100%"
-            style={{ position: "absolute", inset: 0 }}
-            preserveAspectRatio="none"
-            viewBox="0 0 720 540"
-          >
-            <defs>
-              <pattern id="vm-grid" width="22" height="22" patternUnits="userSpaceOnUse">
-                <path
-                  d="M 22 0 L 0 0 0 22"
-                  fill="none"
-                  stroke="rgba(99,102,241,0.18)"
-                  strokeWidth="0.5"
-                />
-              </pattern>
-            </defs>
-            <rect width="720" height="540" fill="url(#vm-grid)" />
-            <path
-              d="M -20 320 Q 200 240 380 280 T 760 240"
-              stroke="rgba(99,102,241,0.45)"
-              strokeWidth="22"
-              fill="none"
-              opacity="0.4"
-            />
-            <path d="M 0 200 L 720 240" stroke="rgba(255,255,255,0.9)" strokeWidth="14" />
-            <path d="M 220 0 L 260 540" stroke="rgba(255,255,255,0.9)" strokeWidth="14" />
-            <path d="M 480 0 L 520 540" stroke="rgba(255,255,255,0.9)" strokeWidth="10" />
-            <path d="M 0 420 L 720 460" stroke="rgba(255,255,255,0.85)" strokeWidth="10" />
-            {BUILDINGS.map(([x, y, w, h], i) => (
-              <rect
-                key={i}
-                x={x}
-                y={y}
-                width={w}
-                height={h}
-                rx="4"
-                fill="rgba(255,255,255,0.55)"
-                stroke="rgba(99,102,241,0.15)"
-              />
-            ))}
-            <circle cx="420" cy="160" r="48" fill="rgba(16,185,129,0.25)" />
-            <circle cx="620" cy="380" r="62" fill="rgba(16,185,129,0.25)" />
-          </svg>
-
-          {/* "You are here" dot */}
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              transform: "translate(-50%,-50%)",
-            }}
-          >
-            <div
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: "50%",
-                background: "#3b82f6",
-                border: "3px solid #fff",
-                boxShadow:
-                  "0 0 0 6px rgba(59,130,246,0.25), 0 4px 12px rgba(0,0,0,0.18)",
-              }}
-            />
-          </div>
-
-          {PINS.map((p, i) => (
-            <button
-              key={p.name}
-              onClick={() => setSelected(i)}
-              style={{
-                position: "absolute",
-                left: p.x,
-                top: p.y,
-                transform: "translate(-50%, -100%)",
-                zIndex: i === selected ? 4 : 1,
-                background: "transparent",
-                border: 0,
-                padding: 0,
-                cursor: "pointer",
-              }}
-            >
-              <div
-                style={{
-                  padding: "5px 11px",
-                  borderRadius: 9999,
-                  background: i === selected ? "var(--primary)" : "#0a0a0a",
-                  color: "#fff",
-                  fontSize: 11.5,
-                  fontWeight: 900,
-                  fontFamily: "Plus Jakarta Sans",
-                  letterSpacing: "-0.01em",
-                  boxShadow:
-                    i === selected
-                      ? "0 0 0 4px rgba(16,185,129,0.25), 0 4px 12px rgba(0,0,0,0.22)"
-                      : "0 4px 12px rgba(0,0,0,0.22)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {p.label}
-                {i === selected && (
-                  <span style={{ marginLeft: 4 }}>·{p.name.split(" ")[0]}</span>
-                )}
+                <Icon name="map" size={20} color="var(--muted-fg)" />
+                Cargando mapa…
               </div>
-              <div
-                style={{
-                  width: 0,
-                  height: 0,
-                  borderLeft: "6px solid transparent",
-                  borderRight: "6px solid transparent",
-                  borderTop:
-                    "8px solid " + (i === selected ? "var(--primary)" : "#0a0a0a"),
-                  margin: "-1px auto 0",
-                }}
+            ) : (
+              <ClubesMultiMap
+                clubs={clubs}
+                visibleIds={visibleIds}
+                selectedId={selectedId}
+                onSelect={handleMarkerSelect}
               />
-            </button>
-          ))}
+            )}
 
-          {/* Zoom controls */}
-          <div
-            style={{
-              position: "absolute",
-              top: 14,
-              right: 14,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-          >
-            {[{ i: "plus" }, { i: "minus" }, { i: "crosshair" }].map((b) => (
+            {/* FAB Lista (mobile) */}
+            {isMobile && !loading && (
               <button
-                key={b.i}
+                onClick={() => setMobileList(true)}
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
+                  position: "absolute",
+                  bottom: 24,
+                  right: 24,
+                  zIndex: 10,
+                  padding: "12px 18px",
+                  borderRadius: 9999,
                   background: "#fff",
                   border: "1px solid var(--border)",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  fontWeight: 800,
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                  gap: 8,
                 }}
               >
-                <Icon name={b.i} size={14} />
+                <Icon name="list" size={14} />
+                Lista
               </button>
-            ))}
-          </div>
+            )}
 
-          <div style={{ position: "absolute", top: 14, left: 14, display: "flex", gap: 6 }}>
-            <button
-              style={{
-                padding: "7px 13px",
-                borderRadius: 9999,
-                background: "#fff",
-                border: "1px solid var(--border)",
-                fontSize: 11,
-                fontWeight: 800,
-                fontFamily: "inherit",
-                display: "inline-flex",
-                gap: 6,
-                alignItems: "center",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-            >
-              <Icon name="calendar" size={12} />
-              Mar 12 · 19:00
-            </button>
-            <button
-              style={{
-                padding: "7px 13px",
-                borderRadius: 9999,
-                background: "var(--primary)",
-                color: "#fff",
-                border: 0,
-                fontSize: 11,
-                fontWeight: 900,
-                fontFamily: "inherit",
-                display: "inline-flex",
-                gap: 6,
-                alignItems: "center",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-            >
-              <Icon name="zap" size={12} color="#fff" />
-              Disponible ahora
-            </button>
-          </div>
-
-          {/* Selected club card */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: 18,
-              left: 18,
-              width: 340,
-              background: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 12px 28px rgba(0,0,0,0.18)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 10,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "2px 7px",
-                    background: "#ecfdf5",
-                    color: "var(--primary)",
-                    borderRadius: 9999,
-                    fontSize: 8.5,
-                    fontWeight: 900,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  ● Abierto
-                </span>
+            {/* Selected club card (desktop only) */}
+            {!isMobile && selectedClub && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 18,
+                  left: 18,
+                  width: 320,
+                  background: "#fff",
+                  borderRadius: 12,
+                  padding: 16,
+                  boxShadow: "0 12px 28px rgba(0,0,0,0.18)",
+                  border: "1px solid var(--border)",
+                  zIndex: 5,
+                }}
+              >
                 <div
-                  className="font-heading"
                   style={{
-                    fontSize: 15,
-                    fontWeight: 900,
-                    letterSpacing: "-0.02em",
-                    marginTop: 8,
-                    lineHeight: 1.15,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 8,
                   }}
                 >
-                  {sel.name}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {selectedClub.isOpenNow && (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "2px 7px",
+                          background: "#ecfdf5",
+                          color: "var(--primary)",
+                          borderRadius: 9999,
+                          fontSize: 8.5,
+                          fontWeight: 900,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          marginBottom: 6,
+                        }}
+                      >
+                        ● Abierto
+                      </span>
+                    )}
+                    <Link
+                      href={`/dashboard/clubes/${selectedClub.slug}`}
+                      onClick={onClose}
+                      className="font-heading"
+                      style={{
+                        display: "block",
+                        fontSize: 15,
+                        fontWeight: 900,
+                        letterSpacing: "-0.02em",
+                        lineHeight: 1.15,
+                        color: "#0a0a0a",
+                        textDecoration: "none",
+                      }}
+                    >
+                      {selectedClub.name}
+                    </Link>
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        color: "var(--muted-fg)",
+                        marginTop: 4,
+                      }}
+                    >
+                      {selectedClub.city} · {selectedClub.courtsCount}{" "}
+                      {selectedClub.courtsCount === 1 ? "cancha" : "canchas"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    style={{
+                      background: "transparent",
+                      border: 0,
+                      cursor: "pointer",
+                      padding: 2,
+                      color: "var(--muted-fg)",
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
                 </div>
-                <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 4 }}>
-                  {sel.city} · {sel.dist} · {sel.rating} ★
+
+                {selectedClub.sports.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 5,
+                      flexWrap: "wrap",
+                      marginBottom: 12,
+                    }}
+                  >
+                    {selectedClub.sports.map((s) => (
+                      <span
+                        key={s}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 9999,
+                          background: "var(--muted)",
+                          fontSize: 9.5,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {sportLabel(s)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ flex: 1, fontSize: 10.5, padding: "7px 10px" }}
+                    onClick={() => openReservar(selectedClub)}
+                  >
+                    Reservar {priceLabel(selectedClub.minPriceCents)}/h
+                    <Icon name="arrow-right" size={11} color="#fff" />
+                  </button>
+                  {selectedClub.latitude != null &&
+                    selectedClub.longitude != null && (
+                      <a
+                        href={`https://maps.google.com/?q=${selectedClub.latitude},${selectedClub.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn"
+                        style={{
+                          background: "#fff",
+                          border: "1px solid var(--border)",
+                          padding: "7px 9px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          textDecoration: "none",
+                        }}
+                        title="Ver en Google Maps"
+                      >
+                        <Icon name="navigation" size={12} />
+                      </a>
+                    )}
                 </div>
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 10, fontSize: 9.5 }}>
-              <span
-                style={{
-                  padding: "3px 7px",
-                  background: "var(--muted)",
-                  borderRadius: 9999,
-                  fontWeight: 800,
-                }}
-              >
-                {sel.courts} canchas
-              </span>
-              <span
-                style={{
-                  padding: "3px 7px",
-                  background: "var(--muted)",
-                  borderRadius: 9999,
-                  fontWeight: 800,
-                }}
-              >
-                Outdoor
-              </span>
-              <span
-                style={{
-                  padding: "3px 7px",
-                  background: "var(--muted)",
-                  borderRadius: 9999,
-                  fontWeight: 800,
-                }}
-              >
-                Iluminada
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1, fontSize: 10.5, padding: "7px 10px" }}
-                onClick={reservarSel}
-              >
-                Reservar {sel.label}/h
-                <Icon name="arrow-right" size={11} color="#fff" />
-              </button>
-              <button className="btn" style={{ ...caGhost, padding: "7px 9px" }}>
-                <Icon name="navigation" size={12} />
-              </button>
-              <button className="btn" style={{ ...caGhost, padding: "7px 9px" }}>
-                <Icon name="bookmark" size={12} />
-              </button>
-            </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
