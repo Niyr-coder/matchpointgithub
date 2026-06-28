@@ -6,6 +6,7 @@ import { LandingShell } from "@/components/landing/LandingShell";
 import { listFeaturedClubs } from "@/server/actions/clubs";
 import { listFeaturedTournaments } from "@/server/actions/tournaments";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import type { ClubFeatured } from "@/lib/schemas/clubs";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
 
@@ -165,6 +166,9 @@ async function loadLandingExtras(): Promise<{
   ratingByClub: Map<string, number>;
 }> {
   const supabase = await getServerClient();
+  // Admin client para queries de conteo que necesitan bypassear RLS:
+  // profiles y clubs son datos públicos de plataforma, no datos de usuario.
+  const admin = getAdminClient();
   const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
   const [
@@ -174,8 +178,8 @@ async function loadLandingExtras(): Promise<{
     { data: ratingRows },
     { data: clubNames },
   ] = await Promise.all([
-    supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase
+    admin.from("profiles").select("id", { count: "exact", head: true }),
+    admin
       .from("clubs")
       .select("id", { count: "exact", head: true })
       .eq("status", "active"),
