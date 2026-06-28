@@ -7,6 +7,8 @@ import {
   type TournamentLiveMatch,
   type TournamentLiveCourt,
   type TournamentLiveBracketRound,
+  type TournamentLiveTeam,
+  type TournamentLiveGlobalStanding,
 } from "@/server/actions/tournament-live";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 
@@ -24,7 +26,9 @@ type Scene =
   | { kind: "court"; idx: number }
   | { kind: "bracket" }
   | { kind: "champion" }
-  | { kind: "upnext" };
+  | { kind: "upnext" }
+  | { kind: "teams" }
+  | { kind: "globalstandings" };
 
 function fmtTime(iso?: string | null): string | null {
   if (!iso) return null;
@@ -120,10 +124,25 @@ export function TournamentLiveDisplayClient({
   // Canchas con partido EN JUEGO → un scoreboard broadcast por cancha
   const liveCourts = data.courts.filter((c) => c.current && c.current.status === "live");
 
+  // Escenas secundarias (sin courts): se intercalan entre los scoreboards de cancha.
+  const secondary: Scene[] = [];
+  if (data.globalStandings.length > 0) secondary.push({ kind: "globalstandings" });
+  if (data.teams.length > 0) secondary.push({ kind: "teams" });
+  if (data.phase === "knockout" && data.bracketRounds.length > 0) secondary.push({ kind: "bracket" });
+  if (data.championLabel) secondary.push({ kind: "champion" });
+  secondary.push({ kind: "upnext" });
+
   const scenes: Scene[] = [];
-  liveCourts.forEach((_, i) => scenes.push({ kind: "court", idx: i }));
-  if (data.phase === "knockout" && data.bracketRounds.length > 0) scenes.push({ kind: "bracket" });
-  if (data.championLabel) scenes.push({ kind: "champion" });
+  if (liveCourts.length === 0) {
+    // Sin canchas en juego: rotar entre las secundarias directamente.
+    scenes.push(...secondary);
+  } else {
+    // Con canchas: court[i] → secondary[i] → court[i+1] → secondary[i+1] → ...
+    secondary.forEach((sec, i) => {
+      scenes.push({ kind: "court", idx: i % liveCourts.length });
+      scenes.push(sec);
+    });
+  }
   if (scenes.length === 0) scenes.push({ kind: "upnext" });
 
   useEffect(() => {
@@ -197,11 +216,17 @@ export function TournamentLiveDisplayClient({
             championLabel={data.championLabel}
           />
         )}
-        {scene.kind === "champion" && (
+        {scene.kind === "champion" && data.championLabel && (
           <ChampionScene championLabel={data.championLabel} finalists={data.finalists} />
         )}
         {scene.kind === "upnext" && (
           <UpNextScene upcoming={data.upcomingMatches} recent={data.recentMatches} name={data.tournamentName} />
+        )}
+        {scene.kind === "teams" && (
+          <TeamsScene teams={data.teams} totalCount={data.teams.length} />
+        )}
+        {scene.kind === "globalstandings" && (
+          <GlobalStandingsScene standings={data.globalStandings} />
         )}
       </main>
 
@@ -230,6 +255,9 @@ export function TournamentLiveDisplayClient({
   );
 }
 
+// ---------------------------------------------------------------------------
+// CourtBroadcast
+// ---------------------------------------------------------------------------
 function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set<string> }) {
   const m = court.current!;
   const sets = m.sets;
@@ -277,11 +305,14 @@ function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set
   );
 }
 
+// ---------------------------------------------------------------------------
+// ChampionScene — solo se monta cuando championLabel !== null
+// ---------------------------------------------------------------------------
 function ChampionScene({
   championLabel,
   finalists,
 }: {
-  championLabel: string | null;
+  championLabel: string;
   finalists: { a: string; b: string } | null;
 }) {
   return (
@@ -307,6 +338,9 @@ function ChampionScene({
   );
 }
 
+// ---------------------------------------------------------------------------
+// UpNextScene — próximos partidos + últimos resultados
+// ---------------------------------------------------------------------------
 function UpNextScene({
   upcoming,
   recent,
@@ -316,8 +350,8 @@ function UpNextScene({
   recent: TournamentLiveMatch[];
   name: string;
 }) {
-  const next = upcoming.slice(0, 5);
-  const last = recent.slice(0, 5);
+  const next = upcoming.slice(0, 6);
+  const last = recent.slice(0, 6);
   if (next.length === 0 && last.length === 0) {
     return (
       <div className="mp-tvb-upnext">
@@ -328,7 +362,7 @@ function UpNextScene({
   }
   return (
     <div className="mp-tvb-upnext-grid">
-      <div className="mp-tvb-upnext-col">
+      <div>
         <div className="mp-tvb-col-h">Próximos</div>
         {next.length === 0 ? (
           <div className="mp-tvb-col-empty">Sin partidos programados.</div>
@@ -336,7 +370,14 @@ function UpNextScene({
           <div className="mp-tvb-rows mp-tv-stagger">
             {next.map((m) => (
               <div className="mp-tvb-row" key={m.id}>
-                <span className="mp-tvb-row-time">{fmtTime(m.scheduledAt) ?? "—"}</span>
+                {m.scheduledAt && (
+                  <span className="mp-tvb-row-time">{fmtTime(m.scheduledAt)}</span>
+                )}
+                {m.courtLabel && (
+                  <span style={{ flexShrink: 0, fontSize: "0.72em", fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase" }}>
+                    {m.courtLabel}
+                  </span>
+                )}
                 <span className="mp-tvb-row-teams">
                   {m.labelA} <i>vs</i> {m.labelB}
                 </span>
@@ -345,7 +386,7 @@ function UpNextScene({
           </div>
         )}
       </div>
-      <div className="mp-tvb-upnext-col">
+      <div>
         <div className="mp-tvb-col-h">Últimos resultados</div>
         {last.length === 0 ? (
           <div className="mp-tvb-col-empty">Aún no hay resultados.</div>
@@ -356,6 +397,11 @@ function UpNextScene({
                 <span className="mp-tvb-row-teams">
                   {m.labelA} <b>{m.scoreA}</b>–<b>{m.scoreB}</b> {m.labelB}
                 </span>
+                {(m.groupName || m.courtLabel) && (
+                  <span style={{ flexShrink: 0, fontSize: "0.68em", fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {m.groupName ?? m.courtLabel}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -365,6 +411,138 @@ function UpNextScene({
   );
 }
 
+// ---------------------------------------------------------------------------
+// TeamsScene — lista de equipos inscritos
+// ---------------------------------------------------------------------------
+const TEAMS_MAX = 16;
+
+function TeamsScene({
+  teams,
+  totalCount,
+}: {
+  teams: TournamentLiveTeam[];
+  totalCount: number;
+}) {
+  const visible = teams.slice(0, TEAMS_MAX);
+  const half = Math.ceil(visible.length / 2);
+  const colA = visible.slice(0, half);
+  const colB = visible.slice(half);
+  const extra = totalCount - TEAMS_MAX;
+
+  return (
+    <div className="mp-tvb-upnext-grid">
+      <div>
+        <div className="mp-tvb-col-h">
+          Inscritos &mdash; {totalCount} {totalCount === 1 ? "equipo" : "equipos"}
+        </div>
+        <div className="mp-tvb-rows mp-tv-stagger">
+          {colA.map((t) => (
+            <div className="mp-tvb-row" key={t.registrationId}>
+              <span className="mp-tvb-row-teams">{t.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {colB.length > 0 && (
+        <div>
+          <div className="mp-tvb-col-h">&nbsp;</div>
+          <div className="mp-tvb-rows mp-tv-stagger">
+            {colB.map((t) => (
+              <div className="mp-tvb-row" key={t.registrationId}>
+                <span className="mp-tvb-row-teams">{t.label}</span>
+              </div>
+            ))}
+            {extra > 0 && (
+              <div className="mp-tvb-row">
+                <span className="mp-tvb-col-empty">+{extra} más</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GlobalStandingsScene — tabla de posiciones global cross-grupos
+// ---------------------------------------------------------------------------
+const STANDINGS_MAX = 12;
+
+function GlobalStandingsScene({
+  standings,
+}: {
+  standings: TournamentLiveGlobalStanding[];
+}) {
+  const rows = standings.slice(0, STANDINGS_MAX);
+  const extra = standings.length - STANDINGS_MAX;
+
+  return (
+    <div className="mp-tv-live-table-wrap">
+      <div className="mp-tv-live-table-title">Tabla de Posiciones</div>
+      <table className="mp-tv-live-table">
+        <thead>
+          <tr>
+            <th style={{ width: "2.5em" }}>#</th>
+            <th>Equipo</th>
+            <th style={{ textAlign: "center", width: "3.5em" }}>PJ</th>
+            <th style={{ textAlign: "center", width: "3.5em" }}>G</th>
+            <th style={{ textAlign: "center", width: "3.5em" }}>P</th>
+            <th style={{ textAlign: "center", width: "5em" }}>Sets</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.rank}>
+              <td
+                style={{
+                  fontWeight: 900,
+                  color: row.rank === 1
+                    ? "var(--tv-accent, #34d399)"
+                    : row.rank <= 3
+                      ? "rgba(255,255,255,0.7)"
+                      : "rgba(255,255,255,0.35)",
+                }}
+              >
+                {row.rank}
+              </td>
+              <td style={{ fontWeight: row.rank <= 3 ? 900 : 700 }}>{row.label}</td>
+              <td style={{ textAlign: "center", color: "rgba(255,255,255,0.5)" }}>{row.played}</td>
+              <td
+                style={{
+                  textAlign: "center",
+                  fontWeight: 900,
+                  color: "var(--tv-accent, #34d399)",
+                }}
+              >
+                {row.wins}
+              </td>
+              <td style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>{row.losses}</td>
+              <td
+                style={{
+                  textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
+                  color: "rgba(255,255,255,0.6)",
+                }}
+              >
+                {row.setsWon}-{row.setsLost}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {extra > 0 && (
+        <p className="mp-tvb-empty" style={{ marginTop: 14 }}>
+          +{extra} equipos más
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BracketFull
+// ---------------------------------------------------------------------------
 function BracketFull({
   rounds,
   finalists,

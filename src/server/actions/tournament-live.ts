@@ -156,6 +156,21 @@ export type TournamentLivePath = {
   steps: TournamentLivePathStep[];
 };
 
+export type TournamentLiveTeam = {
+  registrationId: string;
+  label: string;
+};
+
+export type TournamentLiveGlobalStanding = {
+  rank: number;
+  label: string;
+  wins: number;
+  losses: number;
+  played: number;
+  setsWon: number;
+  setsLost: number;
+};
+
 export type TournamentLiveDisplay = {
   tournamentId: string;
   tournamentName: string;
@@ -173,6 +188,8 @@ export type TournamentLiveDisplay = {
   standouts: TournamentLiveStandout[];
   paths: TournamentLivePath[];
   championLabel: string | null;
+  teams: TournamentLiveTeam[];
+  globalStandings: TournamentLiveGlobalStanding[];
 };
 
 const LiveQuerySchema = z.object({
@@ -310,17 +327,28 @@ export async function getTournamentLiveDisplay(
     const tournamentId = t.id;
 
     // Carga todos los registrations del torneo en 2 queries para evitar N+1 por grupo/bracket.
-    const nameByReg = await buildRegistrationLabelMap(admin, tournamentId);
+    // Paralelizamos con la query de categorías y la de inscritos aceptados.
+    const [nameByReg, { data: cats }, { data: acceptedRegsRaw }] = await Promise.all([
+      buildRegistrationLabelMap(admin, tournamentId),
+      admin
+        .from("tournament_categories")
+        .select("id,name,stage")
+        .eq("tournament_id", tournamentId),
+      admin
+        .from("registrations")
+        .select("id")
+        .eq("tournament_id", tournamentId)
+        .eq("status", "accepted")
+        .order("created_at", { ascending: true }),
+    ]);
 
     const allMatches: TournamentLiveMatch[] = [];
     const groupTables: TournamentLiveGroupTable[] = [];
     const categoryNames: string[] = [];
     const teamStats = new Map<string, TeamStat>();
-
-    const { data: cats } = await admin
-      .from("tournament_categories")
-      .select("id,name,stage")
-      .eq("tournament_id", tournamentId);
+    // Acumula filas brutas de standings para construir la tabla global al final.
+    type RawStandingRow = { registrationId: string; wins: number; losses: number; played: number; setsWon: number; setsLost: number };
+    const allGroupStandingRows: RawStandingRow[] = [];
 
     for (const cat of cats ?? []) {
       const categoryName = cat.name as string;
@@ -384,6 +412,16 @@ export async function getTournamentLiveDisplay(
               status: m.status as string,
             })),
           );
+          for (const s of standings) {
+            allGroupStandingRows.push({
+              registrationId: s.registrationId,
+              wins: s.wins,
+              losses: s.losses,
+              played: s.played,
+              setsWon: s.setsWon,
+              setsLost: s.setsLost,
+            });
+          }
           groupTables.push({
             categoryName,
             groupName: g.name as string,
@@ -541,6 +579,31 @@ export async function getTournamentLiveDisplay(
       .slice(0, 5);
     const phase: "groups" | "knockout" = bracketRounds.length > 0 ? "knockout" : "groups";
 
+    // Lista de equipos inscritos aceptados para la escena "teams" del TV.
+    const teams: TournamentLiveTeam[] = (acceptedRegsRaw ?? []).map((r) => ({
+      registrationId: r.id as string,
+      label: nameByReg.get(r.id as string) ?? "—",
+    }));
+
+    // Tabla global: fusión de todos los grupos, re-rankeada por wins → sets diff → games diff.
+    const globalStandings: TournamentLiveGlobalStanding[] = allGroupStandingRows
+      .sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        const aSetsDiff = a.setsWon - a.setsLost;
+        const bSetsDiff = b.setsWon - b.setsLost;
+        if (bSetsDiff !== aSetsDiff) return bSetsDiff - aSetsDiff;
+        return b.played - a.played;
+      })
+      .map((row, idx) => ({
+        rank: idx + 1,
+        label: nameByReg.get(row.registrationId) ?? "—",
+        wins: row.wins,
+        losses: row.losses,
+        played: row.played,
+        setsWon: row.setsWon,
+        setsLost: row.setsLost,
+      }));
+
     // Derivar listas para la pantalla
     const liveMatches = allMatches.filter((m) => m.status === "live").slice(0, 8);
     const recentMatches = allMatches
@@ -591,6 +654,8 @@ export async function getTournamentLiveDisplay(
       standouts,
       paths,
       championLabel,
+      teams,
+      globalStandings,
     };
   });
 }
