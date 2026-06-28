@@ -155,6 +155,7 @@ export async function PartnerTorneosScreen({
   const sp = searchParams ? await searchParams : {};
   const clubRaw = sp.club;
   const clubFilterId = typeof clubRaw === "string" && clubRaw.trim() ? clubRaw.trim() : undefined;
+  const autoCreate = sp.create === "1";
   const data = await loadData(clubFilterId);
-  return <PartnerTorneosScreenView data={data} />;
+  return <PartnerTorneosScreenView data={data} autoCreate={autoCreate} />;
 }

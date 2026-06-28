@@ -882,6 +882,7 @@ function StepDetails(props: {
         <select
           value={props.clubId}
           onChange={(e) => props.setClubId(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
           style={inputStyle}
         >
           <option value="">Sin sede · multi-club</option>

@@ -248,7 +248,7 @@ function TorneoPlaceholder() {
   );
 }
 
-export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
+export function PartnerTorneosScreenView({ data, autoCreate }: { data: TorneosData; autoCreate?: boolean }) {
   const toast = useToast();
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -260,6 +260,14 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
     }
     setCreateOpen(true);
   };
+
+  useEffect(() => {
+    if (autoCreate && data.partnerId) {
+      setCreateOpen(true);
+      router.replace("/dashboard/partner/p-torneos");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearClubFilter = () => {
     router.push("/dashboard/partner/p-torneos");
@@ -332,7 +340,7 @@ export function PartnerTorneosScreenView({ data }: { data: TorneosData }) {
           clubs={data.clubs}
           open={createOpen}
           onClose={() => setCreateOpen(false)}
-          initialClubId={data.filterClub?.id}
+          initialClubId={data.filterClub?.id ?? (data.clubs.length === 1 ? data.clubs[0].id : undefined)}
         />
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

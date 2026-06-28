@@ -14,14 +14,14 @@ import {
 } from "@/server/actions/notifications";
 import { getBrowserClient } from "@/lib/db/client.browser";
 
-type CTA = { l: string; i: string; ev: string | null };
+type CTA = { l: string; i: string; ev: string | null; href?: string };
 
 const CTA_BY_ROLE: Record<RoleKey, CTA> = {
   user: { l: "Reservar", i: "plus", ev: "mp-open-reservar" },
   admin: { l: "Crear acción", i: "shield", ev: null },
   owner: { l: "Crear evento", i: "plus", ev: "mp-open-crear-evento" },
   manager: { l: "Nueva reserva", i: "calendar-plus", ev: "mp-open-reservar" },
-  partner: { l: "Nuevo torneo", i: "trophy", ev: "mp-open-crear-evento" },
+  partner: { l: "Nuevo torneo", i: "trophy", ev: null, href: "/dashboard/partner/p-torneos?create=1" },
   coach: { l: "Nueva clase", i: "graduation-cap", ev: null },
   employee: { l: "Check-in rápido", i: "user-check", ev: null },
 };
@@ -454,6 +454,7 @@ export function TopBar({
   roleSwitchOptions?: RoleSwitchOption[];
   onOpenRoleSwitcher?: () => void;
 }) {
+  const router = useRouter();
   const [notifOpen, setNotifOpen] = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   // Notifs viven en TopBar para que el panel se renderice instantáneamente
@@ -596,6 +597,10 @@ export function TopBar({
   const handleCta = () => {
     if (showAdminQuickMenu) {
       setQuickActionOpen(true);
+      return;
+    }
+    if (cta.href) {
+      router.push(cta.href);
       return;
     }
     if (cta.ev === "mp-open-crear-evento") {
