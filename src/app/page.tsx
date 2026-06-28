@@ -1,11 +1,11 @@
-// Renderiza siempre con datos frescos; el landing depende del estado vivo de
-// clubes/torneos publicados.
+// Clubs y torneos destacados son dinámicos (fresh en cada request).
+// Las estadísticas globales (jugadores, GMV, rating) se cachean 24 horas via unstable_cache.
 export const dynamic = "force-dynamic";
 
+import { unstable_cache } from "next/cache";
 import { LandingShell } from "@/components/landing/LandingShell";
 import { listFeaturedClubs } from "@/server/actions/clubs";
 import { listFeaturedTournaments } from "@/server/actions/tournaments";
-import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import type { ClubFeatured } from "@/lib/schemas/clubs";
 import type { TournamentFeatured } from "@/lib/schemas/tournaments";
@@ -160,80 +160,82 @@ type LandingStats = {
   rating: string;
 };
 
-async function loadLandingExtras(): Promise<{
-  stats: LandingStats;
-  marqueeClubs: string[];
-  ratingByClub: Map<string, number>;
-}> {
-  const supabase = await getServerClient();
-  // Admin client para queries de conteo que necesitan bypassear RLS:
-  // profiles y clubs son datos públicos de plataforma, no datos de usuario.
-  const admin = getAdminClient();
-  const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+// unstable_cache serializa con JSON: Map no es serializable, se devuelve como entries.
+const loadLandingExtras = unstable_cache(
+  async (): Promise<{
+    stats: LandingStats;
+    marqueeClubs: string[];
+    ratingByClub: [string, number][];
+  }> => {
+    const admin = getAdminClient();
+    const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
-  const [
-    { count: playersCount },
-    { count: clubsActiveCount },
-    { data: gmvRows },
-    { data: ratingRows },
-    { data: clubNames },
-  ] = await Promise.all([
-    admin.from("profiles").select("id", { count: "exact", head: true }),
-    admin
-      .from("clubs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "active"),
-    supabase
-      .from("transactions")
-      .select("amount_cents")
-      .eq("status", "captured")
-      .gte("created_at", yearStart),
-    supabase.from("club_reviews").select("club_id,rating"),
-    supabase
-      .from("clubs_public_summary")
-      .select("name")
-      .order("courts_count", { ascending: false })
-      .limit(12),
-  ]);
+    const [
+      { count: playersCount },
+      { count: clubsActiveCount },
+      { data: gmvRows },
+      { data: ratingRows },
+      { data: clubNames },
+    ] = await Promise.all([
+      admin.from("profiles").select("id", { count: "exact", head: true }),
+      admin
+        .from("clubs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active"),
+      admin
+        .from("transactions")
+        .select("amount_cents")
+        .eq("status", "captured")
+        .gte("created_at", yearStart),
+      admin.from("club_reviews").select("club_id,rating"),
+      admin
+        .from("clubs_public_summary")
+        .select("name")
+        .order("courts_count", { ascending: false })
+        .limit(12),
+    ]);
 
-  const gmvCents = (gmvRows ?? []).reduce(
-    (s, r) => s + ((r.amount_cents as number) ?? 0),
-    0,
-  );
-  const gmvDollars = Math.round(gmvCents / 100);
-  const gmvLabel =
-    gmvDollars >= 1000 ? `$${(gmvDollars / 1000).toFixed(0)}k` : `$${gmvDollars.toLocaleString("en-US")}`;
+    const gmvCents = (gmvRows ?? []).reduce(
+      (s, r) => s + ((r.amount_cents as number) ?? 0),
+      0,
+    );
+    const gmvDollars = Math.round(gmvCents / 100);
+    const gmvLabel =
+      gmvDollars >= 1000 ? `$${(gmvDollars / 1000).toFixed(0)}k` : `$${gmvDollars.toLocaleString("en-US")}`;
 
-  const sumByClub = new Map<string, { total: number; count: number }>();
-  for (const r of ratingRows ?? []) {
-    const id = r.club_id as string;
-    const cur = sumByClub.get(id) ?? { total: 0, count: 0 };
-    cur.total += (r.rating as number) ?? 0;
-    cur.count += 1;
-    sumByClub.set(id, cur);
-  }
-  const ratingByClub = new Map<string, number>();
-  let globalTotal = 0;
-  let globalCount = 0;
-  for (const [id, agg] of sumByClub) {
-    const avg = agg.total / agg.count;
-    ratingByClub.set(id, Math.round(avg * 10) / 10);
-    globalTotal += agg.total;
-    globalCount += agg.count;
-  }
-  const globalAvg = globalCount > 0 ? Math.round((globalTotal / globalCount) * 10) / 10 : null;
+    const sumByClub = new Map<string, { total: number; count: number }>();
+    for (const r of ratingRows ?? []) {
+      const id = r.club_id as string;
+      const cur = sumByClub.get(id) ?? { total: 0, count: 0 };
+      cur.total += (r.rating as number) ?? 0;
+      cur.count += 1;
+      sumByClub.set(id, cur);
+    }
+    const ratingByClub = new Map<string, number>();
+    let globalTotal = 0;
+    let globalCount = 0;
+    for (const [id, agg] of sumByClub) {
+      const avg = agg.total / agg.count;
+      ratingByClub.set(id, Math.round(avg * 10) / 10);
+      globalTotal += agg.total;
+      globalCount += agg.count;
+    }
+    const globalAvg = globalCount > 0 ? Math.round((globalTotal / globalCount) * 10) / 10 : null;
 
-  return {
-    stats: {
-      players: (playersCount ?? 0).toLocaleString("en-US"),
-      clubs: String(clubsActiveCount ?? 0),
-      gmv: gmvCents > 0 ? gmvLabel : "—",
-      rating: globalAvg != null ? `${globalAvg.toFixed(1)} ★` : "—",
-    },
-    marqueeClubs: (clubNames ?? []).map((c) => c.name as string),
-    ratingByClub,
-  };
-}
+    return {
+      stats: {
+        players: (playersCount ?? 0).toLocaleString("en-US"),
+        clubs: String(clubsActiveCount ?? 0),
+        gmv: gmvCents > 0 ? gmvLabel : "—",
+        rating: globalAvg != null ? `${globalAvg.toFixed(1)} ★` : "—",
+      },
+      marqueeClubs: (clubNames ?? []).map((c) => c.name as string),
+      ratingByClub: [...ratingByClub.entries()],
+    };
+  },
+  ["landing-extras"],
+  { revalidate: 86400, tags: ["landing-stats"] },
+);
 
 export default async function HomePage() {
   const [clubsRes, eventsRes, extras] = await Promise.all([
@@ -241,7 +243,8 @@ export default async function HomePage() {
     listFeaturedTournaments({ limit: TARGET_EVENTS }),
     loadLandingExtras(),
   ]);
-  const realClubs = clubsRes.ok ? adaptClubs(clubsRes.data, extras.ratingByClub) : [];
+  const ratingByClub = new Map(extras.ratingByClub);
+  const realClubs = clubsRes.ok ? adaptClubs(clubsRes.data, ratingByClub) : [];
   const realEvents = eventsRes.ok ? adaptTournaments(eventsRes.data) : [];
   const clubs = fillSlots(realClubs, CLUB_PROMOS, TARGET_CLUBS);
   const events = fillSlots(realEvents, EVENT_PROMOS, TARGET_EVENTS);

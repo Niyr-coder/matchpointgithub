@@ -13,6 +13,8 @@ ahorran retrabajo.
 
 Mapa rápido:
 
+- **Handoff sesión / migración Claude Code** → `docs/handoffs/CLAUDE-CODE-MASTER.md`
+  (inventario de lo ya hecho — no rehacer).
 - **Schema, tablas, enums** → `docs/architecture/20-database.md` (§29 = adds
   post-MVP).
 - **RLS y cuándo usar `getAdminClient` vs `getServerClient`** →
