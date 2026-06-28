@@ -3,11 +3,10 @@
 // Matches sueltos (casual/pickup) reportados por jugadores fuera de torneo.
 // Ciclo de vida: scheduled → reported → confirmed | disputed.
 //
-// TODO(ranking): cuando un match llega a status='confirmed' hay que disparar el
-// recálculo de ranking (player_stats + ranking_snapshots). La lógica de cálculo
-// vive fuera de este archivo (ver ranking.ts y la fn SECURITY DEFINER del
-// cron nocturno). Por ahora dejamos el match marcado como confirmed y el
-// próximo job lo absorberá.
+// El recálculo de ELO se dispara vía trigger de DB (mig 058):
+// tg_recalculate_elo_on_confirm → fn_recalculate_elo_for_match.
+// Cubre matches casuales (esta tabla). bracket_matches y tournament_group_matches
+// NO alimentan player_stats todavía — requiere decisión de producto.
 import "server-only";
 
 import { z } from "zod";
@@ -724,7 +723,8 @@ export async function confirmScore(input: unknown): Promise<ActionResult<MatchRo
     if (updErr || !updated) {
       throw new MpError("MATCH.CONFIRM_FAILED", updErr?.message ?? "No se pudo confirmar", 500);
     }
-    // TODO(ranking): si allConfirmed, encolar recálculo de player_stats.
+    // El trigger tg_recalculate_elo_on_confirm dispara fn_recalculate_elo_for_match
+    // automáticamente cuando status cambia a 'confirmed'.
     return rowToMatch(updated as DbMatch);
   });
 }

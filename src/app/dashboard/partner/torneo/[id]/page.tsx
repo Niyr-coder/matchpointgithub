@@ -847,6 +847,7 @@ export default async function PartnerTorneoPage({
               <PartnerTorneoOperacionPanel
                 showBracketsFallback={!hasGroupOperacion}
                 hasBracket={hasBracket}
+                tournamentFormat={tournamentFormat}
               >
                 {hasGroupOperacion && (
                   <GroupStagePanel

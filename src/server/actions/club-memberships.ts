@@ -13,6 +13,7 @@ import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { requireClubPlanWithFlag } from "@/lib/auth/club-plan";
 import { notify } from "@/server/notifications/dispatch";
 import {
   SaveClubMembershipTierSchema,
@@ -68,6 +69,9 @@ export async function saveClubMembershipTier(input: unknown): Promise<ActionResu
     await requireUserId();
     await assertClubStaff(d.clubId);
     const supabase = await getServerClient();
+    if (!d.tierId) {
+      await requireClubPlanWithFlag(supabase, d.clubId, "paywall_enforce_club_memberships", "pro");
+    }
     const card_design = { templateKey: d.cardTemplateKey || DEFAULT_MEMBERSHIP_TEMPLATE_KEY, ...(d.cardAccent ? { accent: d.cardAccent } : {}) };
     const base: Record<string, unknown> = {
       name: d.name,

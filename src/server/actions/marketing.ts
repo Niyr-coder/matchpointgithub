@@ -8,6 +8,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
+import { requireClubPlanWithFlag } from "@/lib/auth/club-plan";
 import { AuthError } from "@/lib/auth/session";
 import { notify } from "@/server/notifications/dispatch";
 import {
@@ -127,6 +128,9 @@ export async function createBroadcast(input: unknown): Promise<ActionResult<Broa
   return runAction(BroadcastCreateSchema, input, async (data) => {
     const userId = await assertCanBroadcast(data.scope, data.clubId, data.partnerId);
     const supabase = await getServerClient();
+    if (data.scope === "club" && data.clubId) {
+      await requireClubPlanWithFlag(supabase, data.clubId, "paywall_enforce_club_marketing", "pro");
+    }
     const { data: row, error } = await supabase
       .from("broadcasts")
       .insert({

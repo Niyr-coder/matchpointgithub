@@ -1066,6 +1066,13 @@ export async function generateBracket(
         422,
       );
     }
+    if (t.format === "round_robin" || t.format === "swiss") {
+      throw new MpError(
+        "BRACKETS.LIGA_FORMAT",
+        "Los formatos de liga (round-robin y suizo) no usan cuadro eliminatorio. La generación de calendarios de liga está en desarrollo.",
+        422,
+      );
+    }
 
     let existingQ = supabase
       .from("brackets")
