@@ -97,7 +97,7 @@ async function countAcceptedRegistrations(
     .eq("status", "accepted");
   return count ?? 0;
 }
-async function loadData(): Promise<BracketsData> {
+async function loadData(forceId?: string | null): Promise<BracketsData> {
   const empty: BracketsData = {
     partnerId: null,
     tournamentId: null,
@@ -145,18 +145,34 @@ async function loadData(): Promise<BracketsData> {
     slug: string;
     displayToken: string | null;
   } | null = null;
-  for (const t of tours ?? []) {
-    const s = new Date(t.starts_at as string);
-    const e = t.ends_at ? new Date(t.ends_at as string) : s;
-    if (s <= now && now <= e) {
+
+  if (forceId) {
+    const forced = (tours ?? []).find((t) => (t.id as string) === forceId);
+    if (forced) {
       chosen = {
-        id: t.id as string,
-        name: (t.name as string) ?? "—",
-        format: (t.format as string) ?? "single_elim",
-        slug: (t.slug as string) ?? "",
-        displayToken: (t.display_token as string | null) ?? null,
+        id: forced.id as string,
+        name: (forced.name as string) ?? "—",
+        format: (forced.format as string) ?? "single_elim",
+        slug: (forced.slug as string) ?? "",
+        displayToken: (forced.display_token as string | null) ?? null,
       };
-      break;
+    }
+  }
+
+  if (!chosen) {
+    for (const t of tours ?? []) {
+      const s = new Date(t.starts_at as string);
+      const e = t.ends_at ? new Date(t.ends_at as string) : s;
+      if (s <= now && now <= e) {
+        chosen = {
+          id: t.id as string,
+          name: (t.name as string) ?? "—",
+          format: (t.format as string) ?? "single_elim",
+          slug: (t.slug as string) ?? "",
+          displayToken: (t.display_token as string | null) ?? null,
+        };
+        break;
+      }
     }
   }
   if (!chosen && tours?.[0]) {
@@ -320,7 +336,13 @@ async function loadData(): Promise<BracketsData> {
   };
 }
 
-export async function PartnerBracketsScreen() {
-  const data = await loadData();
+export async function PartnerBracketsScreen({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = searchParams ? await searchParams : {};
+  const forceId = typeof sp.tid === "string" ? sp.tid : null;
+  const data = await loadData(forceId);
   return <PartnerBracketsScreenView data={data} />;
 }

@@ -17,6 +17,7 @@ import type { CategoryWinner } from "@/server/actions/tournament-close";
 import {
   EditTournamentModal,
   type EditableTournament,
+  type ClubOption,
 } from "./EditTournamentModal";
 
 type Props = {
@@ -31,6 +32,7 @@ type Props = {
   setupLockMessage?: string | null;
   editable: EditableTournament;
   categoryWinners?: CategoryWinner[];
+  availableClubs?: ClubOption[];
 };
 
 export function PartnerTorneoActions({
@@ -45,6 +47,7 @@ export function PartnerTorneoActions({
   setupLockMessage,
   editable,
   categoryWinners = [],
+  availableClubs = [],
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const router = useRouter();
@@ -250,6 +253,7 @@ export function PartnerTorneoActions({
         tournament={editable}
         open={editOpen}
         onClose={() => setEditOpen(false)}
+        availableClubs={availableClubs}
       />
     </div>
   );

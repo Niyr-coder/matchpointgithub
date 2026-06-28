@@ -226,9 +226,9 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
   partner: {
     "p-ligas": () => <PartnerLigasScreen />,
     "p-torneos": (sp) => <PartnerTorneosScreen searchParams={sp} />,
-    "p-brackets": () => <PartnerBracketsScreen />,
+    "p-brackets": (sp) => <PartnerBracketsScreen searchParams={sp} />,
     // Alias legacy: enlaces viejos apuntaban a /dashboard/partner/brackets
-    brackets: () => <PartnerBracketsScreen />,
+    brackets: (sp) => <PartnerBracketsScreen searchParams={sp} />,
     "p-inscritos": () => <PartnerInscritosScreen />,
     "p-clubes": () => <PartnerClubesScreen />,
     "p-finanzas": () => <PartnerFinanzasScreen />,

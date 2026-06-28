@@ -8,11 +8,13 @@ export function PartnerTorneoOperacionPanel({
   showBracketsFallback,
   hasBracket,
   tournamentFormat,
+  tournamentId,
 }: {
   children?: React.ReactNode;
   showBracketsFallback: boolean;
   hasBracket: boolean;
   tournamentFormat?: string;
+  tournamentId?: string;
 }) {
   const isLiga = tournamentFormat ? LIGA_FORMATS.has(tournamentFormat) : false;
 
@@ -31,7 +33,7 @@ export function PartnerTorneoOperacionPanel({
                 ? "El bracket ya está generado. Gestiona marcadores y avance desde la pantalla de brackets."
                 : "Cuando cierres inscripciones y generes el cuadro, podrás cargar resultados aquí."}
             </p>
-            <Link href="/dashboard/partner/p-brackets" className="btn btn-primary">
+            <Link href={`/dashboard/partner/p-brackets${tournamentId ? `?tid=${tournamentId}` : ""}`} className="btn btn-primary">
               <Icon name="external-link" size={12} color="#fff" />
               Ir a brackets
             </Link>

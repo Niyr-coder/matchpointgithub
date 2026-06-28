@@ -337,6 +337,21 @@ export default async function PartnerTorneoPage({
     acceptedCount: c.acceptedCount,
   }));
 
+  // Clubes vinculados al partner — para el selector de sede en el modal de edición.
+  let availableClubs: Array<{ id: string; name: string }> = [];
+  if (partnerId) {
+    const { data: links } = await admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("partner_club_links")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("clubs(id,name)" as any)
+      .eq("partner_id", partnerId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    availableClubs = ((links ?? []) as any[])
+      .map((l) => l.clubs as { id: string; name: string } | null)
+      .filter((c): c is { id: string; name: string } => !!c);
+  }
+
   let clubCourts: Array<{ id: string; label: string }> = [];
   const tournamentClubId = (t.club_id as string | null) ?? null;
   if (tournamentClubId) {
@@ -812,7 +827,9 @@ export default async function PartnerTorneoPage({
                           | "prepay"
                           | "onsite"
                           | "flexible",
+                      clubId: (t.club_id as string | null) ?? null,
                     }}
+                    availableClubs={availableClubs}
                   />
                 )}
 
@@ -860,6 +877,7 @@ export default async function PartnerTorneoPage({
                 showBracketsFallback={!hasGroupOperacion && !hasLigaOperacion}
                 hasBracket={hasBracket}
                 tournamentFormat={tournamentFormat}
+                tournamentId={t.id as string}
               >
                 {hasGroupOperacion && (
                   <GroupStagePanel

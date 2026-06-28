@@ -16,12 +16,16 @@ export type EditableTournament = {
   entryFeeCents: number;
   prizePoolCents: number | null;
   paymentPolicy: "free" | "prepay" | "onsite" | "flexible";
+  clubId: string | null;
 };
+
+export type ClubOption = { id: string; name: string };
 
 type Props = {
   tournament: EditableTournament;
   open: boolean;
   onClose: () => void;
+  availableClubs?: ClubOption[];
 };
 
 const POLICY_OPTIONS: Array<{ value: EditableTournament["paymentPolicy"]; label: string; sub: string }> = [
@@ -46,7 +50,7 @@ function localInputToIso(local: string): string {
   return new Date(local).toISOString();
 }
 
-export function EditTournamentModal({ tournament, open, onClose }: Props) {
+export function EditTournamentModal({ tournament, open, onClose, availableClubs = [] }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [, startTx] = useTransition();
@@ -68,6 +72,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
       : "",
   );
   const [paymentPolicy, setPaymentPolicyRaw] = useState(tournament.paymentPolicy);
+  const [clubId, setClubId] = useState<string | null>(tournament.clubId);
 
   // Mantener cuota y policy coherentes para que el validador del server no
   // se queje: "Gratis" implica cuota=0, y cualquier otra policy implica >0.
@@ -100,6 +105,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
         : "",
     );
     setPaymentPolicyRaw(tournament.paymentPolicy);
+    setClubId(tournament.clubId);
   }, [open, tournament]);
 
   if (!open) return null;
@@ -154,6 +160,7 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
           entryFeeCents: Math.round(feeNum * 100),
           prizePoolCents: prizeNum != null ? Math.round(prizeNum * 100) : null,
           paymentPolicy,
+          clubId,
         },
       });
       setSaving(false);
@@ -310,6 +317,23 @@ export function EditTournamentModal({ tournament, open, onClose }: Props) {
               />
             </Field>
           </div>
+
+          {availableClubs.length > 0 && (
+            <Field label="Sede / club">
+              <select
+                value={clubId ?? ""}
+                onChange={(e) => setClubId(e.target.value || null)}
+                style={{ ...inputStyle, cursor: "pointer" }}
+              >
+                <option value="">Sin sede</option>
+                {availableClubs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <Field label="Método de pago">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

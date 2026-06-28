@@ -1537,6 +1537,7 @@ const UpdateByOrganizerSchema = z.object({
       entryFeeCents: z.number().int().min(0).optional(),
       prizePoolCents: z.number().int().min(0).nullable().optional(),
       paymentPolicy: TournamentPaymentPolicySchema.optional(),
+      clubId: UuidSchema.nullable().optional(),
     })
     .refine((p) => Object.keys(p).length > 0, { message: "patch vacío" }),
 });
@@ -1595,6 +1596,27 @@ export async function updateTournamentByOrganizer(
     if (patch.entryFeeCents !== undefined) update.entry_fee_cents = patch.entryFeeCents;
     if (patch.prizePoolCents !== undefined) update.prize_pool_cents = patch.prizePoolCents;
     if (patch.paymentPolicy !== undefined) update.payment_policy = patch.paymentPolicy;
+    if (patch.clubId !== undefined) {
+      if (patch.clubId !== null && !isAdmin) {
+        const partnerId = existing.partner_id as string | null;
+        if (partnerId) {
+          const { data: link } = await supabase
+            .from("partner_club_links")
+            .select("club_id")
+            .eq("partner_id", partnerId)
+            .eq("club_id", patch.clubId)
+            .maybeSingle();
+          if (!link) {
+            throw new MpError(
+              "TOURNAMENTS.CLUB_NOT_LINKED",
+              "El club seleccionado no está vinculado a tu cuenta de partner",
+              422,
+            );
+          }
+        }
+      }
+      update.club_id = patch.clubId;
+    }
 
     const newStart =
       (update.starts_at as string | undefined) ?? (existing.starts_at as string);
