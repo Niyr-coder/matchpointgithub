@@ -370,18 +370,29 @@ function RowMenu({
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<
+    | { top: number; bottom?: never; right: number }
+    | { bottom: number; top?: never; right: number }
+    | null
+  >(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
   // Recalcular posición del dropdown al abrir (también ante scroll/resize).
+  // Si no hay espacio suficiente abajo, se abre hacia arriba.
   useEffect(() => {
     if (!open) return;
+    const MENU_H = 260;
     const update = () => {
       const r = btnRef.current?.getBoundingClientRect();
       if (!r) return;
-      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+      const right = window.innerWidth - r.right;
+      if (window.innerHeight - r.bottom >= MENU_H) {
+        setPos({ top: r.bottom + 6, right });
+      } else {
+        setPos({ bottom: window.innerHeight - r.top + 6, right });
+      }
     };
     update();
     window.addEventListener("scroll", update, true);
@@ -424,7 +435,7 @@ function RowMenu({
             <div
               style={{
                 position: "fixed",
-                top: pos.top,
+                ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
                 right: pos.right,
                 zIndex: 9999,
                 background: "#fff",
