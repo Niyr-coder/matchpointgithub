@@ -212,7 +212,7 @@ export async function saveOnboardingStep(
     // step === "finish"
     const { data: prof, error: readErr } = await supabase
       .from("profiles")
-      .select("first_name, last_name, username, birthdate, country, city, dominant_hand")
+      .select("first_name, last_name, username, birthdate, phone, country, city, dominant_hand")
       .eq("id", userId)
       .maybeSingle();
     if (readErr) throw new MpError("ONBOARDING.READ_FAILED", readErr.message, 500);
@@ -221,6 +221,7 @@ export async function saveOnboardingStep(
       last_name: string | null;
       username: string | null;
       birthdate: string | null;
+      phone: string | null;
       country: string | null;
       city: string | null;
       dominant_hand: string | null;

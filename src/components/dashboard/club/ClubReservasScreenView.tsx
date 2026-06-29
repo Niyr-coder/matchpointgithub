@@ -119,7 +119,7 @@ const EMPTY_COURT = {
   label: "Sin canchas",
   sport: "pickleball" as const,
   grid: emptyGrid(),
-  cellMeta: {} as Record<string, { name: string; kind: string }>,
+  cellMeta: {} as Record<string, { name: string; kind: string; id?: string }>,
   minPriceCents: null as number | null,
 };
 
