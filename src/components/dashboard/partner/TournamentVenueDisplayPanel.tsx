@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "../ToastProvider";
 import { usePromptModal } from "../widgets/PromptModal";
@@ -30,14 +30,21 @@ export function TournamentVenueDisplayPanel({
   const [, startTx] = useTransition();
   const [token, setToken] = useState(initialToken);
   const [busy, setBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (token || readOnly) return;
+  const fetchToken = useCallback(() => {
+    setLinkError(null);
     startTx(async () => {
       const res = await ensureTournamentDisplayToken({ tournamentId });
       if (res.ok) setToken(res.data.token);
+      else setLinkError(res.error.message);
     });
-  }, [token, readOnly, tournamentId]);
+  }, [tournamentId]);
+
+  useEffect(() => {
+    if (token || readOnly) return;
+    fetchToken();
+  }, [token, readOnly, fetchToken]);
 
   const liveUrl = token ? `${TV_URL}/${slug}?k=${token}` : null;
   const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top"}/eventos/${slug}`;
@@ -128,6 +135,15 @@ export function TournamentVenueDisplayPanel({
               </button>
             )}
           </div>
+        </div>
+      ) : linkError ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, color: "var(--error, #dc2626)" }}>{linkError}</div>
+          {!readOnly && (
+            <button type="button" className="btn" style={{ fontSize: 11 }} onClick={fetchToken}>
+              Reintentar
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>Generando link…</div>

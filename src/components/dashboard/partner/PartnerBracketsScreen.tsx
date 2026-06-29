@@ -2,6 +2,7 @@
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
+import { getSession } from "@/lib/auth/session";
 import {
   PartnerBracketsScreenView,
   type BracketsData,
@@ -24,14 +25,12 @@ function formatSetScore(score: unknown): { sa: number | string; sb: number | str
   return { sa: aW, sb: bW };
 }
 
-async function registrationLabels(
-  supabase: Awaited<ReturnType<typeof getServerClient>>,
-  regIds: string[],
-): Promise<Map<string, string>> {
+async function registrationLabels(regIds: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (regIds.length === 0) return out;
 
-  const { data: regs } = await supabase
+  const admin = getAdminClient();
+  const { data: regs } = await admin
     .from("registrations")
     .select("id,team_id,player_ids,teams(name)")
     .in("id", regIds);
@@ -42,7 +41,6 @@ async function registrationLabels(
   }
   const profById = new Map<string, string>();
   if (playerIdSet.size > 0) {
-    const admin = getAdminClient();
     const { data: profs } = await admin
       .from("profiles")
       .select("id,display_name")
@@ -56,12 +54,11 @@ async function registrationLabels(
     const pids = (r.player_ids as string[] | null) ?? [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const teamName = ((r as any).teams?.name as string | undefined) ?? null;
-    const first = pids[0] ? profById.get(pids[0]) : null;
     const label = teamName
       ? teamName
-      : pids.length > 1 && first
-        ? `${first} +${pids.length - 1}`
-        : first ?? "Equipo";
+      : pids.length > 0
+        ? pids.map((pid) => profById.get(pid) ?? "Jugador").join(" / ")
+        : "Equipo";
     out.set(r.id as string, label);
   }
   return out;
@@ -86,17 +83,6 @@ function placeholderColumns(entryCount: number): BracketsData["columns"] {
   }));
 }
 
-async function countAcceptedRegistrations(
-  supabase: Awaited<ReturnType<typeof getServerClient>>,
-  tournamentId: string,
-): Promise<number> {
-  const { count } = await supabase
-    .from("registrations")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId)
-    .eq("status", "accepted");
-  return count ?? 0;
-}
 async function loadData(forceId?: string | null): Promise<BracketsData> {
   const empty: BracketsData = {
     partnerId: null,
@@ -113,20 +99,26 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
   };
 
   const partnerId = await resolveActivePartnerId();
-  if (!partnerId) return empty;
-
   const supabase = await getServerClient();
   const now = new Date();
+  const admin = getAdminClient();
 
-  const { data: toursRaw } = await supabase
-    .from("tournaments")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
-    .eq("partner_id", partnerId)
-    .neq("status", "draft")
-    .neq("status", "cancelled")
-    .order("starts_at", { ascending: true })
-    .limit(20);
+  // Admin de plataforma puede acceder a cualquier torneo via ?tid= para soporte.
+  let isAdmin = false;
+  const session = await getSession();
+  if (session.authenticated) {
+    const { data: ar } = await supabase
+      .from("role_assignments")
+      .select("role")
+      .eq("user_id", session.session.userId)
+      .eq("role", "admin")
+      .is("revoked_at", null)
+      .maybeSingle();
+    isAdmin = !!ar;
+  }
+
+  if (!partnerId && !isAdmin) return empty;
+
   type TourPick = {
     id: string;
     name: string;
@@ -136,7 +128,33 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     slug: string;
     display_token: string | null;
   };
-  const tours = (toursRaw ?? []) as unknown as TourPick[];
+
+  let tours: TourPick[];
+
+  if (isAdmin && forceId) {
+    // Admin con ?tid=: carga directo sin restricción de partner.
+    const { data } = await admin
+      .from("tournaments")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
+      .eq("id", forceId)
+      .neq("status", "draft")
+      .neq("status", "cancelled")
+      .limit(1);
+    tours = (data ?? []) as unknown as TourPick[];
+  } else {
+    if (!partnerId) return empty;
+    const { data } = await supabase
+      .from("tournaments")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
+      .eq("partner_id", partnerId)
+      .neq("status", "draft")
+      .neq("status", "cancelled")
+      .order("starts_at", { ascending: true })
+      .limit(20);
+    tours = (data ?? []) as unknown as TourPick[];
+  }
 
   let chosen: {
     id: string;
@@ -147,51 +165,51 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
   } | null = null;
 
   if (forceId) {
-    const forced = (tours ?? []).find((t) => (t.id as string) === forceId);
+    const forced = tours.find((t) => t.id === forceId);
     if (forced) {
       chosen = {
-        id: forced.id as string,
-        name: (forced.name as string) ?? "—",
-        format: (forced.format as string) ?? "single_elim",
-        slug: (forced.slug as string) ?? "",
-        displayToken: (forced.display_token as string | null) ?? null,
+        id: forced.id,
+        name: forced.name ?? "—",
+        format: forced.format ?? "single_elim",
+        slug: forced.slug ?? "",
+        displayToken: forced.display_token ?? null,
       };
     }
   }
 
   if (!chosen) {
-    for (const t of tours ?? []) {
-      const s = new Date(t.starts_at as string);
-      const e = t.ends_at ? new Date(t.ends_at as string) : s;
+    for (const t of tours) {
+      const s = new Date(t.starts_at);
+      const e = t.ends_at ? new Date(t.ends_at) : s;
       if (s <= now && now <= e) {
         chosen = {
-          id: t.id as string,
-          name: (t.name as string) ?? "—",
-          format: (t.format as string) ?? "single_elim",
-          slug: (t.slug as string) ?? "",
-          displayToken: (t.display_token as string | null) ?? null,
+          id: t.id,
+          name: t.name ?? "—",
+          format: t.format ?? "single_elim",
+          slug: t.slug ?? "",
+          displayToken: t.display_token ?? null,
         };
         break;
       }
     }
   }
-  if (!chosen && tours?.[0]) {
+  if (!chosen && tours[0]) {
     chosen = {
-      id: tours[0].id as string,
-      name: (tours[0].name as string) ?? "—",
-      format: (tours[0].format as string) ?? "single_elim",
-      slug: (tours[0].slug as string) ?? "",
-      displayToken: (tours[0].display_token as string | null) ?? null,
+      id: tours[0].id,
+      name: tours[0].name ?? "—",
+      format: tours[0].format ?? "single_elim",
+      slug: tours[0].slug ?? "",
+      displayToken: tours[0].display_token ?? null,
     };
   }
 
   if (!chosen) {
-    return { ...empty, partnerId };
+    return { ...empty, partnerId: partnerId ?? null };
   }
 
   const canGenerateRandomBracket = chosen.format !== "groups_to_knockout";
 
-  const { data: brackets } = await supabase
+  const { data: brackets } = await admin
     .from("brackets")
     .select("id")
     .eq("tournament_id", chosen.id)
@@ -199,16 +217,20 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     .limit(1);
   const bracketId = brackets?.[0]?.id as string | undefined;
   if (!bracketId) {
-    const regCount = await countAcceptedRegistrations(supabase, chosen.id);
+    const { count: regCount } = await admin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", chosen.id)
+      .eq("status", "accepted");
     return {
-      partnerId,
+      partnerId: partnerId ?? null,
       tournamentId: chosen.id,
       tournamentName: chosen.name,
       tournamentSlug: chosen.slug,
       displayToken: chosen.displayToken,
       tournamentFormat: chosen.format,
       canGenerateRandomBracket,
-      columns: placeholderColumns(Math.max(regCount, 2)),
+      columns: placeholderColumns(Math.max(regCount ?? 0, 2)),
       hasBracket: false,
       championLabel: "Por decidir",
       championWhen: canGenerateRandomBracket
@@ -217,7 +239,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     };
   }
 
-  const { data: bm } = await supabase
+  const { data: bm } = await admin
     .from("bracket_matches")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select(
@@ -246,7 +268,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     if (m.side_a_registration_id) regIds.add(m.side_a_registration_id);
     if (m.side_b_registration_id) regIds.add(m.side_b_registration_id);
   }
-  const nameByReg = await registrationLabels(supabase, Array.from(regIds));
+  const nameByReg = await registrationLabels(Array.from(regIds));
 
   function mkMatch(raw: RawMatch): BracketMatch {
     const aName = raw.side_a_registration_id
@@ -320,7 +342,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
   }
 
   return {
-    partnerId,
+    partnerId: partnerId ?? null,
     tournamentId: chosen.id,
     tournamentName: chosen.name,
     tournamentSlug: chosen.slug,

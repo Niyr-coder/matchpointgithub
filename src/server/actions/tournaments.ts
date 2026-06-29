@@ -173,6 +173,15 @@ function auditActorRole(role: "admin" | "partner" | "club"): "admin" | "partner"
 async function requirePartnerAdmin(partnerId: string): Promise<string> {
   const userId = await requireUserId();
   const supabase = await getServerClient();
+  // Admin de plataforma puede actuar sobre cualquier partner.
+  const { data: adminRow } = await supabase
+    .from("role_assignments")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (adminRow) return userId;
   const { data } = await supabase
     .from("partner_members")
     .select("role")
