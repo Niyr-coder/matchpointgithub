@@ -32,6 +32,7 @@ export type CajaData = {
   txs: Tx[];
   kpis: CajaKpis;
   totalLabel: string;
+  sessionOpen: boolean;
 };
 
 const METHOD_LABEL: Record<Method, string> = {
@@ -131,6 +132,26 @@ export function EmployeeCajaScreenView({ data }: { data: CajaData }) {
     });
   };
 
+  const handleOpenCaja = async () => {
+    if (!data.clubId) return;
+    const floatStr = await ask({
+      title: "Abrir caja",
+      label: "Fondo inicial (USD)",
+      initialValue: "0",
+      validate: (v) => (/^\d+(\.\d+)?$/.test(v.trim()) ? null : "Solo números"),
+      confirmLabel: "Abrir caja",
+    });
+    if (floatStr == null) return;
+    startTransition(async () => {
+      const res = await openCashSession({
+        clubId: data.clubId!,
+        openingFloatCents: Math.round(Number(floatStr) * 100),
+      });
+      if (res.ok) toast({ icon: "check", title: "Caja abierta" });
+      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+    });
+  };
+
   const handleCierreZ = async () => {
     if (!data.clubId) return;
     const ok = await confirm({
@@ -163,8 +184,6 @@ export function EmployeeCajaScreenView({ data }: { data: CajaData }) {
       else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
     });
   };
-
-  void openCashSession; // exposed via Cierre Z indirectly; keep import used
 
   useRealtimeRefresh(
     data.clubId
@@ -266,26 +285,37 @@ export function EmployeeCajaScreenView({ data }: { data: CajaData }) {
           </>
         }
         action={
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn"
-              style={{ background: "#fff", border: RS_BORDER }}
-              onClick={handleCierreZ}
-              disabled={isPending || !data.clubId}
-            >
-              <Icon name="printer" size={12} />
-              Cierre Z
-            </button>
+          !data.sessionOpen ? (
             <button
               className="btn btn-primary"
               disabled={!data.clubId || isPending}
-              style={{ opacity: data.clubId ? 1 : 0.5 }}
-              onClick={handleNewCobro}
+              onClick={handleOpenCaja}
             >
-              <Icon name="plus" size={13} color="#fff" />
-              Nuevo cobro
+              <Icon name="unlock" size={13} color="#fff" />
+              Abrir caja
             </button>
-          </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn"
+                style={{ background: "#fff", border: RS_BORDER }}
+                onClick={handleCierreZ}
+                disabled={isPending || !data.clubId}
+              >
+                <Icon name="printer" size={12} />
+                Cierre Z
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!data.clubId || isPending}
+                style={{ opacity: data.clubId ? 1 : 0.5 }}
+                onClick={handleNewCobro}
+              >
+                <Icon name="plus" size={13} color="#fff" />
+                Nuevo cobro
+              </button>
+            </div>
+          )
         }
       />
       <div className="mp-grid-form-4 gap-3.5">

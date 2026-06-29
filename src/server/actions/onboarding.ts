@@ -27,10 +27,6 @@ import {
 } from "@/lib/identity/person-name";
 
 const NameSchema = z.string().trim().min(1, "Requerido").max(40).transform(formatPersonNameField);
-const OptionalNameSchema = z.preprocess(
-  (v) => (v === "" || v == null ? undefined : v),
-  NameSchema.optional(),
-);
 // Birthdate: ISO YYYY-MM-DD; mayor de 13 años (política básica).
 const BirthdateSchema = z
   .string()
@@ -41,13 +37,11 @@ const BirthdateSchema = z
     const age = (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000);
     return age >= 13 && age < 120;
   }, "Debes tener al menos 13 años");
-// Teléfono opcional. Acepta dígitos, espacios, +, -, (, ).
 const PhoneSchema = z
   .string()
   .trim()
-  .regex(/^[+\d][\d\s()-]{6,19}$/, "Teléfono inválido")
-  .optional()
-  .or(z.literal("").transform(() => undefined));
+  .min(1, "El teléfono es requerido")
+  .regex(/^[+\d][\d\s()-]{6,19}$/, "Teléfono inválido");
 
 export type OnboardingStatus = {
   completed: boolean;
@@ -137,7 +131,7 @@ const SaveStepSchema = z.discriminatedUnion("step", [
   z.object({
     step: z.literal("identity"),
     firstName: NameSchema,
-    lastName: OptionalNameSchema,
+    lastName: NameSchema,
     username: UsernameSchema.transform((v) => v.toLowerCase()),
   }),
   z.object({
@@ -174,9 +168,7 @@ export async function saveOnboardingStep(
           username: ["Ese username ya está en uso"],
         });
       }
-      const display = payload.lastName
-        ? `${payload.firstName} ${payload.lastName}`.trim()
-        : payload.firstName.trim();
+      const display = `${payload.firstName} ${payload.lastName}`.trim();
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -199,7 +191,7 @@ export async function saveOnboardingStep(
         .from("profiles")
         .update({
           birthdate: payload.birthdate,
-          phone: payload.phone ?? null,
+          phone: payload.phone,
           country: payload.country,
           city: cityComposite,
         } as never)
@@ -239,7 +231,8 @@ export async function saveOnboardingStep(
       !r.birthdate ||
       !r.country ||
       !r.city ||
-      !r.dominant_hand
+      !r.dominant_hand ||
+      !r.phone
     ) {
       throw new MpError(
         "ONBOARDING.STEPS_INCOMPLETE",

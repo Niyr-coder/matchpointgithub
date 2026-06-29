@@ -30,6 +30,7 @@ async function loadData(): Promise<CajaData> {
       txs: [],
       kpis: { cashCents: 0, cashCount: 0, cardCents: 0, cardCount: 0, transferCents: 0, transferCount: 0, refundsCents: 0, refundsCount: 0 },
       totalLabel: "$—",
+      sessionOpen: false,
     };
   }
 
@@ -37,7 +38,7 @@ async function loadData(): Promise<CajaData> {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const [{ data: txns }, { data: refundsRows }] = await Promise.all([
+  const [{ data: txns }, { data: refundsRows }, { count: openCount }] = await Promise.all([
     supabase
       .from("transactions")
       .select("id,created_at,amount_cents,method,status,kind,customer_name,customer_user_id")
@@ -52,6 +53,11 @@ async function loadData(): Promise<CajaData> {
       .gte("created_at", todayStart.toISOString())
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("cash_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("club_id", clubId)
+      .eq("status", "open"),
   ]);
 
   // Lookup customer names.
@@ -122,7 +128,7 @@ async function loadData(): Promise<CajaData> {
   const totalCents = kpis.cashCents + kpis.cardCents + kpis.transferCents - kpis.refundsCents;
   const totalLabel = `$${Math.round(totalCents / 100)}`;
 
-  return { clubId, txs, kpis, totalLabel };
+  return { clubId, txs, kpis, totalLabel, sessionOpen: (openCount ?? 0) > 0 };
 }
 
 export async function EmployeeCajaScreen() {

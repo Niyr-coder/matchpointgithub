@@ -536,7 +536,7 @@ export async function searchUsersForBooking(
     const staff = (roles ?? []).some(
       (r) =>
         r.role === "admin" ||
-        (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
+        (r.club_id === clubId && (r.role === "owner" || r.role === "manager" || r.role === "employee")),
     );
     if (!staff) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
 

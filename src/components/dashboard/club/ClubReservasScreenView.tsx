@@ -7,7 +7,7 @@ import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import { createReservation, searchUsersForBooking } from "@/server/actions/reservations";
+import { cancelReservation, createReservation, searchUsersForBooking } from "@/server/actions/reservations";
 
 type UserMatch = {
   id: string;
@@ -28,7 +28,7 @@ export type ReservasData = {
     sport: "pickleball" | "padel" | "tennis";
     grid: number[][];
     // Meta por celda ocupada: nombre del cliente + kind. Key: "${dayIdx}-${hourIdx}".
-    cellMeta: Record<string, { name: string; kind: string }>;
+    cellMeta: Record<string, { name: string; kind: string; id?: string }>;
     minPriceCents: number | null;
   }[];
   weekRangeLabel: string;
@@ -265,6 +265,19 @@ export function ClubReservasScreenView({
     });
   };
 
+  const handleCancelReservation = (reservationId: string) => {
+    if (!data.clubId) return;
+    startTransition(async () => {
+      const res = await cancelReservation({ id: reservationId, body: {} });
+      if (res.ok) {
+        toast({ icon: "check", title: "Reserva cancelada" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  };
+
   const activeMinPrice =
     activeCourt.minPriceCents != null
       ? Math.round(activeCourt.minPriceCents / 100)
@@ -490,6 +503,11 @@ export function ClubReservasScreenView({
                       }
                       onClick={clickable ? () => handleCellClick(di, hi) : undefined}
                       cellStyle={cell(state, { disabled: !hasReal, past })}
+                      onCancel={
+                        meta?.id && meta.kind === "booking" && !past
+                          ? () => handleCancelReservation(meta.id!)
+                          : undefined
+                      }
                     />
                   );
                 })}
@@ -528,15 +546,17 @@ function ReservedCell({
   freeLabel,
   onClick,
   cellStyle,
+  onCancel,
 }: {
   state: number;
   past: boolean;
   clickable: boolean;
-  meta: { name: string; kind: string } | undefined;
+  meta: { name: string; kind: string; id?: string } | undefined;
   hourLabel: string;
   freeLabel: string | undefined;
   onClick: (() => void) | undefined;
   cellStyle: React.CSSProperties;
+  onCancel?: () => void;
 }) {
   const [hover, setHover] = useState(false);
   const reserved = state !== 0;
@@ -606,6 +626,7 @@ function ReservedCell({
       {/* Tooltip flotante con detalles al hacer hover (solo en reservadas con meta) */}
       {hover && reserved && meta && (
         <div
+          onMouseEnter={() => setHover(true)}
           style={{
             position: "absolute",
             bottom: "calc(100% + 6px)",
@@ -620,7 +641,7 @@ function ReservedCell({
             fontWeight: 700,
             whiteSpace: "nowrap",
             boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
-            pointerEvents: "none",
+            pointerEvents: "auto",
           }}
         >
           <div style={{ fontWeight: 900 }}>{meta.name}</div>
@@ -636,6 +657,28 @@ function ReservedCell({
           >
             {kindLabel} · {hourLabel}:00
           </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onCancel(); }}
+              style={{
+                display: "block",
+                marginTop: 6,
+                padding: "4px 8px",
+                borderRadius: 5,
+                border: "1px solid rgba(255,255,255,0.25)",
+                background: "rgba(220,38,38,0.85)",
+                color: "#fff",
+                fontSize: 9.5,
+                fontWeight: 800,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                width: "100%",
+              }}
+            >
+              Cancelar reserva
+            </button>
+          )}
           {/* arrow */}
           <span
             aria-hidden

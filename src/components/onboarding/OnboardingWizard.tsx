@@ -512,7 +512,7 @@ function StepIdentity({
   const [lastName, setLastName] = useState(initial?.lastName ?? "");
   const [username, setUsername] = useState(initial?.username ?? "");
 
-  const canSubmit = firstName.trim() && username.trim();
+  const canSubmit = firstName.trim() && lastName.trim() && username.trim();
 
   return (
     <form
@@ -550,7 +550,7 @@ function StepIdentity({
             style={inp}
           />
         </FieldLabel>
-        <FieldLabel label="Apellido (opcional)" error={errors.lastName}>
+        <FieldLabel label="Apellido" error={errors.lastName}>
           <input
             value={lastName}
             onChange={(e) => setLastName(formatPersonNameInput(e.target.value))}
@@ -653,7 +653,7 @@ function StepPersonal({
   }, [country]);
 
   const canSubmit =
-    birthdate.length === 10 && countryCode && provinceName && cityName;
+    birthdate.length === 10 && countryCode && provinceName && cityName && phone.trim().length > 0;
 
   return (
     <form
@@ -760,8 +760,8 @@ function StepPersonal({
       </FieldLabel>
 
       <FieldLabel
-        label="Teléfono (opcional)"
-        hint="Solo números y símbolos de teléfono. Prefijo del país."
+        label="Teléfono"
+        hint="Incluye el prefijo del país. Ej: +593 99 123 4567"
         error={errors.phone}
       >
         <input
@@ -870,7 +870,34 @@ function StepHand({
   );
 }
 
-// ── step 3: resumen y cierre ───────────────────────────────────────────
+// ── step 3: primeros pasos ────────────────────────────────────────────
+const FIRST_STEPS = [
+  {
+    icon: "calendar",
+    title: "Reserva una cancha",
+    sub: "Busca disponibilidad en tu club y agenda tu horario.",
+    href: "/dashboard/user/clubes",
+  },
+  {
+    icon: "search",
+    title: "Busco partido",
+    sub: "Encuentra jugadores de tu nivel para un partido.",
+    href: "/dashboard/user/busco-partido",
+  },
+  {
+    icon: "trophy",
+    title: "Torneos cerca de ti",
+    sub: "Inscríbete en el próximo torneo MATCHPOINT.",
+    href: "/dashboard/user/eventos",
+  },
+  {
+    icon: "user",
+    title: "Completa tu perfil",
+    sub: "Agrega tu foto y nivel de juego.",
+    href: "/dashboard/user/perfil",
+  },
+] as const;
+
 function StepFinish({
   busy,
   onFinish,
@@ -880,72 +907,81 @@ function StepFinish({
   onFinish: () => void;
   summary: OnboardingStatus | null;
 }) {
-  const handLabel =
-    summary?.dominantHand === "left"
-      ? "Izquierda"
-      : summary?.dominantHand === "right"
-        ? "Derecha"
-        : "—";
   return (
-    <div style={{ textAlign: "center", padding: "20px 10px" }}>
+    <div style={{ textAlign: "center" }}>
       <div
         style={{
-          width: 64,
-          height: 64,
+          width: 56,
+          height: 56,
           borderRadius: "50%",
           background: "#dcfce7",
           color: "#166534",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          margin: "0 auto 18px",
+          margin: "0 auto 14px",
         }}
       >
-        <Icon name="check" size={30} />
+        <Icon name="check" size={26} />
       </div>
       <h2
         className="font-heading"
-        style={{ fontSize: 24, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
+        style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}
       >
-        ¡Todo listo<span className="dot">!</span>
+        ¡Bienvenido{summary?.firstName ? `, ${summary.firstName}` : ""}
+        <span className="dot">!</span>
       </h2>
-      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "10px 0 22px" }}>
-        Tu perfil quedó configurado. Empiezas con MPR 2.5 en los tres deportes;
-        sube tu nivel jugando partidos oficiales.
+      <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 20px" }}>
+        Tu perfil está listo. Empiezas con <strong>MPR 2.5</strong> en los tres deportes.
+        Aquí tienes todo lo que puedes hacer:
       </p>
-      {summary && (
-        <div
-          style={{
-            margin: "0 auto 22px",
-            padding: 14,
-            maxWidth: 340,
-            background: "#fafafa",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            fontSize: 12.5,
-            color: "var(--muted-fg)",
-            textAlign: "left",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <SummaryRow
-            label="Nombre"
-            value={
-              summary.firstName || summary.lastName
-                ? `${summary.firstName ?? ""} ${summary.lastName ?? ""}`.trim()
-                : "—"
-            }
-          />
-          <SummaryRow label="Usuario" value={summary.username ? `@${summary.username}` : "—"} />
-          <SummaryRow label="País" value={summary.country ?? "—"} />
-          <SummaryRow label="Ciudad" value={summary.city ?? "—"} />
-          <SummaryRow label="Fecha de nacimiento" value={summary.birthdate ?? "—"} />
-          <SummaryRow label="Teléfono" value={summary.phone ?? "—"} />
-          <SummaryRow label="Mano hábil" value={handLabel} />
-        </div>
-      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+          marginBottom: 20,
+          textAlign: "left",
+        }}
+      >
+        {FIRST_STEPS.map((s) => (
+          <div
+            key={s.href}
+            style={{
+              padding: "12px 13px",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              background: "#fafafa",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "#ecfdf5",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon name={s.icon} size={15} color="var(--primary)" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#0a0a0a" }}>{s.title}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.4 }}>
+                {s.sub}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <button
         onClick={onFinish}
         disabled={busy}
@@ -958,19 +994,11 @@ function StepFinish({
           fontSize: 13,
           cursor: busy ? "not-allowed" : "pointer",
           borderRadius: 10,
+          width: "100%",
         }}
       >
-        {busy ? "Finalizando..." : "Empezar a jugar"}
+        {busy ? "Finalizando..." : "Empezar a jugar →"}
       </button>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <span>{label}</span>
-      <strong style={{ color: "#0a0a0a", textAlign: "right" }}>{value}</strong>
     </div>
   );
 }

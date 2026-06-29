@@ -1,11 +1,11 @@
 // Client view del EmployeeSoporteScreen — layout 1:1 del mock.
 "use client";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast } from "../ToastProvider";
-import { createTicket } from "@/server/actions/support";
+import { createTicket, updateTicketStatus } from "@/server/actions/support";
 
 export type Status = "open" | "in-progress" | "closed";
 export type TicketRow = {
@@ -74,6 +74,8 @@ const CATEGORY_MAP: Record<string, "maintenance" | "system" | "customer" | "othe
 export function EmployeeSoporteScreenView({ data }: { data: SoporteData }) {
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
+  const [isStatusPending, startStatusTransition] = useTransition();
+  const descRef = useRef<HTMLTextAreaElement>(null);
   const [cat, setCat] = useState<string>("Mantenimiento");
   const [sev, setSev] = useState<"low" | "medium" | "high">("medium");
   const [desc, setDesc] = useState("");
@@ -123,6 +125,10 @@ export function EmployeeSoporteScreenView({ data }: { data: SoporteData }) {
             className="btn btn-primary"
             disabled={!data.clubId}
             style={{ opacity: data.clubId ? 1 : 0.5 }}
+            onClick={() => {
+              descRef.current?.focus();
+              descRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
           >
             <Icon name="plus" size={13} color="#fff" />
             Nuevo ticket
@@ -200,6 +206,7 @@ export function EmployeeSoporteScreenView({ data }: { data: SoporteData }) {
               Descripción
             </div>
             <textarea
+              ref={descRef}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               placeholder="Describe el problema con detalle…"
@@ -230,23 +237,49 @@ export function EmployeeSoporteScreenView({ data }: { data: SoporteData }) {
       <div className="label-mp">Tickets recientes del club</div>
       {hasTickets
         ? data.tickets.map((t) => (
-            <div
-              key={t.id}
-              className="card"
-              style={{
-                padding: 14,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 900 }}>{t.t}</div>
-                <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
-                  {t.kind} · {t.when}
+            <div key={t.id} className="card" style={{ padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 900 }}>{t.t}</div>
+                  <div style={{ fontSize: 10, color: "var(--muted-fg)" }}>
+                    {t.kind} · {t.when}
+                  </div>
                 </div>
+                <RSPill bg={ST_COLOR[t.st]}>{ST_L[t.st]}</RSPill>
               </div>
-              <RSPill bg={ST_COLOR[t.st]}>{ST_L[t.st]}</RSPill>
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                {t.st === "open" && (
+                  <button
+                    className="btn"
+                    style={{ fontSize: 10, padding: "5px 11px", background: "#fff", border: "1px solid var(--border)" }}
+                    disabled={isStatusPending || !data.clubId}
+                    onClick={() => {
+                      startStatusTransition(async () => {
+                        const res = await updateTicketStatus({ id: t.id, status: "in_progress" });
+                        if (!res.ok) toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+                      });
+                    }}
+                  >
+                    Marcar en curso
+                  </button>
+                )}
+                {t.st === "in-progress" && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 10, padding: "5px 11px" }}
+                    disabled={isStatusPending || !data.clubId}
+                    onClick={() => {
+                      startStatusTransition(async () => {
+                        const res = await updateTicketStatus({ id: t.id, status: "resolved" });
+                        if (!res.ok) toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+                      });
+                    }}
+                  >
+                    <Icon name="check" size={11} color="#fff" />
+                    Resolver
+                  </button>
+                )}
+              </div>
             </div>
           ))
         : Array.from({ length: PLACEHOLDER_COUNT }).map((_, i) => <TicketPlaceholderCard key={i} />)}

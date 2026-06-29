@@ -218,10 +218,11 @@ export function EmployeeCourtCalendarScreenView({ data }: { data: CourtCalendarD
             isPast={isPast}
             onFreeCellClick={(court, hour) => {
               toast({
-                icon: "check",
-                title: `${court} libre`,
-                sub: `${hour} · ${s.dayLabel}`,
+                icon: "calendar",
+                title: `${court} · ${hour} libre`,
+                sub: "Abriendo reservas…",
               });
+              router.push("/dashboard/employee/e-reservas");
             }}
           />
         )}

@@ -156,7 +156,7 @@ async function loadData(): Promise<ReservasData> {
   const grids = new Map<string, number[][]>();
   // Meta paralelo: nombre del cliente + kind por celda, keyed por "${day}-${hour}".
   // Permite hover tooltip en el grid sin tener que re-fetch.
-  type CellMeta = { name: string; kind: string };
+  type CellMeta = { name: string; kind: string; id: string };
   const metas = new Map<string, Record<string, CellMeta>>();
   for (const id of courtIds) {
     grids.set(id, emptyGrid());
@@ -237,7 +237,7 @@ async function loadData(): Promise<ReservasData> {
       const hourIdx = HOURS.indexOf(h);
       if (hourIdx < 0) continue;
       grid[dayIdx][hourIdx] = stateVal;
-      metaCourt[`${dayIdx}-${hourIdx}`] = { name, kind };
+      metaCourt[`${dayIdx}-${hourIdx}`] = { name, kind, id: r.id as string };
       occupied++;
     }
     metas.set(r.court_id as string, metaCourt);
