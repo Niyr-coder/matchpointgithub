@@ -8,7 +8,7 @@
 //
 // Steps:
 //  0. Identidad: nombre, apellido, username (pre-fill desde signup).
-//  1. Datos personales: fecha de nacimiento (requerida), teléfono (opcional).
+//  1. Datos personales: fecha de nacimiento, teléfono (requeridos).
 //  2. Mano hábil: izquierda / derecha.
 //  3. Cierre: resumen + CTA "Empezar".
 //
@@ -172,7 +172,7 @@ export function OnboardingWizard({
             ? {
                 ...s,
                 birthdate: args.birthdate,
-                phone: args.phone || null,
+                phone: args.phone,
                 country: args.country,
                 city: `${args.province} / ${args.cityName}`,
               }
@@ -678,8 +678,8 @@ function StepPersonal({
           Datos personales<span className="dot">.</span>
         </h2>
         <p style={{ fontSize: 13, color: "var(--muted-fg)", margin: "8px 0 0" }}>
-          Confirmamos tu edad (mínimo 13 años). Luego tu ubicación nos ayuda a
-          sugerirte clubes y torneos cerca. El teléfono es opcional.
+          Confirmamos tu edad (mínimo 13 años). Tu ubicación nos ayuda a
+          sugerirte clubes y torneos cerca.
         </p>
       </div>
 

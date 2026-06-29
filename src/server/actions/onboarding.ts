@@ -2,7 +2,7 @@
 
 // Server actions del wizard de onboarding post-signup.
 // El wizard se muestra cuando `profiles.onboarded_at IS NULL` y recoge:
-// nombre/apellido/username, fecha de nacimiento, teléfono (opcional) y mano hábil.
+// nombre/apellido/username, fecha de nacimiento, teléfono y mano hábil.
 //
 // Mapeo de columnas:
 //   step 'identity' → profiles.first_name, last_name, username, display_name
@@ -100,10 +100,8 @@ export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStat
 
     const identityComplete = isOnboardingIdentityComplete(row);
 
-    // currentStep = primer paso pendiente. Personal incluye país/ciudad
-    // ahora, así que se considera done solo si birthdate Y city Y country.
     let currentStep: 0 | 1 | 2 | 3 = 0;
-    const personalDone = !!(row.birthdate && row.country && row.city);
+    const personalDone = !!(row.birthdate && row.country && row.city && row.phone);
     const handDone = !!row.dominant_hand;
     if (identityComplete) currentStep = 1;
     if (identityComplete && personalDone) currentStep = 2;
@@ -173,7 +171,7 @@ export async function saveOnboardingStep(
         .from("profiles")
         .update({
           first_name: payload.firstName.trim(),
-          last_name: payload.lastName?.trim() || null,
+          last_name: payload.lastName.trim(),
           username: payload.username,
           display_name: display,
         } as never)
