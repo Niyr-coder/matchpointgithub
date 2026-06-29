@@ -161,6 +161,14 @@ export type TournamentLiveTeam = {
   label: string;
 };
 
+export type TournamentLiveSponsor = {
+  placementId: string;
+  headline: string;
+  sponsorName: string;
+  logoUrl: string | null;
+  targetUrl: string | null;
+};
+
 export type TournamentLiveGlobalStanding = {
   rank: number;
   label: string;
@@ -190,6 +198,7 @@ export type TournamentLiveDisplay = {
   championLabel: string | null;
   teams: TournamentLiveTeam[];
   globalStandings: TournamentLiveGlobalStanding[];
+  sponsors: TournamentLiveSponsor[];
 };
 
 const LiveQuerySchema = z.object({
@@ -289,9 +298,9 @@ async function buildRegistrationLabelMap(
     const first = pids[0] ? profById.get(pids[0]) : null;
     const label = teamName
       ? teamName
-      : pids.length > 1 && first
-        ? `${first} +${pids.length - 1}`
-        : first ?? "Equipo";
+      : pids.length > 0
+        ? pids.map((pid) => profById.get(pid) ?? "Jugador").join(" / ")
+        : "Equipo";
     out.set(r.id as string, label);
   }
   return out;
@@ -328,7 +337,7 @@ export async function getTournamentLiveDisplay(
 
     // Carga todos los registrations del torneo en 2 queries para evitar N+1 por grupo/bracket.
     // Paralelizamos con la query de categorías y la de inscritos aceptados.
-    const [nameByReg, { data: cats }, { data: acceptedRegsRaw }] = await Promise.all([
+    const [nameByReg, { data: cats }, { data: acceptedRegsRaw }, { data: sponsorRaw }] = await Promise.all([
       buildRegistrationLabelMap(admin, tournamentId),
       admin
         .from("tournament_categories")
@@ -340,6 +349,10 @@ export async function getTournamentLiveDisplay(
         .eq("tournament_id", tournamentId)
         .eq("status", "accepted")
         .order("created_at", { ascending: true }),
+      admin
+        .from("active_sponsor_placements")
+        .select("placement_id,headline,sponsor_name,sponsor_logo_url,target_url")
+        .eq("slot_key", "tv_ticker"),
     ]);
 
     const allMatches: TournamentLiveMatch[] = [];
@@ -637,6 +650,16 @@ export async function getTournamentLiveDisplay(
       .filter((c) => c.current || c.next)
       .sort((a, b) => a.courtLabel.localeCompare(b.courtLabel, "es", { numeric: true }));
 
+    const sponsors: TournamentLiveSponsor[] = (sponsorRaw ?? [])
+      .filter((s) => s.placement_id && s.headline)
+      .map((s) => ({
+        placementId: s.placement_id!,
+        headline: s.headline!,
+        sponsorName: s.sponsor_name ?? "",
+        logoUrl: s.sponsor_logo_url ?? null,
+        targetUrl: s.target_url ?? null,
+      }));
+
     return {
       tournamentId,
       tournamentName: t.name,
@@ -656,6 +679,7 @@ export async function getTournamentLiveDisplay(
       championLabel,
       teams,
       globalStandings,
+      sponsors,
     };
   });
 }

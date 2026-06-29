@@ -164,7 +164,7 @@ export function TournamentLiveDisplayClient({
       ? "Eliminatorias"
       : data.categoryNames.slice(0, 2).join(" · ") || "Fase de grupos";
 
-  // Ticker: otras canchas en juego + próximos
+  // Ticker: canchas en juego + próximos + info del torneo + sponsors
   const tickerItems: string[] = [];
   for (const c of liveCourts) {
     const m = c.current!;
@@ -177,7 +177,21 @@ export function TournamentLiveDisplayClient({
       `PRÓXIMO${u.courtLabel ? ` ${u.courtLabel.toUpperCase()}` : ""}${t ? ` ${t}` : ""} · ${u.labelA} vs ${u.labelB}`,
     );
   }
+  // Info del torneo
   tickerItems.push(data.tournamentName.toUpperCase());
+  if (data.categoryNames.length > 0) {
+    tickerItems.push(`CATEGORÍAS: ${data.categoryNames.join(" · ").toUpperCase()}`);
+  }
+  if (data.teams.length > 0) {
+    tickerItems.push(`${data.teams.length} ${data.teams.length === 1 ? "EQUIPO INSCRITO" : "EQUIPOS INSCRITOS"}`);
+  }
+  if (publicUrl) {
+    tickerItems.push(`SIGUE EL TORNEO EN ${publicUrl.replace(/^https?:\/\//, "").toUpperCase()}`);
+  }
+  // Sponsors
+  for (const sp of data.sponsors) {
+    tickerItems.push(`PATROCINADO POR ${sp.sponsorName.toUpperCase()} · ${sp.headline.toUpperCase()}`);
+  }
   if (tickerItems.length === 0) tickerItems.push(data.tournamentName.toUpperCase());
 
   return (
