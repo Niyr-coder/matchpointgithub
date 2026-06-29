@@ -239,10 +239,10 @@ export default async function PartnerTorneoPage({
     const label = teamName
       ? teamName
       : guestNames.length > 0
-        ? guestNames.join(" + ")
-        : pids.length > 1 && firstProf
-          ? `${firstProf.name} +${pids.length - 1}`
-          : firstProf?.name ?? "Jugador";
+        ? guestNames.join(" / ")
+        : pids.length > 0
+          ? pids.map((pid) => profById.get(pid)?.name ?? "Jugador").join(" / ")
+          : "Jugador";
 
     const txId = r.paid_transaction_id as string | null;
     const tx = txId ? txById.get(txId) ?? null : null;

@@ -110,7 +110,7 @@ async function registrationLabelMap(
       continue;
     }
     const names = ids.map((id) => profById.get(id) ?? "Jugador");
-    out.set(r.id as string, names.join(" + ") || "Por definir");
+    out.set(r.id as string, names.join(" / ") || "Por definir");
   }
 
   return out;

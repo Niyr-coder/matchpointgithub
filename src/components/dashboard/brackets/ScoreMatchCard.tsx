@@ -198,11 +198,23 @@ function SeatRow({
   onChange?: (value: string) => void;
   onEnter?: () => void;
 }) {
+  const players = label.includes(" / ") ? label.split(" / ").map((p) => p.trim()) : null;
+
   return (
     <div className={`mp-bk-seat${isWinner ? " is-winner" : ""}`}>
-      <span className="mp-bk-seat-name">
+      <span className={`mp-bk-seat-name${players ? " is-doubles" : ""}`}>
         {isWinner && <span className="mp-bk-seat-dot" />}
-        {label}
+        {players ? (
+          <span className="mp-bk-seat-players">
+            {players.map((p, i) => (
+              <span key={i} className="mp-bk-seat-player" title={p}>
+                {p}
+              </span>
+            ))}
+          </span>
+        ) : (
+          label
+        )}
       </span>
       {editable ? (
         <input

@@ -4904,7 +4904,7 @@ select.mp-input:disabled {
 
 /* ── BracketView · integrado al dashboard claro ── */
 .mp-bk-scroll {
-  --bk-card: 184px;
+  --bk-card: 210px;
   --bk-gutter: 30px;
   --bk-line: color-mix(in srgb, var(--border) 70%, var(--fg) 30%);
   background: linear-gradient(
@@ -5201,9 +5201,30 @@ select.mp-input:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mp-bk-seat-name.is-doubles {
+  align-items: flex-start;
+}
+.mp-bk-seat-name.is-doubles .mp-bk-seat-dot {
+  margin-top: 4px;
+}
 .mp-bk-seat.is-winner .mp-bk-seat-name {
   color: var(--fg);
   font-weight: 700;
+}
+/* Nombres en dobles: cada jugador en su propia línea */
+.mp-bk-seat-players {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+.mp-bk-seat-player {
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mp-bk-seat-dot {
   width: 6px;
@@ -5326,7 +5347,7 @@ input.mp-input.mp-bk-score-input {
 }
 @media (max-width: 767px) {
   .mp-bk-scroll {
-    --bk-card: 158px;
+    --bk-card: 178px;
     --bk-gutter: 20px;
     padding: 14px 14px 16px;
     border-radius: 12px;
