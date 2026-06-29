@@ -284,6 +284,9 @@ function CancelConfirmModal({
           Liberas tu cupo y otro jugador puede tomarlo. Si quieres volver,
           tendrás que inscribirte de nuevo y respetar el orden.
         </p>
+        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55, margin: "0 0 18px", borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
+          Si realizaste un pago y ya fue confirmado, el reembolso debe ser coordinado con el organizador (hasta 7 días hábiles). Si tu pago aún no fue confirmado, se anulará automáticamente.
+        </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             className="btn"
@@ -386,7 +389,10 @@ export function EventDetailView({
         });
         return;
       }
-      toast({ icon: "check", title: "Inscripción cancelada" });
+      const sub = res.data.refundRequired
+        ? "Contacta al organizador para coordinar el reembolso."
+        : undefined;
+      toast({ icon: "check", title: "Inscripción cancelada", sub });
       setMyReg(null);
       setConfirmCancelOpen(false);
       router.refresh();

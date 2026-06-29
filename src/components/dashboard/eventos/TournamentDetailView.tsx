@@ -244,15 +244,18 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
   const handleCancel = async () => {
     if (!myReg) return;
     const ok = await confirm({
-      title: "Abandonar inscripción",
-      body: "¿Seguro que quieres abandonar la inscripción? Liberarás tu cupo.",
-      confirmLabel: "Abandonar",
+      title: "Cancelar inscripción",
+      body: "¿Seguro que quieres cancelar? Liberarás tu cupo.\n\nSi realizaste un pago y ya fue confirmado, el reembolso debe ser procesado por el organizador (hasta 7 días hábiles). Si tu pago aún no fue confirmado, se anulará automáticamente.",
+      confirmLabel: "Cancelar inscripción",
       destructive: true,
     });
     if (!ok) return;
     startCancel(async () => {
       const res = await cancelMyRegistration({ registrationId: myReg.id });
       if (res.ok) {
+        if (res.data.refundRequired) {
+          toast({ icon: "info", title: "Inscripción cancelada", sub: "Contacta al organizador para coordinar el reembolso." });
+        }
         setMyReg(null);
         router.refresh();
       } else {

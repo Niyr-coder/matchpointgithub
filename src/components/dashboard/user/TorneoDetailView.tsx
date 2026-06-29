@@ -101,16 +101,19 @@ export function TorneoDetailView({
 
   const handleCancelRegistration = useCallback(async () => {
     const ok = await confirm({
-      title: "Abandonar inscripción",
-      body: "¿Seguro que quieres abandonar la inscripción? Liberarás tu cupo.",
-      confirmLabel: "Abandonar",
+      title: "Cancelar inscripción",
+      body: "¿Seguro que quieres cancelar? Liberarás tu cupo.\n\nSi realizaste un pago y ya fue confirmado, el reembolso debe ser procesado por el organizador (hasta 7 días hábiles). Si tu pago aún no fue confirmado, se anulará automáticamente.",
+      confirmLabel: "Cancelar inscripción",
       destructive: true,
     });
     if (!ok) return;
     startCancel(async () => {
       const res = await cancelMyRegistration({ registrationId: myRegistration.id });
       if (res.ok) {
-        toast({ icon: "check", title: "Inscripción cancelada", sub: "Tu cupo quedó libre." });
+        const sub = res.data.refundRequired
+          ? "Tu cupo quedó libre. Contacta al organizador para coordinar el reembolso."
+          : "Tu cupo quedó libre.";
+        toast({ icon: "check", title: "Inscripción cancelada", sub });
         router.refresh();
       } else {
         toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });

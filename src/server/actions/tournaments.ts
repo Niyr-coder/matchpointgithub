@@ -935,35 +935,68 @@ export async function markRegistrationPaidByPartner(
 // ── cancelMyRegistration (player) ──────────────────────────────────────
 // Soft-cancel: marca status='withdrawn'. Solo el propio user puede ejecutarla
 // sobre sus registrations activas.
+// Si había una transacción pendiente (no capturada), la anula (→ 'failed')
+// para evitar doble conteo si el jugador se re-inscribe.
+// Si la transacción ya estaba 'captured' (pago confirmado), NO la toca —
+// el reembolso debe ser procesado manualmente por el partner/organizador.
 const CancelMyRegSchema = z.object({ registrationId: UuidSchema });
 
 export async function cancelMyRegistration(
   input: unknown,
-): Promise<ActionResult<{ id: string; status: string }>> {
+): Promise<ActionResult<{ id: string; status: string; refundRequired: boolean }>> {
   return runMutation(CancelMyRegSchema, input, async ({ registrationId }) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
-      .select("id,player_ids,status")
+      .select("id,player_ids,status,paid_transaction_id")
       .eq("id", registrationId)
       .maybeSingle();
-    if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Registration not found", 404);
+    if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Inscripción no encontrada", 404);
     const players = (reg.player_ids as string[] | null) ?? [];
     if (!players.includes(userId)) {
-      throw new AuthError("AUTH.ROLE_REQUIRED", "Only the registered player can cancel");
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el jugador inscrito puede cancelar");
     }
     if (reg.status === "withdrawn") {
-      return { id: reg.id as string, status: "withdrawn" };
+      return { id: reg.id as string, status: "withdrawn", refundRequired: false };
     }
-    const { data: updated, error } = await supabase
+
+    // Usar admin client para las mutaciones (RLS no permite UPDATE al user en
+    // registrations/transactions). Auth ya validada arriba.
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, "user");
+
+    const { data: updated, error } = await admin
       .from("registrations")
       .update({ status: "withdrawn" } as never)
       .eq("id", registrationId)
       .select("id,status")
       .single();
     if (error) throw new MpError("REGISTRATION.UPDATE_FAILED", error.message, 500);
-    return { id: updated.id as string, status: updated.status as string };
+
+    // Manejar la transacción asociada
+    let refundRequired = false;
+    const txId = (reg.paid_transaction_id as string | null) ?? null;
+    if (txId) {
+      const { data: tx } = await admin
+        .from("transactions")
+        .select("id,status")
+        .eq("id", txId)
+        .maybeSingle();
+      const txStatus = (tx?.status as string | null) ?? null;
+      if (txStatus && txStatus !== "captured" && txStatus !== "refunded" && txStatus !== "failed") {
+        // Transacción no confirmada: anular para evitar doble conteo en re-inscripción
+        await admin
+          .from("transactions")
+          .update({ status: "failed" } as never)
+          .eq("id", txId);
+      } else if (txStatus === "captured") {
+        // Pago ya confirmado: requiere reembolso manual por parte del organizador
+        refundRequired = true;
+      }
+    }
+
+    return { id: updated.id as string, status: updated.status as string, refundRequired };
   });
 }
 
