@@ -269,19 +269,7 @@ function CRMini({
         </div>
         <button
           onClick={close}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: "50%",
-            background: "var(--muted)",
-            border: 0,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            lineHeight: 1,
-          }}
+          className="mp-close-btn"
         >
           <Icon name="x" size={14} />
         </button>
@@ -699,22 +687,7 @@ function CRFull({
             <Icon name="trash-2" size={12} />
             Vaciar
           </button>
-          <button
-            onClick={close}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: "50%",
-              background: "var(--muted)",
-              border: 0,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              lineHeight: 1,
-            }}
-          >
+          <button onClick={close} className="mp-close-btn">
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -1108,22 +1081,7 @@ function CRCheckout({
             Checkout<span style={{ color: "var(--primary)" }}>.</span>
           </div>
         </div>
-        <button
-          onClick={close}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: "50%",
-            background: "var(--muted)",
-            border: 0,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            lineHeight: 1,
-          }}
-        >
+        <button onClick={close} className="mp-close-btn">
           <Icon name="x" size={14} />
         </button>
       </div>
@@ -1531,11 +1489,12 @@ function CRSuccess({ close }: { close: () => void }) {
               border: "1px solid rgba(255,255,255,0.2)",
               color: "#fff",
               cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            lineHeight: 1,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              flexShrink: 0,
+              lineHeight: 0,
             }}
           >
             <Icon name="x" size={13} color="#fff" />

@@ -1832,7 +1832,7 @@ function QuedadaDetailsModal({
               {/* Desktop: pill segmentado deslizable */}
               <div
                 className="hidden md:flex mp-noscroll"
-                style={{ alignItems: "center", gap: 4, padding: 4, background: "var(--muted)", borderRadius: 9999, overflowX: "auto", maxWidth: "100%" }}
+                style={{ alignItems: "center", gap: 4, padding: 4, background: "var(--muted)", borderRadius: 9999, overflowX: "auto", maxWidth: "100%", overscrollBehavior: "contain" }}
               >
                 {catTabs.map((t) => renderCatTab(t, "seg"))}
               </div>

@@ -1114,20 +1114,7 @@ export function ReservarCanchaDrawer() {
               type="button"
               onClick={close}
               aria-label="Cerrar"
-              className="mp-press"
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: "50%",
-                background: "var(--muted)",
-                border: 0,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-                lineHeight: 1,
-              }}
+              className="mp-press mp-close-btn"
             >
               <Icon name="x" size={14} />
             </button>

@@ -461,6 +461,7 @@ export function CrearMatchModal({ currentUserId }: { currentUserId: string | nul
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <Icon name="x" size={14} />

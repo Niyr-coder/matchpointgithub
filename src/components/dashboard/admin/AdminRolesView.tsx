@@ -435,7 +435,7 @@ function EditPermsModal({ role, levelOf, onClose, onChanged }: { role: Role; lev
             <div className="label-mp" style={{ color: role.color }}>● Editar permisos · {role.t}</div>
             <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", margin: "4px 0 0" }}>Capacidades del rol<span className="dot">.</span></h2>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1, color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="mp-close-btn"><Icon name="x" size={15} /></button>
         </div>
         <div style={{ padding: "8px 0", overflowY: "auto" }}>
           {DOMAINS.map((d) => (
@@ -571,7 +571,7 @@ function AssignRoleModal({ clubs, defaultRole, onClose, onDone }: { clubs: ClubO
       <div onMouseDown={(e) => e.stopPropagation()} className="card mp-modal-panel" style={{ padding: 24, width: 480, maxWidth: "100%", display: "flex", flexDirection: "column", gap: 14, maxHeight: "90vh", overflow: "auto", animation: "mpPop 220ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 className="font-heading" style={{ fontSize: 18, fontWeight: 900, textTransform: "uppercase", margin: 0 }}>Asignar rol<span className="dot">.</span></h2>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: "transparent", border: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1, color: "var(--muted-fg)" }}><Icon name="x" size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="mp-close-btn"><Icon name="x" size={15} /></button>
         </div>
 
         <div>

@@ -60,7 +60,7 @@ function StandingsTable({
           Tabla de posiciones
         </span>
       </div>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto", overscrollBehavior: "contain" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: "var(--subtle-bg)", color: "var(--muted-fg)" }}>
