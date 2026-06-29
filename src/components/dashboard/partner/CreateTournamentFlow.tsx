@@ -46,60 +46,19 @@ export const TOURNAMENT_TERMS: Array<{ title: string; body: string }> = [
   },
 ];
 
-// ── Catálogo de modalidades + scoring presets para pickleball ────────
-type ScoringConfig = {
-  type: "side_out" | "rally";
-  points: number;
-  winBy: number;
+// ── Configurador de scoring ───────────────────────────────────────────
+type ScoringType = "side_out" | "rally";
+
+const SCORING_QUICK_PRESETS: Array<{
+  label: string;
+  type: ScoringType;
+  points: string;
   bestOf: 1 | 3 | 5;
-};
-
-const MODALITIES: Array<{
-  value: "singles" | "doubles" | "mixed_doubles";
-  label: string;
-  sub: string;
 }> = [
-  { value: "doubles", label: "Dobles", sub: "2 vs 2 — la modalidad más jugada" },
-  { value: "singles", label: "Singles", sub: "1 vs 1" },
-  { value: "mixed_doubles", label: "Mixto", sub: "2 vs 2, un hombre y una mujer por lado" },
-];
-
-const SCORING_PRESETS: Array<{
-  id: string;
-  label: string;
-  sub: string;
-  config: ScoringConfig;
-}> = [
-  {
-    id: "trad_11_bo3",
-    label: "Tradicional · Best of 3 a 11",
-    sub: "Side-out (solo el sacador puntúa) · Gana por 2 · Formato clásico de torneo",
-    config: { type: "side_out", points: 11, winBy: 2, bestOf: 3 },
-  },
-  {
-    id: "rally_15_bo3",
-    label: "Rally · Best of 3 a 15",
-    sub: "Rally scoring · Gana por 2 · Formato pro / PPA Tour moderno",
-    config: { type: "rally", points: 15, winBy: 2, bestOf: 3 },
-  },
-  {
-    id: "rally_21_single",
-    label: "Rally · 1 game a 21",
-    sub: "Rally scoring · Gana por 2 · Formato corto tipo MLP regular season",
-    config: { type: "rally", points: 21, winBy: 2, bestOf: 1 },
-  },
-  {
-    id: "trad_11_bo5",
-    label: "Tradicional · Best of 5 a 11",
-    sub: "Side-out · Gana por 2 · Formato extendido para finales",
-    config: { type: "side_out", points: 11, winBy: 2, bestOf: 5 },
-  },
-  {
-    id: "popcorn",
-    label: "Popcorn · Rotación de parejas",
-    sub: "Cada game cambias de pareja. Rally a 15 gana por 2, mejor de 1. Ideal para social leagues y mixers.",
-    config: { type: "rally", points: 15, winBy: 2, bestOf: 1 },
-  },
+  { label: "Clásico BO3·11", type: "side_out", points: "11", bestOf: 3 },
+  { label: "Rally PPA BO3·15", type: "rally", points: "15", bestOf: 3 },
+  { label: "MLP BO1·21", type: "rally", points: "21", bestOf: 1 },
+  { label: "Finales BO5·11", type: "side_out", points: "11", bestOf: 5 },
 ];
 
 const TOURNAMENT_FORMATS: Array<{
@@ -216,12 +175,23 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [clubId, setClubId] = useState<string>("");
-  const [modality, setModality] = useState<"singles" | "doubles" | "mixed_doubles">("doubles");
-  const [scoringId, setScoringId] = useState<string>("trad_11_bo3");
   const [format, setFormat] = useState<string>("single_elim");
   const [groupsCount, setGroupsCount] = useState<string>("2");
   const [advancePerGroup, setAdvancePerGroup] = useState<string>("4");
-  const [finalBo5, setFinalBo5] = useState(false);
+  // Scoring — partidos regulares
+  const [mainType, setMainType] = useState<ScoringType>("side_out");
+  const [mainPoints, setMainPoints] = useState<string>("11");
+  const [mainBestOf, setMainBestOf] = useState<1 | 3 | 5>(3);
+  // Scoring — fase de grupos (solo groups_to_knockout)
+  const [groupScoringEnabled, setGroupScoringEnabled] = useState(false);
+  const [groupType, setGroupType] = useState<ScoringType>("side_out");
+  const [groupPoints, setGroupPoints] = useState<string>("11");
+  const [groupBestOf, setGroupBestOf] = useState<1 | 3 | 5>(1);
+  // Scoring — final (solo groups_to_knockout)
+  const [finalScoringEnabled, setFinalScoringEnabled] = useState(false);
+  const [finalType, setFinalType] = useState<ScoringType>("side_out");
+  const [finalPoints, setFinalPoints] = useState<string>("11");
+  const [finalBestOf, setFinalBestOf] = useState<1 | 3 | 5>(5);
 
   // Form state — logística
   const [startsAt, setStartsAt] = useState<string>("");
@@ -260,12 +230,20 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
     setName("");
     setDescription("");
     setClubId(initialClubId ?? "");
-    setModality("doubles");
-    setScoringId("trad_11_bo3");
     setFormat("single_elim");
     setGroupsCount("2");
     setAdvancePerGroup("4");
-    setFinalBo5(false);
+    setMainType("side_out");
+    setMainPoints("11");
+    setMainBestOf(3);
+    setGroupScoringEnabled(false);
+    setGroupType("side_out");
+    setGroupPoints("11");
+    setGroupBestOf(1);
+    setFinalScoringEnabled(false);
+    setFinalType("side_out");
+    setFinalPoints("11");
+    setFinalBestOf(5);
     setStartsAt("");
     setEndsAt("");
     setSingleDay(false);
@@ -278,14 +256,16 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
     setCategories([]);
   }, [open, initialClubId]);
 
-  const scoring = useMemo(
-    () => SCORING_PRESETS.find((s) => s.id === scoringId) ?? SCORING_PRESETS[0],
-    [scoringId],
-  );
-  const modalityLabel = useMemo(
-    () => MODALITIES.find((m) => m.value === modality)?.label ?? "",
-    [modality],
-  );
+  const scoringSummary = useMemo(() => ({
+    main: { type: mainType, points: Math.max(7, Math.min(31, Number(mainPoints) || 11)), bestOf: mainBestOf },
+    group: groupScoringEnabled && format === "groups_to_knockout"
+      ? { type: groupType, points: Math.max(7, Math.min(31, Number(groupPoints) || 11)), bestOf: groupBestOf }
+      : null,
+    final: finalScoringEnabled && format === "groups_to_knockout"
+      ? { type: finalType, points: Math.max(7, Math.min(31, Number(finalPoints) || 11)), bestOf: finalBestOf }
+      : null,
+  }), [mainType, mainPoints, mainBestOf, groupScoringEnabled, groupType, groupPoints, groupBestOf, finalScoringEnabled, finalType, finalPoints, finalBestOf, format]);
+
   const formatLabel = useMemo(
     () => TOURNAMENT_FORMATS.find((f) => f.value === format)?.label ?? "",
     [format],
@@ -305,6 +285,9 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
   // ── Validaciones por paso ──
   const validateDetails = (): string | null => {
     if (name.trim().length < 2) return "El nombre debe tener al menos 2 caracteres.";
+    const pts = Number(mainPoints);
+    if (!mainPoints || isNaN(pts) || pts < 7 || pts > 31)
+      return "Los puntos para ganar deben estar entre 7 y 31.";
     if (format === "groups_to_knockout") {
       const g = Number(groupsCount);
       const a = Number(advancePerGroup);
@@ -383,6 +366,17 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
         ageMax: c.ageMax === "" ? null : Number(c.ageMax),
         maxTeams: c.maxTeams === "" ? null : Number(c.maxTeams),
       }));
+      const clampPts = (s: string) => Math.round(Math.max(7, Math.min(31, Number(s) || 11)));
+      const scoringConfigVal = { type: mainType, points: clampPts(mainPoints), winBy: 2 as const, bestOf: mainBestOf };
+      const groupScoringOverride =
+        groupScoringEnabled && format === "groups_to_knockout"
+          ? { type: groupType, points: clampPts(groupPoints), winBy: 2 as const, bestOf: groupBestOf }
+          : null;
+      const finalScoringOverride =
+        finalScoringEnabled && format === "groups_to_knockout"
+          ? { type: finalType, points: clampPts(finalPoints), winBy: 2 as const, bestOf: finalBestOf }
+          : null;
+
       const res = await createTournament({
         partnerId,
         clubId: clubId || undefined,
@@ -400,16 +394,14 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
         currency: "USD",
         paymentPolicy,
         prizePoolCents: prizeNum ?? undefined,
-        modality,
-        scoringConfig: scoring.config,
+        scoringConfig: scoringConfigVal,
         groupPlayoffConfig:
           format === "groups_to_knockout"
             ? {
                 groupsCount: Number(groupsCount),
                 advancePerGroup: Number(advancePerGroup),
-                finalScoringOverride: finalBo5
-                  ? { type: "side_out" as const, points: 11, winBy: 2, bestOf: 5 }
-                  : null,
+                groupScoringOverride,
+                finalScoringOverride,
               }
             : undefined,
         categories: apiCategories.length > 0 ? apiCategories : undefined,
@@ -490,18 +482,34 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
               clubId={clubId}
               setClubId={setClubId}
               clubs={clubs}
-              modality={modality}
-              setModality={setModality}
-              scoringId={scoringId}
-              setScoringId={setScoringId}
               format={format}
               setFormat={setFormat}
               groupsCount={groupsCount}
               setGroupsCount={setGroupsCount}
               advancePerGroup={advancePerGroup}
               setAdvancePerGroup={setAdvancePerGroup}
-              finalBo5={finalBo5}
-              setFinalBo5={setFinalBo5}
+              mainType={mainType}
+              setMainType={setMainType}
+              mainPoints={mainPoints}
+              setMainPoints={setMainPoints}
+              mainBestOf={mainBestOf}
+              setMainBestOf={setMainBestOf}
+              groupScoringEnabled={groupScoringEnabled}
+              setGroupScoringEnabled={setGroupScoringEnabled}
+              groupType={groupType}
+              setGroupType={setGroupType}
+              groupPoints={groupPoints}
+              setGroupPoints={setGroupPoints}
+              groupBestOf={groupBestOf}
+              setGroupBestOf={setGroupBestOf}
+              finalScoringEnabled={finalScoringEnabled}
+              setFinalScoringEnabled={setFinalScoringEnabled}
+              finalType={finalType}
+              setFinalType={setFinalType}
+              finalPoints={finalPoints}
+              setFinalPoints={setFinalPoints}
+              finalBestOf={finalBestOf}
+              setFinalBestOf={setFinalBestOf}
             />
           )}
           {step === "logistics" && (
@@ -539,8 +547,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
               name={name}
               description={description}
               clubLabel={clubLabel}
-              modalityLabel={modalityLabel}
-              scoring={scoring}
+              scoringSummary={scoringSummary}
               formatLabel={formatLabel}
               startsAt={startsAt}
               endsAt={singleDay ? "" : endsAt}
@@ -842,18 +849,34 @@ function StepDetails(props: {
   clubId: string;
   setClubId: (v: string) => void;
   clubs: ClubOption[];
-  modality: "singles" | "doubles" | "mixed_doubles";
-  setModality: (v: "singles" | "doubles" | "mixed_doubles") => void;
-  scoringId: string;
-  setScoringId: (v: string) => void;
   format: string;
   setFormat: (v: string) => void;
   groupsCount: string;
   setGroupsCount: (v: string) => void;
   advancePerGroup: string;
   setAdvancePerGroup: (v: string) => void;
-  finalBo5: boolean;
-  setFinalBo5: (v: boolean) => void;
+  mainType: ScoringType;
+  setMainType: (v: ScoringType) => void;
+  mainPoints: string;
+  setMainPoints: (v: string) => void;
+  mainBestOf: 1 | 3 | 5;
+  setMainBestOf: (v: 1 | 3 | 5) => void;
+  groupScoringEnabled: boolean;
+  setGroupScoringEnabled: (v: boolean) => void;
+  groupType: ScoringType;
+  setGroupType: (v: ScoringType) => void;
+  groupPoints: string;
+  setGroupPoints: (v: string) => void;
+  groupBestOf: 1 | 3 | 5;
+  setGroupBestOf: (v: 1 | 3 | 5) => void;
+  finalScoringEnabled: boolean;
+  setFinalScoringEnabled: (v: boolean) => void;
+  finalType: ScoringType;
+  setFinalType: (v: ScoringType) => void;
+  finalPoints: string;
+  setFinalPoints: (v: string) => void;
+  finalBestOf: 1 | 3 | 5;
+  setFinalBestOf: (v: 1 | 3 | 5) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -920,19 +943,31 @@ function StepDetails(props: {
         </div>
       </Field>
 
-      <Field label="Modalidad">
-        <RadioCards
-          options={MODALITIES.map((m) => ({ value: m.value, label: m.label, sub: m.sub }))}
-          value={props.modality}
-          onChange={(v) => props.setModality(v as typeof props.modality)}
-        />
-      </Field>
-
       <Field label="Sistema de puntuación">
-        <RadioCards
-          options={SCORING_PRESETS.map((s) => ({ value: s.id, label: s.label, sub: s.sub }))}
-          value={props.scoringId}
-          onChange={props.setScoringId}
+        <ScoringConfigurator
+          format={props.format}
+          mainType={props.mainType}
+          setMainType={props.setMainType}
+          mainPoints={props.mainPoints}
+          setMainPoints={props.setMainPoints}
+          mainBestOf={props.mainBestOf}
+          setMainBestOf={props.setMainBestOf}
+          groupScoringEnabled={props.groupScoringEnabled}
+          setGroupScoringEnabled={props.setGroupScoringEnabled}
+          groupType={props.groupType}
+          setGroupType={props.setGroupType}
+          groupPoints={props.groupPoints}
+          setGroupPoints={props.setGroupPoints}
+          groupBestOf={props.groupBestOf}
+          setGroupBestOf={props.setGroupBestOf}
+          finalScoringEnabled={props.finalScoringEnabled}
+          setFinalScoringEnabled={props.setFinalScoringEnabled}
+          finalType={props.finalType}
+          setFinalType={props.setFinalType}
+          finalPoints={props.finalPoints}
+          setFinalPoints={props.setFinalPoints}
+          finalBestOf={props.finalBestOf}
+          setFinalBestOf={props.setFinalBestOf}
         />
       </Field>
 
@@ -990,23 +1025,6 @@ function StepDetails(props: {
             Ej.: 2 grupos × 4 clasificados = 8 equipos en cuadro final. Los mejores
             de cada grupo pasan según la tabla del grupo.
           </p>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={props.finalBo5}
-              onChange={(e) => props.setFinalBo5(e.target.checked)}
-              style={{ accentColor: "var(--primary)" }}
-            />
-            Final al best of 5 (resto del torneo usa el scoring elegido arriba)
-          </label>
         </div>
       )}
     </div>
@@ -1450,12 +1468,17 @@ function StepCategories({
   );
 }
 
+type ScoringSummary = {
+  main: { type: ScoringType; points: number; bestOf: 1 | 3 | 5 };
+  group?: { type: ScoringType; points: number; bestOf: 1 | 3 | 5 } | null;
+  final?: { type: ScoringType; points: number; bestOf: 1 | 3 | 5 } | null;
+};
+
 function StepPreview(props: {
   name: string;
   description: string;
   clubLabel: string;
-  modalityLabel: string;
-  scoring: { label: string; sub: string; config: ScoringConfig };
+  scoringSummary: ScoringSummary;
   formatLabel: string;
   startsAt: string;
   endsAt: string;
@@ -1499,7 +1522,7 @@ function StepPreview(props: {
             color: "rgba(255,255,255,0.55)",
           }}
         >
-          Pickleball · {props.modalityLabel} · {props.formatLabel}
+          Pickleball · {props.formatLabel}
         </div>
         <div
           className="font-heading"
@@ -1604,19 +1627,30 @@ function StepPreview(props: {
           borderRadius: 10,
           background: "var(--muted)",
           marginTop: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
         }}
       >
         <div className="label-mp">Sistema de puntuación</div>
-        <div style={{ fontSize: 13, fontWeight: 900, marginTop: 4 }}>{props.scoring.label}</div>
-        <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 4, lineHeight: 1.5 }}>
-          {props.scoring.sub}
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <Chip label={`Tipo: ${props.scoring.config.type === "side_out" ? "Side-out" : "Rally"}`} />
-          <Chip label={`Game a ${props.scoring.config.points}`} />
-          <Chip label={`Gana por ${props.scoring.config.winBy}`} />
-          <Chip label={`Best of ${props.scoring.config.bestOf}`} />
-        </div>
+        {(["main", "group", "final"] as const).map((key) => {
+          const cfg = props.scoringSummary[key];
+          if (!cfg) return null;
+          const sectionLabel = key === "main" ? "Partidos regulares" : key === "group" ? "Fase de grupos" : "Final";
+          return (
+            <div key={key}>
+              <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted-fg)", marginBottom: 6 }}>
+                {sectionLabel}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Chip label={cfg.type === "side_out" ? "Side-out" : "Rally"} />
+                <Chip label={`${cfg.points} pts`} />
+                <Chip label={`Mejor de ${cfg.bestOf}`} />
+                <Chip label="Gana por 2" />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div
@@ -1772,3 +1806,219 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
   outline: "none",
 };
+
+// ── Scoring configurator ─────────────────────────────────────────────
+
+function ScoringSection({
+  type, setType,
+  points, setPoints,
+  bestOf, setBestOf,
+}: {
+  type: ScoringType;
+  setType: (v: ScoringType) => void;
+  points: string;
+  setPoints: (v: string) => void;
+  bestOf: 1 | 3 | 5;
+  setBestOf: (v: 1 | 3 | 5) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)", marginBottom: 6 }}>Tipo</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["side_out", "rally"] as const).map((t) => {
+            const active = type === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                style={{
+                  flex: 1, padding: "9px 10px", borderRadius: 10, cursor: "pointer",
+                  background: active ? "#0a0a0a" : "#fff",
+                  color: active ? "#fff" : "#0a0a0a",
+                  border: `1px solid ${active ? "#0a0a0a" : "var(--border)"}`,
+                  textAlign: "left", fontFamily: "inherit",
+                  transition: "background 140ms var(--ease-out)",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800 }}>{t === "side_out" ? "Side-out" : "Rally"}</div>
+                <div style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.65)" : "var(--muted-fg)", marginTop: 2 }}>
+                  {t === "side_out" ? "Solo el sacador puntúa" : "Cualquiera puntúa cada rally"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)", marginBottom: 6 }}>Puntos para ganar</div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {["11", "15", "21"].map((p) => {
+            const active = points === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPoints(p)}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                  fontWeight: 800, fontSize: 13,
+                  background: active ? "#0a0a0a" : "#fff",
+                  color: active ? "#fff" : "#0a0a0a",
+                  border: `1px solid ${active ? "#0a0a0a" : "var(--border)"}`,
+                  transition: "background 140ms var(--ease-out)",
+                }}
+              >
+                {p}
+              </button>
+            );
+          })}
+          <input
+            type="number"
+            min={7}
+            max={31}
+            value={points}
+            onChange={(e) => setPoints(e.target.value)}
+            placeholder="7-31"
+            style={{ ...inputStyle, width: 76, flex: "none" }}
+          />
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted-fg)", marginBottom: 6 }}>Mejor de</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {([1, 3, 5] as const).map((n) => {
+            const active = bestOf === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setBestOf(n)}
+                style={{
+                  flex: 1, padding: "9px 10px", borderRadius: 10, cursor: "pointer",
+                  fontFamily: "inherit", fontWeight: 800, fontSize: 12.5,
+                  background: active ? "#0a0a0a" : "#fff",
+                  color: active ? "#fff" : "#0a0a0a",
+                  border: `1px solid ${active ? "#0a0a0a" : "var(--border)"}`,
+                  transition: "background 140ms var(--ease-out)",
+                }}
+              >
+                {n} {n === 1 ? "game" : "games"}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoringConfigurator(props: {
+  format: string;
+  mainType: ScoringType; setMainType: (v: ScoringType) => void;
+  mainPoints: string; setMainPoints: (v: string) => void;
+  mainBestOf: 1 | 3 | 5; setMainBestOf: (v: 1 | 3 | 5) => void;
+  groupScoringEnabled: boolean; setGroupScoringEnabled: (v: boolean) => void;
+  groupType: ScoringType; setGroupType: (v: ScoringType) => void;
+  groupPoints: string; setGroupPoints: (v: string) => void;
+  groupBestOf: 1 | 3 | 5; setGroupBestOf: (v: 1 | 3 | 5) => void;
+  finalScoringEnabled: boolean; setFinalScoringEnabled: (v: boolean) => void;
+  finalType: ScoringType; setFinalType: (v: ScoringType) => void;
+  finalPoints: string; setFinalPoints: (v: string) => void;
+  finalBestOf: 1 | 3 | 5; setFinalBestOf: (v: 1 | 3 | 5) => void;
+}) {
+  const isGroups = props.format === "groups_to_knockout";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Presets rápidos */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {SCORING_QUICK_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => { props.setMainType(p.type); props.setMainPoints(p.points); props.setMainBestOf(p.bestOf); }}
+            style={{
+              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              background: "#fff", border: "1px solid var(--border)", color: "#0a0a0a",
+              fontFamily: "inherit", transition: "background 120ms var(--ease-out)",
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {/* Partidos regulares */}
+      <div style={{ padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "var(--muted)" }}>
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, color: "#0a0a0a" }}>
+          Partidos regulares
+        </div>
+        <ScoringSection
+          type={props.mainType} setType={props.setMainType}
+          points={props.mainPoints} setPoints={props.setMainPoints}
+          bestOf={props.mainBestOf} setBestOf={props.setMainBestOf}
+        />
+      </div>
+      {/* Fase de grupos */}
+      {isGroups && (
+        <div style={{ padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "var(--muted)" }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={props.groupScoringEnabled}
+              onChange={(e) => props.setGroupScoringEnabled(e.target.checked)}
+              style={{ accentColor: "var(--primary)", width: 15, height: 15, marginTop: 2, flexShrink: 0 }}
+            />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0a0a0a" }}>
+                Fase de grupos — puntuación diferente
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
+                Si no lo activas, los grupos usan los puntos regulares
+              </div>
+            </div>
+          </label>
+          {props.groupScoringEnabled && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <ScoringSection
+                type={props.groupType} setType={props.setGroupType}
+                points={props.groupPoints} setPoints={props.setGroupPoints}
+                bestOf={props.groupBestOf} setBestOf={props.setGroupBestOf}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {/* Final */}
+      {isGroups && (
+        <div style={{ padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "var(--muted)" }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={props.finalScoringEnabled}
+              onChange={(e) => props.setFinalScoringEnabled(e.target.checked)}
+              style={{ accentColor: "var(--primary)", width: 15, height: 15, marginTop: 2, flexShrink: 0 }}
+            />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0a0a0a" }}>
+                Final — puntuación diferente
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--muted-fg)", marginTop: 2 }}>
+                Si no lo activas, la final usa los puntos regulares
+              </div>
+            </div>
+          </label>
+          {props.finalScoringEnabled && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <ScoringSection
+                type={props.finalType} setType={props.setFinalType}
+                points={props.finalPoints} setPoints={props.setFinalPoints}
+                bestOf={props.finalBestOf} setBestOf={props.setFinalBestOf}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

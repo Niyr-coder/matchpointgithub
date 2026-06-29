@@ -474,7 +474,7 @@ function ReservationTicketSummary({
                 lineHeight: 1,
               }}
             >
-              ${price.toFixed(2)}
+              {price > 0 ? `$${price.toFixed(2)}` : "—"}
             </div>
           </div>
           <div
@@ -655,7 +655,7 @@ export function ReservarCanchaDrawer() {
     }
     return `C${mockCourtIdx + 1}`;
   })();
-  const price = club ? (club.price || 14) * (duration / 60) : 0;
+  const price = club ? (club.price || 0) * (duration / 60) : 0;
 
   const confirmedWindow = useMemo(() => {
     if (!created || !time) return null;

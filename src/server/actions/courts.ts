@@ -4,6 +4,7 @@
 import "server-only";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
@@ -143,6 +144,8 @@ export async function createCourt(input: unknown): Promise<ActionResult<Court>> 
       }
       throw new MpError("COURTS.CREATE_FAILED", error.message, 500);
     }
+    revalidatePath("/dashboard/owner");
+    revalidatePath("/dashboard/partner");
     return mapCourt(row);
   });
 }

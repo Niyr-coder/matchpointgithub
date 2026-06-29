@@ -42,7 +42,8 @@ function primarySportLabel(sports: string[]): string {
 }
 
 function priceDisplay(cents: number | null): { compact: string; n: number } {
-  const n = cents != null ? Math.round(cents / 100) : 14;
+  if (cents == null) return { compact: "—", n: 0 };
+  const n = Math.round(cents / 100);
   return { compact: `$${n}`, n };
 }
 
