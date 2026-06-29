@@ -914,7 +914,7 @@ export default async function PartnerTorneoPage({
                     tournamentId={t.id as string}
                     slug={tournamentSlug}
                     courts={clubCourts}
-                    readOnly={configReadOnly}
+                    readOnly={isClosed}
                     hasClub={!!tournamentClubId}
                   />
                 )}
