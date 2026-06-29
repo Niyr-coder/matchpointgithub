@@ -269,14 +269,31 @@ async function buildRegistrationLabelMap(
   admin: ReturnType<typeof getAdminClient>,
   tournamentId: string,
 ): Promise<Map<string, string>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: regs } = await admin
     .from("registrations")
-    .select("id,team_id,player_ids,teams(name)")
-    .eq("tournament_id", tournamentId);
+    .select("id,team_id,player_ids,teams(name)" as any)
+    .eq("tournament_id", tournamentId) as unknown as {
+      data: Array<{ id: string; team_id: string | null; player_ids: string[] | null; teams: { name: string } | null }> | null;
+    };
+
+  // Fetch guest_names por separado (no está en los tipos generados).
+  const regIds = (regs ?? []).map((r) => r.id);
+  const guestsByRegId = new Map<string, string[]>();
+  if (regIds.length > 0) {
+    const { data: gr } = await admin
+      .from("registrations")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,guest_names" as any)
+      .in("id", regIds) as unknown as { data: Array<{ id: string; guest_names: string[] | null }> | null };
+    for (const g of gr ?? []) {
+      if (g.guest_names?.length) guestsByRegId.set(g.id, g.guest_names);
+    }
+  }
 
   const playerIdSet = new Set<string>();
   for (const r of regs ?? []) {
-    for (const p of (r.player_ids as string[] | null) ?? []) playerIdSet.add(p);
+    for (const p of r.player_ids ?? []) playerIdSet.add(p);
   }
 
   const profById = new Map<string, string>();
@@ -292,16 +309,17 @@ async function buildRegistrationLabelMap(
 
   const out = new Map<string, string>();
   for (const r of regs ?? []) {
-    const pids = (r.player_ids as string[] | null) ?? [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const teamName = ((r as any).teams?.name as string | undefined) ?? null;
-    const first = pids[0] ? profById.get(pids[0]) : null;
+    const pids = r.player_ids ?? [];
+    const teamName = r.teams?.name ?? null;
+    const guests = guestsByRegId.get(r.id) ?? [];
     const label = teamName
       ? teamName
       : pids.length > 0
         ? pids.map((pid) => profById.get(pid) ?? "Jugador").join(" / ")
-        : "Equipo";
-    out.set(r.id as string, label);
+        : guests.length > 0
+          ? guests.join(" / ")
+          : "Equipo";
+    out.set(r.id, label);
   }
   return out;
 }
