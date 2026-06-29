@@ -54,7 +54,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
           { k: "home", label: "Inicio", icon: "home" },
           { k: "eventos", label: "Eventos", icon: "trophy" },
           { k: "ranking", label: "Ranking", icon: "bar-chart-3" },
-          { k: "busco-partido", label: "Busco partido", icon: "swords" },
+          { k: "busco-partido", label: "Busco partido", icon: "swords", badge: "BETA" },
           { k: "quedadas", label: "Quedadas", icon: "party-popper", badge: "BETA", flag: "quedadas_enabled" },
         ],
       },
@@ -77,7 +77,7 @@ export const MP_ROLES: Record<RoleKey, RoleConfig> = {
       {
         h: "Mejora tu juego",
         items: [
-          { k: "coach-ai", label: "Coach AI", icon: "sparkles", badge: "MP+", flag: "coach_ai_enabled" },
+          { k: "coach-ai", label: "Coach AI", icon: "sparkles", badge: "BETA", flag: "coach_ai_enabled" },
           { k: "academia", label: "Academia", icon: "graduation-cap" },
           { k: "mis-clases", label: "Mis clases", icon: "list-checks" },
         ],
