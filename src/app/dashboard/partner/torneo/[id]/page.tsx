@@ -69,6 +69,7 @@ type RegRow = {
   avatarUrl: string | null;
   playerIds: string[];
   players: Array<{ id: string; name: string }>;
+  transactionId: string | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -272,6 +273,7 @@ export default async function PartnerTorneoPage({
         id: pid,
         name: profById.get(pid)?.name ?? "Jugador",
       })),
+      transactionId: txId ?? null,
     };
   });
 

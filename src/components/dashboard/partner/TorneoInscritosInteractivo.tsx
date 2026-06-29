@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SubstitutePlayerModal } from "./SubstitutePlayerModal";
 import { AddInscritoManualModal } from "./AddInscritoManualModal";
+import { ReviewProofModal } from "./ReviewProofModal";
 
 type PayStatus = "paid" | "free" | "onsite_pending" | "awaiting_proof" | "review" | "other";
 
@@ -18,6 +19,7 @@ export type RegRowInteractive = {
   avatarUrl: string | null;
   playerIds: string[];
   players: Array<{ id: string; name: string }>;
+  transactionId: string | null;
 };
 
 interface Props {
@@ -35,6 +37,7 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
   const router = useRouter();
   const [subModalReg, setSubModalReg] = useState<RegRowInteractive | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [reviewTransactionId, setReviewTransactionId] = useState<string | null>(null);
 
   const canSubstitute = playerOpsEnabled && !isClosed;
 
@@ -115,6 +118,25 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
                       Sustituir
                     </button>
                   )}
+                  {r.payStatus === "review" && r.transactionId && (
+                    <button
+                      type="button"
+                      onClick={() => setReviewTransactionId(r.transactionId!)}
+                      style={{
+                        display: "block",
+                        fontSize: 10,
+                        color: "#b45309",
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Ver comprobante
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="mp-partner-torneo-regs-badges">
@@ -180,6 +202,13 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
           paymentPolicy={paymentPolicy}
           onClose={() => setShowAddModal(false)}
           onSuccess={() => { setShowAddModal(false); router.refresh(); }}
+        />
+      )}
+      {reviewTransactionId && (
+        <ReviewProofModal
+          transactionId={reviewTransactionId}
+          onClose={() => setReviewTransactionId(null)}
+          onSuccess={() => { setReviewTransactionId(null); router.refresh(); }}
         />
       )}
     </>

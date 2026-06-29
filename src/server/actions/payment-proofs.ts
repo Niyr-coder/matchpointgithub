@@ -8,12 +8,11 @@
 //   proof_submitted   → comprobante subido, esperando revisión admin
 //   captured          → cobrado
 //
-// IMPORTANTE — política de auto-captura para inscripciones de torneo
-// (kind='tournament'): cuando el jugador sube comprobante, la transacción
-// pasa directo a `captured` y la registration a `accepted`, sin revisión.
-// Decisión del producto para minimizar fricción. Si aparecen comprobantes
-// falsos, queda audit log en `audit_log` y se puede revertir manualmente.
-// Otros kinds (plan, evento, club_featuring) siguen con revisión admin.
+// IMPORTANTE — política de revisión:
+// Torneos (kind='tournament'): el jugador sube comprobante → `proof_submitted`,
+// el partner revisa y aprueba/rechaza desde su panel usando
+// approveRegistrationProofByPartner / rejectRegistrationProofByPartner.
+// Otros kinds (plan, evento, club_featuring) → revisión admin en admin-pagos.
 // Pagos de entradas extra en sorteos (kind='custom', ref_id=sorteo): auto-captura
 // al subir comprobante, igual que inscripciones de torneo.
 //
@@ -123,9 +122,10 @@ export async function submitPaymentProof(
     const admin = getAdminClient();
     const giveawayPay = await isGiveawayPayTransaction(admin, tx.kind as string, (tx.ref_id as string | null) ?? null);
 
-    // Inscripciones de torneos y pagos de entradas extra en sorteos: auto-capturamos
-    // al subir comprobante (decisión del producto — sin revisión de admin).
-    const autoCapture = tx.kind === "tournament" || giveawayPay;
+    // Pagos de entradas extra en sorteos: auto-capturamos al subir comprobante.
+    // Inscripciones de torneo ya NO auto-capturan — el partner revisa y aprueba
+    // desde su panel de torneo (approveRegistrationProofByPartner).
+    const autoCapture = giveawayPay;
     const nowIso = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       proof_url: proofUrl,

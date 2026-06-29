@@ -9,6 +9,8 @@ import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { runTransactionCaptureCascade } from "@/lib/payments/capture-cascade";
+import { notify } from "@/server/notifications/dispatch";
 
 // ── helpers internos ───────────────────────────────────────────────────
 
@@ -371,6 +373,211 @@ export async function addRegistrationByPartner(
         categoryId: (newReg.category_id as string | null) ?? null,
         paidTransactionId,
       };
+    },
+  );
+}
+
+// ── helpers compartidos para revisión de comprobantes ─────────────────────
+
+async function requireEditorFromTransaction(transactionId: string): Promise<{
+  userId: string;
+  actorRole: "admin" | "partner" | "club";
+  tx: { status: string; proof_url: string | null; customer_user_id: string | null; amount_cents: number; currency: string | null; kind: string; ref_id: string | null; club_id: string | null };
+}> {
+  const admin = getAdminClient();
+
+  const { data: tx } = await admin
+    .from("transactions")
+    .select("id,status,proof_url,customer_user_id,amount_cents,currency,kind,ref_id,club_id")
+    .eq("id", transactionId)
+    .maybeSingle();
+  if (!tx) throw new MpError("PAYMENT_PROOF.NOT_FOUND", "Transacción no encontrada", 404);
+  if (tx.kind !== "tournament") {
+    throw new MpError("PAYMENT_PROOF.INVALID_KIND", "Solo se pueden revisar comprobantes de torneo desde el panel partner", 400);
+  }
+
+  // Encontrar el torneo ligado a esta transacción via registrations
+  const { data: reg } = await admin
+    .from("registrations")
+    .select("tournament_id")
+    .eq("paid_transaction_id", transactionId)
+    .maybeSingle();
+  if (!reg) throw new MpError("PAYMENT_PROOF.NOT_FOUND", "Inscripción no encontrada para esta transacción", 404);
+
+  const { userId, actorRole } = await requireTournamentEditor(reg.tournament_id as string);
+
+  return {
+    userId,
+    actorRole,
+    tx: {
+      status: tx.status as string,
+      proof_url: (tx.proof_url as string | null) ?? null,
+      customer_user_id: (tx.customer_user_id as string | null) ?? null,
+      amount_cents: (tx.amount_cents as number) ?? 0,
+      currency: (tx.currency as string | null) ?? null,
+      kind: tx.kind as string,
+      ref_id: (tx.ref_id as string | null) ?? null,
+      club_id: (tx.club_id as string | null) ?? null,
+    },
+  };
+}
+
+// ── getRegistrationProofForPartner ────────────────────────────────────────
+
+export type RegistrationProofForPartner = {
+  transactionId: string;
+  status: string;
+  amountCents: number;
+  currency: string | null;
+  proofSignedUrl: string | null;
+  proofSubmittedAt: string | null;
+  customerName: string | null;
+};
+
+export async function getRegistrationProofForPartner(
+  input: unknown,
+): Promise<ActionResult<RegistrationProofForPartner>> {
+  return runAction(z.object({ transactionId: UuidSchema }), input, async ({ transactionId }) => {
+    const { tx } = await requireEditorFromTransaction(transactionId);
+
+    const admin = getAdminClient();
+
+    // Nombre del jugador
+    let customerName: string | null = null;
+    if (tx.customer_user_id) {
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("display_name")
+        .eq("id", tx.customer_user_id)
+        .maybeSingle();
+      customerName = (prof?.display_name as string | null) ?? null;
+    }
+
+    // Obtener proof_submitted_at y firma del comprobante
+    const { data: txFull } = await admin
+      .from("transactions")
+      .select("proof_submitted_at")
+      .eq("id", transactionId)
+      .maybeSingle();
+
+    let proofSignedUrl: string | null = null;
+    if (tx.proof_url) {
+      const { data: signed } = await admin.storage
+        .from("payment_proofs")
+        .createSignedUrl(tx.proof_url, 60 * 15);
+      proofSignedUrl = signed?.signedUrl ?? null;
+    }
+
+    return {
+      transactionId,
+      status: tx.status,
+      amountCents: tx.amount_cents,
+      currency: tx.currency,
+      proofSignedUrl,
+      proofSubmittedAt: (txFull?.proof_submitted_at as string | null) ?? null,
+      customerName,
+    };
+  });
+}
+
+// ── approveRegistrationProofByPartner ─────────────────────────────────────
+
+export async function approveRegistrationProofByPartner(
+  input: unknown,
+): Promise<ActionResult<{ ok: boolean }>> {
+  return runMutation(z.object({ transactionId: UuidSchema }), input, async ({ transactionId }) => {
+    const { userId, actorRole, tx } = await requireEditorFromTransaction(transactionId);
+
+    if (tx.status !== "proof_submitted") {
+      throw new MpError(
+        "PAYMENT_PROOF.INVALID_STATE",
+        `Solo se puede aprobar desde 'proof_submitted' (estado actual: '${tx.status}')`,
+        409,
+      );
+    }
+
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, auditActorRole(actorRole));
+
+    const nowIso = new Date().toISOString();
+    const { error } = await admin
+      .from("transactions")
+      .update({
+        status: "captured",
+        proof_reviewed_by: userId,
+        proof_reviewed_at: nowIso,
+        proof_rejection_reason: null,
+      } as never)
+      .eq("id", transactionId);
+    if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+
+    await runTransactionCaptureCascade(admin, {
+      id: transactionId,
+      kind: tx.kind,
+      ref_id: tx.ref_id,
+      club_id: tx.club_id,
+      customer_user_id: tx.customer_user_id,
+      amount_cents: tx.amount_cents,
+      currency: tx.currency,
+    });
+
+    return { ok: true };
+  });
+}
+
+// ── rejectRegistrationProofByPartner ──────────────────────────────────────
+
+export async function rejectRegistrationProofByPartner(
+  input: unknown,
+): Promise<ActionResult<{ ok: boolean }>> {
+  return runMutation(
+    z.object({ transactionId: UuidSchema, reason: z.string().min(2).max(500) }),
+    input,
+    async ({ transactionId, reason }) => {
+      const { userId, actorRole, tx } = await requireEditorFromTransaction(transactionId);
+
+      if (tx.status !== "proof_submitted") {
+        throw new MpError(
+          "PAYMENT_PROOF.INVALID_STATE",
+          `Solo se puede rechazar desde 'proof_submitted' (estado actual: '${tx.status}')`,
+          409,
+        );
+      }
+
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, auditActorRole(actorRole));
+
+      const nowIso = new Date().toISOString();
+      const { error } = await admin
+        .from("transactions")
+        .update({
+          status: "pending_proof",
+          proof_reviewed_by: userId,
+          proof_reviewed_at: nowIso,
+          proof_rejection_reason: reason,
+          proof_url: null,
+          proof_submitted_at: null,
+        } as never)
+        .eq("id", transactionId);
+      if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+
+      if (tx.customer_user_id) {
+        await notify({
+          userId: tx.customer_user_id,
+          role: "user",
+          kind: "payment_proof_rejected",
+          title: "Comprobante de pago rechazado",
+          body: reason,
+          payload: {
+            transaction_id: transactionId,
+            transaction_kind: tx.kind,
+            ref_id: tx.ref_id,
+            rejection_reason: reason,
+          },
+        });
+      }
+
+      return { ok: true };
     },
   );
 }
