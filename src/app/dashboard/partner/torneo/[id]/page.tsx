@@ -880,15 +880,6 @@ export default async function PartnerTorneoPage({
                   />
                 )}
 
-                {!isClosed && monitorsEnabled && (
-                  <TournamentMonitorsPanel
-                    tournamentId={t.id as string}
-                    slug={tournamentSlug}
-                    courts={clubCourts}
-                    readOnly={configReadOnly}
-                    hasClub={!!tournamentClubId}
-                  />
-                )}
               </>
             }
             operacion={
@@ -916,6 +907,15 @@ export default async function PartnerTorneoPage({
                     categoryName={ligaCategoryName}
                     tournamentFormat={tournamentFormat}
                     registrationLabels={registrationLabels}
+                  />
+                )}
+              {!isClosed && monitorsEnabled && (
+                  <TournamentMonitorsPanel
+                    tournamentId={t.id as string}
+                    slug={tournamentSlug}
+                    courts={clubCourts}
+                    readOnly={configReadOnly}
+                    hasClub={!!tournamentClubId}
                   />
                 )}
               </PartnerTorneoOperacionPanel>
