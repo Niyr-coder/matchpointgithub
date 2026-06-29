@@ -2,6 +2,7 @@
 "use client";
 import { Icon } from "@/components/Icon";
 import { RSHeader } from "../widgets/RS";
+import { RHKpi } from "../widgets/RH";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 
 export type CampaignRow = { id: string; n: string; cost: string; ch: string };
@@ -67,43 +68,18 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
       />
       <div className="mp-partner-home-kpis mp-partner-marketing-kpis">
         {kpis.map((k) => (
-          <div key={k.l} className="card mp-rh-kpi" style={{ padding: 14, minWidth: 0 }}>
-            <div className="label-mp mp-rh-kpi-label">{k.l}</div>
-            <div
-              className="font-heading"
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                marginTop: 5,
-                color: k.v === "—" || k.v === "$—" ? "var(--muted-fg)" : "#0a0a0a",
-              }}
-            >
-              {k.v}
-            </div>
-            <div
-              style={{
-                fontSize: 10,
-                color: k.sub === "sin tracking aún" ? "var(--muted-fg)" : "var(--primary)",
-                fontWeight: 800,
-                marginTop: 2,
-              }}
-            >
-              {k.sub ?? `↑ ${k.d}`}
-            </div>
-          </div>
+          <RHKpi
+            key={k.l}
+            label={k.l}
+            value={k.v}
+            sub={k.sub ?? `↑ ${k.d}`}
+            accent={k.v === "—" || k.v === "$—" ? "var(--muted-fg)" : undefined}
+          />
         ))}
       </div>
-      <div className="mp-role-home-panels">
-        <div className="card" style={{ padding: 18 }}>
-          <h2
-            className="font-heading"
-            style={{
-              fontSize: 14,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              margin: "0 0 10px",
-            }}
-          >
+      <div className="mp-role-home-split">
+        <div className="card" style={{ padding: 20 }}>
+          <h2 className="font-heading card-title" style={{ margin: "0 0 12px" }}>
             Campañas activas<span className="dot">.</span>
           </h2>
           {hasCampaigns
@@ -149,16 +125,8 @@ export function PartnerMarketingScreenView({ data }: { data: MarketingData }) {
                 </div>
               ))}
         </div>
-        <div className="card" style={{ padding: 18 }}>
-          <h2
-            className="font-heading"
-            style={{
-              fontSize: 14,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              margin: "0 0 10px",
-            }}
-          >
+        <div className="card" style={{ padding: 20 }}>
+          <h2 className="font-heading card-title" style={{ margin: "0 0 12px" }}>
             Mejor canal<span className="dot">.</span>
           </h2>
           {channels.map((ch, i) => (

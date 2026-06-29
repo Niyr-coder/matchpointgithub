@@ -395,8 +395,13 @@ main:has(.mp-profile-v3) {
     grid-template-columns: 1fr !important;
   }
 
+  /* pv3-kpi-strip: override explícito a grid para ganar sobre
+     display:flex!important que pv3-stack-sm impone en mobile */
   .mp-profile-v3 .pv3-kpi-strip {
+    display: grid !important;
+    flex-direction: unset !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
   }
 }
 
