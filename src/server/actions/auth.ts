@@ -394,13 +394,24 @@ export async function updatePassword(
 }
 
 async function requestOrigin(): Promise<string> {
+  // En producción, NEXT_PUBLIC_APP_URL es la fuente canónica y más confiable
+  // que las request headers (que pueden venir del proxy interno con localhost).
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl && !appUrl.includes("localhost")) {
+    return appUrl.replace(/\/$/, "");
+  }
   const h = await headers();
   const explicitOrigin = h.get("origin");
-  if (explicitOrigin) return explicitOrigin;
+  if (explicitOrigin && !explicitOrigin.includes("localhost")) return explicitOrigin;
   const host = h.get("x-forwarded-host") || h.get("host");
   const proto = h.get("x-forwarded-proto") || (process.env.NODE_ENV === "production" ? "https" : "http");
+  if (host && !host.includes("localhost")) return `${proto}://${host}`;
+  // Fallback explícito al dominio de producción.
+  if (process.env.NODE_ENV === "production") return "https://matchpoint.top";
+  // En dev local usamos la origin real del header para poder testear OAuth.
+  if (explicitOrigin) return explicitOrigin;
   if (host) return `${proto}://${host}`;
-  return "https://matchpoint.top";
+  return "http://localhost:3000";
 }
 
 // ── signOut ─────────────────────────────────────────────────────────────

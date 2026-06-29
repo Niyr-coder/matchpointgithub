@@ -4,6 +4,7 @@ import { getEvent } from "@/server/actions/events";
 import { getClub } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { loadTournamentScheduleBlocks } from "@/server/queries/tournament-schedule";
 import { PublicChrome } from "@/components/landing/PublicChrome";
 import {
@@ -53,9 +54,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
-    // Lista de inscritos
-    // de todos los player_ids en una sola query batch.
-    const { data: regsRaw } = await supabase
+    // Lista de inscritos — admin client: reg_visible no tiene política pública.
+    const admin = getAdminClient();
+    const { data: regsRaw } = await admin
       .from("registrations")
       .select("id,player_ids,created_at")
       .eq("tournament_id", detailRes.data.tournament.id)
@@ -68,7 +69,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     }
     const profById = new Map<string, { displayName: string; avatarUrl: string | null; city: string | null }>();
     if (allIds.size > 0) {
-      const { data: profs } = await supabase
+      const { data: profs } = await admin
         .from("profiles")
         .select("id,display_name,avatar_url,city")
         .in("id", Array.from(allIds));
