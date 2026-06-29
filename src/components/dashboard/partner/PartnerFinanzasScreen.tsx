@@ -2,6 +2,7 @@
 import { getServerClient } from "@/lib/db/client.server";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
 import { getTakeRatePct } from "@/server/queries/platform-config";
+import type { PaymentAccount } from "@/lib/schemas/banking";
 import {
   PartnerFinanzasScreenView,
   type FinanzasData,
@@ -16,6 +17,7 @@ async function loadData(): Promise<FinanzasData> {
   if (!partnerId) {
     return {
       partnerId: null,
+      payoutAccount: null,
       monthRevenueCents: 0,
       mpFeeCents: 0,
       clubsShareCents: 0,
@@ -30,6 +32,16 @@ async function loadData(): Promise<FinanzasData> {
   }
 
   const supabase = await getServerClient();
+
+  // Leer cuenta de cobro del partner
+  const { data: orgRow } = await supabase
+    .from("partner_orgs")
+    .select("payout_account")
+    .eq("id", partnerId)
+    .maybeSingle();
+  const payoutAccount = (orgRow as unknown as { payout_account: PaymentAccount | null } | null)
+    ?.payout_account ?? null;
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -150,6 +162,7 @@ async function loadData(): Promise<FinanzasData> {
 
   return {
     partnerId,
+    payoutAccount,
     monthRevenueCents,
     mpFeeCents,
     clubsShareCents,

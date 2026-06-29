@@ -18,6 +18,7 @@ import {
 } from "@/lib/schemas/ops";
 import { UuidSchema } from "@/lib/schemas/common";
 import { normalizeClubPartnerLinkCode } from "@/lib/partners/club-link-code";
+import { PaymentAccountSchema, type PaymentAccount } from "@/lib/schemas/banking";
 
 function mapPartner(row: Record<string, unknown>): PartnerOrg {
   return PartnerOrgSchema.parse({
@@ -199,5 +200,47 @@ export async function createPartner(input: unknown): Promise<ActionResult<Partne
     }
 
     return mapPartner(row);
+  });
+}
+
+// ── savePartnerPayoutAccount ───────────────────────────────────────────────
+// Guarda (o borra) los datos bancarios de la org para recibir payouts.
+// Solo accesible para owner/admin del partner o admin de plataforma.
+const SavePayoutAccountSchema = z.object({
+  orgId: UuidSchema,
+  account: PaymentAccountSchema.nullable(),
+});
+
+export async function savePartnerPayoutAccount(
+  input: unknown,
+): Promise<ActionResult<{ account: PaymentAccount | null }>> {
+  return runAction(SavePayoutAccountSchema, input, async ({ orgId, account }) => {
+    const callerId = await requirePartnerAdmin(orgId);
+    const admin = getAdminClient();
+    await setAuditActor(admin, callerId, "partner");
+    const { data, error } = await admin
+      .from("partner_orgs")
+      .update({ payout_account: account } as never)
+      .eq("id", orgId)
+      .select("payout_account")
+      .single();
+    if (error) throw new MpError("PARTNERS.PAYOUT_ACCOUNT_FAILED", error.message, 500);
+    return { account: (data as unknown as { payout_account: PaymentAccount | null }).payout_account };
+  });
+}
+
+export async function getPartnerPayoutAccount(
+  input: unknown,
+): Promise<ActionResult<{ account: PaymentAccount | null }>> {
+  return runAction(z.object({ orgId: UuidSchema }), input, async ({ orgId }) => {
+    await requirePartnerAdmin(orgId);
+    const supabase = await getServerClient();
+    const { data, error } = await supabase
+      .from("partner_orgs")
+      .select("payout_account")
+      .eq("id", orgId)
+      .single();
+    if (error) throw new MpError("PARTNERS.DB_ERROR", error.message, 500);
+    return { account: (data as unknown as { payout_account: PaymentAccount | null }).payout_account ?? null };
   });
 }

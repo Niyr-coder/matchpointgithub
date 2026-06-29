@@ -2650,6 +2650,30 @@ llegue, cablear las 3 actions de arriba.
 
 ---
 
+### 29.25 · Cuenta de cobro del partner (mig 20260704120000)
+
+Agrega `payout_account jsonb` a `partner_orgs`. Mismo shape que
+`quedadas.payment_account`: `{bank, accountType, accountNumber, holderName, holderId?, note?}`.
+
+```sql
+alter table partner_orgs
+  add column if not exists payout_account jsonb;
+```
+
+**Server actions** (`src/server/actions/partners.ts`):
+
+- `savePartnerPayoutAccount(orgId, account)` — partner-admin o admin de plataforma;
+  usa `getAdminClient + setAuditActor("partner")`. Acepta `null` para borrar.
+- `getPartnerPayoutAccount(orgId)` — misma validación de acceso.
+
+**UI** (`PartnerFinanzasScreenView`): tarjeta "Cuenta de cobro" con `BankAccountFields`
+(reutilizado de quedadas). El hero de finanzas muestra banco + últimos 4 dígitos si hay cuenta.
+
+**RLS**: no se agrega policy UPDATE en `partner_orgs`; la mutación siempre pasa
+por `getAdminClient` tras validar membresía.
+
+---
+
 ## Próximo: `30-rls.md`
 
 Detalla la matriz **rol × tabla** con la SQL exacta de cada `create policy`, usando los helpers `auth.has_club_access(...)` y `auth.active_role()` definidos arriba.

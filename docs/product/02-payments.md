@@ -167,6 +167,7 @@ que se defina un flujo contable específico.
 | Listar pending proofs | ❌ | ❌ | ❌ | ✅ |
 | Crear refund manual | ❌ | ❌ | ❌ | ✅ |
 | Ver tabla payouts | ❌ | ✅ (los suyos) | ✅ (los del club) | ✅ |
+| Configurar cuenta de cobro | ❌ | ✅ (owner/admin de la org) | ❌ | ✅ |
 
 ## 9. RLS recap (ver también architecture/30-rls.md §9)
 

@@ -1,10 +1,20 @@
 // Client view de PartnerFinanzasScreen — layout 1:1 (RoleScreensPolish.jsx 358-462).
 "use client";
+import { useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { PolHero } from "../widgets/PolHero";
 import { RSPill } from "../widgets/RS";
 import { MpProgressBar } from "../widgets/MpProgressBar";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import {
+  BankAccountFields,
+  bankDraftToAccount,
+  bankDraftIsIncomplete,
+  accountToBankDraft,
+  type BankDraft,
+} from "@/components/dashboard/user/quedada-fields/BankAccountFields";
+import { savePartnerPayoutAccount } from "@/server/actions/partners";
+import type { PaymentAccount } from "@/lib/schemas/banking";
 
 export type RevenueRow = {
   id: string;
@@ -17,6 +27,7 @@ export type RevenueRow = {
 
 export type FinanzasData = {
   partnerId: string | null;
+  payoutAccount: PaymentAccount | null;
   monthRevenueCents: number;
   mpFeeCents: number;
   clubsShareCents: number;
@@ -34,6 +45,161 @@ function fmtUSD(cents: number): string {
 }
 
 const REV_PLACEHOLDER_COUNT = 3;
+
+// ── PayoutAccountCard ────────────────────────────────────────────────────────
+function PayoutAccountCard({
+  orgId,
+  initial,
+}: {
+  orgId: string;
+  initial: PaymentAccount | null;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<BankDraft>(accountToBankDraft(initial));
+  const [current, setCurrent] = useState<PaymentAccount | null>(initial);
+  const [pending, startTransition] = useTransition();
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  function showToast(ok: boolean, msg: string) {
+    setToast({ ok, msg });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  function handleSave() {
+    const account = bankDraftToAccount(draft);
+    startTransition(async () => {
+      const res = await savePartnerPayoutAccount({ orgId, account });
+      if (res.ok) {
+        setCurrent(res.data.account);
+        setEditing(false);
+        showToast(true, "Cuenta de cobro guardada.");
+      } else {
+        showToast(false, res.error?.message ?? "Error al guardar");
+      }
+    });
+  }
+
+  const masked = current
+    ? `${current.bank} · ${current.accountType} ·· ${current.accountNumber.slice(-4)}`
+    : null;
+
+  return (
+    <div className="card" style={{ padding: 22, position: "relative" }}>
+      {toast && (
+        <div
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            background: toast.ok ? "#10b981" : "#dc2626",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "6px 12px",
+            borderRadius: 8,
+            zIndex: 10,
+          }}
+        >
+          {toast.msg}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div>
+          <h2
+            className="font-heading"
+            style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.025em", textTransform: "uppercase", margin: 0 }}
+          >
+            Cuenta de cobro<span className="dot">.</span>
+          </h2>
+          <p style={{ fontSize: 11.5, color: "var(--muted-fg)", margin: "4px 0 0" }}>
+            Datos bancarios donde MATCHPOINT te deposita tus payouts.
+          </p>
+        </div>
+        {!editing && (
+          <button
+            className="btn btn-sm"
+            onClick={() => { setDraft(accountToBankDraft(current)); setEditing(true); }}
+            style={{ flexShrink: 0 }}
+          >
+            <Icon name={current ? "pencil" : "plus"} size={13} />
+            {current ? "Editar" : "Agregar cuenta"}
+          </button>
+        )}
+      </div>
+
+      {!editing && current && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 14px",
+            background: "var(--muted)",
+            borderRadius: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 36, height: 36, borderRadius: 8,
+              background: "#10b981", color: "#fff",
+              display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}
+          >
+            <Icon name="landmark" size={16} color="#fff" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--fg)" }}>{current.holderName}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 1 }}>{masked}</div>
+          </div>
+          <div
+            style={{
+              fontSize: 10, fontWeight: 800, background: "#d1fae5", color: "#065f46",
+              padding: "3px 8px", borderRadius: 99,
+            }}
+          >
+            Activa
+          </div>
+        </div>
+      )}
+
+      {!editing && !current && (
+        <div
+          style={{
+            padding: "24px 0", textAlign: "center", color: "var(--muted-fg)",
+            fontSize: 12.5, fontWeight: 700,
+          }}
+        >
+          <Icon name="landmark" size={20} color="var(--muted-fg)" />
+          <div style={{ marginTop: 8 }}>
+            Sin cuenta configurada — MATCHPOINT no puede procesar tu payout.
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div>
+          <BankAccountFields value={draft} onChange={setDraft} />
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={pending || bankDraftIsIncomplete(draft)}
+            >
+              {pending ? "Guardando…" : "Guardar cuenta"}
+            </button>
+            <button
+              className="btn"
+              onClick={() => { setDraft(accountToBankDraft(current)); setEditing(false); }}
+              disabled={pending}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
   useRealtimeRefresh(
@@ -153,7 +319,9 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
             <span style={{ fontSize: 14, color: "var(--primary)", fontWeight: 900 }}>{deltaLabel}</span>
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>
-            Sin cuenta bancaria vinculada
+            {data.payoutAccount
+              ? `${data.payoutAccount.bank} ·· ${data.payoutAccount.accountNumber.slice(-4)}`
+              : "Sin cuenta bancaria vinculada"}
           </div>
 
           <div style={{ marginTop: 28 }}>
@@ -391,6 +559,10 @@ export function PartnerFinanzasScreenView({ data }: { data: FinanzasData }) {
               </div>
             ))}
       </div>
+
+      {data.partnerId && (
+        <PayoutAccountCard orgId={data.partnerId} initial={data.payoutAccount} />
+      )}
     </>
   );
 }
