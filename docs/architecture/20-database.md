@@ -1280,6 +1280,7 @@ create table registrations (
   category_id uuid references tournament_categories(id),
   team_id uuid references teams(id),
   player_ids uuid[] not null,                   -- dobles = 2 ids
+  guest_names text[],                           -- walk-in: nombres libres; player_ids queda vacío (mig 20260704140000)
   registered_by uuid not null references profiles(id),
   status text not null default 'pending' check (status in ('pending','accepted','rejected','withdrawn','waitlist')),
   paid_transaction_id uuid references transactions(id),

@@ -114,7 +114,7 @@ export default async function PartnerTorneoPage({
   const { data: tRaw } = await admin
     .from("tournaments")
     .select(
-      "id,slug,name,status,sport,format,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,clubs(name,city)",
+      "id,slug,name,status,sport,format,modality,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,clubs(name,city)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -177,6 +177,21 @@ export default async function PartnerTorneoPage({
     .not("status", "in", "(withdrawn,rejected,cancelled)")
     .order("created_at", { ascending: false });
 
+  // guest_names no está en los tipos generados — fetch separado con as any.
+  const regIds = (regsRaw ?? []).map((r) => r.id as string);
+  const guestNamesByRegId = new Map<string, string[]>();
+  if (regIds.length > 0) {
+    const { data: gnRaw } = await admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("registrations" as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,guest_names" as any)
+      .in("id", regIds);
+    for (const row of (gnRaw as Array<{ id: string; guest_names: string[] | null }> | null) ?? []) {
+      if (row.guest_names?.length) guestNamesByRegId.set(row.id, row.guest_names);
+    }
+  }
+
   const playerIdSet = new Set<string>();
   for (const r of regsRaw ?? []) {
     for (const p of (r.player_ids as string[] | null) ?? []) playerIdSet.add(p);
@@ -219,11 +234,14 @@ export default async function PartnerTorneoPage({
     const firstProf = pids[0] ? profById.get(pids[0]) : null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const teamName = ((r as any).teams?.name as string | undefined) ?? null;
+    const guestNames = guestNamesByRegId.get(r.id as string) ?? [];
     const label = teamName
       ? teamName
-      : pids.length > 1 && firstProf
-        ? `${firstProf.name} +${pids.length - 1}`
-        : firstProf?.name ?? "Jugador";
+      : guestNames.length > 0
+        ? guestNames.join(" + ")
+        : pids.length > 1 && firstProf
+          ? `${firstProf.name} +${pids.length - 1}`
+          : firstProf?.name ?? "Jugador";
 
     const txId = r.paid_transaction_id as string | null;
     const tx = txId ? txById.get(txId) ?? null : null;
@@ -965,6 +983,10 @@ export default async function PartnerTorneoPage({
                     tournamentId={t.id as string}
                     playerOpsEnabled={playerOpsEnabled}
                     isClosed={isClosed}
+                    modality={String(t.modality ?? 'singles')}
+                    categories={categories.map(c => ({ id: c.id, name: c.name }))}
+                    entryFeeCents={fee}
+                    paymentPolicy={String(t.payment_policy ?? 'prepay')}
                   />
                 )}
               </div>

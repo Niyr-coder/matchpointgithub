@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SubstitutePlayerModal } from "./SubstitutePlayerModal";
+import { AddInscritoManualModal } from "./AddInscritoManualModal";
 
 type PayStatus = "paid" | "free" | "onsite_pending" | "awaiting_proof" | "review" | "other";
 
@@ -24,17 +25,34 @@ interface Props {
   tournamentId: string;
   playerOpsEnabled: boolean;
   isClosed: boolean;
+  modality: string;
+  categories: Array<{ id: string; name: string }>;
+  entryFeeCents: number;
+  paymentPolicy: string;
 }
 
-export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnabled, isClosed }: Props) {
+export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnabled, isClosed, modality, categories, entryFeeCents, paymentPolicy }: Props) {
   const router = useRouter();
   const [subModalReg, setSubModalReg] = useState<RegRowInteractive | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const canSubstitute = playerOpsEnabled && !isClosed;
 
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {!isClosed && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ background: "#fff", border: "1px solid var(--border)" }}
+              onClick={() => setShowAddModal(true)}
+            >
+              Añadir inscrito
+            </button>
+          </div>
+        )}
         <div className="mp-partner-torneo-regs-head">
           <div>Jugador</div>
           <div style={{ textAlign: "center" }}>Estado</div>
@@ -143,6 +161,17 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
           tournamentId={tournamentId}
           players={subModalReg.players}
           onSuccess={() => router.refresh()}
+        />
+      )}
+      {showAddModal && (
+        <AddInscritoManualModal
+          tournamentId={tournamentId}
+          modality={modality}
+          categories={categories}
+          entryFeeCents={entryFeeCents}
+          paymentPolicy={paymentPolicy}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => { setShowAddModal(false); router.refresh(); }}
         />
       )}
     </>

@@ -191,6 +191,7 @@ inscrito, falta wiring de realtime o de fetch.
 | Inscribirse | ✅ | ✅ | ✅ | ✅ |
 | Generar bracket | ❌ | ✅ | ✅ | ✅ |
 | CRUD categorías/cronograma/premios | ❌ | ✅ | ✅ | ✅ |
+| Añadir inscrito manualmente | ❌ | ✅ (su torneo) | ✅ (su club) | ✅ |
 
 El helper `requireTournamentEditor(tournamentId)` en `tournaments.ts`
 encapsula la chequera (admin global o partner_member owner/admin del
@@ -210,6 +211,11 @@ reusan `registration_accepted/rejected`; si remueve la inscripción, se encola
 `tournament_registration_removed`. La transferencia de cupo de torneos no
 existe todavía porque `player_ids[]` + `team_id` hacen ambiguo si se reemplaza
 un jugador o el equipo completo.
+
+**Inscripción manual por partner**: el partner puede añadir jugadores directamente desde el panel de gestión sin que el jugador lo haga desde la app. Dos modalidades:
+- **Jugador registrado**: se busca por nombre/username, se linkea al perfil existente vía player_ids[].
+- **Walk-in**: el partner escribe el nombre; se almacena en guest_names[] y player_ids queda vacío. No recibe notificaciones (sin cuenta).
+La inscripción se crea con status='accepted' directamente. Si el torneo tiene cuota (entry_fee_cents > 0), se crea una transaction status='pending' method='cash' que el partner marca como pagada con "Marcar pagado" cuando el jugador entrega el dinero.
 
 **Bug histórico**: queries que selectban `player_id` (singular) explotaban
 silenciosamente porque la columna no existe. Siempre `player_ids` y resolver
@@ -241,6 +247,7 @@ agregue ese render (TODO — hoy solo está en el preview modal del panel).
    DUPR ni en copy ni en código.
 6. **status hardcoded en pills sin cubrir todos los enums** — usar
    `txStatusMeta` para transactions y mapas exhaustivos para registrations.
+7. **guest_names en label derivation**: al mostrar la label de una registration, verificar guest_names[] ANTES de resolver por player_ids. Si guest_names.length > 0 y player_ids está vacío, es un walk-in — usar guest_names.join(' + ') como label.
 
 ## 12. TODOs
 
