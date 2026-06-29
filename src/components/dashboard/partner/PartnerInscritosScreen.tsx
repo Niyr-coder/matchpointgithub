@@ -85,6 +85,20 @@ async function loadData(): Promise<InscritosData> {
     .not("status", "in", "(withdrawn,rejected,cancelled)")
     .order("created_at", { ascending: false });
 
+  // Fetch guest_names separado (no está en los tipos generados).
+  const allRegIds = (regs ?? []).map((r) => r.id as string);
+  const guestsByRegId = new Map<string, string[]>();
+  if (allRegIds.length > 0) {
+    const { data: gr } = await supabase
+      .from("registrations")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,guest_names" as any)
+      .in("id", allRegIds) as unknown as { data: Array<{ id: string; guest_names: string[] | null }> | null };
+    for (const g of gr ?? []) {
+      if (g.guest_names?.length) guestsByRegId.set(g.id, g.guest_names);
+    }
+  }
+
   // Resolver perfiles para todos los player_ids.
   const playerIdSet = new Set<string>();
   for (const r of regs ?? []) {
@@ -128,11 +142,14 @@ async function loadData(): Promise<InscritosData> {
     const firstProf = playerIds[0] ? profById.get(playerIds[0]) : null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const teamName = ((r as any).teams?.name as string | undefined) ?? null;
+    const guests = guestsByRegId.get(r.id as string) ?? [];
     const label = teamName
       ? teamName
-      : playerIds.length > 1 && firstProf
-        ? `${firstProf.name} +${playerIds.length - 1}`
-        : firstProf?.name ?? "Jugador";
+      : playerIds.length > 0
+        ? playerIds.map((pid) => profById.get(pid)?.name ?? "Jugador").join(" / ")
+        : guests.length > 0
+          ? guests.join(" / ")
+          : "Jugador";
 
     const txId = r.paid_transaction_id as string | null;
     const tx = txId ? txById.get(txId) ?? null : null;
