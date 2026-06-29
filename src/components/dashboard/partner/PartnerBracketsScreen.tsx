@@ -1,4 +1,4 @@
-// Server: bracket en vivo del torneo más reciente (LIVE o próximo) del partner.
+// Server: brackets del torneo más reciente del partner, agrupados por categoría.
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { resolveActivePartnerId } from "@/lib/auth/resolvePartnerId";
@@ -7,6 +7,7 @@ import {
   PartnerBracketsScreenView,
   type BracketsData,
   type BracketMatch,
+  type BracketCategorySection,
 } from "./PartnerBracketsScreenView";
 import {
   knockoutRoundLabel,
@@ -38,7 +39,6 @@ async function registrationLabels(regIds: string[]): Promise<Map<string, string>
       data: Array<{ id: string; team_id: string | null; player_ids: string[] | null; teams: { name: string } | null }> | null;
     };
 
-  // Fetch guest_names por separado (no está en los tipos generados).
   const guestsByRegId = new Map<string, string[]>();
   {
     const { data: gr } = await admin
@@ -93,7 +93,7 @@ const PLACEHOLDER_MATCH: BracketMatch = {
   correctable: false,
 };
 
-function placeholderColumns(entryCount: number): BracketsData["columns"] {
+function placeholderColumns(entryCount: number): { label: string; matches: BracketMatch[] }[] {
   const counts = knockoutRoundMatchCounts(entryCount);
   return counts.map((matchCount, idx) => ({
     label: knockoutRoundLabel(idx, counts.length),
@@ -101,7 +101,123 @@ function placeholderColumns(entryCount: number): BracketsData["columns"] {
   }));
 }
 
+type RawMatch = {
+  id: string;
+  round: number;
+  position: number;
+  side_a_registration_id: string | null;
+  side_b_registration_id: string | null;
+  score: unknown;
+  status: string;
+  winner_side: string | null;
+  scheduled_at: string | null;
+  is_bronze?: boolean;
+};
+
+function buildSectionFromMatches(
+  bmList: RawMatch[],
+  categoryId: string | null,
+  categoryName: string | null,
+  stage: string | null,
+  canGenerateRandomBracket: boolean,
+  nameByReg: Map<string, string>,
+): BracketCategorySection {
+  function mkMatch(raw: RawMatch): BracketMatch {
+    const aName = raw.side_a_registration_id
+      ? nameByReg.get(raw.side_a_registration_id) ?? "—"
+      : "TBD";
+    const bName = raw.side_b_registration_id
+      ? nameByReg.get(raw.side_b_registration_id) ?? "—"
+      : "TBD";
+    const { sa, sb } = formatSetScore(raw.score);
+    const w = raw.winner_side === "a" ? "a" : raw.winner_side === "b" ? "b" : undefined;
+    const status = raw.status;
+    const hasBoth =
+      !!raw.side_a_registration_id &&
+      !!raw.side_b_registration_id &&
+      raw.side_a_registration_id !== raw.side_b_registration_id;
+    const reportable =
+      hasBoth &&
+      status !== "reported" &&
+      status !== "confirmed" &&
+      status !== "cancelled";
+    const correctable =
+      hasBoth &&
+      (status === "reported" || status === "confirmed");
+    return {
+      id: raw.id,
+      a: aName,
+      b: bName,
+      sa,
+      sb,
+      w,
+      live: status === "live",
+      status,
+      reportable,
+      correctable,
+    };
+  }
+
+  const bronzeRaw = bmList.find((m) => m.is_bronze);
+  const mainBm = bmList.filter((m) => !m.is_bronze);
+
+  const byRound = new Map<number, RawMatch[]>();
+  for (const m of mainBm) {
+    const r = m.round as number;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r)!.push(m);
+  }
+  const sortedRounds = Array.from(byRound.keys()).sort((a, b) => a - b);
+  const totalRounds = sortedRounds.length;
+  const columns = sortedRounds.map((roundNum, idx) => ({
+    label: knockoutRoundLabel(idx, totalRounds),
+    matches: (byRound.get(roundNum) ?? [])
+      .sort((a, b) => (a.position as number) - (b.position as number))
+      .map(mkMatch),
+  }));
+
+  let championLabel = "Por decidir";
+  let championWhen = "—";
+  const finalRaw =
+    sortedRounds.length > 0 ? byRound.get(sortedRounds[sortedRounds.length - 1])?.[0] : null;
+  const finalMatchNode = columns[columns.length - 1]?.matches[0];
+  if (finalRaw) {
+    if (finalRaw.winner_side === "a" && finalRaw.side_a_registration_id) {
+      championLabel = nameByReg.get(finalRaw.side_a_registration_id as string) ?? "Por decidir";
+    } else if (finalRaw.winner_side === "b" && finalRaw.side_b_registration_id) {
+      championLabel = nameByReg.get(finalRaw.side_b_registration_id as string) ?? "Por decidir";
+    }
+    if (finalRaw.scheduled_at) {
+      const d = new Date(finalRaw.scheduled_at as string);
+      championWhen = `Final · ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    }
+  }
+
+  return {
+    categoryId,
+    categoryName,
+    stage,
+    canGenerateRandomBracket,
+    hasBracket: columns.some((c) => c.matches.length > 0),
+    columns,
+    championLabel,
+    championWhen,
+    finalHasWinner: !!finalMatchNode?.w,
+    thirdPlaceMatch: bronzeRaw ? mkMatch(bronzeRaw) : null,
+  };
+}
+
 async function loadData(forceId?: string | null): Promise<BracketsData> {
+  const placeholderSection: BracketCategorySection = {
+    categoryId: null,
+    categoryName: null,
+    stage: null,
+    canGenerateRandomBracket: true,
+    hasBracket: false,
+    columns: placeholderColumns(8),
+    championLabel: "Por decidir",
+    championWhen: "—",
+  };
   const empty: BracketsData = {
     partnerId: null,
     tournamentId: null,
@@ -109,11 +225,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     tournamentSlug: null,
     displayToken: null,
     tournamentFormat: "single_elim",
-    canGenerateRandomBracket: true,
-    columns: placeholderColumns(8),
-    hasBracket: false,
-    championLabel: "Por decidir",
-    championWhen: "—",
+    categories: [placeholderSection],
   };
 
   const partnerId = await resolveActivePartnerId();
@@ -121,7 +233,6 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
   const now = new Date();
   const admin = getAdminClient();
 
-  // Admin de plataforma puede acceder a cualquier torneo via ?tid= para soporte.
   let isAdmin = false;
   const session = await getSession();
   if (session.authenticated) {
@@ -150,7 +261,6 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
   let tours: TourPick[];
 
   if (isAdmin && forceId) {
-    // Admin con ?tid=: carga directo sin restricción de partner.
     const { data } = await admin
       .from("tournaments")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,19 +337,70 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
 
   const canGenerateRandomBracket = chosen.format !== "groups_to_knockout";
 
-  const { data: brackets } = await admin
-    .from("brackets")
-    .select("id")
-    .eq("tournament_id", chosen.id)
-    .order("generated_at", { ascending: false })
-    .limit(1);
-  const bracketId = brackets?.[0]?.id as string | undefined;
-  if (!bracketId) {
+  // Cargar todos los brackets del torneo y las categorías en paralelo
+  const [bracketsResult, catsResult] = await Promise.all([
+    admin
+      .from("brackets")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,category_id,format,size" as any)
+      .eq("tournament_id", chosen.id)
+      .order("generated_at", { ascending: false }),
+    admin
+      .from("tournament_categories")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id,name,stage" as any)
+      .eq("tournament_id", chosen.id)
+      .order("created_at" as any, { ascending: true }),
+  ]);
+
+  type BracketRow = { id: string; category_id: string | null; format: string; size: number };
+  type CatRow = { id: string; name: string; stage: string };
+  const allBrackets = (bracketsResult.data ?? []) as unknown as BracketRow[];
+  const cats = (catsResult.data ?? []) as unknown as CatRow[];
+
+  // Bracket más reciente por category_id (ya ordenado por generated_at desc)
+  const latestBracketByCat = new Map<string | null, { id: string; format: string; size: number }>();
+  for (const b of allBrackets) {
+    const catKey = b.category_id ?? null;
+    if (!latestBracketByCat.has(catKey)) {
+      latestBracketByCat.set(catKey, { id: b.id, format: b.format, size: b.size });
+    }
+  }
+
+  // Sin brackets todavía
+  if (latestBracketByCat.size === 0) {
     const { count: regCount } = await admin
       .from("registrations")
       .select("id", { count: "exact", head: true })
       .eq("tournament_id", chosen.id)
       .eq("status", "accepted");
+    const perCat = Math.max(Math.floor((regCount ?? 0) / Math.max(cats.length, 1)), 2);
+
+    const categories: BracketCategorySection[] =
+      cats.length > 0
+        ? cats.map((cat) => ({
+            categoryId: cat.id,
+            categoryName: cat.name,
+            stage: cat.stage,
+            canGenerateRandomBracket,
+            hasBracket: false,
+            columns: placeholderColumns(perCat),
+            championLabel: "Por decidir",
+            championWhen: canGenerateRandomBracket ? "—" : "Genera la llave desde gestión del torneo",
+          }))
+        : [
+            {
+              categoryId: null,
+              categoryName: null,
+              stage: null,
+              canGenerateRandomBracket,
+              hasBracket: false,
+              columns: placeholderColumns(Math.max(regCount ?? 0, 2)),
+              championLabel: "Por decidir",
+              championWhen: canGenerateRandomBracket ? "—" : "Genera la llave desde gestión del torneo",
+            },
+          ];
+
     return {
       partnerId: partnerId ?? null,
       tournamentId: chosen.id,
@@ -247,117 +408,85 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
       tournamentSlug: chosen.slug,
       displayToken: chosen.displayToken,
       tournamentFormat: chosen.format,
+      categories,
+    };
+  }
+
+  // Determinar qué secciones mostrar:
+  // Si hay categorías definidas → una sección por categoría (con o sin bracket)
+  // Si no hay categorías → una sección por bracket (null category_id)
+  let sectionKeys: Array<{ catId: string | null; catName: string | null; stage: string | null }>;
+
+  if (cats.length > 0) {
+    // Secciones en el orden de las categorías registradas
+    sectionKeys = cats.map((c) => ({ catId: c.id, catName: c.name, stage: c.stage }));
+    // Agregar brackets sin categoría asignada si los hay (caso inusual)
+    if (latestBracketByCat.has(null)) {
+      sectionKeys.push({ catId: null, catName: null, stage: null });
+    }
+  } else {
+    // Sin categorías: una entrada por bracket (típicamente una sola con null)
+    sectionKeys = Array.from(latestBracketByCat.keys()).map((k) => ({
+      catId: k,
+      catName: null,
+      stage: null,
+    }));
+  }
+
+  // Cargar matches de todas las secciones que tienen bracket, en paralelo
+  const sectionsWithBracket = sectionKeys.filter((s) => latestBracketByCat.has(s.catId));
+  const bmResults = await Promise.all(
+    sectionsWithBracket.map((s) =>
+      admin
+        .from("bracket_matches")
+        .select(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          "id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,is_bronze" as any,
+        )
+        .eq("bracket_id", latestBracketByCat.get(s.catId)!.id)
+        .order("round", { ascending: true })
+        .order("position", { ascending: true }),
+    ),
+  );
+
+  // Un solo fetch de labels para todas las inscripciones
+  const allRegIds = new Set<string>();
+  for (const result of bmResults) {
+    for (const m of (result.data ?? []) as unknown as RawMatch[]) {
+      if (m.side_a_registration_id) allRegIds.add(m.side_a_registration_id);
+      if (m.side_b_registration_id) allRegIds.add(m.side_b_registration_id);
+    }
+  }
+  const nameByReg = await registrationLabels(Array.from(allRegIds));
+
+  // Construir secciones
+  const categories: BracketCategorySection[] = sectionKeys.map((sec) => {
+    const hasBracket = latestBracketByCat.has(sec.catId);
+    if (!hasBracket) {
+      return {
+        categoryId: sec.catId,
+        categoryName: sec.catName,
+        stage: sec.stage,
+        canGenerateRandomBracket,
+        hasBracket: false,
+        columns: placeholderColumns(2),
+        championLabel: "Por decidir",
+        championWhen: canGenerateRandomBracket ? "—" : "Genera la llave desde gestión del torneo",
+      };
+    }
+
+    const bracketIdx = sectionsWithBracket.findIndex((s) => s.catId === sec.catId);
+    const bmList = (bmResults[bracketIdx].data ?? []) as unknown as RawMatch[];
+
+    return buildSectionFromMatches(
+      bmList,
+      sec.catId,
+      sec.catName,
+      sec.stage,
       canGenerateRandomBracket,
-      columns: placeholderColumns(Math.max(regCount ?? 0, 2)),
-      hasBracket: false,
-      championLabel: "Por decidir",
-      championWhen: canGenerateRandomBracket
-        ? "—"
-        : "Genera la llave desde gestión del torneo",
-    };
-  }
-
-  const { data: bm } = await admin
-    .from("bracket_matches")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select(
-      "id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,is_bronze" as any,
-    )
-    .eq("bracket_id", bracketId)
-    .order("round", { ascending: true })
-    .order("position", { ascending: true });
-
-  type RawMatch = {
-    id: string;
-    round: number;
-    position: number;
-    side_a_registration_id: string | null;
-    side_b_registration_id: string | null;
-    score: unknown;
-    status: string;
-    winner_side: string | null;
-    scheduled_at: string | null;
-    is_bronze?: boolean;
-  };
-  const bmList = (bm ?? []) as unknown as RawMatch[];
-
-  const regIds = new Set<string>();
-  for (const m of bmList) {
-    if (m.side_a_registration_id) regIds.add(m.side_a_registration_id);
-    if (m.side_b_registration_id) regIds.add(m.side_b_registration_id);
-  }
-  const nameByReg = await registrationLabels(Array.from(regIds));
-
-  function mkMatch(raw: RawMatch): BracketMatch {
-    const aName = raw.side_a_registration_id
-      ? nameByReg.get(raw.side_a_registration_id) ?? "—"
-      : "TBD";
-    const bName = raw.side_b_registration_id
-      ? nameByReg.get(raw.side_b_registration_id) ?? "—"
-      : "TBD";
-    const { sa, sb } = formatSetScore(raw.score);
-    const w = raw.winner_side === "a" ? "a" : raw.winner_side === "b" ? "b" : undefined;
-    const status = raw.status;
-    const hasBoth =
-      !!raw.side_a_registration_id &&
-      !!raw.side_b_registration_id &&
-      raw.side_a_registration_id !== raw.side_b_registration_id;
-    const reportable =
-      hasBoth &&
-      status !== "reported" &&
-      status !== "confirmed" &&
-      status !== "cancelled";
-    const correctable =
-      hasBoth &&
-      (status === "reported" || status === "confirmed");
-    return {
-      id: raw.id,
-      a: aName,
-      b: bName,
-      sa,
-      sb,
-      w,
-      live: status === "live",
-      status,
-      reportable,
-      correctable,
-    };
-  }
-
-  const bronzeRaw = bmList.find((m) => m.is_bronze);
-  const mainBm = bmList.filter((m) => !m.is_bronze);
-
-  const byRound = new Map<number, RawMatch[]>();
-  for (const m of mainBm) {
-    const r = m.round as number;
-    if (!byRound.has(r)) byRound.set(r, []);
-    byRound.get(r)!.push(m);
-  }
-  const sortedRounds = Array.from(byRound.keys()).sort((a, b) => a - b);
-  const totalRounds = sortedRounds.length;
-  const columns = sortedRounds.map((roundNum, idx) => ({
-    label: knockoutRoundLabel(idx, totalRounds),
-    matches: (byRound.get(roundNum) ?? [])
-      .sort((a, b) => (a.position as number) - (b.position as number))
-      .map(mkMatch),
-  }));
-
-  let championLabel = "Por decidir";
-  let championWhen = "—";
-  const finalRaw =
-    sortedRounds.length > 0 ? byRound.get(sortedRounds[sortedRounds.length - 1])?.[0] : null;
-  const finalMatch = columns[columns.length - 1]?.matches[0];
-  if (finalRaw) {
-    if (finalRaw.winner_side === "a" && finalRaw.side_a_registration_id) {
-      championLabel = nameByReg.get(finalRaw.side_a_registration_id as string) ?? "Por decidir";
-    } else if (finalRaw.winner_side === "b" && finalRaw.side_b_registration_id) {
-      championLabel = nameByReg.get(finalRaw.side_b_registration_id as string) ?? "Por decidir";
-    }
-    if (finalRaw.scheduled_at) {
-      const d = new Date(finalRaw.scheduled_at as string);
-      championWhen = `Final · ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    }
-  }
+      nameByReg,
+    );
+  });
 
   return {
     partnerId: partnerId ?? null,
@@ -366,13 +495,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     tournamentSlug: chosen.slug,
     displayToken: chosen.displayToken,
     tournamentFormat: chosen.format,
-    canGenerateRandomBracket,
-    columns,
-    hasBracket: columns.some((c) => c.matches.length > 0),
-    championLabel,
-    championWhen,
-    finalHasWinner: !!finalMatch?.w,
-    thirdPlaceMatch: bronzeRaw ? mkMatch(bronzeRaw) : null,
+    categories,
   };
 }
 

@@ -1,4 +1,4 @@
-// Client view de PartnerBracketsScreen — layout 1:1 (RoleScreens.jsx 507-562).
+// Client view de PartnerBracketsScreen — multi-categoría con acordeón colapsable.
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -25,6 +25,19 @@ export type BracketMatch = {
   correctable: boolean;
 };
 
+export type BracketCategorySection = {
+  categoryId: string | null;
+  categoryName: string | null;
+  stage: string | null;
+  canGenerateRandomBracket: boolean;
+  hasBracket: boolean;
+  columns: { label: string; matches: BracketMatch[] }[];
+  championLabel: string;
+  championWhen: string;
+  finalHasWinner?: boolean;
+  thirdPlaceMatch?: BracketMatch | null;
+};
+
 export type BracketsData = {
   partnerId: string | null;
   tournamentId: string | null;
@@ -32,13 +45,15 @@ export type BracketsData = {
   tournamentSlug: string | null;
   displayToken: string | null;
   tournamentFormat: string;
-  canGenerateRandomBracket: boolean;
-  columns: { label: string; matches: BracketMatch[] }[];
-  hasBracket: boolean;
-  championLabel: string;
-  championWhen: string;
-  finalHasWinner?: boolean;
-  thirdPlaceMatch?: BracketMatch | null;
+  categories: BracketCategorySection[];
+};
+
+const STAGE_LABEL: Record<string, string> = {
+  pending_groups: "Sin sortear",
+  group_stage: "Fase de grupos",
+  group_complete: "Grupos cerrados",
+  knockout: "Eliminatoria",
+  complete: "Finalizado",
 };
 
 type MatchOptimistic = Pick<
@@ -47,10 +62,12 @@ type MatchOptimistic = Pick<
 >;
 
 function findBracketMatch(data: BracketsData, matchId: string): BracketMatch | null {
-  if (data.thirdPlaceMatch?.id === matchId) return data.thirdPlaceMatch;
-  for (const col of data.columns) {
-    const m = col.matches.find((x) => x.id === matchId);
-    if (m) return m;
+  for (const cat of data.categories) {
+    if (cat.thirdPlaceMatch?.id === matchId) return cat.thirdPlaceMatch;
+    for (const col of cat.columns) {
+      const m = col.matches.find((x) => x.id === matchId);
+      if (m) return m;
+    }
   }
   return null;
 }
@@ -79,6 +96,19 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
   const [optimistic, setOptimistic] = useState<Record<string, MatchOptimistic>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const skipRealtimeUntil = useRef(0);
+
+  const [openCats, setOpenCats] = useState<Set<string>>(() =>
+    new Set(data.categories.map((c, i) => c.categoryId ?? `__no_cat_${i}`)),
+  );
+
+  const toggleCat = (key: string) => {
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // Limpia parches cuando el server ya reflejó el mismo marcador.
   useEffect(() => {
@@ -121,29 +151,23 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
     },
   );
 
-  const mergedThird = useMemo(
+  // Categorías con optimistic aplicado
+  const mergedCategories = useMemo(
     () =>
-      data.thirdPlaceMatch
-        ? withOptimistic(data.thirdPlaceMatch, optimistic[data.thirdPlaceMatch.id])
-        : null,
-    [data.thirdPlaceMatch, optimistic],
-  );
-
-  const mergedColumns = useMemo(
-    () =>
-      data.columns.map((col) => ({
-        ...col,
-        matches: col.matches.map((m) => withOptimistic(m, optimistic[m.id])),
+      data.categories.map((cat) => ({
+        ...cat,
+        columns: cat.columns.map((col) => ({
+          ...col,
+          matches: col.matches.map((m) => withOptimistic(m, optimistic[m.id])),
+        })),
+        thirdPlaceMatch: cat.thirdPlaceMatch
+          ? withOptimistic(cat.thirdPlaceMatch, optimistic[cat.thirdPlaceMatch.id])
+          : null,
       })),
-    [data.columns, optimistic],
+    [data.categories, optimistic],
   );
 
-  const hasBracket = data.hasBracket;
-  const bracketColumns = mergedColumns.map((col) => ({
-    label: col.label,
-    matches: col.matches.map((m) => toNode(m, !hasBracket)),
-  }));
-
+  const hasAnyBracket = data.categories.some((c) => c.hasBracket);
   const labelTag = data.tournamentName
     ? `Partner · Brackets · ${data.tournamentName}`
     : "Partner · Brackets";
@@ -160,9 +184,9 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
       return;
     }
 
-    const mergedData: BracketsData = { ...data, columns: mergedColumns, thirdPlaceMatch: mergedThird };
-    const row = findBracketMatch(mergedData, matchId);
-    const isCorrection = row?.correctable ?? false;
+    const serverRow = findBracketMatch(data, matchId);
+    const mergedRow = serverRow ? withOptimistic(serverRow, optimistic[matchId]) : null;
+    const isCorrection = mergedRow?.correctable ?? false;
     const winnerSide = (a > b ? "a" : "b") as "a" | "b";
 
     const patch: MatchOptimistic = {
@@ -235,65 +259,168 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
       ? `${origin}/t/${data.tournamentSlug}/live?k=${data.displayToken}`
       : null;
 
+  const showCategoryHeaders = mergedCategories.length > 1 || mergedCategories[0]?.categoryName !== null;
+
   return (
     <>
       <RSHeader
         label={labelTag}
         title="Bracket en vivo"
         action={
-          <div style={{ display: "flex", gap: 8 }}>
-            {!hasBracket && data.tournamentId && data.canGenerateRandomBracket && (
-              <GenerateBracketButton tournamentId={data.tournamentId} />
-            )}
-            <button
-              className="btn btn-primary"
-              disabled={!hasBracket}
-              onClick={() => {
-                if (liveUrl) copyShare(liveUrl, "Link pantalla TV");
-                else if (publicUrl) copyShare(publicUrl, "Link público");
-              }}
-            >
-              <Icon name="share-2" size={13} color="#fff" />
-              Compartir
-            </button>
-          </div>
+          <button
+            className="btn btn-primary"
+            disabled={!hasAnyBracket}
+            onClick={() => {
+              if (liveUrl) copyShare(liveUrl, "Link pantalla TV");
+              else if (publicUrl) copyShare(publicUrl, "Link público");
+            }}
+          >
+            <Icon name="share-2" size={13} color="#fff" />
+            Compartir
+          </button>
         }
       />
 
-      {!hasBracket && data.tournamentFormat === "groups_to_knockout" && (
-        <div
-          className="card"
-          style={{
-            padding: 14,
-            marginBottom: 12,
-            fontSize: 12,
-            color: "var(--muted-fg)",
-            lineHeight: 1.5,
-          }}
-        >
-          Este torneo usa <b>fase de grupos</b>. Sortea grupos, cierra la fase y genera la llave
-          desde la página de gestión del torneo; el cuadro aparecerá aquí automáticamente.
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {mergedCategories.map((cat, idx) => {
+          const catKey = cat.categoryId ?? `__no_cat_${idx}`;
+          const isOpen = openCats.has(catKey);
+          const bracketCols = cat.columns.map((col) => ({
+            label: col.label,
+            matches: col.matches.map((m) => toNode(m, !cat.hasBracket)),
+          }));
 
-      <BracketView
-        columns={bracketColumns}
-        champion={{
-          label: data.championLabel,
-          decided: hasBracket && !!data.finalHasWinner,
-          when: data.championWhen,
-        }}
-        thirdPlaceMatch={
-          mergedThird ? toNode(mergedThird, false) : undefined
-        }
-        onScoreSubmit={hasBracket ? submitScore : undefined}
-        savingMatchIds={savingIds}
-      />
+          return (
+            <div key={catKey}>
+              {showCategoryHeaders && (
+                <button
+                  type="button"
+                  onClick={() => toggleCat(catKey)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    background: "var(--muted)",
+                    border: "1px solid var(--border)",
+                    borderBottom: isOpen ? "none" : "1px solid var(--border)",
+                    borderRadius: isOpen ? "12px 12px 0 0" : 12,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: "#0a0a0a" }}>
+                      {cat.categoryName ?? "Llave"}
+                    </span>
+                    {cat.stage && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "var(--muted-fg)",
+                          background: "var(--border)",
+                          padding: "2px 8px",
+                          borderRadius: 20,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        {STAGE_LABEL[cat.stage] ?? cat.stage}
+                      </span>
+                    )}
+                    {cat.hasBracket && cat.finalHasWinner && (
+                      <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700 }}>
+                        · Finalizado
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 18,
+                      color: "var(--muted-fg)",
+                      display: "inline-block",
+                      transform: isOpen ? "rotate(90deg)" : "none",
+                      transition: "transform 0.18s ease",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ›
+                  </span>
+                </button>
+              )}
+
+              {(!showCategoryHeaders || isOpen) && (
+                <div
+                  style={
+                    showCategoryHeaders
+                      ? {
+                          border: "1px solid var(--border)",
+                          borderTop: "none",
+                          borderRadius: "0 0 12px 12px",
+                          overflow: "hidden",
+                        }
+                      : undefined
+                  }
+                >
+                  {/* Barra de acción por categoría */}
+                  {(!cat.hasBracket || (cat.canGenerateRandomBracket && !cat.hasBracket)) && (
+                    <div
+                      style={{
+                        padding: "10px 16px",
+                        borderBottom: "1px solid var(--border)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      {cat.canGenerateRandomBracket && !cat.hasBracket && data.tournamentId && (
+                        <GenerateBracketButton
+                          tournamentId={data.tournamentId}
+                          categoryId={cat.categoryId}
+                        />
+                      )}
+                      {!cat.canGenerateRandomBracket && !cat.hasBracket && (
+                        <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+                          Sortea grupos, cierra la fase y genera la llave desde la gestión del
+                          torneo; el cuadro aparecerá aquí automáticamente.
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bracket */}
+                  <BracketView
+                    columns={bracketCols}
+                    champion={{
+                      label: cat.championLabel,
+                      decided: cat.hasBracket && !!cat.finalHasWinner,
+                      when: cat.championWhen,
+                    }}
+                    thirdPlaceMatch={
+                      cat.thirdPlaceMatch ? toNode(cat.thirdPlaceMatch, false) : undefined
+                    }
+                    onScoreSubmit={cat.hasBracket ? submitScore : undefined}
+                    savingMatchIds={savingIds}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }
 
-function GenerateBracketButton({ tournamentId }: { tournamentId: string }) {
+function GenerateBracketButton({
+  tournamentId,
+  categoryId,
+}: {
+  tournamentId: string;
+  categoryId: string | null;
+}) {
   const toast = useToast();
   const router = useRouter();
   const { confirm } = usePromptModal();
@@ -306,7 +433,10 @@ function GenerateBracketButton({ tournamentId }: { tournamentId: string }) {
     });
     if (!ok) return;
     startTransition(async () => {
-      const res = await generateBracket({ tournamentId });
+      const res = await generateBracket({
+        tournamentId,
+        categoryId: categoryId ?? undefined,
+      });
       if (res.ok) {
         toast({ icon: "check", title: "Bracket generado" });
         router.refresh();
