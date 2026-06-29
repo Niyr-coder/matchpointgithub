@@ -9,6 +9,7 @@ import {
   type TournamentLiveBracketRound,
   type TournamentLiveTeam,
   type TournamentLiveGlobalStanding,
+  type TournamentLiveGroupTable,
 } from "@/server/actions/tournament-live";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 
@@ -28,6 +29,7 @@ type Scene =
   | { kind: "champion" }
   | { kind: "upnext" }
   | { kind: "teams" }
+  | { kind: "grouptable"; idx: number }
   | { kind: "globalstandings" };
 
 function fmtTime(iso?: string | null): string | null {
@@ -133,7 +135,11 @@ export function TournamentLiveDisplayClient({
 
   // Escenas secundarias (sin courts): se intercalan entre los scoreboards de cancha.
   const secondary: Scene[] = [];
-  if (data.globalStandings.length > 0) secondary.push({ kind: "globalstandings" });
+  if (data.groupTables.length > 0) {
+    data.groupTables.forEach((_, i) => secondary.push({ kind: "grouptable", idx: i }));
+  } else if (data.globalStandings.length > 0) {
+    secondary.push({ kind: "globalstandings" });
+  }
   if (data.teams.length > 0) secondary.push({ kind: "teams" });
   if (data.phase === "knockout" && data.bracketRounds.length > 0) secondary.push({ kind: "bracket" });
   if (data.championLabel) secondary.push({ kind: "champion" });
@@ -245,6 +251,9 @@ export function TournamentLiveDisplayClient({
         )}
         {scene.kind === "teams" && (
           <TeamsScene teams={data.teams} totalCount={data.teams.length} />
+        )}
+        {scene.kind === "grouptable" && (
+          <GroupTableScene table={data.groupTables[scene.idx]} />
         )}
         {scene.kind === "globalstandings" && (
           <GlobalStandingsScene standings={data.globalStandings} />
@@ -367,6 +376,8 @@ function ChampionScene({
 // ---------------------------------------------------------------------------
 // UpNextScene — próximos partidos + últimos resultados
 // ---------------------------------------------------------------------------
+const UPNEXT_PAGE_SIZE = 4;
+
 function UpNextScene({
   upcoming,
   recent,
@@ -377,8 +388,18 @@ function UpNextScene({
   name: string;
 }) {
   const next = upcoming.slice(0, 6);
-  const last = recent.slice(0, 6);
-  if (next.length === 0 && last.length === 0) {
+  const totalPages = Math.max(1, Math.ceil(recent.length / UPNEXT_PAGE_SIZE));
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    if (totalPages <= 1) return;
+    const t = setInterval(() => setPage((p) => (p + 1) % totalPages), 4000);
+    return () => clearInterval(t);
+  }, [totalPages]);
+
+  const visibleLast = recent.slice(page * UPNEXT_PAGE_SIZE, (page + 1) * UPNEXT_PAGE_SIZE);
+
+  if (next.length === 0 && recent.length === 0) {
     return (
       <div className="mp-tvb-upnext">
         <div className="mp-tvb-upnext-hero">{name}</div>
@@ -413,12 +434,19 @@ function UpNextScene({
         )}
       </div>
       <div>
-        <div className="mp-tvb-col-h">Últimos resultados</div>
-        {last.length === 0 ? (
+        <div className="mp-tvb-col-h">
+          Últimos resultados
+          {totalPages > 1 && (
+            <span style={{ marginLeft: 8, fontSize: "0.7em", opacity: 0.5, fontWeight: 400 }}>
+              {page + 1}/{totalPages}
+            </span>
+          )}
+        </div>
+        {recent.length === 0 ? (
           <div className="mp-tvb-col-empty">Aún no hay resultados.</div>
         ) : (
           <div className="mp-tvb-rows mp-tv-stagger">
-            {last.map((m) => (
+            {visibleLast.map((m) => (
               <div className="mp-tvb-row" key={m.id}>
                 <span className="mp-tvb-row-teams">
                   {m.labelA} <b>{pts(m.sets, m.scoreA, m.scoreB).a}</b>–<b>{pts(m.sets, m.scoreA, m.scoreB).b}</b> {m.labelB}
@@ -486,6 +514,56 @@ function TeamsScene({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GroupTableScene — tabla de posiciones por grupo
+// ---------------------------------------------------------------------------
+function GroupTableScene({ table }: { table: TournamentLiveGroupTable | undefined }) {
+  if (!table) return null;
+  return (
+    <div className="mp-tv-live-table-wrap">
+      <div className="mp-tv-live-table-title">
+        {table.categoryName} · {table.groupName}
+      </div>
+      <table className="mp-tv-live-table">
+        <thead>
+          <tr>
+            <th style={{ width: "2.5em" }}>#</th>
+            <th>Equipo</th>
+            <th style={{ textAlign: "center", width: "3.5em" }}>G</th>
+            <th style={{ textAlign: "center", width: "5em" }}>Sets</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row) => (
+            <tr key={row.rank}>
+              <td
+                style={{
+                  fontWeight: 900,
+                  color:
+                    row.rank === 1
+                      ? "var(--tv-accent, #34d399)"
+                      : row.rank <= 3
+                        ? "rgba(255,255,255,0.7)"
+                        : "rgba(255,255,255,0.35)",
+                }}
+              >
+                {row.rank}
+              </td>
+              <td style={{ fontWeight: row.rank <= 3 ? 900 : 700 }}>{row.label}</td>
+              <td style={{ textAlign: "center", fontWeight: 900, color: "var(--tv-accent, #34d399)" }}>
+                {row.wins}
+              </td>
+              <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums", color: "rgba(255,255,255,0.6)" }}>
+                {row.sets}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

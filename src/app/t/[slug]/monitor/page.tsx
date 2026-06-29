@@ -25,24 +25,12 @@ export default async function MonitorPage({
 
   if (!res.ok) {
     const code = res.error.code ?? "";
-    if (code === "MONITORS.DISABLED") {
-      return (
-        <div
-          style={{
-            minHeight: "100dvh",
-            background: "#000",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-          }}
-        >
-          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 15, textAlign: "center" }}>
-            Esta función no está disponible.
-          </p>
-        </div>
-      );
-    }
+    const msgByCode: Record<string, string> = {
+      "MONITORS.DISABLED": "Esta función no está disponible en este torneo.",
+      "TOURNAMENTS.NOT_FOUND": "Torneo no encontrado.",
+      "AUTH.ROLE_REQUIRED": res.error.message,
+    };
+    const msg = msgByCode[code] ?? res.error.message ?? "No tienes acceso a esta pantalla.";
     return (
       <div
         style={{
@@ -54,8 +42,8 @@ export default async function MonitorPage({
           padding: 24,
         }}
       >
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 15, textAlign: "center" }}>
-          No tienes una cancha asignada en este torneo.
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 15, textAlign: "center", maxWidth: 320 }}>
+          {msg}
         </p>
       </div>
     );

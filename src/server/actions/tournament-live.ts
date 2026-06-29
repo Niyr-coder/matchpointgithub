@@ -689,7 +689,7 @@ export async function getTournamentLiveDisplay(
       recentMatches,
       upcomingMatches,
       courts,
-      groupTables: groupTables.slice(0, 8),
+      groupTables,
       bracketRounds,
       finalists,
       standouts,

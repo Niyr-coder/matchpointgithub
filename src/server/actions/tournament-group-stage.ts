@@ -1050,7 +1050,17 @@ export async function updateCategoryGroupConfig(
         throw new MpError("CATEGORY.NOT_FOUND", "Categoría no pertenece al torneo", 404);
       }
       if ((cat.stage as string) !== "pending_groups") {
-        throw new MpError("GROUPS.CONFIG_LOCKED", "No puedes cambiar la config después del sorteo", 409);
+        const oldCfg = cat.group_playoff_config as GroupPlayoffConfig | null;
+        if (
+          (config.groupsCount ?? 0) !== (oldCfg?.groupsCount ?? 0) ||
+          (config.advancePerGroup ?? 0) !== (oldCfg?.advancePerGroup ?? 0)
+        ) {
+          throw new MpError(
+            "GROUPS.CONFIG_LOCKED",
+            "El número de grupos y clasificados no se puede cambiar tras el sorteo",
+            409,
+          );
+        }
       }
       const db = groupDb(getAdminClient());
       const regIds = await acceptedRegistrationIds(db, tournamentId, categoryId);

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import {
   listCourtMonitors,
   assignCourtMonitor,
   removeCourtMonitor,
-  resolveUserByUsername,
+  searchUsersByUsername,
   type CourtMonitorAssignment,
 } from "@/server/actions/tournament-monitors";
 
@@ -41,8 +41,11 @@ export function TournamentMonitorsPanel({
     displayName: string;
     username: string;
   } | null>(null);
-  const [resolving, setResolving] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; displayName: string; username: string }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const monitorUrl = `${APP_URL}/t/${slug}/monitor`;
 
@@ -68,22 +71,22 @@ export function TournamentMonitorsPanel({
   const assignedCourtIds = new Set(monitors.map((m) => m.courtId));
   const availableCourts = courts.filter((c) => !assignedCourtIds.has(c.id));
 
-  const onResolve = async () => {
-    if (!username.trim()) return;
-    setResolving(true);
-    const res = await resolveUserByUsername({ username: username.trim() });
-    setResolving(false);
-    if (!res.ok) {
-      toast({ icon: "alert-triangle", title: "Error al buscar usuario", sub: res.error.message, tone: "error" });
-      return;
+  const doSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setSuggestions([]); setShowSuggestions(false); return; }
+    setSearching(true);
+    const res = await searchUsersByUsername({ query: q.trim() });
+    setSearching(false);
+    if (res.ok) {
+      setSuggestions(res.data);
+      setShowSuggestions(res.data.length > 0);
     }
-    if (!res.data) {
-      toast({ icon: "alert-triangle", title: "Usuario no encontrado", tone: "error" });
-      setResolvedUser(null);
-      return;
-    }
-    setResolvedUser(res.data);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(username), 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [username, doSearch]);
 
   const onAssign = async () => {
     if (!resolvedUser || !courtId) return;
@@ -105,6 +108,8 @@ export function TournamentMonitorsPanel({
     setUsername("");
     setPositionLabel("");
     setResolvedUser(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
     load();
   };
 
@@ -416,35 +421,81 @@ export function TournamentMonitorsPanel({
                 <label
                   style={{ fontSize: 11, color: "var(--muted-fg)", display: "block", marginBottom: 4 }}
                 >
-                  Username del monitor
+                  Buscar monitor por username
                 </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type="text"
-                    placeholder="username..."
-                    value={username}
-                    onChange={(e) => {
-                      setUsername(e.target.value);
-                      setResolvedUser(null);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      background: "#fff",
-                      fontSize: 13,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={resolving || username.trim().length < 3}
-                    onClick={onResolve}
-                    style={{ background: "#fff", border: "1px solid var(--border)", flexShrink: 0 }}
-                  >
-                    {resolving ? "…" : "Buscar"}
-                  </button>
+                <div style={{ position: "relative" }}>
+                  <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+                    <input
+                      type="text"
+                      placeholder="Escribe un username..."
+                      value={username}
+                      autoComplete="off"
+                      onChange={(e) => {
+                        setUsername(e.target.value);
+                        setResolvedUser(null);
+                      }}
+                      onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                      style={{
+                        width: "100%",
+                        padding: "8px 32px 8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "#fff",
+                        fontSize: 13,
+                      }}
+                    />
+                    {searching && (
+                      <span style={{ position: "absolute", right: 10, fontSize: 11, color: "var(--muted-fg)" }}>
+                        …
+                      </span>
+                    )}
+                  </div>
+                  {showSuggestions && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 4px)",
+                        left: 0,
+                        right: 0,
+                        background: "#fff",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.10)",
+                        zIndex: 50,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {suggestions.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setResolvedUser(s);
+                            setUsername(s.username);
+                            setSuggestions([]);
+                            setShowSuggestions(false);
+                          }}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
+                            width: "100%",
+                            padding: "9px 12px",
+                            textAlign: "left",
+                            background: "none",
+                            border: "none",
+                            borderBottom: "1px solid var(--border)",
+                            cursor: "pointer",
+                            fontSize: 13,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>{s.displayName}</span>
+                          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>@{s.username}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {resolvedUser && (
                   <div

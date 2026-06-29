@@ -324,6 +324,63 @@ export async function getMonitorContext(
       }
     }
 
+    // Fallback: si ningún partido tiene court_id seteado, mostrar el primer partido
+    // live/scheduled del torneo (habitual en fase de grupos sin programación por cancha).
+    if (!currentMatch) {
+      // Intentar con bracket → bracket_matches
+      const { data: bktsRaw } = await admin
+        .from("brackets")
+        .select("id")
+        .eq("tournament_id", tournamentId)
+        .order("generated_at", { ascending: false })
+        .limit(1);
+      const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
+      if (bracketId) {
+        const { data: fbBmRaw } = await admin
+          .from("bracket_matches")
+          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+          .eq("bracket_id", bracketId)
+          .in("status", ["scheduled", "live"])
+          .order("scheduled_at", { ascending: true })
+          .limit(1);
+        const fbBm = (fbBmRaw ?? []) as Array<{ id: string; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null }>;
+        if (fbBm.length > 0) {
+          const m = fbBm[0];
+          currentMatch = { matchId: m.id, matchType: "bracket", teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at };
+        }
+      }
+
+      // Intentar con tournament_categories → tournament_groups → tournament_group_matches
+      if (!currentMatch) {
+        const { data: catsRaw } = await admin
+          .from("tournament_categories")
+          .select("id")
+          .eq("tournament_id", tournamentId);
+        const catIds = ((catsRaw ?? []) as Array<{ id: string }>).map((c) => c.id);
+        if (catIds.length > 0) {
+          const { data: grpsRaw } = await admin
+            .from("tournament_groups")
+            .select("id")
+            .in("category_id", catIds);
+          const groupIds = ((grpsRaw ?? []) as Array<{ id: string }>).map((g) => g.id);
+          if (groupIds.length > 0) {
+            const { data: fbGmRaw } = await admin
+              .from("tournament_group_matches")
+              .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+              .in("group_id", groupIds)
+              .in("status", ["scheduled", "live"])
+              .order("scheduled_at", { ascending: true })
+              .limit(1);
+            const fbGm = (fbGmRaw ?? []) as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null }>;
+            if (fbGm.length > 0) {
+              const m = fbGm[0];
+              currentMatch = { matchId: m.id, matchType: "group", teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at };
+            }
+          }
+        }
+      }
+    }
+
     return {
       tournamentId,
       tournamentName: t.name as string,
@@ -485,6 +542,26 @@ export async function resolveUserByUsername(
       displayName: (data.display_name as string) ?? (data.username as string),
       username: data.username as string,
     };
+  });
+}
+
+const SearchUsersSchema = z.object({ query: z.string().min(2).max(50) });
+
+export async function searchUsersByUsername(
+  input: unknown,
+): Promise<ActionResult<Array<{ id: string; displayName: string; username: string }>>> {
+  return runAction(SearchUsersSchema, input, async ({ query }) => {
+    const admin: AnyClient = getAdminClient();
+    const { data } = await admin
+      .from("profiles")
+      .select("id, display_name, username")
+      .ilike("username", `${query}%`)
+      .limit(8);
+    return (data ?? []).map((u) => ({
+      id: u.id as string,
+      displayName: (u.display_name as string) ?? (u.username as string),
+      username: u.username as string,
+    }));
   });
 }
 

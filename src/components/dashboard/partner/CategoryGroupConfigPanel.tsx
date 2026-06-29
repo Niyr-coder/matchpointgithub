@@ -117,7 +117,9 @@ export function CategoryGroupConfigPanel({
     return validateGroupPlayoffConfig(draftConfig, active.acceptedCount || 1);
   }, [draftConfig, active]);
 
-  const locked = readOnly || !active || active.stage !== "pending_groups";
+  const locked = readOnly || !active;
+  const structureLocked = readOnly || !active || active.stage !== "pending_groups";
+  const postSorteo = !!(active && active.stage !== "pending_groups");
 
   const onSave = () => {
     if (!active || saving || locked) return;
@@ -176,8 +178,7 @@ export function CategoryGroupConfigPanel({
       <div style={{ marginBottom: 14 }}>
         <div className="label-mp">Formato competitivo</div>
         <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.5 }}>
-          Configura grupos y clasificación por categoría. Solo editable antes del sorteo de grupos.
-          Guarda aquí antes de sortear en Operación.
+          Configura grupos y clasificación por categoría. Los grupos y clasificados solo son editables antes del sorteo; las opciones de llave (mejor tercero, bronce) se pueden cambiar en cualquier momento.
         </div>
       </div>
 
@@ -236,7 +237,7 @@ export function CategoryGroupConfigPanel({
                 min={1}
                 max={16}
                 value={groupsCount}
-                disabled={locked}
+                disabled={structureLocked}
                 onChange={(e) => setGroupsCount(e.target.value)}
                 style={inputStyle}
               />
@@ -247,7 +248,7 @@ export function CategoryGroupConfigPanel({
                 min={1}
                 max={16}
                 value={advancePerGroup}
-                disabled={locked}
+                disabled={structureLocked}
                 onChange={(e) => setAdvancePerGroup(e.target.value)}
                 style={inputStyle}
               />
@@ -257,7 +258,7 @@ export function CategoryGroupConfigPanel({
                 type="number"
                 min={1}
                 value={maxTeams}
-                disabled={locked}
+                disabled={structureLocked}
                 onChange={(e) => setMaxTeams(e.target.value)}
                 placeholder="Sin límite"
                 style={inputStyle}
@@ -370,14 +371,25 @@ export function CategoryGroupConfigPanel({
             </div>
           )}
 
-          {validationError && !locked && (
-            <div style={{ marginTop: 10, fontSize: 11, color: "#dc2626" }}>{validationError}</div>
+          {postSorteo && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: "#fef3c7",
+                border: "1px solid #f59e0b",
+                fontSize: 11,
+                color: "#92400e",
+                lineHeight: 1.5,
+              }}
+            >
+              El cuadro ya fue generado. Puedes cambiar las opciones de llave (mejor tercero, bronce), pero necesitarás regenerar el cuadro desde Operación para que surtan efecto.
+            </div>
           )}
 
-          {locked && active.stage !== "pending_groups" && (
-            <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted-fg)" }}>
-              La config quedó bloqueada tras el sorteo de grupos.
-            </div>
+          {validationError && !locked && (
+            <div style={{ marginTop: 10, fontSize: 11, color: "#dc2626" }}>{validationError}</div>
           )}
 
           {!locked && (

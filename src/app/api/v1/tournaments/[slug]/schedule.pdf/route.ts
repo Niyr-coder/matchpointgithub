@@ -77,14 +77,52 @@ export async function GET(
 
   // Registraciones del torneo → mapa id → nombre
   const { data: regsRaw } = await admin
-    .from("tournament_registrations")
-    .select("id,teams(name),profiles(display_name)")
+    .from("registrations")
+    .select("id,player_ids,teams(name)")
     .eq("tournament_id", tournamentId);
+
+  const allRegIds = ((regsRaw as any[]) ?? []).map((r: any) => r.id as string);
+  const guestsByRegId = new Map<string, string[]>();
+  if (allRegIds.length > 0) {
+    const { data: gr } = await admin
+      .from("registrations")
+      .select("id,guest_names")
+      .in("id", allRegIds);
+    for (const g of (gr as any[]) ?? []) {
+      if ((g.guest_names as string[] | null)?.length) {
+        guestsByRegId.set(g.id as string, g.guest_names as string[]);
+      }
+    }
+  }
+
+  const playerIdSet = new Set<string>();
+  for (const r of (regsRaw as any[]) ?? []) {
+    for (const pid of (r.player_ids as string[] | null) ?? []) playerIdSet.add(pid as string);
+  }
+  const profById = new Map<string, string>();
+  if (playerIdSet.size > 0) {
+    const { data: profs } = await admin
+      .from("profiles")
+      .select("id,display_name")
+      .in("id", Array.from(playerIdSet));
+    for (const p of (profs as any[]) ?? []) {
+      profById.set(p.id as string, (p.display_name as string | null) ?? "Jugador");
+    }
+  }
 
   const nameByReg = new Map<string, string>();
   for (const r of (regsRaw as any[]) ?? []) {
-    const name = r.teams?.name ?? r.profiles?.display_name ?? "Por definir";
-    nameByReg.set(r.id as string, name as string);
+    const teamName = (r.teams as any)?.name as string | null;
+    const playerIds = (r.player_ids as string[] | null) ?? [];
+    const guests = guestsByRegId.get(r.id as string) ?? [];
+    const label = teamName
+      ? teamName
+      : playerIds.length > 0
+        ? playerIds.map((pid: string) => profById.get(pid) ?? "Jugador").join(" / ")
+        : guests.length > 0
+          ? guests.join(" / ")
+          : "Por definir";
+    nameByReg.set(r.id as string, label);
   }
 
   // Categorías del torneo → IDs
@@ -143,9 +181,9 @@ export async function GET(
   if (bracketId) {
     const { data: bmRaw } = await admin
       .from("bracket_matches")
-      .select("id,round,side_a_registration_id,side_b_registration_id,status,scheduled_at")
+      .select("id,round,is_bronze,side_a_registration_id,side_b_registration_id,status,scheduled_at")
       .eq("bracket_id", bracketId)
-      .eq("is_bronze", false)
+      .order("is_bronze", { ascending: true })
       .order("round", { ascending: true });
 
     for (const m of (bmRaw as any[]) ?? []) {
@@ -153,6 +191,7 @@ export async function GET(
         id: m.id as string,
         phase: "bracket",
         round: m.round as number,
+        groupName: (m.is_bronze as boolean) ? "3.er lugar" : undefined,
         labelA: nameByReg.get(m.side_a_registration_id as string) ?? "Por definir",
         labelB: nameByReg.get(m.side_b_registration_id as string) ?? "Por definir",
         scheduledAt: m.scheduled_at as string | null,
