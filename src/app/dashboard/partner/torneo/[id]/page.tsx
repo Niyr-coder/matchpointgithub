@@ -115,7 +115,7 @@ export default async function PartnerTorneoPage({
   const { data: tRaw } = await admin
     .from("tournaments")
     .select(
-      "id,slug,name,status,sport,format,modality,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,clubs(name,city)",
+      "id,slug,name,status,sport,format,modality,starts_at,ends_at,max_participants,prize_pool_cents,entry_fee_cents,partner_id,club_id,payment_policy,display_token,clubs(name,city)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -347,8 +347,7 @@ export default async function PartnerTorneoPage({
     });
 
   const tournamentSlug = (t.slug as string) ?? "";
-  // display_token se resuelve en cliente vía ensureTournamentDisplayToken (columna opcional).
-  const displayToken: string | null = null;
+  const displayToken: string | null = (t.display_token as string | null) ?? null;
 
   const groupStageCategories = groupConfigCategories.map((c) => ({
     id: c.id,

@@ -42,9 +42,9 @@ export function TournamentVenueDisplayPanel({
   }, [tournamentId]);
 
   useEffect(() => {
-    if (token || readOnly) return;
+    if (token) return;
     fetchToken();
-  }, [token, readOnly, fetchToken]);
+  }, [token, fetchToken]);
 
   const liveUrl = token ? `${TV_URL}/${slug}?k=${token}` : null;
   const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top"}/eventos/${slug}`;
