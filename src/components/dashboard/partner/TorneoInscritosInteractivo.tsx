@@ -53,6 +53,12 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
             </button>
           </div>
         )}
+        {regs.length === 0 ? (
+          <div className="mp-partner-torneo-inscritos-empty">
+            Cuando alguien se inscriba aparecerá aquí.
+          </div>
+        ) : (
+        <>
         <div className="mp-partner-torneo-regs-head">
           <div>Jugador</div>
           <div style={{ textAlign: "center" }}>Estado</div>
@@ -149,6 +155,8 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
               ver todos
             </Link>
           </div>
+        )}
+        </>
         )}
       </div>
 

@@ -973,22 +973,16 @@ export default async function PartnerTorneoPage({
                   </Link>
                 </div>
 
-                {regs.length === 0 ? (
-                  <div className="mp-partner-torneo-inscritos-empty">
-                    Cuando alguien se inscriba aparecerá aquí.
-                  </div>
-                ) : (
-                  <TorneoInscritosInteractivo
-                    regs={regs}
-                    tournamentId={t.id as string}
-                    playerOpsEnabled={playerOpsEnabled}
-                    isClosed={isClosed}
-                    modality={String(t.modality ?? 'singles')}
-                    categories={categories.map(c => ({ id: c.id, name: c.name }))}
-                    entryFeeCents={fee}
-                    paymentPolicy={String(t.payment_policy ?? 'prepay')}
-                  />
-                )}
+                <TorneoInscritosInteractivo
+                  regs={regs}
+                  tournamentId={t.id as string}
+                  playerOpsEnabled={playerOpsEnabled}
+                  isClosed={isClosed}
+                  modality={String(t.modality ?? 'singles')}
+                  categories={categories.map(c => ({ id: c.id, name: c.name }))}
+                  entryFeeCents={fee}
+                  paymentPolicy={String(t.payment_policy ?? 'prepay')}
+                />
               </div>
             }
           />
