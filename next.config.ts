@@ -35,6 +35,13 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
+      // www → apex. Requiere que www.matchpoint.top esté en Vercel con SSL.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.matchpoint.top" }],
+        destination: "https://matchpoint.top/:path*",
+        permanent: true,
+      },
       // MAT-20 — `/clubes/precios` se movió a `/precios` (sale de la columna
       // "Clubes" en el footer al top nav como ítem propio). Mantener 301 por
       // 90 días para no romper inbound links (footer viejo en prod, búsqueda,
