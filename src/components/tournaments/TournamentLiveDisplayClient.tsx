@@ -41,6 +41,13 @@ function scoreSig(m: TournamentLiveMatch): string {
   return `${m.scoreA}-${m.scoreB}-${m.sets.map((s) => `${s.a}/${s.b}`).join(",")}`;
 }
 
+/** Puntos a mostrar: si hay 1 set usa los puntos reales; si hay varios usa sets ganados. */
+function pts(sets: Array<{ a: number; b: number }>, scoreA: string, scoreB: string): { a: string; b: string } {
+  if (sets.length === 0) return { a: "0", b: "0" };
+  if (sets.length === 1) return { a: String(sets[0].a), b: String(sets[0].b) };
+  return { a: scoreA, b: scoreB };
+}
+
 export function TournamentLiveDisplayClient({
   slug,
   token,
@@ -295,25 +302,30 @@ function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set
           >
             <div className="mp-tvb-sb-team">{r.label}</div>
             <div className="mp-tvb-sb-games">
-              {sets.map((s, i) => {
-                const mine = r.side === "a" ? s.a : s.b;
-                const won = r.side === "a" ? s.a > s.b : s.b > s.a;
-                return (
-                  <span
-                    key={i}
-                    className={`mp-tvb-g${i === cur ? " is-cur" : ""}${won ? " is-won" : ""}`}
-                  >
-                    {mine}
-                  </span>
-                );
-              })}
-              {sets.length === 0 && <span className="mp-tvb-g is-cur">0</span>}
+              {sets.length <= 1 ? (
+                <span className="mp-tvb-g is-cur">
+                  {r.side === "a" ? (sets[0]?.a ?? 0) : (sets[0]?.b ?? 0)}
+                </span>
+              ) : (
+                sets.map((s, i) => {
+                  const mine = r.side === "a" ? s.a : s.b;
+                  const won = r.side === "a" ? s.a > s.b : s.b > s.a;
+                  return (
+                    <span
+                      key={i}
+                      className={`mp-tvb-g${i === cur ? " is-cur" : ""}${won ? " is-won" : ""}`}
+                    >
+                      {mine}
+                    </span>
+                  );
+                })
+              )}
             </div>
           </div>
         ))}
       </div>
       <div className="mp-tvb-board-foot">
-        {sets.length > 0 ? `Game ${sets.length}` : "Por comenzar"} · {meta}
+        {sets.length > 1 ? `Set ${sets.length} · ` : sets.length === 0 ? "Por comenzar · " : ""}{meta}
       </div>
     </div>
   );
@@ -409,7 +421,7 @@ function UpNextScene({
             {last.map((m) => (
               <div className="mp-tvb-row" key={m.id}>
                 <span className="mp-tvb-row-teams">
-                  {m.labelA} <b>{m.scoreA}</b>–<b>{m.scoreB}</b> {m.labelB}
+                  {m.labelA} <b>{pts(m.sets, m.scoreA, m.scoreB).a}</b>–<b>{pts(m.sets, m.scoreA, m.scoreB).b}</b> {m.labelB}
                 </span>
                 {(m.groupName || m.courtLabel) && (
                   <span style={{ flexShrink: 0, fontSize: "0.68em", fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -587,11 +599,11 @@ function BracketFull({
                 <div className={`mp-tv-bk-card${m.status === "live" ? " is-live" : ""}`}>
                   <div className={`mp-tv-bk-side${m.winner === "a" ? " is-win" : ""}`}>
                     <span className="mp-tv-bk-team">{m.labelA}</span>
-                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{m.scoreA}</b>}
+                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{pts(m.sets, m.scoreA, m.scoreB).a}</b>}
                   </div>
                   <div className={`mp-tv-bk-side${m.winner === "b" ? " is-win" : ""}`}>
                     <span className="mp-tv-bk-team">{m.labelB}</span>
-                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{m.scoreB}</b>}
+                    {m.sets.length > 0 && <b className="mp-tv-bk-score">{pts(m.sets, m.scoreA, m.scoreB).b}</b>}
                   </div>
                 </div>
               </div>
