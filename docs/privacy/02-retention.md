@@ -23,7 +23,7 @@
 | `club_applications` | rejected → soft (queda histórico); approved → cascade a `clubs` | Auditoría |
 | `clubs` | **soft via `status='suspended'`** | Histórico |
 | `player_subscriptions` | soft via `status='cancelled'/'expired'` | Histórico de pagos |
-| Storage `payment_proofs` | hard delete cuando tx pasa a `captured` o `pending_proof` (rejected) | Privacidad — no guardar comprobantes aprobados forever |
+| Storage `payment_proofs` | hard delete a las 24h de `proof_submitted_at` vía cron `purge-payment-proofs` | Privacidad — retención mínima, la transacción nunca se borra |
 | Storage `kyc_docs` | hard delete N años post-rechazo/aprobación (TODO) | Privacidad + compliance |
 
 ## 2. Soft delete: ventaja y trampa
@@ -53,8 +53,8 @@ filtro está.
 |---|---|---|
 | `cleanup-expired-plans` | every 6h | Downgrade profiles cuyo `plan_expires_at < now()` y marca subs como `expired` |
 | `dispatch-inapp-notifications` | every 5min | Procesa `notification_jobs` pending y los mueve a `notifications` |
+| `purge-payment-proofs` | daily 05:00 UTC | Borra archivos Storage + limpia `proof_url` en transacciones con `proof_submitted_at` > 24h |
 | (TODO) `cleanup-old-notif-jobs` | daily | Borrar jobs sent + 30d |
-| (TODO) `cleanup-old-payment-proofs` | daily | Borrar archivos Storage de tx captured + 90d |
 
 ## 4. Qué pasa al cerrar cuenta
 
@@ -125,8 +125,8 @@ desde 2021. Aplica si guardamos datos de personas en Ecuador.
 | Mensajes | mientras la cuenta exista (deleted_at marker al borrar individual) |
 | Audit log | indefinida (compliance) |
 | Logs Vercel/Supabase | según tier (~30d) |
-| Comprobantes de pago aprobados | 90d post-aprobación (TODO cron) |
-| Comprobantes de pago rechazados | hard delete inmediato al rechazar |
+| Comprobantes de pago (archivo) | 24h desde `proof_submitted_at` |
+| Registro de transacción | indefinida (compliance financiera) |
 | KYC docs aprobados | 5 años (compliance financiera EC) |
 | KYC docs rechazados | 1 año |
 | Transactions captured/refunded | indefinida (compliance) |
@@ -159,8 +159,8 @@ desde 2021. Aplica si guardamos datos de personas en Ecuador.
 
 - [x] UI cerrar cuenta + flow 30d
 - [x] Endpoints LOPDP (export, close, cancel close)
+- [x] Cron de cleanup `payment_proofs` — 24h retention ✅
 - [ ] Cron de cleanup `notification_jobs` viejos
-- [ ] Cron de cleanup `payment_proofs` aprobados >90d
 - [ ] Política pública en `/privacy` con retenciones explícitas
 - [ ] Re-aplicar deletions post-restore de backup (workflow)
 - [ ] Anonimización vs deletion para matches/registrations

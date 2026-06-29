@@ -1,17 +1,20 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/dispatch-email",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/giveaway-draws",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/process-account-deletions",
-      "schedule": "0 3 * * *"
-    }
-  ]
-}
-
+{
+  "crons": [
+    {
+      "path": "/api/cron/dispatch-email",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/giveaway-draws",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/process-account-deletions",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/purge-payment-proofs",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}
