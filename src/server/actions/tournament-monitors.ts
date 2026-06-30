@@ -480,7 +480,8 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     const tournamentId = t.id as string;
 
-    await requireMonitorAssignment(userId, tournamentId, admin);
+    const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
+    const courtId = assignments[0].court_id;
 
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
 
@@ -502,7 +503,7 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
 
     const score: MatchScore = { sets: [], serving: servingFirst };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await admin.from(table).update({ status: "live", score, started_at: new Date().toISOString() } as any).eq("id", matchId);
+    await admin.from(table).update({ status: "live", score, started_at: new Date().toISOString(), court_id: courtId } as any).eq("id", matchId);
 
     // Auto-levantar el torneo a 'live' si aún está en inscripciones
     const tStatus = t.status as string;
@@ -763,6 +764,81 @@ export async function getNextMatchForCourt(
         startedAt: m.started_at,
         matchScoringConfig: defaultScoringConfig,
       };
+    }
+
+    // Fallback: partidos programados sin cancha asignada aún (bracket primero).
+    // Aplica cuando los partidos no fueron pre-programados por cancha.
+    // Al iniciarse, startMatch escribirá court_id y los "reclamará" para esta cancha.
+    const { data: bktsRaw } = await admin
+      .from("brackets")
+      .select("id")
+      .eq("tournament_id", tournamentId)
+      .order("generated_at", { ascending: false })
+      .limit(1);
+    const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
+    if (bracketId) {
+      const { data: fbBmRaw } = await admin
+        .from("bracket_matches")
+        .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+        .eq("bracket_id", bracketId)
+        .is("court_id", null)
+        .eq("status", "scheduled")
+        .order("scheduled_at", { ascending: true })
+        .limit(1);
+      const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; bracket_id: string | null; round: number | null; is_bronze: boolean | null; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
+      if (fbBm.length > 0) {
+        const m = fbBm[0];
+        return {
+          matchId: m.id,
+          matchType: "bracket" as MatchType,
+          teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A",
+          teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B",
+          score: m.score,
+          status: m.status,
+          scheduledAt: m.scheduled_at,
+          startedAt: m.started_at,
+          matchScoringConfig: await resolveMatchScoringConfig(admin, "bracket", m.bracket_id ?? null, m.round ?? null, (m.is_bronze as boolean | null) ?? false, defaultScoringConfig),
+        };
+      }
+    }
+
+    // Fallback grupo: partidos de grupos sin cancha asignada
+    const { data: catsRaw } = await admin
+      .from("tournament_categories")
+      .select("id")
+      .eq("tournament_id", tournamentId);
+    const catIds = ((catsRaw ?? []) as Array<{ id: string }>).map((c) => c.id);
+    if (catIds.length > 0) {
+      const { data: grpsRaw } = await admin
+        .from("tournament_groups")
+        .select("id")
+        .in("category_id", catIds);
+      const groupIds = ((grpsRaw ?? []) as Array<{ id: string }>).map((g) => g.id);
+      if (groupIds.length > 0) {
+        const { data: fbGmRaw } = await admin
+          .from("tournament_group_matches")
+          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+          .in("group_id", groupIds)
+          .is("court_id", null)
+          .eq("status", "scheduled")
+          .order("scheduled_at", { ascending: true })
+          .limit(1);
+        const fbGm = (fbGmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
+        if (fbGm.length > 0) {
+          const m = fbGm[0];
+          return {
+            matchId: m.id,
+            matchType: "group" as MatchType,
+            teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A",
+            teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B",
+            score: m.score,
+            status: m.status,
+            scheduledAt: m.scheduled_at,
+            startedAt: m.started_at,
+            matchScoringConfig: defaultScoringConfig,
+          };
+        }
+      }
     }
 
     return null;

@@ -15,9 +15,9 @@ function jsonError(status: number, msg: string) {
 
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ slug: string }> },
+  { params }: { params: Promise<{ idOrSlug: string }> },
 ) {
-  const { slug } = await params;
+  const { idOrSlug } = await params;
 
   // Autenticar
   const supabase = await getServerClient();
@@ -28,7 +28,7 @@ export async function GET(
   const { data: t } = await supabase
     .from("tournaments")
     .select("id,name,slug,partner_id,starts_at,ends_at,sport,format")
-    .eq("slug", slug)
+    .eq("slug", idOrSlug)
     .maybeSingle();
 
   if (!t) return jsonError(404, "Torneo no encontrado");
@@ -207,8 +207,8 @@ export async function GET(
   });
 
   const data: PdfTournamentData = {
-    name: (t.name as string) ?? slug,
-    slug,
+    name: (t.name as string) ?? idOrSlug,
+    slug: idOrSlug,
     startsAt: t.starts_at as string | null,
     endsAt: t.ends_at as string | null,
     sport: (t.sport as string) ?? "—",
@@ -234,7 +234,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="calendario-${slug}.pdf"`,
+      "Content-Disposition": `attachment; filename="calendario-${idOrSlug}.pdf"`,
       "Cache-Control": "no-store",
     },
   });
