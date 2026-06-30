@@ -568,6 +568,7 @@ export function MonitorAppClient({
           padding: "12px 20px",
           fontWeight: 700,
           fontSize: 15,
+          pointerEvents: "none",
         }}
       >
         Match point
