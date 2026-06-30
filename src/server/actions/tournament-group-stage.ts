@@ -913,11 +913,31 @@ export async function reportBracketMatch(
           }
         }
       }
-    } else if (!isBronze && round === numRounds && bracket.category_id) {
-      await groupDb(getAdminClient())
-        .from("tournament_categories")
-        .update({ stage: "complete" } as never)
-        .eq("id", bracket.category_id as string);
+    } else if (!isBronze && round === numRounds) {
+      if (bracket.category_id) {
+        await groupDb(getAdminClient())
+          .from("tournament_categories")
+          .update({ stage: "complete" } as never)
+          .eq("id", bracket.category_id as string);
+
+        const { data: allCats } = await groupDb(getAdminClient())
+          .from("tournament_categories")
+          .select("stage")
+          .eq("tournament_id", tournamentId);
+        const allComplete = (allCats ?? []).length > 0 &&
+          (allCats ?? []).every((c) => (c.stage as string | null) === "complete");
+        if (allComplete) {
+          await groupDb(getAdminClient())
+            .from("tournaments")
+            .update({ status: "finished" } as never)
+            .eq("id", tournamentId);
+        }
+      } else {
+        await groupDb(getAdminClient())
+          .from("tournaments")
+          .update({ status: "finished" } as never)
+          .eq("id", tournamentId);
+      }
     }
 
     return { id: matchId, advanced };
@@ -1133,5 +1153,74 @@ export async function saveGroupStageScheduling(
     }
 
     return { ok: true as const };
+  });
+}
+
+// ── resetGroupDraw ─────────────────────────────────────────────────────────
+
+const ResetGroupDrawSchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema,
+});
+
+export async function resetGroupDraw(
+  input: unknown,
+): Promise<ActionResult<void>> {
+  return runAction(ResetGroupDrawSchema, input, async ({ tournamentId, categoryId }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const admin = groupDb(getAdminClient());
+
+    const { data: cat } = await admin
+      .from("tournament_categories")
+      .select("id, stage")
+      .eq("id", categoryId)
+      .eq("tournament_id", tournamentId)
+      .maybeSingle();
+
+    if (!cat) throw new MpError("TOURNAMENTS.CATEGORY_NOT_FOUND", "Categoría no encontrada", 404);
+
+    const allowedStages = ["group_stage", "group_complete"];
+    if (!allowedStages.includes(cat.stage as string)) {
+      throw new MpError(
+        "GROUPS.STAGE_INVALID",
+        "Solo se puede reiniciar desde fase de grupos activa o cerrada",
+        409,
+      );
+    }
+
+    const { data: groups } = await admin
+      .from("tournament_groups")
+      .select("id")
+      .eq("category_id", categoryId);
+
+    if (groups && groups.length > 0) {
+      const groupIds = groups.map((g) => g.id as string);
+
+      const { count } = await admin
+        .from("tournament_group_matches")
+        .select("id", { count: "exact", head: true })
+        .in("group_id", groupIds)
+        .in("status", ["confirmed", "reported"]);
+
+      if ((count ?? 0) > 0) {
+        throw new MpError(
+          "GROUPS.HAS_RESULTS",
+          "No se puede reiniciar: hay partidos con resultado. Corrige o descarta primero.",
+          409,
+        );
+      }
+
+      await setAuditActor(admin, editor.userId, editor.actorRole);
+
+      await admin.from("tournament_group_matches").delete().in("group_id", groupIds);
+      await admin.from("tournament_groups").delete().eq("category_id", categoryId);
+    } else {
+      await setAuditActor(admin, editor.userId, editor.actorRole);
+    }
+
+    await admin
+      .from("tournament_categories")
+      .update({ stage: "pending_groups" } as never)
+      .eq("id", categoryId);
   });
 }

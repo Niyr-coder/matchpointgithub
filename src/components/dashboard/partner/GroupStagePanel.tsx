@@ -17,6 +17,7 @@ import {
   correctGroupMatch,
   confirmGroupMatch,
   saveGroupStageScheduling,
+  resetGroupDraw,
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
 import { GroupStageScheduleView } from "./GroupStageScheduleView";
@@ -393,6 +394,25 @@ export function GroupStagePanel({
     );
   };
 
+  const onResetDraw = async () => {
+    if (!summary) return;
+    const ok = await confirm({
+      title: "Reiniciar sorteo",
+      body: "Se eliminarán todos los grupos y partidos de esta categoría. La categoría vuelve a 'Por sortear'. Esta acción no es posible si hay partidos con resultado.",
+      confirmLabel: "Reiniciar",
+    });
+    if (!ok) return;
+    wrap(
+      "reset",
+      () =>
+        resetGroupDraw({
+          tournamentId,
+          categoryId: summary.categoryId,
+        }),
+      "Sorteo reiniciado",
+    );
+  };
+
   const onScoreSubmit = (matchId: string, setsA: number, setsB: number) => {
     if (busy) return;
     const winnerSide = setsA > setsB ? "a" : "b";
@@ -528,6 +548,15 @@ export function GroupStagePanel({
                   loading={busy === "draw"}
                   disabled={acceptedCount < summary.config.groupsCount}
                   primary
+                />
+              )}
+              {stage === "group_stage" && closeReadiness.confirmed === 0 && (
+                <ActionBtn
+                  icon="rotate-ccw"
+                  label="Reiniciar sorteo"
+                  onClick={onResetDraw}
+                  loading={busy === "reset"}
+                  title="Solo disponible si no hay resultados confirmados"
                 />
               )}
               {stage === "group_stage" && (

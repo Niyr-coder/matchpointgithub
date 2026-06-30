@@ -474,10 +474,11 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
     const userId = await requireUserId();
     const admin: AnyClient = getAdminClient();
 
-    const { data: t } = await admin.from("tournaments").select("id").eq("slug", slug).maybeSingle();
+    const { data: t } = await admin.from("tournaments").select("id,status").eq("slug", slug).maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+    const tournamentId = t.id as string;
 
-    await requireMonitorAssignment(userId, t.id as string, admin);
+    await requireMonitorAssignment(userId, tournamentId, admin);
 
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
 
@@ -500,6 +501,13 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
     const score: MatchScore = { sets: [], serving: servingFirst };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await admin.from(table).update({ status: "live", score, started_at: new Date().toISOString() } as any).eq("id", matchId);
+
+    // Auto-levantar el torneo a 'live' si aún está en inscripciones
+    const tStatus = t.status as string;
+    if (tStatus === "registration_open" || tStatus === "registration_closed") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await admin.from("tournaments").update({ status: "live" } as any).eq("id", tournamentId);
+    }
   });
 }
 
@@ -856,10 +864,27 @@ export async function confirmBracketMatch(
           .eq("position", nextPos);
         advanced = true;
       }
-    } else if (!isBronze && round === numRounds && bracket.category_id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await admin.from("tournament_categories").update({ stage: "complete" } as any)
-        .eq("id", bracket.category_id as string);
+    } else if (!isBronze && round === numRounds) {
+      if (bracket.category_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await admin.from("tournament_categories").update({ stage: "complete" } as any)
+          .eq("id", bracket.category_id as string);
+
+        const { data: allCats } = await admin
+          .from("tournament_categories")
+          .select("stage")
+          .eq("tournament_id", tournamentId);
+        const allComplete = (allCats ?? []).length > 0 &&
+          (allCats ?? []).every((c) => (c.stage as string | null) === "complete");
+        if (allComplete) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
+        }
+      } else {
+        // Bracket sin categoría asignada: finalizar torneo directamente
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
+      }
     }
 
     return { id: matchId, advanced };
