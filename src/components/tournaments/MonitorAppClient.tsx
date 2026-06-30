@@ -7,12 +7,22 @@ import {
   updateMatchScore,
   submitMatchResult,
   getNextMatchForCourt,
+  reportMatchIncident,
   type MonitorContext,
   type MatchType,
   type SetScore,
   type ScoringConfig,
   type MonitorCurrentMatch,
 } from "@/server/actions/tournament-monitors";
+
+const INCIDENT_TYPES = [
+  { value: "behavior",  label: "Conducta inapropiada" },
+  { value: "equipment", label: "Problema de equipamiento" },
+  { value: "weather",   label: "Condición climática" },
+  { value: "other",     label: "Otro" },
+] as const;
+
+type IncidentType = typeof INCIDENT_TYPES[number]["value"];
 
 // ── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -117,6 +127,12 @@ export function MonitorAppClient({
   // Estado para el flujo "siguiente partido"
   const [loadingNext, setLoadingNext] = useState(false);
   const [noMoreMatches, setNoMoreMatches] = useState(false);
+
+  // Estado para el flujo de incidentes
+  const [incidentOpen, setIncidentOpen] = useState(false);
+  const [incidentType, setIncidentType] = useState<IncidentType>("other");
+  const [incidentNotes, setIncidentNotes] = useState("");
+  const [submittingIncident, setSubmittingIncident] = useState(false);
 
   // Bandera para saber si la sesión fue restaurada (no iniciada manualmente)
   const wasRestoredRef = useRef(context.currentMatch?.status === "live" || context.currentMatch?.status === "reported");
@@ -851,7 +867,9 @@ export function MonitorAppClient({
                   icon: "⚠",
                   action: () => {
                     setSheetOpen(false);
-                    toast({ icon: "alert-triangle", title: "Incidente registrado", tone: "default" });
+                    setIncidentType("other");
+                    setIncidentNotes("");
+                    setIncidentOpen(true);
                   },
                 },
               ].map(({ label, icon, action }) => (
@@ -895,6 +913,121 @@ export function MonitorAppClient({
                   fontSize: 14,
                   cursor: "pointer",
                   marginTop: 4,
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Formulario de incidente */}
+        {incidentOpen && (
+          <>
+            <div className="mp-monitor-sheet-overlay" onClick={() => setIncidentOpen(false)} />
+            <div className="mp-monitor-sheet">
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 18px" }} />
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Reportar incidente</div>
+
+              {/* Selector de tipo */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                {INCIDENT_TYPES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className="mp-monitor-btn-tap"
+                    onClick={() => setIncidentType(value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      border: `2px solid ${incidentType === value ? "#fbbf24" : "rgba(255,255,255,0.1)"}`,
+                      background: incidentType === value ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
+                      color: incidentType === value ? "#fbbf24" : "rgba(255,255,255,0.7)",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Notas opcionales */}
+              <textarea
+                value={incidentNotes}
+                onChange={(e) => setIncidentNotes(e.target.value)}
+                placeholder="Notas adicionales (opcional)"
+                maxLength={500}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  fontSize: 13,
+                  resize: "none",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  marginBottom: 14,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <button
+                type="button"
+                className="mp-monitor-btn-tap"
+                disabled={submittingIncident}
+                onClick={async () => {
+                  if (!currentMatch || submittingIncident) return;
+                  setSubmittingIncident(true);
+                  const res = await reportMatchIncident({
+                    matchId: currentMatch.matchId,
+                    matchType: currentMatch.matchType as MatchType,
+                    type: incidentType,
+                    notes: incidentNotes.trim() || undefined,
+                    slug,
+                  });
+                  setSubmittingIncident(false);
+                  setIncidentOpen(false);
+                  if (res.ok) {
+                    toast({ icon: "check", title: "Incidente registrado", sub: "El organizador fue notificado." });
+                  } else {
+                    toast({ icon: "alert-triangle", title: "Error al registrar", sub: res.error.message, tone: "error" });
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: 12,
+                  background: submittingIncident ? "rgba(251,191,36,0.3)" : "#fbbf24",
+                  border: "none",
+                  color: "#000",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: submittingIncident ? "default" : "pointer",
+                  marginBottom: 8,
+                }}
+              >
+                {submittingIncident ? "Enviando…" : "Enviar incidente"}
+              </button>
+              <button
+                type="button"
+                className="mp-monitor-btn-tap"
+                onClick={() => setIncidentOpen(false)}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "none",
+                  color: "rgba(255,255,255,0.5)",
+                  fontSize: 13,
+                  cursor: "pointer",
                 }}
               >
                 Cancelar

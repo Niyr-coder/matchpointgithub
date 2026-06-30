@@ -866,6 +866,53 @@ export async function confirmBracketMatch(
   });
 }
 
+// ── 11. Reportar incidente durante un partido ─────────────────────────────────
+
+const ReportIncidentSchema = z.object({
+  matchId: UuidSchema,
+  matchType: z.enum(["bracket", "group"]),
+  type: z.enum(["behavior", "equipment", "weather", "other"]),
+  notes: z.string().max(500).optional(),
+  slug: SlugSchema,
+});
+
+export async function reportMatchIncident(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  return runAction(ReportIncidentSchema, input, async ({ matchId, matchType, type, notes, slug }) => {
+    await requireMonitorsEnabled();
+    const userId = await requireUserId();
+    const admin: AnyClient = getAdminClient();
+
+    const { data: t } = await admin.from("tournaments").select("id").eq("slug", slug).maybeSingle();
+    if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+    const tournamentId = t.id as string;
+
+    const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
+    const courtId = assignments[0].court_id;
+
+    await setAuditActor(admin, userId, "user");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: row, error } = await (admin as any)
+      .from("match_incidents")
+      .insert({
+        match_id: matchId,
+        match_type: matchType,
+        tournament_id: tournamentId,
+        court_id: courtId,
+        reported_by: userId,
+        type,
+        notes: notes ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (error) throw new MpError("MONITORS.INCIDENT_FAILED", "Error al registrar el incidente", 500);
+    return { id: (row as { id: string }).id };
+  });
+}
+
 // ── Helper: labels de inscripciones ──────────────────────────────────────────
 
 async function buildRegLabels(
