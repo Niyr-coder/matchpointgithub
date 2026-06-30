@@ -9,6 +9,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
+import { notify } from "@/server/notifications/dispatch";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
 
@@ -767,6 +768,40 @@ export async function getNextMatchForCourt(
   });
 }
 
+// ── Helper: notif tournament_finished ────────────────────────────────────────
+
+async function notifyTournamentFinished(tournamentId: string, admin: AnyClient): Promise<void> {
+  const [{ data: t }, { data: regs }] = await Promise.all([
+    admin.from("tournaments").select("id,name,slug").eq("id", tournamentId).maybeSingle(),
+    admin.from("registrations").select("player_ids,status")
+      .eq("tournament_id", tournamentId)
+      .in("status", ["pending", "accepted"]),
+  ]);
+  if (!t) return;
+  const userIds = new Set<string>();
+  for (const r of regs ?? []) {
+    for (const pid of (r.player_ids as string[] | null) ?? []) {
+      if (pid) userIds.add(pid);
+    }
+  }
+  await Promise.all(
+    Array.from(userIds).map((uid) =>
+      notify({
+        userId: uid,
+        role: "user",
+        kind: "tournament_finished",
+        title: "Torneo finalizado",
+        body: `${t.name as string} terminó. Revisa resultados y ranking.`,
+        payload: {
+          tournament_id: tournamentId,
+          tournament_slug: t.slug,
+          tournament_name: t.name,
+        },
+      }),
+    ),
+  );
+}
+
 // ── 10. Confirmar partido de bracket reportado por monitor ────────────────────
 
 const ConfirmBracketMatchSchema = z.object({
@@ -879,11 +914,13 @@ export async function confirmBracketMatch(
         if (allComplete) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
+          await notifyTournamentFinished(tournamentId, admin);
         }
       } else {
         // Bracket sin categoría asignada: finalizar torneo directamente
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
+        await notifyTournamentFinished(tournamentId, admin);
       }
     }
 
