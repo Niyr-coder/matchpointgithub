@@ -84,7 +84,7 @@ export async function listCourtsLiveStatus(
     // 1. Obtener monitores activos
     const { data: monitorsRaw } = await admin
       .from("tournament_court_monitors")
-      .select("court_id, user_id, courts(code, name), profiles(display_name, username)")
+      .select("court_id, user_id, courts(code, name), profiles!tournament_court_monitors_user_id_fkey(display_name, username)")
       .eq("tournament_id", tournamentId)
       .eq("is_active", true);
 
@@ -254,5 +254,67 @@ export async function listCourtsLiveStatus(
     });
 
     return { courts, reportedCount };
+  });
+}
+
+// ── Action: listar incidentes de partido ─────────────────────────────────────
+
+export type MatchIncident = {
+  id: string;
+  matchId: string;
+  matchType: "bracket" | "group";
+  type: "behavior" | "equipment" | "weather" | "other";
+  notes: string | null;
+  courtCode: string | null;
+  courtName: string | null;
+  monitorDisplayName: string | null;
+  createdAt: string;
+};
+
+const ListMatchIncidentsSchema = z.object({ tournamentId: UuidSchema });
+
+export async function listMatchIncidents(
+  input: unknown,
+): Promise<ActionResult<{ incidents: MatchIncident[] }>> {
+  return runAction(ListMatchIncidentsSchema, input, async ({ tournamentId }) => {
+    await requirePartnerAdminForTournament(tournamentId);
+    const db = await getServerClient();
+
+    type IncidentRow = {
+      id: string;
+      match_id: string;
+      match_type: string;
+      type: string;
+      notes: string | null;
+      created_at: string;
+      courts: { code: string | null; name: string | null } | null;
+      profiles: { display_name: string | null; username: string | null } | null;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any)
+      .from("match_incidents")
+      .select(
+        "id, match_id, match_type, type, notes, created_at, courts(code, name), profiles!match_incidents_reported_by_fkey(display_name, username)",
+      )
+      .eq("tournament_id", tournamentId)
+      .order("created_at", { ascending: false })
+      .limit(50) as { data: IncidentRow[] | null; error: { message: string } | null };
+
+    if (error) throw new MpError("MONITORS.INCIDENTS_LOAD_FAILED", "Error al cargar incidentes", 500);
+
+    const incidents: MatchIncident[] = (data ?? []).map((r) => ({
+      id: r.id,
+      matchId: r.match_id,
+      matchType: r.match_type as MatchIncident["matchType"],
+      type: r.type as MatchIncident["type"],
+      notes: r.notes,
+      courtCode: r.courts?.code ?? null,
+      courtName: r.courts?.name ?? null,
+      monitorDisplayName: r.profiles?.display_name ?? r.profiles?.username ?? null,
+      createdAt: r.created_at,
+    }));
+
+    return { incidents };
   });
 }

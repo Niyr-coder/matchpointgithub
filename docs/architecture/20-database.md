@@ -2673,6 +2673,47 @@ alter table partner_orgs
 **RLS**: no se agrega policy UPDATE en `partner_orgs`; la mutación siempre pasa
 por `getAdminClient` tras validar membresía.
 
+### 29.26 · Monitores de cancha e incidentes de partido (migs 20260626210000, 20260706000000)
+
+**`tournament_court_monitors`** — asignación de monitor a una cancha durante un torneo.
+
+```sql
+create table public.tournament_court_monitors (
+  id             uuid primary key default gen_random_uuid(),
+  tournament_id  uuid not null references tournaments(id) on delete cascade,
+  court_id       uuid not null references courts(id) on delete cascade,
+  user_id        uuid not null references profiles(id),
+  assigned_by    uuid not null references profiles(id),
+  is_active      boolean not null default true,
+  created_at     timestamptz not null default now(),
+  constraint uq_monitor_active_per_court unique nulls not distinct (court_id, tournament_id, is_active)
+);
+```
+
+En el publication `supabase_realtime`. RLS: admin ve todo; partner ve los de su torneo; monitor ve los suyos.
+
+**`match_incidents`** — incidentes reportados por el monitor durante un partido.
+
+```sql
+create table public.match_incidents (
+  id            uuid primary key default gen_random_uuid(),
+  match_id      uuid not null,
+  match_type    text not null check (match_type in ('bracket','group')),
+  tournament_id uuid not null references tournaments(id) on delete cascade,
+  court_id      uuid references courts(id),
+  reported_by   uuid not null references profiles(id),
+  type          text not null check (type in ('behavior','equipment','weather','other')),
+  notes         text,
+  created_at    timestamptz not null default now()
+);
+```
+
+En el publication `supabase_realtime`. RLS: admin ve todo; partner ve los de su torneo (`mi_partner_select`); monitor ve solo los suyos. Audit trigger `tg_audit_match_incidents`.
+
+**Notif**: `match_incident_reported` (mig 20260630100000) — se envía al partner org vía `notifyPartnerOrgStaff` desde `reportMatchIncident`.
+
+**Feature flag**: `tournament_monitors_enabled` (mig 20260626210001, `enabled_default: false`). Activa la sección en el panel partner y la ruta `/t/[slug]/monitor`.
+
 ---
 
 ## Próximo: `30-rls.md`

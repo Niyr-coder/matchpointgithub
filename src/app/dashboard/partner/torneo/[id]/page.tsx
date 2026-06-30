@@ -19,6 +19,7 @@ import {
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { TournamentMonitorsPanel } from "@/components/dashboard/partner/TournamentMonitorsPanel";
 import { TournamentCourtsLive } from "@/components/dashboard/partner/TournamentCourtsLive";
+import { TournamentIncidentsFeed } from "@/components/dashboard/partner/TournamentIncidentsFeed";
 import { TorneoInscritosInteractivo } from "@/components/dashboard/partner/TorneoInscritosInteractivo";
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
@@ -895,6 +896,9 @@ export default async function PartnerTorneoPage({
                     tournamentId={t.id as string}
                     slug={tournamentSlug}
                   />
+                )}
+                {monitorsEnabled && (
+                  <TournamentIncidentsFeed tournamentId={t.id as string} />
                 )}
                 {hasGroupOperacion && (
                   <GroupStagePanel

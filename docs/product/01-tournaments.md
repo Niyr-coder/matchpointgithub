@@ -132,10 +132,11 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
 | `tournament_registration_removed` | Admin remueve/cancela inscripción | jugadores del registration | `removeTournamentRegistrationAdmin` |
 | `payment_proof_rejected` | Admin rechaza comprobante | customer de la tx | `rejectPaymentProofAdmin` |
 
-**Falta** (TODOs):
-- `tournament_published` (al pasar de draft → registration_open)
-- `tournament_finished` (al cerrar)
-- `match_result_reported` (cuando reportan tu match)
+**Implementados** (mig `20260605130000`):
+- `tournament_published` ✅ (al pasar de draft → registration_open)
+- `tournament_finished` ✅ (al cerrar / auto-finish desde monitor)
+- `match_result_reported` ✅ (cuando reportan tu match)
+- `match_incident_reported` ✅ (incidente desde monitor de cancha · mig `20260630100000`)
 
 ## 7. Sincronía cross-superficie
 
@@ -252,7 +253,7 @@ agregue ese render (TODO — hoy solo está en el preview modal del panel).
 ## 12. TODOs
 
 - [ ] Cronograma + premios visibles en `/eventos/[slug]` (hoy solo en preview interno)
-- [ ] Notif `tournament_published` y `tournament_finished`
+- [x] Notif `tournament_published` y `tournament_finished` — implementadas · `20260605130000`
 - [ ] Bracket editor visual (hoy solo `generateBracket` random + render)
 - [ ] Match reporting (reportar resultados de cada partido del cuadro)
 - [ ] Estelar pago con flujo de transacción (hoy solo admin lo marca tras cobro manual)

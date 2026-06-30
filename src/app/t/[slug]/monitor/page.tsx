@@ -17,7 +17,7 @@ export default async function MonitorPage({
   const { slug } = await params;
 
   const session = await getSession();
-  if (!session) {
+  if (!session.authenticated) {
     redirect(`/login?next=/t/${slug}/monitor`);
   }
 

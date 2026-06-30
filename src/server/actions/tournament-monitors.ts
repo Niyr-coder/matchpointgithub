@@ -10,6 +10,7 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
+import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
 
@@ -946,7 +947,7 @@ export async function reportMatchIncident(
     const userId = await requireUserId();
     const admin: AnyClient = getAdminClient();
 
-    const { data: t } = await admin.from("tournaments").select("id").eq("slug", slug).maybeSingle();
+    const { data: t } = await admin.from("tournaments").select("id, name, slug, partner_id").eq("slug", slug).maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     const tournamentId = t.id as string;
 
@@ -971,6 +972,28 @@ export async function reportMatchIncident(
       .single();
 
     if (error) throw new MpError("MONITORS.INCIDENT_FAILED", "Error al registrar el incidente", 500);
+
+    const partnerId = t.partner_id as string | null;
+    if (partnerId) {
+      const typeLabels: Record<string, string> = {
+        behavior: "Conducta",
+        equipment: "Equipamiento",
+        weather: "Clima",
+        other: "Otro",
+      };
+      void notifyPartnerOrgStaff({
+        partnerId,
+        kind: "match_incident_reported",
+        title: "Incidente en cancha",
+        body: `El monitor reportó un incidente: ${typeLabels[type] ?? type}.`,
+        payload: {
+          tournament_id: tournamentId,
+          tournament_slug: t.slug,
+          incident_type: type,
+        },
+      });
+    }
+
     return { id: (row as { id: string }).id };
   });
 }
@@ -985,6 +1008,20 @@ async function buildRegLabels(
     .from("registrations")
     .select("id, player_ids, teams(name)")
     .eq("tournament_id", tournamentId);
+
+  const regIds = (regs ?? []).map((r) => (r as { id: string }).id);
+
+  // guest_names no está en los tipos generados — fetch separado.
+  const guestsByRegId = new Map<string, string[]>();
+  if (regIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: gr } = await admin.from("registrations").select("id,guest_names" as any).in("id", regIds) as unknown as {
+      data: Array<{ id: string; guest_names: string[] | null }> | null;
+    };
+    for (const g of gr ?? []) {
+      if (g.guest_names?.length) guestsByRegId.set(g.id, g.guest_names);
+    }
+  }
 
   const playerIdSet = new Set<string>();
   for (const r of (regs ?? []) as Array<{ player_ids: string[] | null }>) {
@@ -1009,10 +1046,16 @@ async function buildRegLabels(
     teams?: { name?: string } | null;
   }>) {
     const pids = r.player_ids ?? [];
+    const guestNames = guestsByRegId.get(r.id) ?? [];
     const teamName = r.teams?.name ?? null;
     const first = pids[0] ? profById.get(pids[0]) : null;
     const label =
-      teamName ?? (pids.length > 1 && first ? `${first} +${pids.length - 1}` : first ?? "Equipo");
+      teamName ??
+      (guestNames.length > 0
+        ? guestNames.join(" / ")
+        : pids.length > 1 && first
+          ? `${first} +${pids.length - 1}`
+          : first ?? "Equipo");
     out.set(r.id, label);
   }
   return out;

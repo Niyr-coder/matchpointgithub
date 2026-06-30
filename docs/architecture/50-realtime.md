@@ -419,6 +419,9 @@ funcione, la tabla debe estar en el publication `supabase_realtime`.
 | `help_article_revisions` | Admin ayuda: historial editorial | 20260530161200 |
 | `help_feedback` | Admin ayuda: votos de utilidad reales | 20260530161200 |
 | `help_search_logs` | Admin ayuda: búsquedas y misses reales | 20260530161200 |
+| `tournament_court_monitors` | TournamentCourtsLive (panel partner) | 20260626210000 |
+| `tournament_group_matches` | TournamentCourtsLive + GroupStagePanel (panel partner) | 20260626210000 |
+| `match_incidents` | TournamentIncidentsFeed (panel partner) — filtrado por `tournament_id` | 20260706000000 |
 
 **Para sumar una tabla nueva**:
 
