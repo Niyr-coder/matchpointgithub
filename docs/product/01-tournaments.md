@@ -475,3 +475,109 @@ hace X / reconectando".
 el Design System MATCHPOINT — emerald como único color de marca (en superficie
 oscura, emerald-400 `#34d399`), negro + near-whites, Plus Jakarta 900 uppercase.
 No introducir un segundo hue.
+
+## 15. Monitores de cancha
+
+Sistema que permite asignar usuarios de MATCHPOINT como monitores de cancha
+durante un torneo. El monitor lleva el marcador desde su teléfono en
+`/t/[slug]/monitor` y el partner ve el estado en vivo desde el panel de
+gestión.
+
+**Feature flag:** `tournament_monitors_enabled` (default `false`). Todo el
+sistema está invisible si la flag está apagada. Activar desde `AdminFlagsScreen`.
+
+### 15.1 Tablas
+
+| Tabla | Migración | Qué guarda |
+|---|---|---|
+| `tournament_court_monitors` | `20260626210000` | Asignación monitor↔cancha por torneo. `is_active=false` = removido (soft delete). Constraint: una cancha activa = un monitor. Un monitor puede tener máx 2 canchas por torneo. |
+| `match_incidents` | `20260706000000` | Incidentes reportados por el monitor durante un partido. `match_type` discrimina si es `bracket` o `group`. Audit trigger `tg_audit_match_incidents`. |
+
+Ambas tablas están en la publication de realtime.
+
+### 15.2 Flujo completo
+
+```
+1. Partner abre tab Operación → TournamentMonitorsPanel
+2. Partner busca usuario por username → assignCourtMonitor()
+   • Valida: cancha sin monitor activo, usuario existe, max 2 canchas/monitor
+   • setAuditActor(partner) → INSERT tournament_court_monitors
+3. Partner copia el link /t/[slug]/monitor y lo envía al monitor
+4. Monitor abre el link → getMonitorContext() verifica asignación activa
+   • Si no autenticado → redirect /login?next=/t/[slug]/monitor
+   • Si no tiene cancha asignada → error "Sin cancha asignada"
+5. Monitor ve pantalla de check-in con los dos equipos del partido actual
+   • Confirma presencia de ambos lados
+   • Selecciona quién saca primero
+6. Monitor pulsa "Iniciar partido" → startMatch()
+   • match.status = 'live', score = {sets:[], serving:'a'|'b'}
+   • Si torneo en registration_open/closed → auto-pasa a 'live' (auto-live)
+7. Monitor toca la mitad de pantalla del equipo que anota → addPoint() en cliente
+   • Al completar un set → updateMatchScore() persiste sets completados + serving
+   • Partner ve sets en TournamentCourtsLive en tiempo real
+8. Monitor pulsa "Terminar" (habilitado cuando hay ganador) → pantalla Cierre
+9. Monitor pulsa "Confirmar y enviar al organizador" → submitMatchResult()
+   • match.status = 'reported', winner_side, score, duration_ms
+   • TournamentCourtsLive muestra badge "Por confirmar" + botón Confirmar
+10. Partner pulsa "Confirmar resultado":
+    • Grupo → confirmGroupMatch() → status='confirmed', standings se actualizan
+    • Bracket → confirmBracketMatch() → status='confirmed', ganador avanza al
+      siguiente slot, ELO trigger automático en DB
+    • Si es la final de todas las categorías → torneo pasa a 'finished'
+      + notif tournament_finished a todos los inscritos
+11. Monitor pulsa "Siguiente partido →" → getNextMatchForCourt()
+    • Busca el primer partido scheduled en su cancha (bracket primero, luego grupo)
+    • Si no hay más → mensaje "Espera al organizador"
+```
+
+### 15.3 Incidentes
+
+El monitor puede reportar incidentes en cualquier momento durante el partido
+(botón en el bottom sheet "···" de la fase live):
+
+- **Conducta** (`behavior`) — conducta inapropiada
+- **Equipamiento** (`equipment`) — problema de red, pelota, cancha
+- **Clima** (`weather`) — condiciones que interrumpen el juego
+- **Otro** (`other`) — campo libre
+
+Cada incidente: INSERT en `match_incidents` con `court_id`, `match_id`,
+`match_type`, `type`, `notes?`, `reported_by`. Dispara `notifyPartnerOrgStaff`
+con kind `match_incident_reported` (mig `20260630100000`) → el partner recibe
+notif push. El partner ve el feed en `TournamentIncidentsFeed` con refresh
+realtime en `match_incidents`.
+
+### 15.4 Componentes partner (tab Operación)
+
+| Componente | Qué hace | Realtime |
+|---|---|---|
+| `TournamentCourtsLive` | Grid de canchas con estado (Programado / En vivo / Por confirmar) + sets completados + botón Confirmar | `bracket_matches`, `tournament_group_matches`, `tournament_court_monitors` |
+| `TournamentIncidentsFeed` | Feed de incidentes ordenado por recencia | `match_incidents` filtrado por `tournament_id` |
+| `TournamentMonitorsPanel` | Lista de monitores asignados + formulario de asignación + link copiable | — (reload local) |
+
+Los tres solo aparecen si `tournament_monitors_enabled` está activo. `TournamentCourtsLive` además requiere que el torneo tenga canchas configuradas (`clubCourts.length > 0`).
+
+### 15.5 Server actions
+
+| Action | Archivo | Quién la llama |
+|---|---|---|
+| `assignCourtMonitor` | `tournament-monitors.ts` | Partner |
+| `removeCourtMonitor` | `tournament-monitors.ts` | Partner |
+| `listCourtMonitors` | `tournament-monitors.ts` | Partner (TournamentMonitorsPanel) |
+| `getMonitorContext` | `tournament-monitors.ts` | Monitor (server component de la ruta) |
+| `startMatch` | `tournament-monitors.ts` | Monitor |
+| `updateMatchScore` | `tournament-monitors.ts` | Monitor (al completar cada set) |
+| `submitMatchResult` | `tournament-monitors.ts` | Monitor |
+| `getNextMatchForCourt` | `tournament-monitors.ts` | Monitor (tras enviar resultado) |
+| `confirmBracketMatch` | `tournament-monitors.ts` | Partner (TournamentCourtsLive) |
+| `reportMatchIncident` | `tournament-monitors.ts` | Monitor |
+| `listCourtsLiveStatus` | `tournament-operation.ts` | Partner (TournamentCourtsLive) |
+| `listMatchIncidents` | `tournament-operation.ts` | Partner (TournamentIncidentsFeed) |
+
+### 15.6 Cosas que rompen seguido
+
+1. **ELO trigger en bracket**: `confirmBracketMatch` actualiza `winner_side` → el trigger `elo_tournament_matches` se dispara automáticamente. **No calcular ELO manualmente** en el server action — ya lo hace la DB.
+2. **`!session` en monitor page**: usar siempre `!session.authenticated`. `getSession()` nunca retorna null.
+3. **buildRegLabels y walk-ins**: verificar `guest_names` antes de `player_ids`. Walk-ins no tienen perfil en MATCHPOINT.
+4. **Cancha sin monitor asignado**: `TournamentCourtsLive` solo muestra canchas con monitor activo (`is_active=true`). Si se remueve un monitor, la cancha desaparece del grid automáticamente vía realtime.
+5. **Auto-live**: `startMatch` pasa el torneo a `live` si estaba en `registration_open/closed`. No bloquear ese behavior en guards de UI.
+6. **Flag apagada ≠ error silencioso**: todas las actions valoran `requireMonitorsEnabled()` y retornan `403 MONITORS.DISABLED` — no explotan.
