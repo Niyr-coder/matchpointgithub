@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import {
   startMatch,
   updateMatchScore,
   submitMatchResult,
+  getNextMatchForCourt,
   type MonitorContext,
   type MatchType,
   type SetScore,
+  type ScoringConfig,
+  type MonitorCurrentMatch,
 } from "@/server/actions/tournament-monitors";
 
 // ── Tipos locales ────────────────────────────────────────────────────────────
@@ -26,13 +29,14 @@ interface LiveState {
   startedAt: number;
 }
 
-function isSetComplete(a: number, b: number): boolean {
-  return (a >= 11 || b >= 11) && Math.abs(a - b) >= 2;
+function isSetComplete(a: number, b: number, cfg: ScoringConfig): boolean {
+  return (a >= cfg.points || b >= cfg.points) && Math.abs(a - b) >= cfg.winBy;
 }
 
-function getWinner(setsA: number, setsB: number): "a" | "b" | null {
-  if (setsA >= 2) return "a";
-  if (setsB >= 2) return "b";
+function getWinner(setsA: number, setsB: number, bestOf: number): "a" | "b" | null {
+  const needed = Math.ceil(bestOf / 2);
+  if (setsA >= needed) return "a";
+  if (setsB >= needed) return "b";
   return null;
 }
 
@@ -63,54 +67,93 @@ export function MonitorAppClient({
 }) {
   const toast = useToast();
   const [, startTx] = useTransition();
-  const [phase, setPhase] = useState<Phase>("inicio");
+
+  const [currentMatch, setCurrentMatch] = useState<MonitorCurrentMatch | null>(context.currentMatch);
+
+  // ── Estado inicial restaurado desde DB ────────────────────────────────────
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (context.currentMatch?.status === "live") return "live";
+    if (context.currentMatch?.status === "reported") return "cierre";
+    return "inicio";
+  });
 
   // Check-in state
-  const [checkedA, setCheckedA] = useState(false);
-  const [checkedB, setCheckedB] = useState(false);
+  const [checkedA, setCheckedA] = useState(() => !!context.currentMatch && (context.currentMatch.status === "live" || context.currentMatch.status === "reported"));
+  const [checkedB, setCheckedB] = useState(() => !!context.currentMatch && (context.currentMatch.status === "live" || context.currentMatch.status === "reported"));
   const [servingFirst, setServingFirst] = useState<"a" | "b" | null>(null);
   const [starting, setStarting] = useState(false);
 
-  // Live state
-  const [live, setLive] = useState<LiveState>({
-    setScores: [],
-    currentA: 0,
-    currentB: 0,
-    serving: "a",
-    history: [],
-    setsA: 0,
-    setsB: 0,
-    startedAt: 0,
+  // Live state — restaurar sets completados y serving desde DB
+  const [live, setLive] = useState<LiveState>(() => {
+    const m = context.currentMatch;
+    if (!m || (m.status !== "live" && m.status !== "reported")) {
+      return { setScores: [], currentA: 0, currentB: 0, serving: "a", history: [], setsA: 0, setsB: 0, startedAt: 0 };
+    }
+    const score = m.score as { sets?: Array<{ a: number; b: number }>; serving?: "a" | "b" } | null;
+    const completedSets: SetScore[] = score?.sets ?? [];
+    const setsA = completedSets.filter((s) => s.a > s.b).length;
+    const setsB = completedSets.filter((s) => s.b > s.a).length;
+    return {
+      setScores: completedSets,
+      currentA: 0,
+      currentB: 0,
+      serving: score?.serving ?? "a",
+      history: [],
+      setsA,
+      setsB,
+      startedAt: m.startedAt ? new Date(m.startedAt).getTime() : Date.now(),
+    };
   });
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [timeoutActive, setTimeoutActive] = useState(false);
   const [timeoutSecs, setTimeoutSecs] = useState(60);
   const timeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cierre state
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(() => context.currentMatch?.status === "reported");
   const [submitting, setSubmitting] = useState(false);
 
-  const match = context.currentMatch;
+  // Estado para el flujo "siguiente partido"
+  const [loadingNext, setLoadingNext] = useState(false);
+  const [noMoreMatches, setNoMoreMatches] = useState(false);
+
+  // Bandera para saber si la sesión fue restaurada (no iniciada manualmente)
+  const wasRestoredRef = useRef(context.currentMatch?.status === "live" || context.currentMatch?.status === "reported");
+
+  // ── Reloj de partido (actualiza cada 30s cuando está en vivo) ────────────
+  const [elapsed, setElapsed] = useState(0);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (phase !== "live") {
+      if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null; }
+      return;
+    }
+    setElapsed(Date.now() - live.startedAt);
+    elapsedRef.current = setInterval(() => setElapsed(Date.now() - live.startedAt), 30000);
+    return () => { if (elapsedRef.current) clearInterval(elapsedRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, live.startedAt]);
   const courtLabel = context.courtCode ?? context.courtName ?? "Cancha";
-  const teamA = match?.teamA ?? "Equipo A";
-  const teamB = match?.teamB ?? "Equipo B";
+  const teamA = currentMatch?.teamA ?? "Equipo A";
+  const teamB = currentMatch?.teamB ?? "Equipo B";
 
   // ── Persistir set completado ────────────────────────────────────────────────
 
   const persistScore = useCallback(
     (sets: SetScore[], serving: "a" | "b") => {
-      if (!match) return;
+      if (!currentMatch) return;
       startTx(async () => {
         await updateMatchScore({
-          matchId: match.matchId,
-          matchType: match.matchType as MatchType,
+          matchId: currentMatch.matchId,
+          matchType: currentMatch.matchType as MatchType,
           score: { sets, serving },
           slug,
         });
       });
     },
-    [match, slug],
+    [currentMatch, slug],
   );
 
   // ── Sumar punto ────────────────────────────────────────────────────────────
@@ -122,7 +165,7 @@ export function MonitorAppClient({
         const newB = side === "b" ? prev.currentB + 1 : prev.currentB;
         const newHistory: Array<"a" | "b"> = [...prev.history, side];
 
-        if (isSetComplete(newA, newB)) {
+        if (isSetComplete(newA, newB, context.scoringConfig)) {
           const completedSet: SetScore = { a: newA, b: newB };
           const newSetScores = [...prev.setScores, completedSet];
           const newSetsA = prev.setsA + (newA > newB ? 1 : 0);
@@ -149,15 +192,34 @@ export function MonitorAppClient({
 
   const undoPoint = useCallback(() => {
     setLive((prev) => {
-      if (prev.history.length === 0) return prev;
-      const last = prev.history[prev.history.length - 1];
-      const newHistory = prev.history.slice(0, -1);
-      return {
-        ...prev,
-        currentA: last === "a" ? prev.currentA - 1 : prev.currentA,
-        currentB: last === "b" ? prev.currentB - 1 : prev.currentB,
-        history: newHistory,
-      };
+      // Deshacer dentro del set actual
+      if (prev.history.length > 0) {
+        const last = prev.history[prev.history.length - 1];
+        return {
+          ...prev,
+          currentA: last === "a" ? prev.currentA - 1 : prev.currentA,
+          currentB: last === "b" ? prev.currentB - 1 : prev.currentB,
+          history: prev.history.slice(0, -1),
+        };
+      }
+      // Deshacer el último set completado (cuando el set actual no ha empezado)
+      if (prev.setScores.length > 0) {
+        const lastSet = prev.setScores[prev.setScores.length - 1];
+        const newSetScores = prev.setScores.slice(0, -1);
+        const newSetsA = prev.setsA - (lastSet.a > lastSet.b ? 1 : 0);
+        const newSetsB = prev.setsB - (lastSet.b > lastSet.a ? 1 : 0);
+        const lastWinner: "a" | "b" = lastSet.a > lastSet.b ? "a" : "b";
+        return {
+          ...prev,
+          setScores: newSetScores,
+          currentA: lastSet.a - (lastWinner === "a" ? 1 : 0),
+          currentB: lastSet.b - (lastWinner === "b" ? 1 : 0),
+          setsA: newSetsA,
+          setsB: newSetsB,
+          history: [lastWinner],
+        };
+      }
+      return prev;
     });
   }, []);
 
@@ -183,11 +245,12 @@ export function MonitorAppClient({
   // ── Iniciar partido ────────────────────────────────────────────────────────
 
   const onStartMatch = async () => {
-    if (!match || !servingFirst) return;
+    if (!currentMatch || !servingFirst) return;
     setStarting(true);
+    const startedAt = Date.now();
     const res = await startMatch({
-      matchId: match.matchId,
-      matchType: match.matchType as MatchType,
+      matchId: currentMatch.matchId,
+      matchType: currentMatch.matchType as MatchType,
       servingFirst,
       slug,
     });
@@ -196,6 +259,7 @@ export function MonitorAppClient({
       toast({ icon: "alert-triangle", title: "Error al iniciar", sub: res.error.message, tone: "error" });
       return;
     }
+    wasRestoredRef.current = false;
     setLive({
       setScores: [],
       currentA: 0,
@@ -204,7 +268,7 @@ export function MonitorAppClient({
       history: [],
       setsA: 0,
       setsB: 0,
-      startedAt: Date.now(),
+      startedAt,
     });
     setPhase("live");
   };
@@ -212,15 +276,17 @@ export function MonitorAppClient({
   // ── Enviar resultado ───────────────────────────────────────────────────────
 
   const onSubmit = async () => {
-    if (!match) return;
-    const winner = getWinner(live.setsA, live.setsB);
+    if (!currentMatch) return;
+    const winner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
     if (!winner) return;
     setSubmitting(true);
+    const durationMs = live.startedAt > 0 ? Math.round(Date.now() - live.startedAt) : undefined;
     const res = await submitMatchResult({
-      matchId: match.matchId,
-      matchType: match.matchType as MatchType,
+      matchId: currentMatch.matchId,
+      matchType: currentMatch.matchType as MatchType,
       score: { sets: live.setScores },
       winnerSide: winner,
+      durationMs,
       slug,
     });
     setSubmitting(false);
@@ -231,9 +297,43 @@ export function MonitorAppClient({
     setSubmitted(true);
   };
 
+  // ── Siguiente partido ──────────────────────────────────────────────────────
+
+  const onNextMatch = async () => {
+    setLoadingNext(true);
+    const res = await getNextMatchForCourt({ slug });
+    setLoadingNext(false);
+    if (!res.ok) {
+      toast({ icon: "alert-triangle", title: "Error al cargar siguiente partido", sub: res.error.message, tone: "error" });
+      return;
+    }
+    if (!res.data) {
+      setNoMoreMatches(true);
+      return;
+    }
+    setCurrentMatch(res.data);
+    setPhase("inicio");
+    setCheckedA(false);
+    setCheckedB(false);
+    setServingFirst(null);
+    setSubmitted(false);
+    setNoMoreMatches(false);
+    setLive({
+      setScores: [],
+      currentA: 0,
+      currentB: 0,
+      serving: "a",
+      history: [],
+      setsA: 0,
+      setsB: 0,
+      startedAt: 0,
+    });
+    wasRestoredRef.current = false;
+  };
+
   // ── Banner de estado ───────────────────────────────────────────────────────
 
-  const winner = getWinner(live.setsA, live.setsB);
+  const winner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
   const isMatchPoint =
     !winner &&
     ((live.currentA >= 10 && live.currentA >= live.currentB) ||
@@ -281,9 +381,9 @@ export function MonitorAppClient({
             />
             Monitor · {courtLabel}
           </div>
-          {match && (
+          {currentMatch && (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-              {match.matchType === "bracket" ? "Bracket" : "Grupos"}
+              {currentMatch.matchType === "bracket" ? "Bracket" : "Grupos"}
             </div>
           )}
         </div>
@@ -369,7 +469,7 @@ export function MonitorAppClient({
 
         {/* Botón iniciar */}
         <div style={{ marginTop: "auto", paddingTop: 32 }}>
-          {!match ? (
+          {!currentMatch ? (
             <div style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.35)", padding: "20px 0" }}>
               No hay partido programado en esta cancha.
             </div>
@@ -495,6 +595,9 @@ export function MonitorAppClient({
                   }}
                 />
                 <span style={{ color: "#34d399", fontWeight: 700 }}>En vivo</span>
+                {live.startedAt > 0 && (
+                  <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 12 }}>{formatDuration(elapsed)}</span>
+                )}
               </>
             )}
           </div>
@@ -624,6 +727,13 @@ export function MonitorAppClient({
 
           {/* Banner de match point / ganador */}
           {winnerBanner}
+
+          {/* Aviso de sesión restaurada */}
+          {wasRestoredRef.current && live.setScores.length > 0 && !winner && (
+            <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,165,0,0.6)", padding: "4px 0", flexShrink: 0 }}>
+              Sesión restaurada · puntos del set actual no recuperados
+            </div>
+          )}
         </div>
 
         {/* Barra inferior */}
@@ -643,17 +753,17 @@ export function MonitorAppClient({
             type="button"
             className="mp-monitor-btn-tap"
             onClick={undoPoint}
-            disabled={live.history.length === 0}
+            disabled={live.history.length === 0 && live.setScores.length === 0}
             style={{
               flex: 1,
               padding: "10px 4px",
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.12)",
               background: "none",
-              color: live.history.length === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.7)",
+              color: (live.history.length === 0 && live.setScores.length === 0) ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.7)",
               fontSize: 13,
               fontWeight: 600,
-              cursor: live.history.length === 0 ? "default" : "pointer",
+              cursor: (live.history.length === 0 && live.setScores.length === 0) ? "default" : "pointer",
             }}
           >
             Deshacer
@@ -678,13 +788,8 @@ export function MonitorAppClient({
           <button
             type="button"
             className="mp-monitor-btn-tap"
-            onClick={() => {
-              if (!winner) {
-                toast({ icon: "alert-triangle", title: "Aún no hay ganador del partido", tone: "default" });
-                return;
-              }
-              setPhase("cierre");
-            }}
+            disabled={!winner}
+            onClick={() => { setPhase("cierre"); }}
             style={{
               flex: 1,
               padding: "10px 4px",
@@ -694,7 +799,7 @@ export function MonitorAppClient({
               color: winner ? "#34d399" : "rgba(255,255,255,0.3)",
               fontSize: 13,
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: winner ? "pointer" : "default",
             }}
           >
             Terminar
@@ -809,7 +914,7 @@ export function MonitorAppClient({
   // RENDER: CIERRE
   // ─────────────────────────────────────────────────────────────────────────
 
-  const finalWinner = getWinner(live.setsA, live.setsB);
+  const finalWinner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
   const winnerName = finalWinner === "a" ? teamA : finalWinner === "b" ? teamB : "—";
   const duration = live.startedAt > 0 ? formatDuration(Date.now() - live.startedAt) : "—";
   const monitorInitials = initials(context.monitorDisplayName);
@@ -857,6 +962,31 @@ export function MonitorAppClient({
           <div style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
             El organizador recibirá el resultado para su aprobación.
           </div>
+          {noMoreMatches ? (
+            <div style={{ textAlign: "center", fontSize: 14, color: "rgba(255,255,255,0.4)", padding: "8px 0" }}>
+              Sin partidos pendientes. Espera al organizador.
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="mp-monitor-btn-tap"
+              onClick={onNextMatch}
+              disabled={loadingNext}
+              style={{
+                padding: "16px 32px",
+                borderRadius: 14,
+                background: "rgba(52,211,153,0.15)",
+                border: "1px solid #34d399",
+                color: "#34d399",
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: "pointer",
+                marginTop: 8,
+              }}
+            >
+              {loadingNext ? "Cargando…" : "Siguiente partido →"}
+            </button>
+          )}
         </div>
       ) : (
         <>

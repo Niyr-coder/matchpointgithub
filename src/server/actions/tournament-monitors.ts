@@ -36,6 +36,7 @@ export type MonitorCurrentMatch = {
   score: unknown;
   status: string;
   scheduledAt: string | null;
+  startedAt: string | null;
 };
 
 export type MonitorContext = {
@@ -47,10 +48,17 @@ export type MonitorContext = {
   positionLabel: string | null;
   monitorDisplayName: string;
   currentMatch: MonitorCurrentMatch | null;
+  scoringConfig: ScoringConfig;
 };
 
 export type SetScore = { a: number; b: number };
 export type MatchScore = { sets: SetScore[]; serving?: "a" | "b" };
+
+export type ScoringConfig = {
+  points: number; // e.g. 11, 15, 21
+  winBy: number;  // siempre 2 en pickleball
+  bestOf: number; // 1, 3 o 5
+};
 
 // ── Helpers de autorización ───────────────────────────────────────────────────
 
@@ -235,7 +243,7 @@ export async function getMonitorContext(
 
     const { data: t } = await admin
       .from("tournaments")
-      .select("id, name")
+      .select("id, name, scoring_config")
       .eq("slug", slug)
       .maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
@@ -264,19 +272,20 @@ export async function getMonitorContext(
 
     const { data: bmRaw } = await admin
       .from("bracket_matches")
-      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
       .eq("court_id", assignment.court_id)
       .in("status", ["scheduled", "live"])
       .order("scheduled_at", { ascending: true })
       .limit(1);
 
-    const bm = (bmRaw ?? []) as Array<{
+    const bm = (bmRaw ?? []) as unknown as Array<{
       id: string;
       side_a_registration_id: string | null;
       side_b_registration_id: string | null;
       score: unknown;
       status: string;
       scheduled_at: string | null;
+      started_at: string | null;
     }>;
 
     if (bm.length > 0) {
@@ -289,25 +298,27 @@ export async function getMonitorContext(
         score: m.score,
         status: m.status,
         scheduledAt: m.scheduled_at,
+        startedAt: m.started_at,
       };
     } else {
       const { data: gmRaw } = await admin
         .from("tournament_group_matches")
         .select(
-          "id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at",
+          "id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at",
         )
         .eq("court_id", assignment.court_id)
         .in("status", ["scheduled", "live"])
         .order("scheduled_at", { ascending: true })
         .limit(1);
 
-      const gm = (gmRaw ?? []) as Array<{
+      const gm = (gmRaw ?? []) as unknown as Array<{
         id: string;
         side_a_registration_id: string;
         side_b_registration_id: string;
         score: unknown;
         status: string;
         scheduled_at: string | null;
+        started_at: string | null;
       }>;
 
       if (gm.length > 0) {
@@ -320,6 +331,7 @@ export async function getMonitorContext(
           score: m.score,
           status: m.status,
           scheduledAt: m.scheduled_at,
+          startedAt: m.started_at,
         };
       }
     }
@@ -338,15 +350,15 @@ export async function getMonitorContext(
       if (bracketId) {
         const { data: fbBmRaw } = await admin
           .from("bracket_matches")
-          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
           .eq("bracket_id", bracketId)
           .in("status", ["scheduled", "live"])
           .order("scheduled_at", { ascending: true })
           .limit(1);
-        const fbBm = (fbBmRaw ?? []) as Array<{ id: string; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null }>;
+        const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
         if (fbBm.length > 0) {
           const m = fbBm[0];
-          currentMatch = { matchId: m.id, matchType: "bracket", teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at };
+          currentMatch = { matchId: m.id, matchType: "bracket", teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at };
         }
       }
 
@@ -366,21 +378,22 @@ export async function getMonitorContext(
           if (groupIds.length > 0) {
             const { data: fbGmRaw } = await admin
               .from("tournament_group_matches")
-              .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+              .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
               .in("group_id", groupIds)
               .in("status", ["scheduled", "live"])
               .order("scheduled_at", { ascending: true })
               .limit(1);
-            const fbGm = (fbGmRaw ?? []) as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null }>;
+            const fbGm = (fbGmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
             if (fbGm.length > 0) {
               const m = fbGm[0];
-              currentMatch = { matchId: m.id, matchType: "group", teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at };
+              currentMatch = { matchId: m.id, matchType: "group", teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at };
             }
           }
         }
       }
     }
 
+    const rawSc = (t.scoring_config as { points?: number; winBy?: number; bestOf?: number } | null) ?? null;
     return {
       tournamentId,
       tournamentName: t.name as string,
@@ -390,6 +403,11 @@ export async function getMonitorContext(
       positionLabel: assignment.position_label,
       monitorDisplayName: (profile?.display_name as string | null) ?? "Monitor",
       currentMatch,
+      scoringConfig: {
+        points: rawSc?.points ?? 11,
+        winBy: rawSc?.winBy ?? 2,
+        bestOf: rawSc?.bestOf ?? 3,
+      },
     };
   });
 }
@@ -413,11 +431,28 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
 
     await requireMonitorAssignment(userId, t.id as string, admin);
+
+    const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
+
+    // Guard: no reiniciar un partido ya en curso o reportado
+    const { data: existing } = await admin
+      .from(table)
+      .select("status")
+      .eq("id", matchId)
+      .maybeSingle();
+    if (existing?.status === "reported") {
+      throw new MpError("MONITORS.MATCH_ALREADY_REPORTED", "Este partido ya fue reportado", 409);
+    }
+    if (existing?.status === "live") {
+      // Ya en vivo — no resetear, simplemente OK
+      return;
+    }
+
     await setAuditActor(admin, userId, "user");
 
-    const score: MatchScore = { sets: [{ a: 0, b: 0 }], serving: servingFirst };
-    const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
-    await admin.from(table).update({ status: "live", score }).eq("id", matchId);
+    const score: MatchScore = { sets: [], serving: servingFirst };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await admin.from(table).update({ status: "live", score, started_at: new Date().toISOString() } as any).eq("id", matchId);
   });
 }
 
@@ -459,11 +494,12 @@ const SubmitResultSchema = z.object({
     sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })).min(1),
   }),
   winnerSide: z.enum(["a", "b"]),
+  durationMs: z.number().int().nonnegative().optional(),
   slug: SlugSchema,
 });
 
 export async function submitMatchResult(input: unknown): Promise<ActionResult<void>> {
-  return runAction(SubmitResultSchema, input, async ({ matchId, matchType, score, winnerSide, slug }) => {
+  return runAction(SubmitResultSchema, input, async ({ matchId, matchType, score, winnerSide, durationMs, slug }) => {
     await requireMonitorsEnabled();
     const userId = await requireUserId();
     const admin: AnyClient = getAdminClient();
@@ -475,7 +511,13 @@ export async function submitMatchResult(input: unknown): Promise<ActionResult<vo
     await setAuditActor(admin, userId, "user");
 
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
-    await admin.from(table).update({ status: "reported", score, winner_side: winnerSide }).eq("id", matchId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await admin.from(table).update({
+      status: "reported",
+      score,
+      winner_side: winnerSide,
+      duration_ms: durationMs ?? null,
+    } as any).eq("id", matchId);
   });
 }
 
@@ -502,9 +544,7 @@ export async function listCourtMonitors(
 
     return ((data ?? []) as Array<Record<string, unknown>>).map((row) => {
       const court = row.courts as { code?: string; name?: string } | null;
-      const profile = row[
-        "profiles!tournament_court_monitors_user_id_fkey"
-      ] as { display_name?: string; username?: string } | null;
+      const profile = row.profiles as { display_name?: string; username?: string } | null;
       return {
         id: row.id as string,
         tournamentId,
@@ -512,7 +552,7 @@ export async function listCourtMonitors(
         courtCode: court?.code ?? null,
         courtName: court?.name ?? null,
         userId: row.user_id as string,
-        displayName: profile?.display_name ?? "Usuario",
+        displayName: profile?.display_name ?? profile?.username ?? "Usuario",
         username: profile?.username ?? "",
         positionLabel: (row.position_label as string | null) ?? null,
         assignedAt: row.created_at as string,
@@ -562,6 +602,101 @@ export async function searchUsersByUsername(
       displayName: (u.display_name as string) ?? (u.username as string),
       username: u.username as string,
     }));
+  });
+}
+
+// ── 9. Siguiente partido programado en la cancha del monitor ─────────────────
+
+const GetNextMatchSchema = z.object({ slug: SlugSchema });
+
+export async function getNextMatchForCourt(
+  input: unknown,
+): Promise<ActionResult<MonitorCurrentMatch | null>> {
+  return runAction(GetNextMatchSchema, input, async ({ slug }) => {
+    await requireMonitorsEnabled();
+    const userId = await requireUserId();
+    const admin: AnyClient = getAdminClient();
+
+    const { data: t } = await admin
+      .from("tournaments")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+    const tournamentId = t.id as string;
+
+    const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
+    const courtId = assignments[0].court_id;
+
+    const nameByReg = await buildRegLabels(admin, tournamentId);
+
+    // Buscar primero en bracket_matches
+    const { data: bmRaw } = await admin
+      .from("bracket_matches")
+      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+      .eq("court_id", courtId)
+      .eq("status", "scheduled")
+      .order("scheduled_at", { ascending: true })
+      .limit(1);
+
+    const bm = (bmRaw ?? []) as unknown as Array<{
+      id: string;
+      side_a_registration_id: string | null;
+      side_b_registration_id: string | null;
+      score: unknown;
+      status: string;
+      scheduled_at: string | null;
+      started_at: string | null;
+    }>;
+
+    if (bm.length > 0) {
+      const m = bm[0];
+      return {
+        matchId: m.id,
+        matchType: "bracket" as MatchType,
+        teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A",
+        teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B",
+        score: m.score,
+        status: m.status,
+        scheduledAt: m.scheduled_at,
+        startedAt: m.started_at,
+      };
+    }
+
+    // Si no hay en bracket, buscar en tournament_group_matches
+    const { data: gmRaw } = await admin
+      .from("tournament_group_matches")
+      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+      .eq("court_id", courtId)
+      .eq("status", "scheduled")
+      .order("scheduled_at", { ascending: true })
+      .limit(1);
+
+    const gm = (gmRaw ?? []) as unknown as Array<{
+      id: string;
+      side_a_registration_id: string;
+      side_b_registration_id: string;
+      score: unknown;
+      status: string;
+      scheduled_at: string | null;
+      started_at: string | null;
+    }>;
+
+    if (gm.length > 0) {
+      const m = gm[0];
+      return {
+        matchId: m.id,
+        matchType: "group" as MatchType,
+        teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A",
+        teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B",
+        score: m.score,
+        status: m.status,
+        scheduledAt: m.scheduled_at,
+        startedAt: m.started_at,
+      };
+    }
+
+    return null;
   });
 }
 
