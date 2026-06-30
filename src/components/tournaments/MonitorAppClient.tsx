@@ -121,6 +121,8 @@ export function MonitorAppClient({
   // Bandera para saber si la sesión fue restaurada (no iniciada manualmente)
   const wasRestoredRef = useRef(context.currentMatch?.status === "live" || context.currentMatch?.status === "reported");
 
+  const scoringConfig = currentMatch?.matchScoringConfig ?? context.scoringConfig;
+
   // ── Reloj de partido (actualiza cada 30s cuando está en vivo) ────────────
   const [elapsed, setElapsed] = useState(0);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -165,12 +167,13 @@ export function MonitorAppClient({
         const newB = side === "b" ? prev.currentB + 1 : prev.currentB;
         const newHistory: Array<"a" | "b"> = [...prev.history, side];
 
-        if (isSetComplete(newA, newB, context.scoringConfig)) {
+        if (isSetComplete(newA, newB, scoringConfig)) {
           const completedSet: SetScore = { a: newA, b: newB };
           const newSetScores = [...prev.setScores, completedSet];
           const newSetsA = prev.setsA + (newA > newB ? 1 : 0);
           const newSetsB = prev.setsB + (newB > newA ? 1 : 0);
-          persistScore(newSetScores, prev.serving);
+          const nextServing: "a" | "b" = newA > newB ? "a" : "b";
+          persistScore(newSetScores, nextServing);
           return {
             ...prev,
             setScores: newSetScores,
@@ -179,6 +182,7 @@ export function MonitorAppClient({
             history: [],
             setsA: newSetsA,
             setsB: newSetsB,
+            serving: nextServing,
           };
         }
 
@@ -277,7 +281,7 @@ export function MonitorAppClient({
 
   const onSubmit = async () => {
     if (!currentMatch) return;
-    const winner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
+    const winner = getWinner(live.setsA, live.setsB, scoringConfig.bestOf);
     if (!winner) return;
     setSubmitting(true);
     const durationMs = live.startedAt > 0 ? Math.round(Date.now() - live.startedAt) : undefined;
@@ -333,11 +337,11 @@ export function MonitorAppClient({
 
   // ── Banner de estado ───────────────────────────────────────────────────────
 
-  const winner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
+  const winner = getWinner(live.setsA, live.setsB, scoringConfig.bestOf);
   const isMatchPoint =
     !winner &&
-    ((live.currentA >= 10 && live.currentA >= live.currentB) ||
-      (live.currentB >= 10 && live.currentB > live.currentA));
+    (isSetComplete(live.currentA + 1, live.currentB, scoringConfig) ||
+      isSetComplete(live.currentA, live.currentB + 1, scoringConfig));
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER: INICIO
@@ -914,7 +918,7 @@ export function MonitorAppClient({
   // RENDER: CIERRE
   // ─────────────────────────────────────────────────────────────────────────
 
-  const finalWinner = getWinner(live.setsA, live.setsB, context.scoringConfig.bestOf);
+  const finalWinner = getWinner(live.setsA, live.setsB, scoringConfig.bestOf);
   const winnerName = finalWinner === "a" ? teamA : finalWinner === "b" ? teamB : "—";
   const duration = live.startedAt > 0 ? formatDuration(Date.now() - live.startedAt) : "—";
   const monitorInitials = initials(context.monitorDisplayName);

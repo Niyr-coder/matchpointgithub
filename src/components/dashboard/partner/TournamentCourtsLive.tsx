@@ -6,6 +6,8 @@ import {
   type CourtLiveStatus,
   type CourtLiveMatch,
 } from "@/server/actions/tournament-operation";
+import { confirmGroupMatch } from "@/server/actions/tournament-group-stage";
+import { confirmBracketMatch } from "@/server/actions/tournament-monitors";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
@@ -136,10 +138,33 @@ function MatchDetails({ match }: { match: CourtLiveMatch }) {
   return null;
 }
 
-function CourtCard({ court }: { court: CourtLiveStatus }) {
+function CourtCard({
+  court,
+  tournamentId,
+  onConfirmed,
+}: {
+  court: CourtLiveStatus;
+  tournamentId: string;
+  onConfirmed: () => void;
+}) {
   const match = court.currentMatch;
   const isReported = match?.status === "reported";
   const courtLabel = court.courtCode ?? court.courtName ?? "Cancha";
+  const [confirming, setConfirming] = useState(false);
+  const [, startConfirmTx] = useTransition();
+
+  const handleConfirm = () => {
+    if (!match || confirming) return;
+    setConfirming(true);
+    startConfirmTx(async () => {
+      const res =
+        match.matchType === "group"
+          ? await confirmGroupMatch({ tournamentId, matchId: match.matchId })
+          : await confirmBracketMatch({ matchId: match.matchId, tournamentId });
+      setConfirming(false);
+      if (res.ok) onConfirmed();
+    });
+  };
 
   return (
     <div
@@ -186,6 +211,28 @@ function CourtCard({ court }: { court: CourtLiveStatus }) {
             <span>{match.teamB}</span>
           </div>
           <MatchDetails match={match} />
+          {isReported && (
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={confirming}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                padding: "7px 12px",
+                borderRadius: 8,
+                border: "1px solid #fbbf24",
+                background: confirming ? "rgba(251,191,36,0.08)" : "rgba(251,191,36,0.15)",
+                color: "#a16207",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: confirming ? "default" : "pointer",
+                letterSpacing: "0.03em",
+              }}
+            >
+              {confirming ? "Confirmando…" : "Confirmar resultado"}
+            </button>
+          )}
         </>
       ) : (
         <div style={{ fontSize: 11, color: "var(--muted-fg)" }}>Sin partido asignado</div>
@@ -311,7 +358,7 @@ export function TournamentCourtsLive({
           }}
         >
           {courts.map((court) => (
-            <CourtCard key={court.courtId} court={court} />
+            <CourtCard key={court.courtId} court={court} tournamentId={tournamentId} onConfirmed={load} />
           ))}
         </div>
       )}

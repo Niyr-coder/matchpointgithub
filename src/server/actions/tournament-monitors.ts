@@ -37,6 +37,7 @@ export type MonitorCurrentMatch = {
   status: string;
   scheduledAt: string | null;
   startedAt: string | null;
+  matchScoringConfig: ScoringConfig;
 };
 
 export type MonitorContext = {
@@ -130,6 +131,45 @@ async function requireMonitorAssignment(
     throw new AuthError("AUTH.ROLE_REQUIRED", "No tienes una cancha asignada en este torneo");
   }
   return rows;
+}
+
+// ── Helper: resolver scoring config según si el partido es la final ───────────
+
+async function resolveMatchScoringConfig(
+  admin: AnyClient,
+  matchType: MatchType,
+  bracketId: string | null,
+  round: number | null,
+  isBronze: boolean,
+  defaultConfig: ScoringConfig,
+): Promise<ScoringConfig> {
+  if (matchType !== "bracket" || !bracketId || round === null) return defaultConfig;
+
+  const { data: bracket } = await admin
+    .from("brackets")
+    .select("category_id, size")
+    .eq("id", bracketId)
+    .maybeSingle();
+  if (!bracket?.category_id || !bracket?.size) return defaultConfig;
+
+  const numRounds = Math.log2(bracket.size as number);
+  if (isBronze || round < numRounds) return defaultConfig;
+
+  const { data: cat } = await admin
+    .from("tournament_categories")
+    .select("group_playoff_config")
+    .eq("id", bracket.category_id as string)
+    .maybeSingle();
+
+  const gc = cat?.group_playoff_config as { finalScoringOverride?: { points?: number; winBy?: number; bestOf?: number } | null } | null;
+  const ov = gc?.finalScoringOverride ?? null;
+  if (!ov) return defaultConfig;
+
+  return {
+    points: ov.points ?? defaultConfig.points,
+    winBy: ov.winBy ?? defaultConfig.winBy,
+    bestOf: ov.bestOf ?? defaultConfig.bestOf,
+  };
 }
 
 // ── 1. Asignar monitor a una cancha ─────────────────────────────────────────
@@ -249,6 +289,13 @@ export async function getMonitorContext(
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     const tournamentId = t.id as string;
 
+    const rawSc0 = (t.scoring_config as { points?: number; winBy?: number; bestOf?: number } | null) ?? null;
+    const defaultScoringConfig: ScoringConfig = {
+      points: rawSc0?.points ?? 11,
+      winBy: rawSc0?.winBy ?? 2,
+      bestOf: rawSc0?.bestOf ?? 3,
+    };
+
     const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
     const assignment = assignments[0];
 
@@ -272,7 +319,7 @@ export async function getMonitorContext(
 
     const { data: bmRaw } = await admin
       .from("bracket_matches")
-      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+      .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
       .eq("court_id", assignment.court_id)
       .in("status", ["scheduled", "live"])
       .order("scheduled_at", { ascending: true })
@@ -280,6 +327,9 @@ export async function getMonitorContext(
 
     const bm = (bmRaw ?? []) as unknown as Array<{
       id: string;
+      bracket_id: string | null;
+      round: number | null;
+      is_bronze: boolean | null;
       side_a_registration_id: string | null;
       side_b_registration_id: string | null;
       score: unknown;
@@ -299,6 +349,7 @@ export async function getMonitorContext(
         status: m.status,
         scheduledAt: m.scheduled_at,
         startedAt: m.started_at,
+        matchScoringConfig: await resolveMatchScoringConfig(admin, "bracket", m.bracket_id ?? null, m.round ?? null, (m.is_bronze as boolean | null) ?? false, defaultScoringConfig),
       };
     } else {
       const { data: gmRaw } = await admin
@@ -332,6 +383,7 @@ export async function getMonitorContext(
           status: m.status,
           scheduledAt: m.scheduled_at,
           startedAt: m.started_at,
+          matchScoringConfig: defaultScoringConfig,
         };
       }
     }
@@ -350,15 +402,15 @@ export async function getMonitorContext(
       if (bracketId) {
         const { data: fbBmRaw } = await admin
           .from("bracket_matches")
-          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+          .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
           .eq("bracket_id", bracketId)
           .in("status", ["scheduled", "live"])
           .order("scheduled_at", { ascending: true })
           .limit(1);
-        const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
+        const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; bracket_id: string | null; round: number | null; is_bronze: boolean | null; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
         if (fbBm.length > 0) {
           const m = fbBm[0];
-          currentMatch = { matchId: m.id, matchType: "bracket", teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at };
+          currentMatch = { matchId: m.id, matchType: "bracket", teamA: nameByReg.get(m.side_a_registration_id ?? "") ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id ?? "") ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at, matchScoringConfig: await resolveMatchScoringConfig(admin, "bracket", m.bracket_id ?? null, m.round ?? null, (m.is_bronze as boolean | null) ?? false, defaultScoringConfig) };
         }
       }
 
@@ -386,14 +438,13 @@ export async function getMonitorContext(
             const fbGm = (fbGmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
             if (fbGm.length > 0) {
               const m = fbGm[0];
-              currentMatch = { matchId: m.id, matchType: "group", teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at };
+              currentMatch = { matchId: m.id, matchType: "group", teamA: nameByReg.get(m.side_a_registration_id) ?? "Equipo A", teamB: nameByReg.get(m.side_b_registration_id) ?? "Equipo B", score: m.score, status: m.status, scheduledAt: m.scheduled_at, startedAt: m.started_at, matchScoringConfig: defaultScoringConfig };
             }
           }
         }
       }
     }
 
-    const rawSc = (t.scoring_config as { points?: number; winBy?: number; bestOf?: number } | null) ?? null;
     return {
       tournamentId,
       tournamentName: t.name as string,
@@ -403,11 +454,7 @@ export async function getMonitorContext(
       positionLabel: assignment.position_label,
       monitorDisplayName: (profile?.display_name as string | null) ?? "Monitor",
       currentMatch,
-      scoringConfig: {
-        points: rawSc?.points ?? 11,
-        winBy: rawSc?.winBy ?? 2,
-        bestOf: rawSc?.bestOf ?? 3,
-      },
+      scoringConfig: defaultScoringConfig,
     };
   });
 }
@@ -619,11 +666,18 @@ export async function getNextMatchForCourt(
 
     const { data: t } = await admin
       .from("tournaments")
-      .select("id")
+      .select("id, scoring_config")
       .eq("slug", slug)
       .maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     const tournamentId = t.id as string;
+
+    const rawScN = (t.scoring_config as { points?: number; winBy?: number; bestOf?: number } | null) ?? null;
+    const defaultScoringConfig: ScoringConfig = {
+      points: rawScN?.points ?? 11,
+      winBy: rawScN?.winBy ?? 2,
+      bestOf: rawScN?.bestOf ?? 3,
+    };
 
     const assignments = await requireMonitorAssignment(userId, tournamentId, admin);
     const courtId = assignments[0].court_id;
@@ -633,7 +687,7 @@ export async function getNextMatchForCourt(
     // Buscar primero en bracket_matches
     const { data: bmRaw } = await admin
       .from("bracket_matches")
-      .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+      .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
       .eq("court_id", courtId)
       .eq("status", "scheduled")
       .order("scheduled_at", { ascending: true })
@@ -641,6 +695,9 @@ export async function getNextMatchForCourt(
 
     const bm = (bmRaw ?? []) as unknown as Array<{
       id: string;
+      bracket_id: string | null;
+      round: number | null;
+      is_bronze: boolean | null;
       side_a_registration_id: string | null;
       side_b_registration_id: string | null;
       score: unknown;
@@ -660,6 +717,7 @@ export async function getNextMatchForCourt(
         status: m.status,
         scheduledAt: m.scheduled_at,
         startedAt: m.started_at,
+        matchScoringConfig: await resolveMatchScoringConfig(admin, "bracket", m.bracket_id ?? null, m.round ?? null, (m.is_bronze as boolean | null) ?? false, defaultScoringConfig),
       };
     }
 
@@ -693,10 +751,118 @@ export async function getNextMatchForCourt(
         status: m.status,
         scheduledAt: m.scheduled_at,
         startedAt: m.started_at,
+        matchScoringConfig: defaultScoringConfig,
       };
     }
 
     return null;
+  });
+}
+
+// ── 10. Confirmar partido de bracket reportado por monitor ────────────────────
+
+const ConfirmBracketMatchSchema = z.object({
+  matchId: UuidSchema,
+  tournamentId: UuidSchema,
+});
+
+export async function confirmBracketMatch(
+  input: unknown,
+): Promise<ActionResult<{ id: string; advanced: boolean }>> {
+  return runAction(ConfirmBracketMatchSchema, input, async ({ matchId, tournamentId }) => {
+    const callerId = await requirePartnerAdminForTournament(tournamentId);
+    const admin: AnyClient = getAdminClient();
+
+    const { data: matchRaw } = await admin
+      .from("bracket_matches")
+      .select(
+        "id,bracket_id,round,position,status,winner_side,side_a_registration_id,side_b_registration_id,is_bronze",
+      )
+      .eq("id", matchId)
+      .maybeSingle();
+
+    const match = matchRaw as {
+      id: string;
+      bracket_id: string;
+      round: number;
+      position: number;
+      status: string;
+      winner_side: string | null;
+      side_a_registration_id: string | null;
+      side_b_registration_id: string | null;
+      is_bronze: boolean | null;
+    } | null;
+    if (!match) throw new MpError("MONITORS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    if (match.status !== "reported") {
+      throw new MpError("MONITORS.NOT_REPORTED", "El partido no está en estado reportado", 409);
+    }
+
+    const winnerSide = match.winner_side as "a" | "b" | null;
+    if (!winnerSide) throw new MpError("MONITORS.NO_WINNER", "El partido no tiene ganador registrado", 422);
+
+    const winnerRegId =
+      winnerSide === "a" ? match.side_a_registration_id : match.side_b_registration_id;
+    if (!winnerRegId) {
+      throw new MpError("MONITORS.NO_WINNER_REG", "No hay inscripción en el lado ganador", 422);
+    }
+
+    const { data: bracket } = await admin
+      .from("brackets")
+      .select("id,tournament_id,category_id,size")
+      .eq("id", match.bracket_id)
+      .maybeSingle();
+    if (!bracket || (bracket.tournament_id as string) !== tournamentId) {
+      throw new MpError("MONITORS.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
+    }
+
+    await setAuditActor(admin, callerId, "partner");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await admin.from("bracket_matches").update({ status: "confirmed" } as any).eq("id", matchId);
+
+    const round = match.round;
+    const position = match.position;
+    const size = bracket.size as number;
+    const numRounds = Math.log2(size);
+    const isBronze = (match.is_bronze as boolean | null) ?? false;
+    let advanced = false;
+
+    if (!isBronze && round < numRounds) {
+      const nextRound = round + 1;
+      const nextPos = Math.floor(position / 2);
+      const isSideA = position % 2 === 0;
+
+      const { data: nextSlot } = await admin
+        .from("bracket_matches")
+        .select("side_a_registration_id,side_b_registration_id")
+        .eq("bracket_id", bracket.id as string)
+        .eq("round", nextRound)
+        .eq("position", nextPos)
+        .maybeSingle();
+
+      const alreadyAdvanced = isSideA
+        ? (nextSlot?.side_a_registration_id as string | null) === winnerRegId
+        : (nextSlot?.side_b_registration_id as string | null) === winnerRegId;
+
+      if (!alreadyAdvanced) {
+        const patch: Record<string, unknown> = {};
+        if (isSideA) patch.side_a_registration_id = winnerRegId;
+        else patch.side_b_registration_id = winnerRegId;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await admin.from("bracket_matches").update(patch as any)
+          .eq("bracket_id", bracket.id as string)
+          .eq("round", nextRound)
+          .eq("position", nextPos);
+        advanced = true;
+      }
+    } else if (!isBronze && round === numRounds && bracket.category_id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await admin.from("tournament_categories").update({ stage: "complete" } as any)
+        .eq("id", bracket.category_id as string);
+    }
+
+    return { id: matchId, advanced };
   });
 }
 
