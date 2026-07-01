@@ -5,47 +5,12 @@ import "server-only";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getAdminClient } from "@/lib/db/client.admin";
-import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 const TournamentIdSchema = z.object({ tournamentId: UuidSchema });
-
-async function requireTournamentEditor(tournamentId: string) {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-
-  const { data: t } = await supabase
-    .from("tournaments")
-    .select("partner_id")
-    .eq("id", tournamentId)
-    .single();
-  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
-
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (adminRow) return;
-  const partnerId = (t.partner_id as string | null) ?? null;
-  if (!partnerId) throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", user.id)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Sin permiso para editar este torneo");
-}
 
 export async function ensureTournamentDisplayToken(
   input: unknown,

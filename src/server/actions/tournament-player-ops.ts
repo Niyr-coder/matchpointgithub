@@ -3,13 +3,14 @@
 import "server-only";
 
 import { z } from "zod";
-import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError, requireUserId } from "@/lib/auth/session";
+import { requireUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
+import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
 
@@ -44,44 +45,6 @@ async function requirePlayerOpsEnabled(): Promise<void> {
   }
 }
 
-async function requirePartnerAdminForTournament(tournamentId: string): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-
-  const { data: t } = await supabase
-    .from("tournaments")
-    .select("partner_id")
-    .eq("id", tournamentId)
-    .maybeSingle();
-  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
-
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (adminRow) return user.id;
-
-  const partnerId = (t.partner_id as string | null) ?? null;
-  if (!partnerId) throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", user.id)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Sin permiso para gestionar este torneo");
-
-  return user.id;
-}
-
 // ── 1. Sustituir jugador en una inscripción ──────────────────────────────────
 
 const SubstitutePlayerSchema = z.object({
@@ -110,7 +73,7 @@ export async function substituteRegistrationPlayer(
       throw new MpError("SUBSTITUTION.REGISTRATION_NOT_ACCEPTED", "Solo se pueden sustituir jugadores en inscripciones aceptadas", 422);
     }
 
-    const callerId = await requirePartnerAdminForTournament(reg.tournament_id as string);
+    const { userId: callerId, actorRole } = await requireTournamentEditor(reg.tournament_id as string);
 
     const playerIds = (reg.player_ids as string[]) ?? [];
     if (!playerIds.includes(outPlayerId)) {
@@ -134,7 +97,7 @@ export async function substituteRegistrationPlayer(
 
     // TODO: validar mpr cuando profiles.mpr exista
 
-    await setAuditActor(admin, callerId, "partner");
+    await setAuditActor(admin, callerId, auditActorRole(actorRole));
 
     const newPlayerIds = playerIds.map((id: string) => (id === outPlayerId ? inPlayerId : id));
     await admin
@@ -193,7 +156,7 @@ const DeclareWalkoverSchema = z.object({
 export async function declareWalkover(input: unknown): Promise<ActionResult<void>> {
   return runAction(DeclareWalkoverSchema, input, async ({ matchId, matchType, winnerSide, reason, tournamentId }) => {
     await requirePlayerOpsEnabled();
-    const callerId = await requirePartnerAdminForTournament(tournamentId);
+    const { userId: callerId, actorRole } = await requireTournamentEditor(tournamentId);
     const admin: AnyClient = getAdminClient();
 
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
@@ -211,7 +174,7 @@ export async function declareWalkover(input: unknown): Promise<ActionResult<void
       throw new MpError("WALKOVER.MATCH_NOT_OPERABLE", "El partido no está en estado operable (debe ser scheduled o live)", 422);
     }
 
-    await setAuditActor(admin, callerId, "partner");
+    await setAuditActor(admin, callerId, auditActorRole(actorRole));
 
     await admin
       .from(table)
@@ -259,7 +222,7 @@ export async function listRegistrationSubstitutions(
 ): Promise<ActionResult<RegistrationSubstitution[]>> {
   return runAction(ListSubstitutionsSchema, input, async ({ tournamentId }) => {
     await requirePlayerOpsEnabled();
-    await requirePartnerAdminForTournament(tournamentId);
+    await requireTournamentEditor(tournamentId);
 
     const admin: AnyClient = getAdminClient();
 

@@ -9,6 +9,7 @@ import {
 import { confirmGroupMatch } from "@/server/actions/tournament-group-stage";
 import { confirmBracketMatch } from "@/server/actions/tournament-monitors";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
+import { useToast } from "@/components/dashboard/ToastProvider";
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
@@ -152,6 +153,7 @@ function CourtCard({
   const courtLabel = court.courtCode ?? court.courtName ?? "Cancha";
   const [confirming, setConfirming] = useState(false);
   const [, startConfirmTx] = useTransition();
+  const toast = useToast();
 
   const handleConfirm = () => {
     if (!match || confirming) return;
@@ -162,7 +164,11 @@ function CourtCard({
           ? await confirmGroupMatch({ tournamentId, matchId: match.matchId })
           : await confirmBracketMatch({ matchId: match.matchId, tournamentId });
       setConfirming(false);
-      if (res.ok) onConfirmed();
+      if (res.ok) {
+        onConfirmed();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error al confirmar", sub: res.error.message, tone: "error" });
+      }
     });
   };
 
@@ -254,13 +260,19 @@ export function TournamentCourtsLive({
     courts: CourtLiveStatus[];
     reportedCount: number;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [, startTx] = useTransition();
 
   const load = useCallback(() => {
     startTx(async () => {
       const res = await listCourtsLiveStatus({ tournamentId });
-      if (res.ok) setData(res.data);
+      if (res.ok) {
+        setData(res.data);
+        setError(null);
+      } else {
+        setError(res.error.message);
+      }
       setLoading(false);
     });
   }, [tournamentId]);
@@ -334,8 +346,22 @@ export function TournamentCourtsLive({
         )}
       </div>
 
+      {/* Error state */}
+      {error && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "#dc2626",
+            textAlign: "center",
+            padding: "10px 0",
+          }}
+        >
+          No se pudo cargar: {error}
+        </div>
+      )}
+
       {/* Empty state */}
-      {courts.length === 0 && (
+      {!error && courts.length === 0 && (
         <div
           style={{
             fontSize: 12,
@@ -349,7 +375,7 @@ export function TournamentCourtsLive({
       )}
 
       {/* Grid de canchas */}
-      {courts.length > 0 && (
+      {!error && courts.length > 0 && (
         <div
           style={{
             display: "grid",

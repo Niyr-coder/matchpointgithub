@@ -3,7 +3,7 @@
 import "server-only";
 
 import { z } from "zod";
-import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
@@ -11,6 +11,7 @@ import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
+import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
 
@@ -78,43 +79,6 @@ async function requireMonitorsEnabled(): Promise<void> {
   }
 }
 
-async function requirePartnerAdminForTournament(tournamentId: string): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-
-  const { data: t } = await supabase
-    .from("tournaments")
-    .select("partner_id")
-    .eq("id", tournamentId)
-    .maybeSingle();
-  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
-
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  if (adminRow) return user.id;
-
-  const partnerId = (t.partner_id as string | null) ?? null;
-  if (!partnerId) throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", user.id)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Sin permiso para gestionar este torneo");
-
-  return user.id;
-}
 
 async function requireMonitorAssignment(
   userId: string,
@@ -188,7 +152,7 @@ export async function assignCourtMonitor(
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(AssignMonitorSchema, input, async ({ tournamentId, courtId, userId, positionLabel }) => {
     await requireMonitorsEnabled();
-    const callerId = await requirePartnerAdminForTournament(tournamentId);
+    const { userId: callerId, actorRole } = await requireTournamentEditor(tournamentId);
     const admin: AnyClient = getAdminClient();
 
     const { data: profile } = await admin
@@ -224,7 +188,7 @@ export async function assignCourtMonitor(
       throw new MpError("MONITORS.MAX_COURTS_REACHED", "Un monitor puede tener máximo 2 canchas por torneo", 422);
     }
 
-    await setAuditActor(admin, callerId, "partner");
+    await setAuditActor(admin, callerId, auditActorRole(actorRole));
 
     const { data: row, error } = await admin
       .from("tournament_court_monitors")
@@ -261,8 +225,8 @@ export async function removeCourtMonitor(input: unknown): Promise<ActionResult<v
       .maybeSingle();
     if (!row) throw new MpError("MONITORS.NOT_FOUND", "Asignación no encontrada", 404);
 
-    const callerId = await requirePartnerAdminForTournament(row.tournament_id as string);
-    await setAuditActor(admin, callerId, "partner");
+    const { userId: callerId, actorRole } = await requireTournamentEditor(row.tournament_id as string);
+    await setAuditActor(admin, callerId, auditActorRole(actorRole));
 
     await admin
       .from("tournament_court_monitors")
@@ -588,7 +552,7 @@ export async function listCourtMonitors(
 ): Promise<ActionResult<CourtMonitorAssignment[]>> {
   return runAction(ListMonitorsSchema, input, async ({ tournamentId }) => {
     await requireMonitorsEnabled();
-    await requirePartnerAdminForTournament(tournamentId);
+    await requireTournamentEditor(tournamentId);
     const admin: AnyClient = getAdminClient();
 
     const { data } = await admin
@@ -890,7 +854,7 @@ export async function confirmBracketMatch(
   input: unknown,
 ): Promise<ActionResult<{ id: string; advanced: boolean }>> {
   return runAction(ConfirmBracketMatchSchema, input, async ({ matchId, tournamentId }) => {
-    const callerId = await requirePartnerAdminForTournament(tournamentId);
+    const { userId: callerId, actorRole } = await requireTournamentEditor(tournamentId);
     const admin: AnyClient = getAdminClient();
 
     const { data: matchRaw } = await admin
@@ -935,7 +899,7 @@ export async function confirmBracketMatch(
       throw new MpError("MONITORS.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
     }
 
-    await setAuditActor(admin, callerId, "partner");
+    await setAuditActor(admin, callerId, auditActorRole(actorRole));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await admin.from("bracket_matches").update({ status: "confirmed" } as any).eq("id", matchId);

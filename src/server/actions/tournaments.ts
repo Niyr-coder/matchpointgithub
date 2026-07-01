@@ -8,7 +8,7 @@ import { z } from "zod";
 import { tournamentSetupLockMessage } from "@/lib/tournaments/setup-lock";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { getActiveClubDiscountPct, applyDiscount } from "@/server/queries/club-membership";
 import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
@@ -164,10 +164,6 @@ async function assertCanManageTournament(tournamentId: string): Promise<{
     return { userId, isAdmin: false, partnerId, clubId, actorRole: "club" };
   }
   throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o staff del club puede editar este torneo");
-}
-
-function auditActorRole(role: "admin" | "partner" | "club"): "admin" | "partner" | "owner" {
-  return role === "club" ? "owner" : role;
 }
 
 async function requirePartnerAdmin(partnerId: string): Promise<string> {
@@ -865,7 +861,6 @@ export async function markRegistrationPaidByPartner(
   input: unknown,
 ): Promise<ActionResult<{ id: string; status: string }>> {
   return runAction(MarkPaidSchema, input, async ({ registrationId }) => {
-    const userId = await requireUserId();
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
@@ -875,10 +870,6 @@ export async function markRegistrationPaidByPartner(
     if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "No se encontró la inscripción", 404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tourn = (reg as any).tournaments as { partner_id: string | null; status: string } | null;
-    const partnerId = tourn?.partner_id ?? null;
-    if (!partnerId) {
-      throw new MpError("TOURNAMENTS.NO_PARTNER", "Este torneo no tiene partner organizador", 422);
-    }
     const tournamentStatus = tourn?.status ?? null;
     if (tournamentStatus === "cancelled" || tournamentStatus === "finished") {
       throw new MpError(
@@ -889,20 +880,7 @@ export async function markRegistrationPaidByPartner(
         422,
       );
     }
-    // Verificar membresía del caller en el partner_org con rol owner/admin.
-    const { data: member } = await supabase
-      .from("partner_members")
-      .select("role")
-      .eq("partner_id", partnerId)
-      .eq("user_id", userId)
-      .in("role", ["owner", "admin"])
-      .maybeSingle();
-    if (!member) {
-      throw new AuthError(
-        "AUTH.ROLE_REQUIRED",
-        "Solo un owner o admin del partner organizador puede marcar pagado.",
-      );
-    }
+    const { userId, actorRole } = await requireTournamentEditor(reg.tournament_id as string);
     const txId = reg.paid_transaction_id as string | null;
     if (!txId) {
       throw new MpError(
@@ -929,7 +907,7 @@ export async function markRegistrationPaidByPartner(
         422,
       );
     }
-    await setAuditActor(admin, userId, "partner");
+    await setAuditActor(admin, userId, auditActorRole(actorRole));
     const { data: updated, error } = await admin
       .from("transactions")
       .update({ status: "captured" } as never)
@@ -1806,7 +1784,7 @@ async function assertTournamentSetupEditable(tournamentId: string): Promise<void
 }
 
 // Helper auth: admin, partner del torneo o staff del club anfitrión.
-async function requireTournamentEditor(tournamentId: string): Promise<{
+export async function requireTournamentEditor(tournamentId: string): Promise<{
   userId: string;
   isAdmin: boolean;
   partnerId: string | null;

@@ -36,6 +36,12 @@ export function getAdminClient() {
 //   const admin = getAdminClient();
 //   await setAuditActor(admin, adminId, "admin");
 //   await admin.from("profiles").update(...);
+// Mapea el actorRole de requireTournamentEditor (que incluye "club" para
+// staff del club anfitrión) al rol que acepta setAuditActor.
+export function auditActorRole(role: "admin" | "partner" | "club"): "admin" | "partner" | "owner" {
+  return role === "club" ? "owner" : role;
+}
+
 export async function setAuditActor(
   client: ReturnType<typeof getAdminClient>,
   userId: string,

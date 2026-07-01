@@ -7,12 +7,11 @@
 import "server-only";
 
 import { z } from "zod";
-import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { requireTournamentEditor } from "@/server/actions/tournaments";
 import {
   GroupPlayoffConfigSchema,
   GroupSchedulingConfigSchema,
@@ -53,46 +52,6 @@ function groupDb(admin: ReturnType<typeof getAdminClient>) {
   return admin;
 }
 
-async function requireUserId(): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión");
-  return user.id;
-}
-
-async function requireTournamentEditor(tournamentId: string) {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data: t } = await supabase
-    .from("tournaments")
-    .select("partner_id")
-    .eq("id", tournamentId)
-    .single();
-  if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
-
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  const isAdmin = !!adminRow;
-  const partnerId = (t.partner_id as string | null) ?? null;
-  if (isAdmin) return { userId, isAdmin, partnerId, actorRole: "admin" as const };
-  if (!partnerId) throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", userId)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el partner organizador o un admin");
-  return { userId, isAdmin, partnerId, actorRole: "partner" as const };
-}
 
 async function loadCategoryContext(categoryId: string, opts?: { requireConfig?: boolean }) {
   const admin = groupDb(getAdminClient());
@@ -370,7 +329,7 @@ export async function drawTournamentGroups(
     if (err) throw new MpError("GROUPS.INVALID_CONFIG", err, 422);
 
     const buckets = distributeToGroups(regIds, config.groupsCount);
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
 
     let matchesCreated = 0;
     const createdGroups: Array<{ id: string; sortOrder: number }> = [];
@@ -470,7 +429,7 @@ export async function reportGroupMatch(
       throw new MpError("GROUPS.STAGE_CLOSED", "La fase de grupos ya está cerrada", 409);
     }
 
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
     const { error } = await gdb
       .from("tournament_group_matches")
       .update({
@@ -519,7 +478,7 @@ export async function correctGroupMatch(
       throw new MpError("GROUPS.STAGE_CLOSED", "La fase de grupos ya está cerrada", 409);
     }
 
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
     const { error } = await gdb
       .from("tournament_group_matches")
       .update({
@@ -575,7 +534,7 @@ export async function confirmGroupMatch(
       throw new MpError("GROUPS.STAGE_CLOSED", "La fase de grupos ya está cerrada", 409);
     }
 
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
     const { error } = await gdb
       .from("tournament_group_matches")
       .update({ status: "confirmed" } as never)
@@ -639,7 +598,7 @@ export async function closeGroupStage(
       throw new MpError("GROUPS.NOT_ENOUGH_QUALIFIED", "Se necesitan al menos 2 clasificados", 422);
     }
 
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
     const db = groupDb(getAdminClient());
     const { error } = await db
       .from("tournament_categories")
@@ -756,7 +715,7 @@ export async function generateKnockoutFromGroups(
       firstRoundPairs.push([null, null]);
     }
 
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
     const { data: bracketRow, error: bErr } = await db
       .from("brackets")
       .insert({
@@ -865,7 +824,7 @@ export async function reportBracketMatch(
       throw new MpError("BRACKETS.NO_SIDE", "No hay inscripción en el lado ganador", 422);
     }
 
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error: upErr } = await admin
       .from("bracket_matches")
       .update({ winner_side: winnerSide, score, status: "reported" } as never)
@@ -1042,7 +1001,7 @@ export async function correctBracketMatch(
       }
     }
 
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error: upErr } = await admin
       .from("bracket_matches")
       .update({ winner_side: winnerSide, score, status: "reported" } as never)
@@ -1087,7 +1046,7 @@ export async function updateCategoryGroupConfig(
       const err = validateGroupPlayoffConfig(config, regIds.length || 1);
       if (err) throw new MpError("GROUPS.INVALID_CONFIG", err, 422);
 
-      await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+      await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
       const { error } = await db
         .from("tournament_categories")
         .update({ group_playoff_config: config } as never)
@@ -1129,7 +1088,7 @@ export async function saveGroupStageScheduling(
     };
 
     const db = groupDb(getAdminClient());
-    await setAuditActor(getAdminClient(), editor.userId, editor.actorRole);
+    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
 
     const { error: cfgErr } = await db
       .from("tournament_categories")
@@ -1210,12 +1169,12 @@ export async function resetGroupDraw(
         );
       }
 
-      await setAuditActor(admin, editor.userId, editor.actorRole);
+      await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
 
       await admin.from("tournament_group_matches").delete().in("group_id", groupIds);
       await admin.from("tournament_groups").delete().eq("category_id", categoryId);
     } else {
-      await setAuditActor(admin, editor.userId, editor.actorRole);
+      await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     }
 
     await admin
