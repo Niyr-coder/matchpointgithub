@@ -72,26 +72,48 @@ renombre se hizo en mig 076.
 
 ## 4. Flujo de creación
 
-`CreateTournamentFlow.tsx` (modal 3-pasos):
+`CreateTournamentFlow.tsx` (modal 5-pasos: `terms → details → logistics →
+categories → preview`):
 
 ```
-Step 1 · T&C
+Step 1 · Terms
   └── 8 cláusulas estrictas (responsabilidad civil, info veraz, refunds,
       antitrampas, reglas pickleball oficiales, datos personales, comisión
       MP, suspensión). Checkbox bloqueante.
 
-Step 2 · Form
+Step 2 · Details
+  ├── Nombre, descripción (opc), sede (club — opc, "sin sede · multi-club")
   ├── Deporte: pickleball (locked)
-  ├── Modalidad: radio cards
-  ├── Sistema scoring: 5 presets radio cards
-  ├── Estructura cuadro: select
+  ├── Sistema de puntuación (ScoringConfigurator):
+  │     ├── 4 chips de preset rápido (Clásico BO3·11, Rally PPA BO3·15,
+  │     │   MLP BO1·21, Finales BO5·11) — el chip que coincide con la
+  │     │   config actual queda resaltado
+  │     ├── "Personalizar puntuación ›" (colapsado por defecto) revela el
+  │     │   editor crudo type/points/bestOf de "Partidos regulares" — la
+  │     │   mayoría de torneos nunca necesita abrirlo
+  │     └── Si formato = groups_to_knockout: checkboxes opcionales
+  │         "Fase de grupos — puntuación diferente" y "Final — puntuación
+  │         diferente", cada uno revela su propio editor crudo solo si se
+  │         activa (mismo patrón de disclosure que el de arriba)
+  ├── Estructura del cuadro: select (single_elim/double_elim/round_robin/
+  │     swiss/groups_to_knockout)
+  └── Si formato = groups_to_knockout: número de grupos + clasificados
+        por grupo
+
+Step 3 · Logistics
   ├── Inicio + fin (toggle "es de un solo día" → fin queda null)
+  ├── Apertura/cierre de inscripciones (opc)
   ├── Cupos (opc)
   ├── Cuota USD (con coherencia auto vs payment_policy)
   ├── Premio pool USD (opc — el granular va en PrizesPanel después)
   └── Método de pago: prepay/onsite/flexible/free
 
-Step 3 · Preview
+Step 4 · Categories
+  └── CategoriesPanel: nombre, género, rango MPR (slider), rango edad,
+      cupo máximo por categoría. Si no se agrega ninguna, se crea una
+      categoría default con la modalidad implícita del torneo.
+
+Step 5 · Preview
   └── Card oscura estilo landing + KPIs + chips scoring
 
 Submit → createTournament server action

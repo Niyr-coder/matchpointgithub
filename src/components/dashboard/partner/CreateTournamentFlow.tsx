@@ -1929,35 +1929,56 @@ function ScoringConfigurator(props: {
   finalBestOf: 1 | 3 | 5; setFinalBestOf: (v: 1 | 3 | 5) => void;
 }) {
   const isGroups = props.format === "groups_to_knockout";
+  const [customizingMain, setCustomizingMain] = useState(false);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Presets rápidos */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {SCORING_QUICK_PRESETS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => { props.setMainType(p.type); props.setMainPoints(p.points); props.setMainBestOf(p.bestOf); }}
-            style={{
-              padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              background: "#fff", border: "1px solid var(--border)", color: "#0a0a0a",
-              fontFamily: "inherit", transition: "background 120ms var(--ease-out)",
-            }}
-          >
-            {p.label}
-          </button>
-        ))}
+        {SCORING_QUICK_PRESETS.map((p) => {
+          const isActive =
+            props.mainType === p.type && props.mainPoints === p.points && props.mainBestOf === p.bestOf;
+          return (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => { props.setMainType(p.type); props.setMainPoints(p.points); props.setMainBestOf(p.bestOf); }}
+              style={{
+                padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                background: isActive ? "rgba(16,185,129,0.06)" : "#fff",
+                border: isActive ? "2px solid var(--primary)" : "1px solid var(--border)",
+                color: "#0a0a0a",
+                fontFamily: "inherit", transition: "background 120ms var(--ease-out)",
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
       </div>
       {/* Partidos regulares */}
-      <div style={{ padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "var(--muted)" }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, color: "#0a0a0a" }}>
-          Partidos regulares
-        </div>
-        <ScoringSection
-          type={props.mainType} setType={props.setMainType}
-          points={props.mainPoints} setPoints={props.setMainPoints}
-          bestOf={props.mainBestOf} setBestOf={props.setMainBestOf}
-        />
+      <div>
+        <button
+          type="button"
+          onClick={() => setCustomizingMain((v) => !v)}
+          style={{
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            fontFamily: "inherit", fontSize: 10.5, fontWeight: 700, color: "var(--muted-fg)",
+          }}
+        >
+          {customizingMain ? "Ocultar" : "Personalizar puntuación ›"}
+        </button>
+        {customizingMain && (
+          <div style={{ marginTop: 10, padding: 14, borderRadius: 10, border: "1px solid var(--border)", background: "var(--muted)" }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, color: "#0a0a0a" }}>
+              Partidos regulares
+            </div>
+            <ScoringSection
+              type={props.mainType} setType={props.setMainType}
+              points={props.mainPoints} setPoints={props.setMainPoints}
+              bestOf={props.mainBestOf} setBestOf={props.setMainBestOf}
+            />
+          </div>
+        )}
       </div>
       {/* Fase de grupos */}
       {isGroups && (
