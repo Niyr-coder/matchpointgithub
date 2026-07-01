@@ -149,6 +149,13 @@ export async function assignRole(input: unknown): Promise<ActionResult<{ id: str
     }),
     input,
     async ({ userId, role, clubId, notes, termsVersion }) => {
+      if (role === "partner") {
+        throw new MpError(
+          "ROLES.USE_PARTNER_FLOW",
+          "Para asignar el rol Partner usa Admin → Partners (crear organización), no este editor genérico.",
+          422,
+        );
+      }
       if (CLUB_SCOPED_ROLES.has(role) && !clubId) {
         throw new MpError("ROLES.CLUB_REQUIRED", `Role '${role}' requires a club`, 422);
       }

@@ -542,7 +542,9 @@ function AssignRoleModal({ clubs, defaultRole, onClose, onDone }: { clubs: ClubO
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ id: string; username: string; display_name: string }[]>([]);
   const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
-  const [role, setRole] = useState(defaultRole === "user" ? "coach" : defaultRole);
+  // "partner" no se asigna desde este editor genérico — huérfano sin partner_id/partner_members (usar Admin → Partners).
+  const assignableRoles = ROLES.filter((r) => r.k !== "partner");
+  const [role, setRole] = useState(defaultRole === "user" || defaultRole === "partner" ? "coach" : defaultRole);
   const [clubId, setClubId] = useState("");
   const [searching, startSearch] = useTransition();
   const [submitting, startSubmit] = useTransition();
@@ -602,7 +604,7 @@ function AssignRoleModal({ clubs, defaultRole, onClose, onDone }: { clubs: ClubO
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span className="label-mp">Rol</span>
           <select value={role} onChange={(e) => setRole(e.target.value)} style={{ padding: "9px 12px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12.5, background: "#fff", outline: "none" }}>
-            {ROLES.map((r) => (
+            {assignableRoles.map((r) => (
               <option key={r.k} value={r.k}>{r.t}</option>
             ))}
           </select>

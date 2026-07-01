@@ -41,11 +41,15 @@ export function buildRoleSwitchOptions(
 ): RoleSwitchOption[] {
   if (isAdmin) return [];
   const out: RoleSwitchOption[] = [];
-  const seen = new Set<RoleKey>();
+  // Dedup por rol+club+partner, no solo por rol: un mismo rol (ej. owner)
+  // en 2 clubes distintos son 2 opciones distintas de switch (SidebarRoleMenu
+  // ya arma su key/onClick así — solo acá se colapsaban en una).
+  const seen = new Set<string>();
   for (const row of rows) {
     const rk = row.role as RoleKey;
-    if (rk === "admin" || seen.has(rk)) continue;
-    seen.add(rk);
+    const key = `${rk}:${row.club_id ?? ""}:${row.partner_id ?? ""}`;
+    if (rk === "admin" || seen.has(key)) continue;
+    seen.add(key);
     out.push({
       role: rk,
       clubId: row.club_id,

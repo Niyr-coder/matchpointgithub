@@ -138,30 +138,22 @@ Check-in · Walk-ins · Caja · Reservas · Shop · Soporte
 
 ## 6. Cobertura screens vs sidebar
 
-Del audit per-role (snapshot actual):
-
-| Rol | Items en sidebar | Pantallas reales | Cobertura |
-|---|---|---|---|
-| admin | 26 | 25 + home | 100% |
-| user | 12 | 11+ | ~92% |
-| owner | 9 | 8 | ~89% |
-| manager / partner | 8 | 7 | 87.5% |
-| coach | 7 | 6 | ~86% |
-| employee | 8 | 6 | 75% |
-
-Las que faltan caen a `RoleScreenStub` (placeholder honesto con mensaje
-"sección en próxima iteración"). Ver `guides/04-placeholders.md` para la
-lista exacta de qué falta.
+Del audit de roles 2026-07-01 (confirmado leyendo `MP_ROLES[role].sidebar`
+vs el mapa `SCREENS` de `src/app/dashboard/[role]/[section]/page.tsx`):
+los 7 roles tienen hoy **100%** de cobertura — cada item de sidebar tiene
+su pantalla implementada, ninguno cae a `RoleScreenStub`. La tabla previa
+(owner ~89%, manager/partner 87.5%, coach ~86%, employee 75%) quedó
+desactualizada — ver `guides/04-placeholders.md` si en el futuro se agrega
+un item de sidebar antes de tener su pantalla lista.
 
 ## 7. Permisos clave (matriz cross-feature)
 
 | Acción | user | partner | owner | manager | coach | employee | admin |
 |---|---|---|---|---|---|---|---|
 | Reservar cancha | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Confirmar reserva pending | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Crear torneo | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Editar torneo | ❌ | ✅ org propia | ✅ club propio | ❌ | ❌ | ❌ | ✅ |
-| Cancelar torneo | ❌ | ✅ propio | ✅ propio | ❌ | ❌ | ❌ | ✅ |
+| Editar torneo | ❌ | ✅ org propia | ✅ club propio | ✅ club propio | ❌ | ❌ | ✅ |
+| Cancelar torneo | ❌ | ✅ propio | ✅ propio | ✅ club propio | ❌ | ❌ | ✅ |
 | Marcar estelar | ❌ | ❌ ($20 paga) | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Aprobar comprobante | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Marcar pago onsite cobrado | ❌ | ✅ su torneo | ✅ su club | ✅ su club | ❌ | ❌ | ✅ |
@@ -171,9 +163,19 @@ lista exacta de qué falta.
 | Gestionar Help CMS | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Ver tickets del club | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Responder ticket de otro usuario | ❌ | ❌ | ✅ | ✅ | ❌ | Solo si está asignado | ✅ |
-| Crear clase | ❌ | ❌ | ✅ | ❌ | ✅ propia | ❌ | ✅ |
+| Crear clase | ❌ | ❌ | ❌ (sin camino de código hoy) | ❌ | ✅ propia, vinculado activo | ❌ | ❌ (sin camino de código hoy) |
 | Activar/revocar MATCHPOINT+ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Switch entre roles via UI | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Switch entre roles via UI | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ + view-as sin tener el rol |
+
+"Switch entre roles" no es exclusivo de admin: cualquier user con 2+ roles
+asignados puede cambiar entre ellos vía `RoleSwitcher`/`switchRole` (ver
+§3/§4). Admin además tiene "view-as": puede previsualizar cualquier rol
+sin tenerlo asignado.
+
+Filas quitadas por no corresponder a ninguna acción real del código:
+"Confirmar reserva pending" (no existe estado `pending` en
+`mp_reservation_status` ni acción de confirmación — ver
+`002_enums.sql`).
 
 Esta matriz NO está auto-generada — actualizar a mano cuando agreguemos
 features. Las RLS de DB son la fuente de verdad final (`architecture/30-rls.md`).
@@ -210,6 +212,17 @@ verificación fresca contra Supabase Auth.
 5. **Crear feature para todos los roles** — la mayoría de features son
    role-specific (partner crea torneos, owner gestiona club, etc).
    Preguntarse: ¿qué rol(es) ven esto?
+6. **Duplicar `requireTournamentEditor` en vez de importarlo** — ya está
+   exportado desde `src/server/actions/tournaments.ts` (junto con
+   `auditActorRole` en `src/lib/db/client.admin.ts`). Copias locales
+   ad-hoc tienden a olvidar el branch de **staff del club anfitrión**
+   (`actorRole: "club"`, cuando `tournament.club_id` está seteado y
+   `partner_id` es `null` — el caso de un torneo organizado directamente
+   por un club, sin partner externo). Pasó en monitores de cancha,
+   canchas en vivo, operaciones de jugador, fase de grupos y el display
+   token del TV: 5 archivos con su propia copia incompleta dejaban a
+   cualquier club sin partner externo sin acceso a gestionar su propio
+   torneo (fix 2026-07-01).
 
 ## 10. Cómo agregar un rol nuevo
 

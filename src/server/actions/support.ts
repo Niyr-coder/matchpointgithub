@@ -68,13 +68,16 @@ async function canStaffTicket(userId: string, ticket: TicketAccessRow): Promise<
   if (await isPlatformAdmin(userId)) return true;
   if (ticket.assignee_id === userId) return true;
   if (!ticket.club_id) return false;
+  // Solo owner/manager gestionan cualquier ticket del club (alineado con
+  // mp_club_staff / tk_club_staff_update). Un employee solo puede actuar si
+  // ya es el assignee_id (chequeado arriba) — no sobre tickets ajenos.
   const supabase = await getServerClient();
   const { data } = await supabase
     .from("role_assignments")
     .select("role")
     .eq("user_id", userId)
     .eq("club_id", ticket.club_id)
-    .in("role", ["owner", "manager", "employee"])
+    .in("role", ["owner", "manager"])
     .is("revoked_at", null)
     .limit(1)
     .maybeSingle();

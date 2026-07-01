@@ -25,11 +25,11 @@ async function loadData(): Promise<ConfigData> {
     };
 
   const supabase = await getServerClient();
-  const [{ data: clubRaw }, { data: settings }, { data: courts }] = await Promise.all([
+  const [{ data: clubRaw }, { data: settings }, { data: courts }, { data: partnerLinkCodeRaw }] = await Promise.all([
     supabase
       .from("clubs")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("name,address,phone,email,slug,city,country,logo_url,cover_url,latitude,longitude,version,partner_link_code" as any)
+      .select("name,address,phone,email,slug,city,country,logo_url,cover_url,latitude,longitude,version" as any)
       .eq("id", clubId)
       .maybeSingle(),
     supabase
@@ -42,6 +42,10 @@ async function loadData(): Promise<ConfigData> {
       .select("id,surface")
       .eq("club_id", clubId)
       .eq("active", true),
+    // partner_link_code no es legible por SELECT directo (revoke en
+    // 20260709000000) — se sirve vía RPC security definer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("fn_get_club_partner_link_code", { p_club_id: clubId }) as Promise<{ data: string | null }>,
   ]);
 
   // Horarios: open_hours esperado como { monday: {open,close}, ... }
@@ -116,7 +120,6 @@ async function loadData(): Promise<ConfigData> {
     latitude: number | string | null;
     longitude: number | string | null;
     version: number | null;
-    partner_link_code: string | null;
   } | null;
 
   const lat = club?.latitude != null ? Number(club.latitude as unknown as string) : null;
@@ -173,7 +176,7 @@ async function loadData(): Promise<ConfigData> {
     latitude: lat,
     longitude: lng,
     version: club?.version ?? 1,
-    partnerLinkCode: club?.partner_link_code ?? null,
+    partnerLinkCode: partnerLinkCodeRaw ?? null,
   };
 }
 

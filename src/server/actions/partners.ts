@@ -114,20 +114,22 @@ export async function linkClubToPartner(
     await requirePartnerAdmin(partnerId);
     const supabase = await getServerClient();
     const normalized = normalizeClubPartnerLinkCode(linkCode);
-    const { data: club, error: clubErr } = await supabase
-      .from("clubs")
-      .select("id,status")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .eq("partner_link_code" as any, normalized)
-      .maybeSingle();
+    // partner_link_code no es legible por SELECT directo (revoke en
+    // 20260709000000) — el lookup exacto se sirve vía RPC security definer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: clubRows, error: clubErr } = await (supabase as any).rpc(
+      "fn_resolve_club_by_partner_link_code",
+      { p_code: normalized },
+    );
     if (clubErr) throw new MpError("PARTNERS.DB_ERROR", clubErr.message, 500);
+    const club = (clubRows as Array<{ id: string; status: string }> | null)?.[0] ?? null;
     if (!club) {
       throw new MpError("PARTNERS.CODE_INVALID", "Código no válido. Pídeselo al club.", 404);
     }
-    if ((club.status as string) !== "active") {
+    if (club.status !== "active") {
       throw new MpError("PARTNERS.CLUB_INACTIVE", "Ese club no está activo.", 409);
     }
-    const clubId = club.id as string;
+    const clubId = club.id;
     const { error } = await supabase.from("partner_club_links").upsert(
       {
         partner_id: partnerId,

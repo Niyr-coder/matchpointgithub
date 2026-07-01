@@ -512,17 +512,13 @@ más RLS/documentación de la superficie.
 - **Copy**: *"Pantalla específica del rol [ROLE]. Por ahora ves solo el
   Home con fidelidad completa; cada sección del sidebar tendrá su propia
   vista en la próxima iteración."*
-- **Cobertura actual** (qué cae a stub):
-
-| Rol | Items sin pantalla real |
-|---|---|
-| `employee` | cubierto en sus items principales (`e-soporte` ya existe) |
-| `coach` | 1 item sin pantalla |
-| `manager` | 1 item sin pantalla |
-| `partner` | 1 item sin pantalla |
-| `owner` | 1 item sin pantalla |
-| `user` | algunas secundarias (`team`, `solicitar-club` están reales) |
-| `admin` | 100% cubierto |
+- **Cobertura actual** (audit de roles 2026-07-01, confirmado leyendo
+  `MP_ROLES[role].sidebar` vs el `SCREENS` map): **100% en los 7 roles**
+  — ningún item de sidebar cae hoy a `RoleScreenStub`. La tabla previa
+  (que listaba "1 item sin pantalla" para coach/manager/partner/owner)
+  quedó desactualizada; este componente sigue existiendo como fallback
+  honesto para cuando se agregue un item de sidebar nuevo antes de tener
+  su pantalla lista.
 
 ### `PLACEHOLDER_COUNT` en pantallas admin
 
@@ -700,7 +696,9 @@ server action correspondiente + wire onClick + toast de resultado.
 - [ ] Helper `requireFeatureFlag()` + uso en features no-listas
 - [ ] Match result reporting + bracket progression
 - [ ] Email channel real
-- [ ] Cubrir items sin pantalla de employee/coach/manager
+- [x] ~~Cubrir items sin pantalla de employee/coach/manager~~.
+  Resuelto — audit de roles 2026-07-01 confirmó 100% de cobertura en los
+  7 roles (ver §"RoleScreenStub" arriba).
 - [x] ~~Personalización de perfil V1~~.
   Retirada por reset completo. El nuevo sistema queda pendiente de diseño.
 - [ ] **Busco partido (match seeks)** — items diferidos de v1:

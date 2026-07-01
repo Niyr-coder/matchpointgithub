@@ -1163,15 +1163,12 @@ export async function getClubPartnerLinkCode(
   return runAction(ClubIdOnlySchema, input, async ({ clubId }) => {
     await requireClubStaff(clubId);
     const supabase = await getServerClient();
-    const { data, error } = await supabase
-      .from("clubs")
-      // partner_link_code: migración 20260701000000 — types DB pendientes de regen
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("partner_link_code" as any)
-      .eq("id", clubId)
-      .maybeSingle();
+    // partner_link_code no es legible por SELECT directo (revoke en
+    // 20260709000000) — se sirve vía RPC security definer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("fn_get_club_partner_link_code", { p_club_id: clubId });
     if (error) throw new MpError("CLUBS.READ_FAILED", error.message, 500);
-    const linkCode = (data as { partner_link_code?: string } | null)?.partner_link_code;
+    const linkCode = data as string | null;
     if (!linkCode) {
       throw new MpError("CLUBS.CODE_MISSING", "No hay código de vinculación.", 500);
     }

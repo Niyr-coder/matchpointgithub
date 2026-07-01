@@ -6,6 +6,7 @@ const LABELS: Record<string, string> = {
   "coach-ai": "Coach AI",
   quedadas: "Quedadas",
   "club-membresias": "Membresías",
+  "club-marketing": "Marketing",
   "mis-sorteos": "Mis sorteos",
   "club-sorteos": "Sorteos del club",
   shop: "Shop",
