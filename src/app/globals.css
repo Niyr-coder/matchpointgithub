@@ -9408,6 +9408,7 @@ input[type="range"].mp-mpr,
 
 .mp-monitor-btn-tap {
   transition: transform 160ms var(--ease-out, cubic-bezier(0.23,1,0.32,1));
+  touch-action: manipulation;
 }
 @media (hover: hover) and (pointer: fine) {
   .mp-monitor-btn-tap:hover { filter: brightness(1.1); }
@@ -9416,6 +9417,7 @@ input[type="range"].mp-mpr,
 
 .mp-monitor-score-panel {
   transition: background 150ms var(--ease-out, cubic-bezier(0.23,1,0.32,1));
+  touch-action: manipulation;
 }
 .mp-monitor-score-panel:active { background: rgba(16,185,129,0.08) !important; }
 

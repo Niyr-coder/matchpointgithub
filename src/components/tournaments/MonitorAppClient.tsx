@@ -548,6 +548,7 @@ export function MonitorAppClient({
           padding: "16px 20px",
           fontWeight: 800,
           fontSize: 18,
+          pointerEvents: "none",
         }}
       >
         {winner === "a" ? teamA : teamB} gana el partido
