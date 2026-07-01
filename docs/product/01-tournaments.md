@@ -240,6 +240,22 @@ un jugador o el equipo completo.
 - **Walk-in**: el partner escribe el nombre; se almacena en guest_names[] y player_ids queda vacío. No recibe notificaciones (sin cuenta).
 La inscripción se crea con status='accepted' directamente. Si el torneo tiene cuota (entry_fee_cents > 0), se crea una transaction status='pending' method='cash' que el partner marca como pagada con "Marcar pagado" cuando el jugador entrega el dinero.
 
+**Pegar lista (bulk walk-ins)**: `AddInscritoManualModal.tsx` tiene un
+toggle "Uno por uno" / "Pegar lista". El modo lista es **solo walk-ins**
+(no intenta matchear nombres pegados contra jugadores registrados — eso
+sigue siendo el flujo de búsqueda uno-por-uno) y llama a
+`addRegistrationsBulkByPartner` (`partner-tournament-registrations.ts`).
+Parseo client-side: singles = un nombre por línea; doubles/mixed = un
+equipo por línea, separando los 2 nombres con `/` (fallback `,`) — una
+línea de dobles sin separador se marca como error en vez de emparejar
+por posición (evita desincronizar parejas si hay una línea suelta). El
+server valida `names.length` contra `tournaments.modality`, calcula el
+cupo restante de la categoría UNA vez para todo el lote (si no alcanza
+para todos, inserta hasta el límite y reporta el resto como
+`skipped: CATEGORY_FULL`), inserta las registrations en un solo INSERT
+multi-fila, y crea las transactions pendientes de cobro (si aplica) en
+paralelo por ventanas de 10. Tope de 200 entries por lote.
+
 **Bug histórico**: queries que selectban `player_id` (singular) explotaban
 silenciosamente porque la columna no existe. Siempre `player_ids` y resolver
 nombres vía join a `profiles`.

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef, useCallback } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/dashboard/ToastProvider";
 import {
   searchPlayersForTournament,
   addRegistrationByPartner,
+  addRegistrationsBulkByPartner,
   type PlayerSearchResult,
 } from "@/server/actions/partner-tournament-registrations";
 
@@ -29,6 +30,41 @@ type SlotValue =
 // ── constantes ─────────────────────────────────────────────────────────────
 
 const ANIM_OUT_MS = 160;
+
+// ── Parser de "pegar lista" ─────────────────────────────────────────────────
+// Singles: una línea = un nombre. Dobles/mixed: una línea = un equipo,
+// separado por "/" (fallback ","). Una línea de dobles sin separador se
+// marca como error en vez de emparejar por posición — evita desincronizar
+// parejas en silencio si hay una línea suelta en medio de la lista.
+
+type BulkParsedEntry = { line: number; names: string[] };
+type BulkParseError = { line: number; text: string };
+
+function parseBulkText(
+  text: string,
+  expectedNames: number,
+): { entries: BulkParsedEntry[]; errors: BulkParseError[] } {
+  const entries: BulkParsedEntry[] = [];
+  const errors: BulkParseError[] = [];
+  text.split("\n").forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) return;
+    if (expectedNames === 1) {
+      entries.push({ line: i + 1, names: [line] });
+      return;
+    }
+    let parts = line.split("/").map((p) => p.trim()).filter(Boolean);
+    if (parts.length !== 2) {
+      parts = line.split(",").map((p) => p.trim()).filter(Boolean);
+    }
+    if (parts.length !== 2) {
+      errors.push({ line: i + 1, text: line });
+      return;
+    }
+    entries.push({ line: i + 1, names: parts });
+  });
+  return { entries, errors };
+}
 
 // ── PlayerSlot ──────────────────────────────────────────────────────────────
 // Input de búsqueda debounced + dropdown + pill de selección.
@@ -372,6 +408,14 @@ export function AddInscritoManualModal({
   );
   const [categoryId, setCategoryId] = useState<string>("");
 
+  // ── modo "pegar lista" (walk-ins en lote) ───────────────────────────────
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [bulkText, setBulkText] = useState("");
+  const bulkParsed = useMemo(
+    () => parseBulkText(bulkText, slotCount),
+    [bulkText, slotCount],
+  );
+
   // ── animación de salida ─────────────────────────────────────────────────
   const [closing, setClosing] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -398,14 +442,15 @@ export function AddInscritoManualModal({
     });
   };
 
-  // Todos los slots deben estar completos para poder enviar.
-  const canSubmit =
-    slots.every((s) => s.kind !== "empty") &&
-    (categories.length === 0 || categoryId !== "");
+  const categoryOk = categories.length === 0 || categoryId !== "";
 
-  const handleSubmit = () => {
-    if (!canSubmit || isPending) return;
+  // Todos los slots deben estar completos para poder enviar (modo "uno por uno").
+  const canSubmitSingle = slots.every((s) => s.kind !== "empty") && categoryOk;
+  // Al menos una línea parseada sin errores pendientes (modo "pegar lista").
+  const canSubmitBulk = bulkParsed.entries.length > 0 && bulkParsed.errors.length === 0 && categoryOk;
+  const canSubmit = mode === "single" ? canSubmitSingle : canSubmitBulk;
 
+  const handleSubmitSingle = () => {
     const playerIds = slots
       .filter((s): s is { kind: "user"; id: string; name: string } => s.kind === "user")
       .map((s) => s.id);
@@ -435,6 +480,45 @@ export function AddInscritoManualModal({
       router.refresh();
       onClose();
     });
+  };
+
+  const handleSubmitBulk = () => {
+    startTransition(async () => {
+      const res = await addRegistrationsBulkByPartner({
+        tournamentId,
+        categoryId: categoryId || null,
+        entries: bulkParsed.entries.map((e) => ({ names: e.names })),
+      });
+      if (!res.ok) {
+        toast({
+          icon: "alert-triangle",
+          title: "Error al inscribir el lote",
+          sub: res.error.message,
+          tone: "error",
+        });
+        return;
+      }
+      const { createdCount, skipped } = res.data;
+      if (skipped.length === 0) {
+        toast({ icon: "check", title: `${createdCount} inscrito${createdCount === 1 ? "" : "s"} añadido${createdCount === 1 ? "" : "s"}` });
+      } else {
+        toast({
+          icon: createdCount === 0 ? "alert-triangle" : "check",
+          title: `${createdCount} añadido${createdCount === 1 ? "" : "s"} · ${skipped.length} no entraron por cupo lleno`,
+          tone: createdCount === 0 ? "error" : undefined,
+        });
+      }
+      if (createdCount === 0) return;
+      onSuccess();
+      router.refresh();
+      onClose();
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!canSubmit || isPending) return;
+    if (mode === "single") handleSubmitSingle();
+    else handleSubmitBulk();
   };
 
   // ── nota de pago ────────────────────────────────────────────────────────
@@ -562,22 +646,115 @@ export function AddInscritoManualModal({
             </button>
           </div>
 
-          {/* Slots de jugadores */}
-          {slots.map((slot, idx) => (
-            <PlayerSlot
-              key={idx}
-              slotLabel={
-                slotCount === 1
-                  ? "Jugador"
-                  : idx === 0
-                    ? "Jugador 1"
-                    : "Jugador 2"
-              }
-              tournamentId={tournamentId}
-              value={slot}
-              onChange={(val) => updateSlot(idx, val)}
-            />
-          ))}
+          {/* Toggle modo uno-por-uno / pegar lista */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setMode("single")}
+              style={{
+                flex: 1,
+                background: mode === "single" ? "var(--primary)" : "#fff",
+                color: mode === "single" ? "#000" : "var(--fg)",
+                borderColor: mode === "single" ? "var(--primary)" : "var(--border)",
+              }}
+            >
+              Uno por uno
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setMode("bulk")}
+              style={{
+                flex: 1,
+                background: mode === "bulk" ? "var(--primary)" : "#fff",
+                color: mode === "bulk" ? "#000" : "var(--fg)",
+                borderColor: mode === "bulk" ? "var(--primary)" : "var(--border)",
+              }}
+            >
+              Pegar lista
+            </button>
+          </div>
+
+          {mode === "single" ? (
+            /* Slots de jugadores */
+            slots.map((slot, idx) => (
+              <PlayerSlot
+                key={idx}
+                slotLabel={
+                  slotCount === 1
+                    ? "Jugador"
+                    : idx === 0
+                      ? "Jugador 1"
+                      : "Jugador 2"
+                }
+                tournamentId={tournamentId}
+                value={slot}
+                onChange={(val) => updateSlot(idx, val)}
+              />
+            ))
+          ) : (
+            /* Pegar lista: solo walk-ins, un nombre (singles) o equipo separado por / (dobles) por línea */
+            <div style={{ marginBottom: 14 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--muted-fg)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                {slotCount === 1
+                  ? "Un nombre por línea"
+                  : "Un equipo por línea — separa los 2 nombres con /"}
+              </div>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={
+                  slotCount === 1
+                    ? "Juan Pérez\nMaría González\n..."
+                    : "Juan Pérez / María González\nCarlos Ruiz / Ana Torres\n..."
+                }
+                rows={8}
+                style={{
+                  width: "100%",
+                  padding: "9px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface, #fff)",
+                  fontSize: 13,
+                  boxSizing: "border-box",
+                  color: "var(--fg)",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
+              {bulkText.trim() !== "" && (
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
+                  <span style={{ color: "var(--primary)", fontWeight: 700 }}>
+                    {bulkParsed.entries.length} listo{bulkParsed.entries.length === 1 ? "" : "s"} para inscribir
+                  </span>
+                  {bulkParsed.errors.length > 0 && (
+                    <>
+                      <span style={{ color: "var(--muted-fg)" }}> · </span>
+                      <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                        {bulkParsed.errors.length} con error
+                      </span>
+                      <ul style={{ margin: "6px 0 0", paddingLeft: 18, color: "#dc2626" }}>
+                        {bulkParsed.errors.map((err) => (
+                          <li key={err.line}>
+                            Línea {err.line}: &ldquo;{err.text}&rdquo; — falta separador (/ o ,) para dobles
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Selector de categoría */}
           {categories.length > 0 && (
@@ -631,8 +808,9 @@ export function AddInscritoManualModal({
                 lineHeight: 1.55,
               }}
             >
-              Se creará un cobro pendiente de ${amountDisplay} para registrar el
-              pago en mostrador.
+              {mode === "bulk"
+                ? `Se creará un cobro pendiente de $${amountDisplay} por cada inscrito para registrar el pago en mostrador.`
+                : `Se creará un cobro pendiente de $${amountDisplay} para registrar el pago en mostrador.`}
             </div>
           )}
 
@@ -649,7 +827,11 @@ export function AddInscritoManualModal({
                 transition: "opacity 150ms var(--ease-out)",
               }}
             >
-              {isPending ? "Añadiendo…" : "Añadir inscrito"}
+              {isPending
+                ? "Añadiendo…"
+                : mode === "bulk" && bulkParsed.entries.length > 0
+                  ? `Añadir ${bulkParsed.entries.length} inscrito${bulkParsed.entries.length === 1 ? "" : "s"}`
+                  : "Añadir inscrito"}
             </button>
             <button
               type="button"

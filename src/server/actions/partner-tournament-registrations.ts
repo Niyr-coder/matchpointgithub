@@ -377,6 +377,194 @@ export async function addRegistrationByPartner(
   );
 }
 
+// ── addRegistrationsBulkByPartner (pegar lista de walk-ins) ────────────
+
+export type BulkSkippedEntry = {
+  index: number;
+  names: string[];
+  reason: "NAMES_COUNT_MISMATCH" | "CATEGORY_FULL";
+};
+
+export type BulkRegistrationResult = {
+  createdCount: number;
+  created: PartnerRegistrationRow[];
+  skipped: BulkSkippedEntry[];
+};
+
+const AddRegistrationsBulkSchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema.nullable().optional(),
+  entries: z
+    .array(
+      z.object({
+        names: z.array(z.string().min(1).max(200)).min(1).max(2),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+
+const BULK_FAN_CHUNK = 10;
+
+export async function addRegistrationsBulkByPartner(
+  input: unknown,
+): Promise<ActionResult<BulkRegistrationResult>> {
+  return runMutation(
+    AddRegistrationsBulkSchema,
+    input,
+    async ({ tournamentId, categoryId, entries }) => {
+      const { userId, actorRole } = await requireTournamentEditor(tournamentId);
+
+      const supabase = await getServerClient();
+
+      const { data: tournament } = await supabase
+        .from("tournaments")
+        .select("id,status,entry_fee_cents,currency,modality")
+        .eq("id", tournamentId)
+        .maybeSingle();
+      if (!tournament) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
+
+      if (tournament.status === "cancelled" || tournament.status === "finished") {
+        throw new MpError(
+          "TOURNAMENTS.INVALID_STATUS",
+          `No se puede inscribir en un torneo con estado '${tournament.status}'`,
+          409,
+        );
+      }
+
+      const expectedNames = tournament.modality === "singles" ? 1 : 2;
+      const skipped: BulkSkippedEntry[] = [];
+      let validEntries = entries
+        .map((e, index) => ({ index, names: e.names }))
+        .filter((e) => {
+          if (e.names.length !== expectedNames) {
+            skipped.push({ index: e.index, names: e.names, reason: "NAMES_COUNT_MISMATCH" });
+            return false;
+          }
+          return true;
+        });
+
+      // Cupo de la categoría — se calcula una sola vez para todo el lote.
+      if (categoryId) {
+        const { data: cat } = await supabase
+          .from("tournament_categories")
+          .select("id,max_teams")
+          .eq("id", categoryId)
+          .maybeSingle();
+        if (cat && typeof cat.max_teams === "number") {
+          const { count } = await supabase
+            .from("registrations")
+            .select("id", { count: "exact", head: true })
+            .eq("tournament_id", tournamentId)
+            .eq("category_id", categoryId)
+            .in("status", ["pending", "accepted", "waitlist"]);
+          const remaining = Math.max(0, cat.max_teams - (count ?? 0));
+          if (validEntries.length > remaining) {
+            const overflow = validEntries.slice(remaining);
+            for (const e of overflow) {
+              skipped.push({ index: e.index, names: e.names, reason: "CATEGORY_FULL" });
+            }
+            validEntries = validEntries.slice(0, remaining);
+          }
+        }
+      }
+
+      if (validEntries.length === 0) {
+        return { createdCount: 0, created: [], skipped };
+      }
+
+      const admin = getAdminClient();
+      await setAuditActor(admin, userId, auditActorRole(actorRole));
+
+      const { data: newRegs, error: regErr } = await admin
+        .from("registrations")
+        .insert(
+          validEntries.map((e) => ({
+            tournament_id: tournamentId,
+            player_ids: [],
+            guest_names: e.names,
+            category_id: categoryId ?? null,
+            status: "accepted",
+            registered_by: userId,
+          })) as never,
+        )
+        .select("id,tournament_id,player_ids,status,category_id,paid_transaction_id");
+
+      if (regErr || !newRegs) {
+        throw new MpError(
+          "REGISTRATION.INSERT_FAILED",
+          regErr?.message ?? "Error al inscribir el lote",
+          500,
+        );
+      }
+
+      const entryFeeCents = (tournament.entry_fee_cents as number | null) ?? 0;
+      const currency = (tournament.currency as string | null) ?? "USD";
+      const created: PartnerRegistrationRow[] = new Array(newRegs.length);
+
+      for (let i = 0; i < newRegs.length; i += BULK_FAN_CHUNK) {
+        const chunk = newRegs.slice(i, i + BULK_FAN_CHUNK);
+        await Promise.all(
+          chunk.map(async (reg, chunkIdx) => {
+            const idx = i + chunkIdx;
+            const entry = validEntries[idx];
+            let paidTransactionId: string | null = null;
+
+            if (entryFeeCents > 0) {
+              const { data: tx, error: txErr } = await admin
+                .from("transactions")
+                .insert({
+                  kind: "tournament",
+                  ref_id: reg.id as string,
+                  amount_cents: entryFeeCents,
+                  currency,
+                  method: "cash",
+                  status: "pending",
+                  customer_user_id: null,
+                  customer_name: entry.names[0],
+                } as never)
+                .select("id")
+                .single();
+              if (!txErr && tx) {
+                paidTransactionId = tx.id as string;
+                await admin
+                  .from("registrations")
+                  .update({ paid_transaction_id: paidTransactionId } as never)
+                  .eq("id", reg.id as string);
+              } else {
+                console.error(
+                  "[addRegistrationsBulkByPartner] transaction insert failed:",
+                  txErr?.message,
+                );
+              }
+            }
+
+            await writeAuditLog({
+              admin,
+              entity: "registrations",
+              entityId: reg.id as string,
+              action: "registration.partner_manual_add",
+              diff: { guestNames: entry.names, hasTransaction: entryFeeCents > 0, bulk: true },
+            });
+
+            created[idx] = {
+              id: reg.id as string,
+              tournamentId: reg.tournament_id as string,
+              playerIds: (reg.player_ids as string[] | null) ?? [],
+              guestNames: entry.names,
+              status: reg.status as string,
+              categoryId: (reg.category_id as string | null) ?? null,
+              paidTransactionId,
+            };
+          }),
+        );
+      }
+
+      return { createdCount: created.length, created, skipped };
+    },
+  );
+}
+
 // ── helpers compartidos para revisión de comprobantes ─────────────────────
 
 async function requireEditorFromTransaction(transactionId: string): Promise<{
