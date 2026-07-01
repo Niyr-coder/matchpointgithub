@@ -122,7 +122,7 @@ export function DashboardSidebar({
           background: "var(--sidebar-bg)",
           color: "var(--sidebar-fg)",
           borderRight: "1px solid var(--sidebar-border)",
-          height: "100vh",
+          height: "100dvh",
         }}
       >
       <div
@@ -226,7 +226,6 @@ export function DashboardSidebar({
             title={canSwitchRoles ? "Cambiar rol" : undefined}
             style={{
               flex: 1,
-              display: "flex",
               alignItems: "center",
               gap: 10,
               padding: 8,
