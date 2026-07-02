@@ -592,7 +592,8 @@ pagada (no confundir con `is_featured`/"estelar").
   rewrite en next.config) hacia la ruta real `/t/[slug]/live?k=`; sin slug
   cae al empty state `/tv`. Override del dominio: env `NEXT_PUBLIC_TV_URL`.
 - URL real: `/t/[slug]/live?k=<display_token>`. Sin login.
-- `tournaments.display_token` (uuid) se genera/rota desde el panel partner
+- `tournaments.display_token` (10 chars, alfabeto sin ambiguos — mig
+  `20260720000000`; antes uuid) se genera/rota desde el panel partner
   (`TournamentVenueDisplayPanel`) vía `ensureTournamentDisplayToken` /
   `rotateTournamentDisplayToken`. Guard: `requireTournamentEditor` (admin o
   owner/admin del partner). Lectura pública valida `slug + token` con

@@ -2,7 +2,20 @@
 
 import "server-only";
 
-import { randomUUID } from "crypto";
+import { randomBytes } from "crypto";
+
+// Token corto para el link de la pantalla TV: 10 chars sobre alfabeto sin
+// ambiguos (sin 0/O/1/I/L) — tecleable en una TV, 31^10 combinaciones y
+// rotable. Antes era un UUID de 36 chars (mig 20260720000000 migró el tipo).
+const DISPLAY_TOKEN_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function generateDisplayToken(): string {
+  const bytes = randomBytes(10);
+  let out = "";
+  for (let i = 0; i < 10; i++) {
+    out += DISPLAY_TOKEN_ALPHABET[bytes[i] % DISPLAY_TOKEN_ALPHABET.length];
+  }
+  return out;
+}
 import { z } from "zod";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
@@ -29,7 +42,7 @@ export async function ensureTournamentDisplayToken(
 
     let token = tRow.display_token;
     if (!token) {
-      token = randomUUID();
+      token = generateDisplayToken();
       const { error } = await admin
         .from("tournaments")
         .update({ display_token: token } as never)
@@ -47,7 +60,7 @@ export async function rotateTournamentDisplayToken(
   return runAction(TournamentIdSchema, input, async ({ tournamentId }) => {
     await requireTournamentEditor(tournamentId);
     const admin = getAdminClient();
-    const token = randomUUID();
+    const token = generateDisplayToken();
     const { data: row, error } = await admin
       .from("tournaments")
       .update({ display_token: token } as never)
@@ -175,7 +188,9 @@ export type TournamentLiveDisplay = {
 
 const LiveQuerySchema = z.object({
   slug: z.string().min(1),
-  token: z.string().uuid(),
+  // Token corto de 10 chars (mig 20260720000000); se acepta hasta 64 por
+  // compatibilidad con links UUID viejos aún impresos/compartidos.
+  token: z.string().min(6).max(64),
 });
 
 function formatSetScore(score: unknown): { a: string; b: string } {
