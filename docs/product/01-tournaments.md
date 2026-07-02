@@ -160,7 +160,9 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
   directo de la final — los tres paths llaman `notifyTournamentFinishedCore`
   en `src/lib/notifications/tournament.ts`)
 - `match_result_reported` ✅ (cuando reportan tu match)
-- `match_incident_reported` ✅ (incidente desde monitor de cancha · mig `20260630100000`)
+- `match_incident_reported` ✅ (incidente desde monitor de cancha · mig `20260630100000`;
+  desde mig `20260711010000` también llega al owner/manager del club cuando el
+  torneo no tiene partner — `notifyClubStaff` como fallback en `reportMatchIncident`)
 - `tournament_match_ready` ✅ "Te toca jugar" (mig `20260710010000`): se
   encola cuando el partido de un jugador queda con ambos lados definidos —
   llave generada (ronda 1 sin byes), avance de ganador que completa el

@@ -655,7 +655,10 @@ demo**, no productivos:
 - `AdminAuditScreenView` — algunas filas seed para demo (si la tabla está
   vacía en dev)
 - `RatingSparkline` en UserHome cuando un user nuevo no tiene history —
-  muestra una línea plana en `STARTING_RATING_VIEW = 2500`
+  muestra una línea plana en `STARTING_RATING_VIEW = 2500`. Desde mig
+  `20260711000000` la tabla `ranking_snapshots` SÍ se puebla (cron diario
+  `process-ranking-snapshots-daily` + backfill retroactivo), así que la línea
+  plana solo aplica a users sin partidos con rating aplicado.
 
 Cuando los reemplaces con data real, mantener el visual idéntico para no
 romper el lenguaje del dashboard.

@@ -9,7 +9,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
-import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
+import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyMatchReady, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
 import { requireTournamentEditor } from "@/server/actions/tournaments";
 
@@ -1077,7 +1077,7 @@ export async function reportMatchIncident(
     const userId = await requireUserId();
     const admin: AnyClient = getAdminClient();
 
-    const { data: t } = await admin.from("tournaments").select("id, name, slug, partner_id").eq("slug", slug).maybeSingle();
+    const { data: t } = await admin.from("tournaments").select("id, name, slug, partner_id, club_id").eq("slug", slug).maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
     const tournamentId = t.id as string;
 
@@ -1104,24 +1104,28 @@ export async function reportMatchIncident(
     if (error) throw new MpError("MONITORS.INCIDENT_FAILED", "Error al registrar el incidente", 500);
 
     const partnerId = t.partner_id as string | null;
+    const clubId = t.club_id as string | null;
+    const typeLabels: Record<string, string> = {
+      behavior: "Conducta",
+      equipment: "Equipamiento",
+      weather: "Clima",
+      other: "Otro",
+    };
+    const incidentNotif = {
+      kind: "match_incident_reported",
+      title: "Incidente en cancha",
+      body: `El monitor reportó un incidente: ${typeLabels[type] ?? type}.`,
+      payload: {
+        tournament_id: tournamentId,
+        tournament_slug: t.slug,
+        incident_type: type,
+      },
+    };
     if (partnerId) {
-      const typeLabels: Record<string, string> = {
-        behavior: "Conducta",
-        equipment: "Equipamiento",
-        weather: "Clima",
-        other: "Otro",
-      };
-      void notifyPartnerOrgStaff({
-        partnerId,
-        kind: "match_incident_reported",
-        title: "Incidente en cancha",
-        body: `El monitor reportó un incidente: ${typeLabels[type] ?? type}.`,
-        payload: {
-          tournament_id: tournamentId,
-          tournament_slug: t.slug,
-          incident_type: type,
-        },
-      });
+      void notifyPartnerOrgStaff({ partnerId, ...incidentNotif });
+    } else if (clubId) {
+      // Torneo organizado por un club (sin partner): avisar al owner/manager.
+      void notifyClubStaff({ clubId, ...incidentNotif });
     }
 
     return { id: (row as { id: string }).id };

@@ -48,6 +48,8 @@ const ERROR_CODE_MESSAGES_ES: Record<string, string> = {
   "MONITORS.MATCH_TAKEN": "Otra cancha ya tomó este partido",
   "MONITORS.MATCH_NOT_YOURS": "Este partido no pertenece a tu cancha",
   "MONITORS.MATCH_NOT_FOUND": "No encontramos el partido",
+  "TOURNAMENTS.TOURNAMENT_FULL": "El torneo está lleno",
+  "BRACKETS.FORMAT_UNAVAILABLE": "Este formato aún no está disponible",
 };
 
 const ENGLISH_MESSAGE_ES: Record<string, string> = {

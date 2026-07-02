@@ -1206,8 +1206,14 @@ create table ranking_snapshots (
 create index idx_ranking_snapshots_user_sport on ranking_snapshots (user_id, sport, snapshot_at desc);
 create index idx_ranking_snapshots_user_sport_mode on ranking_snapshots (user_id, sport, mode, snapshot_at desc);
 -- mode-aware (mig 130): el chart de evolución separa singles/dobles. getUserRankingHistory
--- acepta `mode`; UserHome/RankingScreen piden por modo. El futuro job de snapshots debe
--- setear mode al insertar.
+-- acepta `mode`; UserHome/RankingScreen piden por modo.
+-- POBLADA desde mig 20260711000000: fn_process_ranking_snapshots() corre en el
+-- cron diario `process-ranking-snapshots-daily` (06:00 UTC) e inserta 1 fila por
+-- (user, sport, mode) solo cuando current_rating cambió desde el último snapshot.
+-- rank_position solo para quienes cumplen fn_get_ranking_min_matches() (mig 116).
+-- La misma mig hizo backfill retroactivo derivando la curva de matches.rating_deltas
+-- (casuales, mig 065) + match_rating_applications (torneo) con reconstrucción
+-- backward desde current_rating — el punto final siempre cuadra con player_stats.
 
 -- vista materializada para listados rápidos
 create materialized view mv_user_ranking as

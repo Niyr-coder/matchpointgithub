@@ -561,6 +561,22 @@ export async function registerToTournament(
           );
         }
 
+        // Cupo global del torneo. Misma semántica que la UI
+        // (registration-eligibility.ts): cuenta inscripciones activas por
+        // equipo, no por jugador. Sin este check, una llamada directa a la
+        // action podía sobre-inscribir aunque la UI bloqueara el botón.
+        const maxParticipants = (t.max_participants as number | null) ?? null;
+        if (maxParticipants != null && maxParticipants > 0) {
+          const { count: totalCount } = await supabase
+            .from("registrations")
+            .select("*", { count: "exact", head: true })
+            .eq("tournament_id", tournamentId)
+            .in("status", ["pending", "accepted"]);
+          if ((totalCount ?? 0) >= maxParticipants) {
+            throw new MpError("TOURNAMENTS.TOURNAMENT_FULL", "El torneo está lleno", 409);
+          }
+        }
+
         const { data: catRows } = await supabase
           .from("tournament_categories")
           .select("id,max_teams,mpr_min,mpr_max")
@@ -1105,6 +1121,15 @@ export async function generateBracket(
       throw new MpError(
         "BRACKETS.LIGA_FORMAT",
         "Los formatos de liga (round-robin y suizo) no usan cuadro eliminatorio. La generación de calendarios de liga está en desarrollo.",
+        422,
+      );
+    }
+    // Sin este guard, double_elim caía al generador de eliminación simple y
+    // se degradaba en silencio (insert hardcodea format single_elim).
+    if (t.format === "double_elim") {
+      throw new MpError(
+        "BRACKETS.FORMAT_UNAVAILABLE",
+        "La doble eliminación está en desarrollo. Usa eliminación simple o grupos + llave.",
         422,
       );
     }
