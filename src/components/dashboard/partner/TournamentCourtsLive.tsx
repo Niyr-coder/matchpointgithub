@@ -198,10 +198,30 @@ function CourtCard({
         gap: 7,
       }}
     >
-      {/* Pills: cancha + estado */}
+      {/* Pills: cancha + estado + categoría */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <CourtPill label={courtLabel} />
         <StatusPill status={match?.status ?? null} />
+        {match?.categoryName && (
+          <span
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              padding: "2px 8px",
+              borderRadius: 100,
+              background: "var(--border)",
+              color: "var(--muted-fg)",
+              letterSpacing: "0.04em",
+              maxWidth: 120,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={match.categoryName}
+          >
+            {match.categoryName}
+          </span>
+        )}
       </div>
 
       {/* Monitor */}

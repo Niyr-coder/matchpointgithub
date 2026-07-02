@@ -68,6 +68,8 @@ export type TournamentLiveMatch = {
   sets: Array<{ a: number; b: number }>;
   status: string;
   phase: "group" | "knockout";
+  /** Nombre de la categoría del partido (null = bracket global legacy). */
+  categoryName: string | null;
   groupName?: string;
   courtId?: string;
   courtLabel?: string;
@@ -103,6 +105,20 @@ export type TournamentLiveBracketRound = {
   matches: TournamentLiveBracketMatch[];
 };
 
+/** Un cuadro de eliminatoria por categoría (categoryName null = bracket global legacy). */
+export type TournamentLiveBracketEntry = {
+  categoryName: string | null;
+  rounds: TournamentLiveBracketRound[];
+  finalists: { a: string; b: string } | null;
+  championLabel: string | null;
+};
+
+export type TournamentLiveChampion = {
+  categoryName: string | null;
+  championLabel: string;
+  finalists: { a: string; b: string } | null;
+};
+
 export type TournamentLiveStandout = {
   label: string;
   setsWon: number;
@@ -124,6 +140,7 @@ export type TournamentLivePath = {
 export type TournamentLiveTeam = {
   registrationId: string;
   label: string;
+  categoryName: string | null;
 };
 
 export type TournamentLiveSponsor = {
@@ -132,16 +149,6 @@ export type TournamentLiveSponsor = {
   sponsorName: string;
   logoUrl: string | null;
   targetUrl: string | null;
-};
-
-export type TournamentLiveGlobalStanding = {
-  rank: number;
-  label: string;
-  wins: number;
-  losses: number;
-  played: number;
-  setsWon: number;
-  setsLost: number;
 };
 
 export type TournamentLiveDisplay = {
@@ -156,13 +163,13 @@ export type TournamentLiveDisplay = {
   upcomingMatches: TournamentLiveMatch[];
   courts: TournamentLiveCourt[];
   groupTables: TournamentLiveGroupTable[];
-  bracketRounds: TournamentLiveBracketRound[];
-  finalists: { a: string; b: string } | null;
+  /** Un cuadro por categoría con bracket generado (más reciente por categoría). */
+  brackets: TournamentLiveBracketEntry[];
   standouts: TournamentLiveStandout[];
   paths: TournamentLivePath[];
-  championLabel: string | null;
+  /** Campeones por categoría (bracket con final definida, o liga completa). */
+  champions: TournamentLiveChampion[];
   teams: TournamentLiveTeam[];
-  globalStandings: TournamentLiveGlobalStanding[];
   sponsors: TournamentLiveSponsor[];
 };
 
@@ -328,7 +335,7 @@ export async function getTournamentLiveDisplay(
         .eq("tournament_id", tournamentId),
       admin
         .from("registrations")
-        .select("id")
+        .select("id,category_id")
         .eq("tournament_id", tournamentId)
         .eq("status", "accepted")
         .order("created_at", { ascending: true }),
@@ -342,9 +349,11 @@ export async function getTournamentLiveDisplay(
     const groupTables: TournamentLiveGroupTable[] = [];
     const categoryNames: string[] = [];
     const teamStats = new Map<string, TeamStat>();
-    // Acumula filas brutas de standings para construir la tabla global al final.
-    type RawStandingRow = { registrationId: string; wins: number; losses: number; played: number; setsWon: number; setsLost: number };
-    const allGroupStandingRows: RawStandingRow[] = [];
+    const catNameById = new Map<string, string>();
+    for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
+    // Rank 1 por categoría de UN solo grupo (formato liga) — para derivar el
+    // campeón cuando la categoría cierra sin bracket (stage 'complete').
+    const ligaChampionByCat = new Map<string, string>();
 
     // Bulk fetch de grupos/miembros/partidos en 3 queries totales — antes era
     // un N+1 de 2 queries POR grupo × categorías, re-ejecutado por cada
@@ -415,6 +424,7 @@ export async function getTournamentLiveDisplay(
             sets,
             status: m.status as string,
             phase: "group",
+            categoryName,
             groupName: g.name as string,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             courtId: ((m as any).court_id as string | null) ?? undefined,
@@ -440,15 +450,9 @@ export async function getTournamentLiveDisplay(
               status: m.status as string,
             })),
           );
-          for (const s of standings) {
-            allGroupStandingRows.push({
-              registrationId: s.registrationId,
-              wins: s.wins,
-              losses: s.losses,
-              played: s.played,
-              setsWon: s.setsWon,
-              setsLost: s.setsLost,
-            });
+          if (groups.length === 1 && standings.length > 0) {
+            const top = standings.find((s) => s.rank === 1) ?? standings[0]!;
+            ligaChampionByCat.set(cat.id as string, nameByReg.get(top.registrationId) ?? "—");
           }
           groupTables.push({
             categoryName,
@@ -464,30 +468,47 @@ export async function getTournamentLiveDisplay(
       }
     }
 
-    const { data: brackets } = await admin
+    // TODOS los brackets del torneo — uno por categoría (el más reciente por
+    // categoría si hubiera duplicados). category_id null = bracket global legacy.
+    const { data: bracketsRaw } = await admin
       .from("brackets")
-      .select("id")
+      .select("id,category_id")
       .eq("tournament_id", tournamentId)
-      .order("generated_at", { ascending: false })
-      .limit(1);
-    const bracketId = brackets?.[0]?.id as string | undefined;
-    let championLabel: string | null = null;
-    const bracketRounds: TournamentLiveBracketRound[] = [];
-    let finalists: { a: string; b: string } | null = null;
-    const paths: TournamentLivePath[] = [];
+      .order("generated_at", { ascending: false });
+    type BracketRow = { id: string; category_id: string | null };
+    const bracketByCatKey = new Map<string, BracketRow>();
+    for (const b of (bracketsRaw ?? []) as unknown as BracketRow[]) {
+      const key = b.category_id ?? "__global__";
+      if (!bracketByCatKey.has(key)) bracketByCatKey.set(key, b);
+    }
+    // Orden estable: bracket global legacy primero, luego según el orden de categorías.
+    const catOrder = new Map<string, number>();
+    (cats ?? []).forEach((c, i) => catOrder.set(c.id as string, i));
+    const activeBrackets = Array.from(bracketByCatKey.values()).sort(
+      (x, y) =>
+        (x.category_id ? catOrder.get(x.category_id) ?? 999 : -1) -
+        (y.category_id ? catOrder.get(y.category_id) ?? 999 : -1),
+    );
 
-    if (bracketId) {
+    const bracketEntries: TournamentLiveBracketEntry[] = [];
+    const champions: TournamentLiveChampion[] = [];
+    const paths: TournamentLivePath[] = [];
+    const lbl = (id: string | null) => (id ? nameByReg.get(id) ?? "—" : "TBD");
+
+    if (activeBrackets.length > 0) {
+      // Partidos de TODOS los brackets en una sola query (nada de N+1 por categoría).
       const { data: bmRaw } = await admin
         .from("bracket_matches")
         .select(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          "id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,is_bronze,scheduled_at,court_id,courts(code,name)" as any,
+          "id,bracket_id,round,position,side_a_registration_id,side_b_registration_id,score,status,winner_side,is_bronze,scheduled_at,court_id,courts(code,name)" as any,
         )
-        .eq("bracket_id", bracketId)
+        .in("bracket_id", activeBrackets.map((b) => b.id))
         .eq("is_bronze" as never, false)
         .order("round", { ascending: true });
-      const bm = (bmRaw ?? []) as unknown as Array<{
+      type BmRow = {
         id: string;
+        bracket_id: string;
         round: number;
         position: number | null;
         side_a_registration_id: string | null;
@@ -498,106 +519,140 @@ export async function getTournamentLiveDisplay(
         scheduled_at: string | null;
         court_id: string | null;
         courts?: { code?: string; name?: string } | null;
-      }>;
-
-      const lbl = (id: string | null) => (id ? nameByReg.get(id) ?? "—" : "TBD");
-
-      for (const m of bm ?? []) {
-        const { a, b } = formatSetScore(m.score);
-        const sets = parseSets(m.score);
-        const labelA = lbl(m.side_a_registration_id);
-        const labelB = lbl(m.side_b_registration_id);
-        allMatches.push({
-          id: m.id,
-          labelA,
-          labelB,
-          scoreA: a,
-          scoreB: b,
-          sets,
-          status: m.status,
-          phase: "knockout",
-          courtId: m.court_id ?? undefined,
-          courtLabel: m.courts?.code ?? m.courts?.name ?? undefined,
-          scheduledAt: m.scheduled_at ?? null,
-        });
-        const ws = m.winner_side ?? null;
-        tallyTeam(teamStats, m.side_a_registration_id, labelA, sets, "a", ws);
-        tallyTeam(teamStats, m.side_b_registration_id, labelB, sets, "b", ws);
+      };
+      const allBm = (bmRaw ?? []) as unknown as BmRow[];
+      const bmByBracket = new Map<string, BmRow[]>();
+      for (const m of allBm) {
+        const list = bmByBracket.get(m.bracket_id) ?? [];
+        list.push(m);
+        bmByBracket.set(m.bracket_id, list);
       }
 
-      // Estructura del cuadro por ronda (ascendente → Final al final)
-      const byRound = new Map<number, typeof bm>();
-      for (const m of bm ?? []) {
-        if (!byRound.has(m.round)) byRound.set(m.round, []);
-        byRound.get(m.round)!.push(m);
-      }
-      const sortedRounds = Array.from(byRound.keys()).sort((x, y) => x - y);
-      for (const r of sortedRounds) {
-        const ms = byRound.get(r)!.slice().sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
-        bracketRounds.push({
-          name: roundName(ms.length),
-          matches: ms.map((m) => {
-            const { a, b } = formatSetScore(m.score);
-            return {
-              id: m.id,
-              labelA: lbl(m.side_a_registration_id),
-              labelB: lbl(m.side_b_registration_id),
-              scoreA: a,
-              scoreB: b,
-              sets: parseSets(m.score),
-              status: m.status,
-              winner: m.winner_side === "a" || m.winner_side === "b" ? m.winner_side : null,
-            };
-          }),
-        });
-      }
+      for (const bracket of activeBrackets) {
+        const bracketCategoryName = bracket.category_id
+          ? catNameById.get(bracket.category_id) ?? null
+          : null;
+        const bm = bmByBracket.get(bracket.id) ?? [];
 
-      // Finalistas + campeón (ronda más alta = Final)
-      const maxRound = sortedRounds.length ? sortedRounds[sortedRounds.length - 1]! : null;
-      const finalMatch = maxRound != null ? (byRound.get(maxRound) ?? [])[0] : undefined;
-      if (finalMatch) {
-        finalists = { a: lbl(finalMatch.side_a_registration_id), b: lbl(finalMatch.side_b_registration_id) };
-        if (finalMatch.status === "reported" || finalMatch.status === "confirmed") {
-          if (finalMatch.winner_side === "a" && finalMatch.side_a_registration_id) {
-            championLabel = lbl(finalMatch.side_a_registration_id);
-          } else if (finalMatch.winner_side === "b" && finalMatch.side_b_registration_id) {
-            championLabel = lbl(finalMatch.side_b_registration_id);
+        for (const m of bm) {
+          const { a, b } = formatSetScore(m.score);
+          const sets = parseSets(m.score);
+          const labelA = lbl(m.side_a_registration_id);
+          const labelB = lbl(m.side_b_registration_id);
+          allMatches.push({
+            id: m.id,
+            labelA,
+            labelB,
+            scoreA: a,
+            scoreB: b,
+            sets,
+            status: m.status,
+            phase: "knockout",
+            categoryName: bracketCategoryName,
+            courtId: m.court_id ?? undefined,
+            courtLabel: m.courts?.code ?? m.courts?.name ?? undefined,
+            scheduledAt: m.scheduled_at ?? null,
+          });
+          const ws = m.winner_side ?? null;
+          tallyTeam(teamStats, m.side_a_registration_id, labelA, sets, "a", ws);
+          tallyTeam(teamStats, m.side_b_registration_id, labelB, sets, "b", ws);
+        }
+
+        // Estructura del cuadro por ronda (ascendente → Final al final)
+        const byRound = new Map<number, BmRow[]>();
+        for (const m of bm) {
+          if (!byRound.has(m.round)) byRound.set(m.round, []);
+          byRound.get(m.round)!.push(m);
+        }
+        const sortedRounds = Array.from(byRound.keys()).sort((x, y) => x - y);
+        const rounds: TournamentLiveBracketRound[] = [];
+        for (const r of sortedRounds) {
+          const ms = byRound.get(r)!.slice().sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
+          rounds.push({
+            name: roundName(ms.length),
+            matches: ms.map((m) => {
+              const { a, b } = formatSetScore(m.score);
+              return {
+                id: m.id,
+                labelA: lbl(m.side_a_registration_id),
+                labelB: lbl(m.side_b_registration_id),
+                scoreA: a,
+                scoreB: b,
+                sets: parseSets(m.score),
+                status: m.status,
+                winner: m.winner_side === "a" || m.winner_side === "b" ? m.winner_side : null,
+              };
+            }),
+          });
+        }
+
+        // Finalistas + campeón (ronda más alta = Final)
+        let finalists: { a: string; b: string } | null = null;
+        let championLabel: string | null = null;
+        const maxRound = sortedRounds.length ? sortedRounds[sortedRounds.length - 1]! : null;
+        const finalMatch = maxRound != null ? (byRound.get(maxRound) ?? [])[0] : undefined;
+        if (finalMatch) {
+          finalists = { a: lbl(finalMatch.side_a_registration_id), b: lbl(finalMatch.side_b_registration_id) };
+          if (finalMatch.status === "reported" || finalMatch.status === "confirmed") {
+            if (finalMatch.winner_side === "a" && finalMatch.side_a_registration_id) {
+              championLabel = lbl(finalMatch.side_a_registration_id);
+            } else if (finalMatch.winner_side === "b" && finalMatch.side_b_registration_id) {
+              championLabel = lbl(finalMatch.side_b_registration_id);
+            }
           }
         }
-      }
 
-      // Camino al título: pasos por registration (de los finalistas)
-      const stepsByReg = new Map<string, TournamentLivePathStep[]>();
-      for (const r of sortedRounds) {
-        const ms = byRound.get(r)!;
-        const rName = roundName(ms.length);
-        for (const m of ms) {
-          const { a, b } = formatSetScore(m.score);
-          const pushStep = (reg: string | null, oppLabel: string, side: "a" | "b") => {
-            if (!reg) return;
-            const mine = side === "a" ? a : b;
-            const theirs = side === "a" ? b : a;
-            let result: string;
-            if (m.status === "confirmed" || m.status === "reported") {
-              result = `${m.winner_side === side ? "Ganó" : "Perdió"} ${mine}-${theirs}`;
-            } else if (m.status === "live") {
-              result = `En juego ${mine}-${theirs}`;
-            } else {
-              result = "Por jugar";
-            }
-            if (!stepsByReg.has(reg)) stepsByReg.set(reg, []);
-            stepsByReg.get(reg)!.push({ round: rName, opponent: oppLabel, result, status: m.status });
-          };
-          pushStep(m.side_a_registration_id, lbl(m.side_b_registration_id), "a");
-          pushStep(m.side_b_registration_id, lbl(m.side_a_registration_id), "b");
+        bracketEntries.push({ categoryName: bracketCategoryName, rounds, finalists, championLabel });
+        if (championLabel) {
+          champions.push({ categoryName: bracketCategoryName, championLabel, finalists });
+        }
+
+        // Camino al título: pasos por registration (de los finalistas del cuadro)
+        const stepsByReg = new Map<string, TournamentLivePathStep[]>();
+        for (const r of sortedRounds) {
+          const ms = byRound.get(r)!;
+          const rName = roundName(ms.length);
+          for (const m of ms) {
+            const { a, b } = formatSetScore(m.score);
+            const pushStep = (reg: string | null, oppLabel: string, side: "a" | "b") => {
+              if (!reg) return;
+              const mine = side === "a" ? a : b;
+              const theirs = side === "a" ? b : a;
+              let result: string;
+              if (m.status === "confirmed" || m.status === "reported") {
+                result = `${m.winner_side === side ? "Ganó" : "Perdió"} ${mine}-${theirs}`;
+              } else if (m.status === "live") {
+                result = `En juego ${mine}-${theirs}`;
+              } else {
+                result = "Por jugar";
+              }
+              if (!stepsByReg.has(reg)) stepsByReg.set(reg, []);
+              stepsByReg.get(reg)!.push({ round: rName, opponent: oppLabel, result, status: m.status });
+            };
+            pushStep(m.side_a_registration_id, lbl(m.side_b_registration_id), "a");
+            pushStep(m.side_b_registration_id, lbl(m.side_a_registration_id), "b");
+          }
+        }
+        const pathRegs: string[] = [];
+        if (finalMatch?.side_a_registration_id) pathRegs.push(finalMatch.side_a_registration_id);
+        if (finalMatch?.side_b_registration_id) pathRegs.push(finalMatch.side_b_registration_id);
+        for (const reg of pathRegs.slice(0, 2)) {
+          const steps = stepsByReg.get(reg) ?? [];
+          if (steps.length > 0) paths.push({ label: lbl(reg), steps });
         }
       }
-      const pathRegs: string[] = [];
-      if (finalMatch?.side_a_registration_id) pathRegs.push(finalMatch.side_a_registration_id);
-      if (finalMatch?.side_b_registration_id) pathRegs.push(finalMatch.side_b_registration_id);
-      for (const reg of pathRegs.slice(0, 2)) {
-        const steps = stepsByReg.get(reg) ?? [];
-        if (steps.length > 0) paths.push({ label: lbl(reg), steps });
+    }
+
+    // Campeones de liga: categorías con stage 'complete' SIN bracket propio (y sin
+    // bracket global legacy) → rank 1 de standings del grupo único de la categoría.
+    const hasGlobalBracket = bracketByCatKey.has("__global__");
+    for (const cat of cats ?? []) {
+      const catId = cat.id as string;
+      if ((cat.stage as string | null) !== "complete") continue;
+      if (hasGlobalBracket || bracketByCatKey.has(catId)) continue;
+      const ligaChampion = ligaChampionByCat.get(catId);
+      if (ligaChampion) {
+        champions.push({ categoryName: cat.name as string, championLabel: ligaChampion, finalists: null });
       }
     }
 
@@ -605,32 +660,16 @@ export async function getTournamentLiveDisplay(
       .filter((s) => s.setsWon > 0)
       .sort((a, b) => b.setsWon - a.setsWon || b.matchesWon - a.matchesWon)
       .slice(0, 5);
-    const phase: "groups" | "knockout" = bracketRounds.length > 0 ? "knockout" : "groups";
+    const phase: "groups" | "knockout" = bracketEntries.some((e) => e.rounds.length > 0)
+      ? "knockout"
+      : "groups";
 
     // Lista de equipos inscritos aceptados para la escena "teams" del TV.
     const teams: TournamentLiveTeam[] = (acceptedRegsRaw ?? []).map((r) => ({
       registrationId: r.id as string,
       label: nameByReg.get(r.id as string) ?? "—",
+      categoryName: r.category_id ? catNameById.get(r.category_id as string) ?? null : null,
     }));
-
-    // Tabla global: fusión de todos los grupos, re-rankeada por wins → sets diff → games diff.
-    const globalStandings: TournamentLiveGlobalStanding[] = allGroupStandingRows
-      .sort((a, b) => {
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        const aSetsDiff = a.setsWon - a.setsLost;
-        const bSetsDiff = b.setsWon - b.setsLost;
-        if (bSetsDiff !== aSetsDiff) return bSetsDiff - aSetsDiff;
-        return b.played - a.played;
-      })
-      .map((row, idx) => ({
-        rank: idx + 1,
-        label: nameByReg.get(row.registrationId) ?? "—",
-        wins: row.wins,
-        losses: row.losses,
-        played: row.played,
-        setsWon: row.setsWon,
-        setsLost: row.setsLost,
-      }));
 
     // Derivar listas para la pantalla
     const liveMatches = allMatches.filter((m) => m.status === "live").slice(0, 8);
@@ -687,13 +726,11 @@ export async function getTournamentLiveDisplay(
       upcomingMatches,
       courts,
       groupTables,
-      bracketRounds,
-      finalists,
+      brackets: bracketEntries,
       standouts,
       paths,
-      championLabel,
+      champions,
       teams,
-      globalStandings,
       sponsors,
     };
   });

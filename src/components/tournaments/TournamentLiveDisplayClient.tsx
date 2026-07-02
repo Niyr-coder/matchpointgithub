@@ -6,9 +6,9 @@ import {
   type TournamentLiveDisplay,
   type TournamentLiveMatch,
   type TournamentLiveCourt,
-  type TournamentLiveBracketRound,
+  type TournamentLiveBracketEntry,
+  type TournamentLiveChampion,
   type TournamentLiveTeam,
-  type TournamentLiveGlobalStanding,
   type TournamentLiveGroupTable,
 } from "@/server/actions/tournament-live";
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
@@ -27,12 +27,11 @@ const PUBLIC_SITE =
 
 type Scene =
   | { kind: "court"; idx: number }
-  | { kind: "bracket" }
+  | { kind: "bracket"; idx: number }
   | { kind: "champion" }
   | { kind: "upnext" }
   | { kind: "teams" }
-  | { kind: "grouptable"; idx: number }
-  | { kind: "globalstandings" };
+  | { kind: "grouptable"; idx: number };
 
 function fmtTime(iso?: string | null): string | null {
   if (!iso) return null;
@@ -139,12 +138,13 @@ export function TournamentLiveDisplayClient({
   const secondary: Scene[] = [];
   if (data.groupTables.length > 0) {
     data.groupTables.forEach((_, i) => secondary.push({ kind: "grouptable", idx: i }));
-  } else if (data.globalStandings.length > 0) {
-    secondary.push({ kind: "globalstandings" });
   }
   if (data.teams.length > 0) secondary.push({ kind: "teams" });
-  if (data.phase === "knockout" && data.bracketRounds.length > 0) secondary.push({ kind: "bracket" });
-  if (data.championLabel) secondary.push({ kind: "champion" });
+  // Una escena de llave por cada bracket con rondas (una por categoría).
+  data.brackets.forEach((b, i) => {
+    if (b.rounds.length > 0) secondary.push({ kind: "bracket", idx: i });
+  });
+  if (data.champions.length > 0) secondary.push({ kind: "champion" });
   secondary.push({ kind: "upnext" });
 
   const scenes: Scene[] = [];
@@ -174,10 +174,13 @@ export function TournamentLiveDisplayClient({
   const qrSrc = publicUrl
     ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=6&data=${encodeURIComponent(publicUrl)}`
     : "";
+  const categoryLine = data.categoryNames.slice(0, 2).join(" · ");
   const subtitle =
     data.phase === "knockout"
-      ? "Eliminatorias"
-      : data.categoryNames.slice(0, 2).join(" · ") || "Fase de grupos";
+      ? categoryLine
+        ? `Eliminatorias · ${categoryLine}`
+        : "Eliminatorias"
+      : categoryLine || "Fase de grupos";
 
   // Ticker: canchas en juego + próximos + info del torneo + sponsors
   const tickerItems: string[] = [];
@@ -238,15 +241,11 @@ export function TournamentLiveDisplayClient({
         {scene.kind === "court" && liveCourts[scene.idx] && (
           <CourtBroadcast court={liveCourts[scene.idx]!} bump={bumped} />
         )}
-        {scene.kind === "bracket" && (
-          <BracketFull
-            rounds={data.bracketRounds}
-            finalists={data.finalists}
-            championLabel={data.championLabel}
-          />
+        {scene.kind === "bracket" && data.brackets[scene.idx] && (
+          <BracketFull bracket={data.brackets[scene.idx]!} />
         )}
-        {scene.kind === "champion" && data.championLabel && (
-          <ChampionScene championLabel={data.championLabel} finalists={data.finalists} />
+        {scene.kind === "champion" && data.champions.length > 0 && (
+          <ChampionScene champions={data.champions} />
         )}
         {scene.kind === "upnext" && (
           <UpNextScene upcoming={data.upcomingMatches} recent={data.recentMatches} name={data.tournamentName} />
@@ -256,9 +255,6 @@ export function TournamentLiveDisplayClient({
         )}
         {scene.kind === "grouptable" && (
           <GroupTableScene table={data.groupTables[scene.idx]} />
-        )}
-        {scene.kind === "globalstandings" && (
-          <GlobalStandingsScene standings={data.globalStandings} />
         )}
       </main>
 
@@ -297,7 +293,10 @@ function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set
   const leadA = Number(m.scoreA) > Number(m.scoreB);
   const leadB = Number(m.scoreB) > Number(m.scoreA);
   const isBumped = bump.has(m.id);
-  const meta = `${court.courtLabel}${m.groupName ? ` · Grupo ${m.groupName}` : " · Eliminatoria"}`;
+  // Ej.: "Cancha 2 · 4ta Masculino · Grupo A" o "Cancha 2 · Open · Eliminatoria"
+  const meta = `${court.courtLabel}${m.categoryName ? ` · ${m.categoryName}` : ""}${
+    m.groupName ? ` · Grupo ${m.groupName}` : " · Eliminatoria"
+  }`;
   const rows = [
     { label: m.labelA, side: "a" as const, lead: leadA },
     { label: m.labelB, side: "b" as const, lead: leadB },
@@ -343,34 +342,85 @@ function CourtBroadcast({ court, bump }: { court: TournamentLiveCourt; bump: Set
 }
 
 // ---------------------------------------------------------------------------
-// ChampionScene — solo se monta cuando championLabel !== null
+// ChampionScene — solo se monta cuando hay al menos un campeón
 // ---------------------------------------------------------------------------
-function ChampionScene({
-  championLabel,
-  finalists,
-}: {
-  championLabel: string;
-  finalists: { a: string; b: string } | null;
-}) {
+function TrophyIcon() {
+  return (
+    <div className="mp-tvb-champ-trophy" aria-hidden>
+      <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+        <path d="M4 22h16" />
+        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+      </svg>
+    </div>
+  );
+}
+
+function ChampionScene({ champions }: { champions: TournamentLiveChampion[] }) {
+  if (champions.length === 1) {
+    const c = champions[0]!;
+    return (
+      <div className="mp-tvb-champ">
+        <TrophyIcon />
+        <div className="mp-tvb-champ-label">
+          {c.categoryName ? `Campeón · ${c.categoryName}` : "Campeón"}
+        </div>
+        <div className="mp-tvb-champ-name">{c.championLabel}</div>
+        {c.finalists && (
+          <div className="mp-tvb-champ-final">
+            Final: <b>{c.finalists.a}</b> vs <b>{c.finalists.b}</b>
+          </div>
+        )}
+      </div>
+    );
+  }
+  // Varios campeones (uno por categoría): una sola escena que los lista.
   return (
     <div className="mp-tvb-champ">
-      <div className="mp-tvb-champ-trophy" aria-hidden>
-        <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-          <path d="M4 22h16" />
-          <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-          <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-        </svg>
+      <TrophyIcon />
+      <div className="mp-tvb-champ-label">Campeones</div>
+      <div
+        style={{
+          marginTop: "clamp(14px, 2.5vh, 30px)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "clamp(14px, 2.6vh, 32px)",
+          alignItems: "center",
+        }}
+      >
+        {champions.map((c, i) => (
+          <div key={i} style={{ textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: "clamp(11px, 1.2vw, 17px)",
+                fontWeight: 900,
+                letterSpacing: "0.24em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.55)",
+              }}
+            >
+              {c.categoryName ? `Campeón · ${c.categoryName}` : "Campeón"}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontFamily: "var(--font-heading, 'Plus Jakarta Sans', sans-serif)",
+                fontWeight: 900,
+                fontSize: "clamp(28px, 4.5vw, 64px)",
+                lineHeight: 0.95,
+                letterSpacing: "-0.03em",
+                textTransform: "uppercase",
+                color: "var(--tv-accent, #34d399)",
+              }}
+            >
+              {c.championLabel}
+            </div>
+          </div>
+        ))}
       </div>
-      <div className="mp-tvb-champ-label">Campeón</div>
-      <div className="mp-tvb-champ-name">{championLabel}</div>
-      {finalists && (
-        <div className="mp-tvb-champ-final">
-          Final: <b>{finalists.a}</b> vs <b>{finalists.b}</b>
-        </div>
-      )}
     </div>
   );
 }
@@ -422,9 +472,9 @@ function UpNextScene({
                 {m.scheduledAt && (
                   <span className="mp-tvb-row-time">{fmtTime(m.scheduledAt)}</span>
                 )}
-                {m.courtLabel && (
+                {(m.courtLabel || m.categoryName) && (
                   <span style={{ flexShrink: 0, fontSize: "0.72em", fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase" }}>
-                    {m.courtLabel}
+                    {[m.courtLabel, m.categoryName].filter(Boolean).join(" · ")}
                   </span>
                 )}
                 <span className="mp-tvb-row-teams">
@@ -453,9 +503,9 @@ function UpNextScene({
                 <span className="mp-tvb-row-teams">
                   {m.labelA} <b>{pts(m.sets, m.scoreA, m.scoreB).a}</b>–<b>{pts(m.sets, m.scoreA, m.scoreB).b}</b> {m.labelB}
                 </span>
-                {(m.groupName || m.courtLabel) && (
+                {(m.categoryName || m.groupName || m.courtLabel) && (
                   <span style={{ flexShrink: 0, fontSize: "0.68em", fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    {m.groupName ?? m.courtLabel}
+                    {[m.categoryName, m.groupName ?? m.courtLabel].filter(Boolean).join(" · ")}
                   </span>
                 )}
               </div>
@@ -468,9 +518,13 @@ function UpNextScene({
 }
 
 // ---------------------------------------------------------------------------
-// TeamsScene — lista de equipos inscritos
+// TeamsScene — lista de equipos inscritos, agrupados por categoría
 // ---------------------------------------------------------------------------
 const TEAMS_MAX = 16;
+
+type TeamsSceneItem =
+  | { type: "header"; label: string }
+  | { type: "team"; team: TournamentLiveTeam };
 
 function TeamsScene({
   teams,
@@ -479,11 +533,53 @@ function TeamsScene({
   teams: TournamentLiveTeam[];
   totalCount: number;
 }) {
-  const visible = teams.slice(0, TEAMS_MAX);
-  const half = Math.ceil(visible.length / 2);
-  const colA = visible.slice(0, half);
-  const colB = visible.slice(half);
-  const extra = totalCount - TEAMS_MAX;
+  // Agrupar por categoría preservando el orden de llegada; sin categoría → "General".
+  const byCategory = new Map<string, TournamentLiveTeam[]>();
+  for (const t of teams) {
+    const key = t.categoryName ?? "General";
+    const list = byCategory.get(key) ?? [];
+    list.push(t);
+    byCategory.set(key, list);
+  }
+  const groups = Array.from(byCategory.entries());
+  // Torneo sin categorías (todo cae en "General"): sin encabezados, como antes.
+  const showHeaders = groups.length > 1 || (groups.length === 1 && groups[0]![0] !== "General");
+
+  const items: TeamsSceneItem[] = [];
+  let shown = 0;
+  for (const [label, list] of groups) {
+    if (shown >= TEAMS_MAX) break;
+    if (showHeaders) items.push({ type: "header", label });
+    for (const t of list) {
+      if (shown >= TEAMS_MAX) break;
+      items.push({ type: "team", team: t });
+      shown++;
+    }
+  }
+  const half = Math.ceil(items.length / 2);
+  const colA = items.slice(0, half);
+  const colB = items.slice(half);
+  const extra = totalCount - shown;
+
+  const renderItem = (it: TeamsSceneItem, i: number) =>
+    it.type === "header" ? (
+      <div
+        key={`h-${it.label}-${i}`}
+        style={{
+          fontSize: "clamp(11px, 1.1vw, 15px)",
+          fontWeight: 900,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--tv-accent, #34d399)",
+        }}
+      >
+        {it.label}
+      </div>
+    ) : (
+      <div className="mp-tvb-row" key={it.team.registrationId}>
+        <span className="mp-tvb-row-teams">{it.team.label}</span>
+      </div>
+    );
 
   return (
     <div className="mp-tvb-upnext-grid">
@@ -491,23 +587,13 @@ function TeamsScene({
         <div className="mp-tvb-col-h">
           Inscritos &mdash; {totalCount} {totalCount === 1 ? "equipo" : "equipos"}
         </div>
-        <div className="mp-tvb-rows mp-tv-stagger">
-          {colA.map((t) => (
-            <div className="mp-tvb-row" key={t.registrationId}>
-              <span className="mp-tvb-row-teams">{t.label}</span>
-            </div>
-          ))}
-        </div>
+        <div className="mp-tvb-rows mp-tv-stagger">{colA.map(renderItem)}</div>
       </div>
       {colB.length > 0 && (
         <div>
           <div className="mp-tvb-col-h">&nbsp;</div>
           <div className="mp-tvb-rows mp-tv-stagger">
-            {colB.map((t) => (
-              <div className="mp-tvb-row" key={t.registrationId}>
-                <span className="mp-tvb-row-teams">{t.label}</span>
-              </div>
-            ))}
+            {colB.map(renderItem)}
             {extra > 0 && (
               <div className="mp-tvb-row">
                 <span className="mp-tvb-col-empty">+{extra} más</span>
@@ -571,98 +657,17 @@ function GroupTableScene({ table }: { table: TournamentLiveGroupTable | undefine
 }
 
 // ---------------------------------------------------------------------------
-// GlobalStandingsScene — tabla de posiciones global cross-grupos
+// BracketFull — una escena por bracket (por categoría)
 // ---------------------------------------------------------------------------
-const STANDINGS_MAX = 12;
-
-function GlobalStandingsScene({
-  standings,
-}: {
-  standings: TournamentLiveGlobalStanding[];
-}) {
-  const rows = standings.slice(0, STANDINGS_MAX);
-  const extra = standings.length - STANDINGS_MAX;
-
-  return (
-    <div className="mp-tv-live-table-wrap">
-      <div className="mp-tv-live-table-title">Tabla de Posiciones</div>
-      <table className="mp-tv-live-table">
-        <thead>
-          <tr>
-            <th style={{ width: "2.5em" }}>#</th>
-            <th>Equipo</th>
-            <th style={{ textAlign: "center", width: "3.5em" }}>PJ</th>
-            <th style={{ textAlign: "center", width: "3.5em" }}>G</th>
-            <th style={{ textAlign: "center", width: "3.5em" }}>P</th>
-            <th style={{ textAlign: "center", width: "5em" }}>Sets</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.rank}>
-              <td
-                style={{
-                  fontWeight: 900,
-                  color: row.rank === 1
-                    ? "var(--tv-accent, #34d399)"
-                    : row.rank <= 3
-                      ? "rgba(255,255,255,0.7)"
-                      : "rgba(255,255,255,0.35)",
-                }}
-              >
-                {row.rank}
-              </td>
-              <td style={{ fontWeight: row.rank <= 3 ? 900 : 700 }}>{row.label}</td>
-              <td style={{ textAlign: "center", color: "rgba(255,255,255,0.5)" }}>{row.played}</td>
-              <td
-                style={{
-                  textAlign: "center",
-                  fontWeight: 900,
-                  color: "var(--tv-accent, #34d399)",
-                }}
-              >
-                {row.wins}
-              </td>
-              <td style={{ textAlign: "center", color: "rgba(255,255,255,0.4)" }}>{row.losses}</td>
-              <td
-                style={{
-                  textAlign: "center",
-                  fontVariantNumeric: "tabular-nums",
-                  color: "rgba(255,255,255,0.6)",
-                }}
-              >
-                {row.setsWon}-{row.setsLost}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {extra > 0 && (
-        <p className="mp-tvb-empty" style={{ marginTop: 14 }}>
-          +{extra} equipos más
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BracketFull
-// ---------------------------------------------------------------------------
-function BracketFull({
-  rounds,
-  finalists,
-  championLabel,
-}: {
-  rounds: TournamentLiveBracketRound[];
-  finalists: { a: string; b: string } | null;
-  championLabel: string | null;
-}) {
+function BracketFull({ bracket }: { bracket: TournamentLiveBracketEntry }) {
+  const { rounds, finalists, championLabel } = bracket;
+  const title = bracket.categoryName ? `Llave · ${bracket.categoryName}` : "Llave";
   if (rounds.length === 0) {
     return <p className="mp-tvb-empty">El cuadro se genera al cerrar la fase de grupos.</p>;
   }
   return (
     <section className="mp-tv-bk-wrap">
+      <div className="mp-tv-live-table-title">{title}</div>
       <div className="mp-tv-bk-heads">
         {rounds.map((r) => (
           <div className="mp-tv-bk-head" key={r.name}>

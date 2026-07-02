@@ -14,6 +14,8 @@ import { requireTournamentEditor } from "@/server/actions/tournaments";
 export type CourtLiveMatch = {
   matchId: string;
   matchType: "bracket" | "group";
+  /** Nombre de la categoría del partido (null = bracket global legacy). */
+  categoryName: string | null;
   teamA: string;
   teamB: string;
   setsCompleted: Array<{ a: number; b: number }>;
@@ -64,7 +66,9 @@ export async function listCourtsLiveStatus(
 
     const courtIds = monitors.map((m) => m.court_id);
 
-    // 2. Para cada cancha, buscar el partido actual en bracket y grupo en paralelo
+    // 2. Para cada cancha, buscar el partido actual en bracket y grupo en paralelo.
+    // La categoría viene embebida (brackets.category_id / tournament_groups.category_id)
+    // — nada de queries extra por cancha; los nombres se resuelven en un batch después.
     type RawMatch = {
       id: string;
       side_a_registration_id: string | null;
@@ -72,9 +76,14 @@ export async function listCourtsLiveStatus(
       score: unknown;
       status: string;
       scheduled_at: string | null;
+      brackets?: { category_id: string | null } | null;
+      tournament_groups?: { category_id: string | null } | null;
     };
 
-    const matchByCourtId = new Map<string, { match: RawMatch; matchType: "bracket" | "group" }>();
+    const matchByCourtId = new Map<
+      string,
+      { match: RawMatch; matchType: "bracket" | "group"; categoryId: string | null }
+    >();
 
     await Promise.all(
       monitors.map(async (monitor) => {
@@ -83,14 +92,18 @@ export async function listCourtsLiveStatus(
         const [{ data: bmRaw }, { data: gmRaw }] = await Promise.all([
           admin
             .from("bracket_matches")
-            .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+            .select(
+              "id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, brackets(category_id)",
+            )
             .eq("court_id", courtId)
             .in("status", ["scheduled", "live", "reported"])
             .order("scheduled_at", { ascending: true })
             .limit(1),
           admin
             .from("tournament_group_matches")
-            .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at")
+            .select(
+              "id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, tournament_groups(category_id)",
+            )
             .eq("court_id", courtId)
             .in("status", ["scheduled", "live", "reported"])
             .order("scheduled_at", { ascending: true })
@@ -116,9 +129,30 @@ export async function listCourtsLiveStatus(
           chosen = { match: gm!, matchType: "group" };
         }
 
-        matchByCourtId.set(courtId, chosen);
+        const categoryId =
+          chosen.matchType === "bracket"
+            ? chosen.match.brackets?.category_id ?? null
+            : chosen.match.tournament_groups?.category_id ?? null;
+
+        matchByCourtId.set(courtId, { ...chosen, categoryId });
       }),
     );
+
+    // 2b. Resolver nombres de categoría en un solo batch.
+    const categoryIds = new Set<string>();
+    for (const { categoryId } of matchByCourtId.values()) {
+      if (categoryId) categoryIds.add(categoryId);
+    }
+    const catNameById = new Map<string, string>();
+    if (categoryIds.size > 0) {
+      const { data: catRows } = await admin
+        .from("tournament_categories")
+        .select("id,name")
+        .in("id", Array.from(categoryIds));
+      for (const c of catRows ?? []) {
+        catNameById.set(c.id as string, c.name as string);
+      }
+    }
 
     // 3. Recopilar todos los registration_id y construir labels
     const allRegIds = new Set<string>();
@@ -191,12 +225,13 @@ export async function listCourtsLiveStatus(
 
       let currentMatch: CourtLiveMatch | null = null;
       if (found) {
-        const { match, matchType } = found;
+        const { match, matchType, categoryId } = found;
         const scoreRaw = match.score as { sets?: Array<{ a: number; b: number }>; current?: { a: number; b: number } } | null;
         const setsCompleted = scoreRaw?.sets ?? [];
         currentMatch = {
           matchId: match.id,
           matchType,
+          categoryName: categoryId ? catNameById.get(categoryId) ?? null : null,
           teamA: nameByReg.get(match.side_a_registration_id ?? "") ?? "Equipo A",
           teamB: nameByReg.get(match.side_b_registration_id ?? "") ?? "Equipo B",
           setsCompleted,
