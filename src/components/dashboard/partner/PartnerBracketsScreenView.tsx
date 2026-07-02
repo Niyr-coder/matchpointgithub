@@ -34,6 +34,9 @@ export type BracketCategorySection = {
   columns: { label: string; matches: BracketMatch[] }[];
   championLabel: string;
   championWhen: string;
+  /** Podio por categoría: 2° = perdedor de la final; 3° = ganador del bronce. */
+  runnerUpLabel?: string | null;
+  thirdLabel?: string | null;
   finalHasWinner?: boolean;
   thirdPlaceMatch?: BracketMatch | null;
 };
@@ -482,6 +485,61 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
                           torneo; el cuadro aparecerá aquí automáticamente.
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Podio de la categoría (cada categoría corona el suyo) */}
+                  {cat.hasBracket && cat.finalHasWinner && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        padding: "12px 16px",
+                        borderBottom: "1px solid var(--border)",
+                        background: "rgba(251,191,36,0.06)",
+                      }}
+                    >
+                      {[
+                        { place: "1°", label: cat.championLabel, bg: "#fbbf24", col: "#0a0a0a" },
+                        ...(cat.runnerUpLabel
+                          ? [{ place: "2°", label: cat.runnerUpLabel, bg: "#9ca3af", col: "#fff" }]
+                          : []),
+                        ...(cat.thirdLabel
+                          ? [{ place: "3°", label: cat.thirdLabel, bg: "#d97706", col: "#fff" }]
+                          : []),
+                      ].map((row) => (
+                        <div
+                          key={row.place}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "6px 12px 6px 6px",
+                            borderRadius: 999,
+                            background: "#fff",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 999,
+                              background: row.bg,
+                              color: row.col,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              fontWeight: 900,
+                            }}
+                          >
+                            {row.place}
+                          </span>
+                          <span style={{ fontSize: 12.5, fontWeight: 800 }}>{row.label}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 

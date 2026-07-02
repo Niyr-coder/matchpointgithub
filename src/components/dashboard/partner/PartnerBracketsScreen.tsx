@@ -178,19 +178,34 @@ function buildSectionFromMatches(
 
   let championLabel = "Por decidir";
   let championWhen = "—";
+  // Podio por categoría: 1° = ganador de la final, 2° = perdedor de la
+  // final, 3° = ganador del partido de bronce (si existe).
+  let runnerUpLabel: string | null = null;
+  let thirdLabel: string | null = null;
   const finalRaw =
     sortedRounds.length > 0 ? byRound.get(sortedRounds[sortedRounds.length - 1])?.[0] : null;
   const finalMatchNode = columns[columns.length - 1]?.matches[0];
   if (finalRaw) {
     if (finalRaw.winner_side === "a" && finalRaw.side_a_registration_id) {
       championLabel = nameByReg.get(finalRaw.side_a_registration_id as string) ?? "Por decidir";
+      if (finalRaw.side_b_registration_id)
+        runnerUpLabel = nameByReg.get(finalRaw.side_b_registration_id as string) ?? null;
     } else if (finalRaw.winner_side === "b" && finalRaw.side_b_registration_id) {
       championLabel = nameByReg.get(finalRaw.side_b_registration_id as string) ?? "Por decidir";
+      if (finalRaw.side_a_registration_id)
+        runnerUpLabel = nameByReg.get(finalRaw.side_a_registration_id as string) ?? null;
     }
     if (finalRaw.scheduled_at) {
       const d = new Date(finalRaw.scheduled_at as string);
       championWhen = `Final · ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     }
+  }
+  if (bronzeRaw?.winner_side) {
+    const thirdId =
+      bronzeRaw.winner_side === "a"
+        ? bronzeRaw.side_a_registration_id
+        : bronzeRaw.side_b_registration_id;
+    if (thirdId) thirdLabel = nameByReg.get(thirdId) ?? null;
   }
 
   return {
@@ -202,6 +217,8 @@ function buildSectionFromMatches(
     columns,
     championLabel,
     championWhen,
+    runnerUpLabel,
+    thirdLabel,
     finalHasWinner: !!finalMatchNode?.w,
     thirdPlaceMatch: bronzeRaw ? mkMatch(bronzeRaw) : null,
   };
