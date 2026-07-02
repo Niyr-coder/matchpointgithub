@@ -1,4 +1,5 @@
 import { getServerClient } from "@/lib/db/client.server";
+import { getAdminClient } from "@/lib/db/client.admin";
 import { getSession } from "@/lib/auth/session";
 import { getTournament } from "@/server/actions/tournaments";
 import type { MyRegistration, TournamentInscrito } from "@/components/dashboard/eventos/TournamentDetailView";
@@ -25,6 +26,8 @@ export type TournamentDashboardPageData = {
   myMatches: TournamentPlayerMatchView[];
   bracketSides: TournamentBracketSideView[];
   groupView: TournamentPlayerGroupView | null;
+  /** Resumen del jugador cuando el torneo terminó: récord + delta de MPR + puesto de grupo. */
+  myTournamentSummary: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
 };
 
 export async function loadTournamentDashboardPageData(
@@ -124,6 +127,46 @@ export async function loadTournamentDashboardPageData(
   );
   const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
+  // Resumen post-torneo (Fase C): récord + delta de MPR acumulado del torneo.
+  // match_rating_applications es admin-only por RLS → admin client, filtrado
+  // al propio usuario. Solo cuando el torneo terminó y el user participó.
+  let myTournamentSummary: TournamentDashboardPageData["myTournamentSummary"] = null;
+  if (
+    detailRes.data.tournament.status === "finished" &&
+    myRegistration &&
+    sess.authenticated
+  ) {
+    const adminDb = getAdminClient();
+    const tid = detailRes.data.tournament.id;
+    const [{ data: bmIds }, { data: gmIds }] = await Promise.all([
+      adminDb.from("bracket_matches").select("id").eq("tournament_id", tid),
+      adminDb.from("tournament_group_matches").select("id").eq("tournament_id", tid),
+    ]);
+    const matchIds = [
+      ...((bmIds ?? []) as Array<{ id: string }>).map((m) => m.id),
+      ...((gmIds ?? []) as Array<{ id: string }>).map((m) => m.id),
+    ];
+    if (matchIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: apps } = await (adminDb as any)
+        .from("match_rating_applications")
+        .select("delta,won")
+        .eq("user_id", sess.session.userId)
+        .in("match_id", matchIds);
+      const rows = (apps ?? []) as Array<{ delta: number; won: boolean }>;
+      if (rows.length > 0) {
+        const rank =
+          bracketData.groupView?.standings.find((r) => r.involvesMe)?.rank ?? null;
+        myTournamentSummary = {
+          wins: rows.filter((r) => r.won).length,
+          losses: rows.filter((r) => !r.won).length,
+          deltaRating: rows.reduce((s, r) => s + (r.delta ?? 0), 0),
+          rank,
+        };
+      }
+    }
+  }
+
   return {
     detail: detailRes.data,
     clubName: summary?.clubName ?? null,
@@ -136,5 +179,6 @@ export async function loadTournamentDashboardPageData(
     myMatches: bracketData.myMatches,
     bracketSides: bracketData.bracketSides,
     groupView: bracketData.groupView,
+    myTournamentSummary,
   };
 }

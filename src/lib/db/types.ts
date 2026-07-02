@@ -255,6 +255,7 @@ export type Database = {
           status: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason: string | null
           winner_side: string | null
+          tournament_id: string
         }
         Insert: {
           bracket_id: string
@@ -272,6 +273,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason?: string | null
           winner_side?: string | null
+          tournament_id?: string
         }
         Update: {
           bracket_id?: string
@@ -289,6 +291,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason?: string | null
           winner_side?: string | null
+          tournament_id?: string
         }
         Relationships: [
           {
@@ -9748,6 +9751,7 @@ export type Database = {
           status: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason: string | null
           winner_side: string | null
+          tournament_id: string
         }
         Insert: {
           court_id?: string | null
@@ -9763,6 +9767,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason?: string | null
           winner_side?: string | null
+          tournament_id?: string
         }
         Update: {
           court_id?: string | null
@@ -9778,6 +9783,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["mp_match_status"]
           walkover_reason?: string | null
           winner_side?: string | null
+          tournament_id?: string
         }
         Relationships: [
           {
@@ -9853,6 +9859,7 @@ export type Database = {
           id: string
           name: string
           sort_order: number
+          tournament_id: string
         }
         Insert: {
           category_id: string
@@ -9860,6 +9867,7 @@ export type Database = {
           id?: string
           name: string
           sort_order?: number
+          tournament_id?: string
         }
         Update: {
           category_id?: string
@@ -9867,6 +9875,7 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
+          tournament_id?: string
         }
         Relationships: [
           {

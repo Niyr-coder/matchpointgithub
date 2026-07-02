@@ -276,6 +276,23 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
               className="btn"
               style={{ background: "#fff", border: RS_BORDER, opacity: hasReal ? 1 : 0.5 }}
               disabled={!hasReal}
+              onClick={() => {
+                // Export client-side: los rows ya están cargados.
+                const esc = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+                const lines = [
+                  ["Jugador/Equipo", "Estado", "Modo de pago", "Estado de pago", "Monto", "Inscrito"].map(esc).join(","),
+                  ...data.rows.map((r) =>
+                    [r.team, r.regStatus, r.paymentMode ?? "", r.payStatus, r.amt, r.when].map(esc).join(","),
+                  ),
+                ];
+                const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `inscritos-${(data.tournamentName ?? "torneo").replace(/[^\w\-]+/g, "-").toLowerCase()}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
             >
               <Icon name="download" size={12} />
               CSV

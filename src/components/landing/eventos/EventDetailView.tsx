@@ -26,6 +26,13 @@ export type TournamentInscrito = {
   registeredAt: string;
 };
 
+export type TournamentPrizeView = {
+  position: number | null;
+  placeLabel: string;
+  prizeLabel: string;
+  valueCents: number | null;
+};
+
 type Props = {
   detail: TournamentDetail;
   clubName: string | null;
@@ -33,6 +40,8 @@ type Props = {
   myRegistration?: MyRegistration | null;
   inscritos?: TournamentInscrito[];
   scheduleBlocks?: TournamentScheduleBlockView[];
+  /** Premios reales (tournament_prizes); si viene vacío se usa el split 50/30/20. */
+  prizes?: TournamentPrizeView[];
 };
 
 const MONTHS_ES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -332,6 +341,7 @@ export function EventDetailView({
   myRegistration: initialReg,
   inscritos = [],
   scheduleBlocks = [],
+  prizes = [],
 }: Props) {
   const onPaywall = usePaywall();
   const auth = useLandingAuth();
@@ -405,15 +415,36 @@ export function EventDetailView({
     });
   };
 
-  // Split prize pool 50% / 30% / 20% para el podio.
+  // Podio: premios REALES del organizador (tournament_prizes) cuando existen;
+  // fallback al split teórico 50/30/20 del prize pool.
+  const PODIUM_STYLES = [
+    { bg: "#fbbf24", col: "#0a0a0a" },
+    { bg: "#9ca3af", col: "#fff" },
+    { bg: "#d97706", col: "#fff" },
+    { bg: "var(--muted)", col: "var(--muted-fg)" },
+  ];
   const pool = t.prizePoolCents ?? 0;
-  const podium = pool > 0
-    ? [
-        { p: "1°", amount: formatMoney(Math.round(pool * 0.5)), bg: "#fbbf24", col: "#0a0a0a" },
-        { p: "2°", amount: formatMoney(Math.round(pool * 0.3)), bg: "#9ca3af", col: "#fff" },
-        { p: "3°", amount: formatMoney(Math.round(pool * 0.2)), bg: "#d97706", col: "#fff" },
-      ]
-    : [];
+  const podium =
+    prizes && prizes.length > 0
+      ? prizes.slice(0, 6).map((pz, i) => {
+          const st = PODIUM_STYLES[Math.min(i, PODIUM_STYLES.length - 1)];
+          return {
+            p: pz.placeLabel,
+            amount:
+              pz.valueCents != null && pz.valueCents > 0
+                ? `${pz.prizeLabel} · ${formatMoney(pz.valueCents)}`
+                : pz.prizeLabel,
+            bg: st.bg,
+            col: st.col,
+          };
+        })
+      : pool > 0
+        ? [
+            { p: "1°", amount: formatMoney(Math.round(pool * 0.5)), bg: "#fbbf24", col: "#0a0a0a" },
+            { p: "2°", amount: formatMoney(Math.round(pool * 0.3)), bg: "#9ca3af", col: "#fff" },
+            { p: "3°", amount: formatMoney(Math.round(pool * 0.2)), bg: "#d97706", col: "#fff" },
+          ]
+        : [];
 
   // Cronograma real (tournament_schedule_blocks).
 

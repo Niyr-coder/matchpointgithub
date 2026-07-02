@@ -25,6 +25,7 @@ export default async function TorneoPlayerPage({
         myMatches={data.myMatches}
         bracketSides={data.bracketSides}
         groupView={data.groupView}
+        myTournamentSummary={data.myTournamentSummary}
       />
     </div>
   );

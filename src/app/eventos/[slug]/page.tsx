@@ -64,6 +64,22 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
+    // Premios reales del organizador (tournament_prizes, lectura pública) —
+    // el podio ya no es el split teórico 50/30/20 cuando hay lista granular.
+    type PrizeRowRaw = { position: number | null; place_label: string; prize_label: string; value_cents: number | null };
+    const { data: prizesRaw } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("tournament_prizes" as any)
+      .select("position,place_label,prize_label,value_cents")
+      .eq("tournament_id", detailRes.data.tournament.id)
+      .order("position", { ascending: true });
+    const prizes = ((prizesRaw ?? []) as unknown as PrizeRowRaw[]).map((p) => ({
+      position: p.position ?? null,
+      placeLabel: p.place_label,
+      prizeLabel: p.prize_label,
+      valueCents: p.value_cents ?? null,
+    }));
+
     // Lista de inscritos — admin client: reg_visible no tiene política pública.
     const admin = getAdminClient();
     type RegRow = { id: string; player_ids: string[] | null; guest_names: string[] | null; created_at: string };
@@ -140,6 +156,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           myRegistration={myRegistration}
           inscritos={inscritos}
           scheduleBlocks={scheduleBlocks}
+          prizes={prizes}
         />
       </PublicChrome>
     );

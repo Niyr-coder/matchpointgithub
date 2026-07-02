@@ -36,6 +36,8 @@ type Props = {
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
   groupView?: TournamentPlayerGroupView | null;
+  /** Resumen del jugador cuando el torneo terminó (Fase C). */
+  myTournamentSummary?: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
   /** Override status (preview / dev). */
   previewStatus?: TorneoPlayerStatus;
   backHref?: string;
@@ -55,6 +57,7 @@ export function TorneoDetailView({
   myMatches = [],
   bracketSides = [],
   groupView = null,
+  myTournamentSummary = null,
   previewStatus,
   backHref = "/dashboard/user/eventos",
 }: Props) {
@@ -127,6 +130,42 @@ export function TorneoDetailView({
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 18 }}>
       <PlayerBackBtn onClick={() => router.push(backHref)} />
       <PlayerHero tone={tone} statusLabel={shell.statusLabel} title={shell.title} meta={meta} />
+      {myTournamentSummary && (
+        <div
+          className="card"
+          style={{
+            padding: "16px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.3)",
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "#059669" }}>
+              Tu torneo
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>
+              {myTournamentSummary.wins}W · {myTournamentSummary.losses}L
+              {myTournamentSummary.rank != null ? ` · Puesto #${myTournamentSummary.rank} del grupo` : ""}
+            </div>
+          </div>
+          <div
+            className="tabular font-heading"
+            style={{
+              fontSize: 20,
+              fontWeight: 900,
+              color: myTournamentSummary.deltaRating >= 0 ? "#059669" : "#dc2626",
+              whiteSpace: "nowrap",
+            }}
+          >
+            MPR {myTournamentSummary.deltaRating >= 0 ? "+" : "−"}
+            {(Math.abs(myTournamentSummary.deltaRating) / 1000).toFixed(2)}
+          </div>
+        </div>
+      )}
       {canWithdraw ? (
         <button
           type="button"

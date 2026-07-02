@@ -292,8 +292,17 @@ El `tournaments.prize_pool_cents` sigue siendo el total agregado (KPI
 rápido).
 
 UI: `PrizesPanel.tsx` con CRUD inline + quick-pick de puestos comunes.
-Aparece en preview público y debería aparecer en `/eventos/[slug]` cuando
-agregue ese render (TODO — hoy solo está en el preview modal del panel).
+Desde 2026-07-01 la página pública `/eventos/[slug]` renderiza la lista
+REAL de `tournament_prizes` en el podio (lectura pública, fetch en la page
+→ prop `prizes` de `EventDetailView`); si el organizador no cargó premios
+granulares, cae al split teórico 50/30/20 del `prize_pool_cents`.
+
+**Resumen post-torneo del jugador** (Fase C): cuando el torneo está
+`finished` y el user participó, la vista del jugador muestra "Tu torneo:
+XW · YL · MPR ±Δ (+ puesto de grupo si hay)". Fuente: suma de
+`match_rating_applications` del user en los partidos del torneo (admin
+client en `tournament-player-page.ts` — la tabla es admin-only por RLS,
+se filtra al propio uid). Walkovers no cuentan (no generan filas).
 
 ## 11. Bugs históricos / cosas que rompen seguido
 
