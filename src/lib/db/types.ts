@@ -7296,6 +7296,7 @@ export type Database = {
       registrations: {
         Row: {
           category_id: string | null
+          checked_in_at: string | null
           created_at: string
           id: string
           paid_transaction_id: string | null
@@ -7307,6 +7308,7 @@ export type Database = {
         }
         Insert: {
           category_id?: string | null
+          checked_in_at?: string | null
           created_at?: string
           id?: string
           paid_transaction_id?: string | null
@@ -7318,6 +7320,7 @@ export type Database = {
         }
         Update: {
           category_id?: string | null
+          checked_in_at?: string | null
           created_at?: string
           id?: string
           paid_transaction_id?: string | null

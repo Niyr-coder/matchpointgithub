@@ -23,6 +23,7 @@ import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyMatchReady } from "@/lib/notifications/tournament";
 import { createTournamentRefundRequest, notifyRefundRequested } from "@/lib/payments/refunds";
 import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
+import { standardBracketPairings } from "@/lib/tournaments/group-stage";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -1125,6 +1126,36 @@ export async function cancelMyRegistration(
   });
 }
 
+// ── setRegistrationCheckIn (organizador, día del torneo) ───────────────
+const CheckInSchema = z.object({
+  registrationId: UuidSchema,
+  checkedIn: z.boolean(),
+});
+
+export async function setRegistrationCheckIn(
+  input: unknown,
+): Promise<ActionResult<{ id: string; checkedInAt: string | null }>> {
+  return runAction(CheckInSchema, input, async ({ registrationId, checkedIn }) => {
+    const admin = getAdminClient();
+    const { data: reg } = await admin
+      .from("registrations")
+      .select("id,tournament_id")
+      .eq("id", registrationId)
+      .maybeSingle();
+    if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Inscripción no encontrada", 404);
+    const editor = await requireTournamentEditor(reg.tournament_id as string);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
+
+    const checkedInAt = checkedIn ? new Date().toISOString() : null;
+    const { error } = await admin
+      .from("registrations")
+      .update({ checked_in_at: checkedInAt } as never)
+      .eq("id", registrationId);
+    if (error) throw new MpError("REGISTRATION.UPDATE_FAILED", error.message, 500);
+    return { id: registrationId, checkedInAt };
+  });
+}
+
 // ── updateRegistrationStatus (partner admin) ───────────────────────────
 const UpdateRegSchema = z.object({
   registrationId: UuidSchema,
@@ -1238,7 +1269,7 @@ export async function generateBracket(
     const supabase = await getServerClient();
     const { data: t } = await supabase
       .from("tournaments")
-      .select("partner_id,format")
+      .select("partner_id,format,sport,modality")
       .eq("id", tournamentId)
       .single();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -1302,14 +1333,50 @@ export async function generateBracket(
     let size = 2;
     while (size < ids.length) size *= 2;
 
-    // Shuffle (simple Fisher-Yates) for seeding.
-    const seeded = [...ids];
-    for (let i = seeded.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [seeded[i], seeded[j]] = [seeded[j], seeded[i]];
+    // Seeding por rating MPR (Fase A del plan antes/durante/después): promedio
+    // de player_stats.current_rating del equipo, descendente. Jugadores sin
+    // rating cuentan 2500 (baseline) — sin datos, el orden de inscripción se
+    // preserva (sort estable). Antes: Fisher-Yates aleatorio.
+    const { data: regPlayersRaw } = await supabase
+      .from("registrations")
+      .select("id,player_ids")
+      .in("id", ids);
+    const regPlayers = (regPlayersRaw ?? []) as Array<{ id: string; player_ids: string[] | null }>;
+    const allPlayerIds = Array.from(
+      new Set(regPlayers.flatMap((r) => (r.player_ids ?? []).filter(Boolean))),
+    );
+    const statsMode = (t.modality as string | null) === "singles" ? "singles" : "doubles";
+    const ratingByUser = new Map<string, number>();
+    if (allPlayerIds.length > 0) {
+      const { data: stats } = await supabase
+        .from("player_stats")
+        .select("user_id,current_rating")
+        .eq("sport", t.sport as never)
+        .eq("mode", statsMode as never)
+        .in("user_id", allPlayerIds);
+      for (const s of (stats ?? []) as Array<{ user_id: string; current_rating: number }>) {
+        ratingByUser.set(s.user_id, s.current_rating);
+      }
     }
-    // Pad with nulls (byes) to bracket size.
-    while (seeded.length < size) seeded.push(null as unknown as string);
+    const ratingByReg = new Map<string, number>();
+    for (const r of regPlayers) {
+      const pids = (r.player_ids ?? []).filter(Boolean);
+      const ratings = pids.map((p) => ratingByUser.get(p) ?? 2500);
+      ratingByReg.set(
+        r.id,
+        ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 2500,
+      );
+    }
+    const seedOrder = [...ids].sort(
+      (a, b) => (ratingByReg.get(b) ?? 2500) - (ratingByReg.get(a) ?? 2500),
+    );
+    // Emparejamiento estándar por seed (1 vs último, etc): los byes caen en
+    // los seeds altos, como corresponde.
+    const seeds: Array<string | null> = [...seedOrder];
+    while (seeds.length < size) seeds.push(null);
+    const firstRoundPairs = standardBracketPairings(size).map(
+      ([s1, s2]) => [seeds[s1 - 1] ?? null, seeds[s2 - 1] ?? null] as [string | null, string | null],
+    );
 
     const { data: bracketRow, error: bErr } = await supabase
       .from("brackets")
@@ -1337,8 +1404,8 @@ export async function generateBracket(
           status: "scheduled",
         };
         if (round === 1) {
-          m.side_a_registration_id = seeded[pos * 2] ?? null;
-          m.side_b_registration_id = seeded[pos * 2 + 1] ?? null;
+          m.side_a_registration_id = firstRoundPairs[pos]?.[0] ?? null;
+          m.side_b_registration_id = firstRoundPairs[pos]?.[1] ?? null;
         }
         matches.push(m);
       }

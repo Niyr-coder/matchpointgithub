@@ -74,6 +74,7 @@ type RegRow = {
   playerIds: string[];
   players: Array<{ id: string; name: string }>;
   transactionId: string | null;
+  checkedInAt: string | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -177,7 +178,7 @@ export default async function PartnerTorneoPage({
   // paid_transaction_id. Datos de pago vienen de transactions.
   const { data: regsRaw } = await admin
     .from("registrations")
-    .select("id,team_id,player_ids,status,category_id,paid_transaction_id,created_at,teams(name)")
+    .select("id,team_id,player_ids,status,category_id,paid_transaction_id,checked_in_at,created_at,teams(name)")
     .eq("tournament_id", id)
     .not("status", "in", "(withdrawn,rejected,cancelled)")
     .order("created_at", { ascending: false });
@@ -278,6 +279,7 @@ export default async function PartnerTorneoPage({
         name: profById.get(pid)?.name ?? "Jugador",
       })),
       transactionId: txId ?? null,
+      checkedInAt: (r.checked_in_at as string | null) ?? null,
     };
   });
 

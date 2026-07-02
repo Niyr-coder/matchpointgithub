@@ -328,6 +328,19 @@ agregue ese render (TODO — hoy solo está en el preview modal del panel).
    'cancelled' (update), no insertar — si no, "already enrolled" eterno.
    Torneos no lo sufren (permiten N filas históricas + trigger 067 dedup por
    status activo).
+10. **Cupo atómico** (mig `20260716000000`): `tg_enforce_registration_caps`
+   serializa las altas por torneo (`FOR UPDATE` sobre tournaments) y revalida
+   max_participants/max_teams a nivel DB — los checks de la app son
+   count-then-insert y bajo concurrencia se colaban. La app da los errores
+   amigables; el trigger es la red. No quitarlo "porque la app ya valida".
+11. **Seeding de `generateBracket` es por rating MPR** (desde 2026-07-01):
+   promedio de `player_stats.current_rating` del equipo (sport + mode según
+   modality, default 2500) + `standardBracketPairings` (1 vs último; byes
+   caen en seeds altos). Ya NO es Fisher-Yates aleatorio.
+12. **Check-in del día** (mig `20260716000000`): `registrations.checked_in_at`
+   — el organizador marca presentes desde la lista de inscritos de gestión
+   (`setRegistrationCheckIn`, contador "X/Y presentes"). Resolver no-shows
+   (retirar/rechazar) ANTES de generar el cuadro para no sembrar ausentes.
 
 ## 12. TODOs
 

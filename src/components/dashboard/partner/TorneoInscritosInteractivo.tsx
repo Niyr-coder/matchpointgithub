@@ -6,6 +6,8 @@ import Link from "next/link";
 import { SubstitutePlayerModal } from "./SubstitutePlayerModal";
 import { AddInscritoManualModal } from "./AddInscritoManualModal";
 import { ReviewProofModal } from "./ReviewProofModal";
+import { setRegistrationCheckIn } from "@/server/actions/tournaments";
+import { useToast } from "@/components/dashboard/ToastProvider";
 
 type PayStatus = "paid" | "free" | "onsite_pending" | "awaiting_proof" | "review" | "other";
 
@@ -20,6 +22,7 @@ export type RegRowInteractive = {
   playerIds: string[];
   players: Array<{ id: string; name: string }>;
   transactionId: string | null;
+  checkedInAt: string | null;
 };
 
 interface Props {
@@ -35,17 +38,44 @@ interface Props {
 
 export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnabled, isClosed, modality, categories, entryFeeCents, paymentPolicy }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [subModalReg, setSubModalReg] = useState<RegRowInteractive | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [reviewTransactionId, setReviewTransactionId] = useState<string | null>(null);
+  const [checkinBusyId, setCheckinBusyId] = useState<string | null>(null);
+  // Optimistic: override local mientras el server refresca.
+  const [checkinOverride, setCheckinOverride] = useState<Record<string, boolean>>({});
 
   const canSubstitute = playerOpsEnabled && !isClosed;
+
+  const isCheckedIn = (r: RegRowInteractive) =>
+    checkinOverride[r.id] ?? r.checkedInAt != null;
+
+  const activos = regs.filter((r) => r.status === "pending" || r.status === "accepted");
+  const presentes = activos.filter(isCheckedIn).length;
+
+  const toggleCheckIn = async (r: RegRowInteractive) => {
+    const next = !isCheckedIn(r);
+    setCheckinBusyId(r.id);
+    setCheckinOverride((prev) => ({ ...prev, [r.id]: next }));
+    const res = await setRegistrationCheckIn({ registrationId: r.id, checkedIn: next });
+    setCheckinBusyId(null);
+    if (!res.ok) {
+      setCheckinOverride((prev) => ({ ...prev, [r.id]: !next }));
+      toast({ icon: "alert-triangle", title: "Error", sub: res.error.message, tone: "error" });
+      return;
+    }
+    router.refresh();
+  };
 
   return (
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {!isClosed && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: presentes === activos.length && activos.length > 0 ? "var(--primary)" : "var(--muted-fg)", letterSpacing: "0.04em" }}>
+              Check-in: {presentes}/{activos.length} presentes
+            </span>
             <button
               type="button"
               className="btn"
@@ -98,7 +128,33 @@ export function TorneoInscritosInteractivo({ regs, tournamentId, playerOpsEnable
                   {!r.avatarUrl && name.slice(0, 2).toUpperCase()}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <b className="mp-partner-torneo-regs-name">{name}</b>
+                  <b className="mp-partner-torneo-regs-name">
+                    {isCheckedIn(r) && (
+                      <span title="Presente" style={{ color: "var(--primary)", marginRight: 4 }}>●</span>
+                    )}
+                    {name}
+                  </b>
+                  {!isClosed && (r.status === "pending" || r.status === "accepted") && (
+                    <button
+                      type="button"
+                      onClick={() => void toggleCheckIn(r)}
+                      disabled={checkinBusyId === r.id}
+                      style={{
+                        display: "block",
+                        fontSize: 10,
+                        color: isCheckedIn(r) ? "var(--muted-fg)" : "var(--primary)",
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        lineHeight: 1.4,
+                        opacity: checkinBusyId === r.id ? 0.5 : 1,
+                      }}
+                    >
+                      {isCheckedIn(r) ? "Quitar check-in" : "Marcar presente"}
+                    </button>
+                  )}
                   {canSubstitute && r.status === "accepted" && (
                     <button
                       type="button"
