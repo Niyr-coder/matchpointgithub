@@ -24,6 +24,7 @@ export default async function DashboardTournamentPage({
       groupView={data.groupView}
       myTournamentSummary={data.myTournamentSummary}
       myCategory={data.myCategory}
+      myMpr={data.myMpr}
       categoryRegistrationCounts={data.categoryRegistrationCounts}
       scheduleBlocks={data.scheduleBlocks}
     />

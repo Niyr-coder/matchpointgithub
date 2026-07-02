@@ -538,7 +538,7 @@ export async function registerToTournament(
         await assertNotSuspended(supabase, userId);
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id,allow_waitlist")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id,allow_waitlist,starts_at")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -595,13 +595,15 @@ export async function registerToTournament(
 
         const { data: catRows } = await supabase
           .from("tournament_categories")
-          .select("id,max_teams,mpr_min,mpr_max")
+          .select("id,max_teams,mpr_min,mpr_max,age_min,age_max")
           .eq("tournament_id", tournamentId);
         const categories = (catRows ?? []) as Array<{
           id: string;
           max_teams: number | null;
-          mpr_min: number | null;
-          mpr_max: number | null;
+          mpr_min: number | string | null;
+          mpr_max: number | string | null;
+          age_min: number | null;
+          age_max: number | null;
         }>;
 
         if (categories.length > 0) {
@@ -611,6 +613,70 @@ export async function registerToTournament(
           const cat = categories.find((c) => c.id === body.categoryId);
           if (!cat) {
             throw new MpError("TOURNAMENTS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
+          }
+
+          // Elegibilidad por categoría (server-side):
+          // - Edad: bloqueo duro SOLO para jugadores con birthdate registrado
+          //   (sin dato no se bloquea); edad calculada a la fecha de inicio.
+          // - MPR: bloqueo duro detrás del flag category_mpr_enforcement
+          //   (default OFF — todo rating nace en 2.5 y bloquear dejaría fuera
+          //   a jugadores reales); mientras tanto el modal muestra un aviso.
+          // - Género: sin enforcement (profiles no registra género hoy).
+          if (cat.age_min != null || cat.age_max != null) {
+            const { data: profRows } = await getAdminClient()
+              .from("profiles")
+              .select("id,birthdate")
+              .in("id", body.playerIds);
+            const startsAt = new Date((t.starts_at as string | null) ?? new Date().toISOString());
+            for (const p of profRows ?? []) {
+              const bd = p.birthdate as string | null;
+              if (!bd) continue;
+              const birth = new Date(bd);
+              let age = startsAt.getFullYear() - birth.getFullYear();
+              const m = startsAt.getMonth() - birth.getMonth();
+              if (m < 0 || (m === 0 && startsAt.getDate() < birth.getDate())) age -= 1;
+              if (
+                (cat.age_min != null && age < cat.age_min) ||
+                (cat.age_max != null && age > cat.age_max)
+              ) {
+                const range =
+                  cat.age_min != null && cat.age_max != null
+                    ? `entre ${cat.age_min} y ${cat.age_max} años`
+                    : cat.age_min != null
+                      ? `desde ${cat.age_min} años`
+                      : `hasta ${cat.age_max} años`;
+                throw new MpError(
+                  "TOURNAMENTS.CATEGORY_AGE_INELIGIBLE",
+                  `Esta categoría admite jugadores ${range}. Revisa tu fecha de nacimiento en tu perfil o elige otra categoría.`,
+                  422,
+                );
+              }
+            }
+          }
+          if (cat.mpr_min != null || cat.mpr_max != null) {
+            const { data: mprFlag } = await getAdminClient()
+              .from("feature_flags")
+              .select("enabled_default")
+              .eq("key", "category_mpr_enforcement")
+              .maybeSingle();
+            if (mprFlag?.enabled_default) {
+              const { data: statRows } = await getAdminClient()
+                .from("player_stats")
+                .select("user_id,current_rating")
+                .in("user_id", body.playerIds);
+              const lo = cat.mpr_min != null ? Number(cat.mpr_min) : null;
+              const hi = cat.mpr_max != null ? Number(cat.mpr_max) : null;
+              for (const s of statRows ?? []) {
+                const mpr = ((s.current_rating as number | null) ?? 2500) / 1000;
+                if ((lo != null && mpr < lo) || (hi != null && mpr > hi)) {
+                  throw new MpError(
+                    "TOURNAMENTS.CATEGORY_MPR_INELIGIBLE",
+                    `Tu MPR ${mpr.toFixed(2)} está fuera del rango de esta categoría (${lo?.toFixed(1) ?? "…"}–${hi?.toFixed(1) ?? "sin tope"}). Elige una categoría acorde a tu nivel.`,
+                    422,
+                  );
+                }
+              }
+            }
           }
           if (cat.max_teams != null && cat.max_teams > 0) {
             // pending+accepted: waitlist no consume el cupo de la categoría.

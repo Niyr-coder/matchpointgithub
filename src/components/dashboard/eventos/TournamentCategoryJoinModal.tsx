@@ -11,6 +11,8 @@ type Props = {
   categories: TournamentDetail["categories"];
   registrationCountByCategory: Record<string, number>;
   pending: boolean;
+  /** MPR del jugador (escala 2.0-8.0) para avisar si elige fuera de rango. */
+  myMpr?: number | null;
   onClose: () => void;
   onPick: (categoryId: string) => void;
 };
@@ -27,6 +29,7 @@ export function TournamentCategoryJoinModal({
   categories,
   registrationCountByCategory,
   pending,
+  myMpr = null,
   onClose,
   onPick,
 }: Props) {
@@ -89,6 +92,12 @@ export function TournamentCategoryJoinModal({
             const taken = registrationCountByCategory[c.id] ?? 0;
             const cap = c.maxTeams ?? 0;
             const isFull = cap > 0 && taken >= cap;
+            // Aviso informativo (no bloquea): el bloqueo duro vive server-side
+            // detrás del flag category_mpr_enforcement.
+            const outOfRange =
+              myMpr != null &&
+              ((c.mprMin != null && myMpr < c.mprMin) ||
+                (c.mprMax != null && myMpr > c.mprMax));
             return (
               <button
                 key={c.id}
@@ -112,6 +121,12 @@ export function TournamentCategoryJoinModal({
                   {cap > 0 ? ` · ${taken}/${cap} cupos` : taken > 0 ? ` · ${taken} inscritos` : ""}
                   {isFull ? " · Llena" : ""}
                 </div>
+                {outOfRange && !isFull && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="alert-triangle" size={11} color="#b45309" />
+                    Tu MPR {myMpr!.toFixed(2)} está fuera del rango de esta categoría.
+                  </div>
+                )}
               </button>
             );
           })}

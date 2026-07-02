@@ -28,10 +28,19 @@ export async function EventosScreen() {
         .in("status", ["pending", "accepted"])
     : Promise.resolve({ data: [] as { tournament_id: string }[] });
 
-  const [tournamentsRes, myRegisteredRes] = await Promise.all([
+  // MPR propio para el aviso de rango en el modal de categoria (escala /1000).
+  const myRatingPromise = userId
+    ? supabase.from("player_stats").select("current_rating").eq("user_id", userId).maybeSingle()
+    : Promise.resolve({ data: null as { current_rating: number | null } | null });
+
+  const [tournamentsRes, myRegisteredRes, myRatingRes] = await Promise.all([
     tournamentsPromise,
     myRegisteredPromise,
+    myRatingPromise,
   ]);
+  const myMpr = myRatingRes.data?.current_rating != null
+    ? (myRatingRes.data.current_rating as number) / 1000
+    : null;
 
   const tournaments: TournamentFeatured[] = (tournamentsRes.data ?? [])
     .map((row) => {
@@ -69,6 +78,7 @@ export async function EventosScreen() {
       tournaments={tournaments}
       myRegisteredIds={myRegisteredIds}
       userId={userId}
+      myMpr={myMpr}
     />
   );
 }

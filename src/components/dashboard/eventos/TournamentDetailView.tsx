@@ -41,6 +41,8 @@ type Props = {
   inscritos?: TournamentInscrito[];
   meUserId: string | null;
   categoryRegistrationCounts?: Record<string, number>;
+  /** MPR del jugador (2.0-8.0) para el aviso de rango en el modal de categoría. */
+  myMpr?: number | null;
   scheduleBlocks?: TournamentScheduleBlockView[];
 };
 
@@ -102,7 +104,7 @@ function levelRange(cats: TournamentDetail["categories"]): string | null {
   return `${levels[0]}–${levels[levels.length - 1]}`;
 }
 
-export function TournamentDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [], meUserId, categoryRegistrationCounts = {}, scheduleBlocks = [] }: Props) {
+export function TournamentDetailView({ detail, clubName, clubCity, myRegistration: initialReg, inscritos = [], meUserId, categoryRegistrationCounts = {}, myMpr = null, scheduleBlocks = [] }: Props) {
   const router = useRouter();
   const toast = useToast();
   const { confirm } = usePromptModal();
@@ -782,6 +784,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           entryFeeCents={t.entryFeeCents ?? 0}
           categories={categories}
           registrationCountByCategory={categoryRegistrationCounts}
+          myMpr={myMpr}
           pending={registering}
           onClose={() => {
             if (!registering) {

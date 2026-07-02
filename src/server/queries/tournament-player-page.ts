@@ -31,6 +31,8 @@ export type TournamentDashboardPageData = {
   myTournamentSummary: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
   /** Fase de MI categoría (multi-categoría: puede estar 'complete' con el torneo aún live). */
   myCategory: { name: string | null; stage: string | null; championLabel: string | null } | null;
+  /** MPR del jugador (2.0-8.0) para el aviso de rango en el modal de categoría. */
+  myMpr: number | null;
 };
 
 export async function loadTournamentDashboardPageData(
@@ -73,6 +75,17 @@ export async function loadTournamentDashboardPageData(
         categoryId: (regRow.category_id as string | null) ?? null,
       };
     }
+  }
+
+  // MPR propio para el aviso de rango del modal de categoría (escala /1000).
+  let myMpr: number | null = null;
+  if (sess.authenticated) {
+    const { data: statRow } = await supabase
+      .from("player_stats")
+      .select("current_rating")
+      .eq("user_id", sess.session.userId)
+      .maybeSingle();
+    if (statRow?.current_rating != null) myMpr = (statRow.current_rating as number) / 1000;
   }
 
   const { data: regsRaw } = await supabase
@@ -209,5 +222,6 @@ export async function loadTournamentDashboardPageData(
     groupView: bracketData.groupView,
     myTournamentSummary,
     myCategory,
+    myMpr,
   };
 }

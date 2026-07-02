@@ -25,6 +25,7 @@ type Props = {
   groupView?: TournamentPlayerGroupView | null;
   myTournamentSummary?: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
   myCategory?: { name: string | null; stage: string | null; championLabel: string | null } | null;
+  myMpr?: number | null;
 };
 
 export function TorneoPageRouter({
@@ -41,6 +42,7 @@ export function TorneoPageRouter({
   groupView = null,
   myTournamentSummary = null,
   myCategory = null,
+  myMpr = null,
 }: Props) {
   const tournamentId = detail.tournament.id;
 
@@ -77,6 +79,7 @@ export function TorneoPageRouter({
       inscritos={inscritos}
       meUserId={meUserId}
       categoryRegistrationCounts={categoryRegistrationCounts}
+      myMpr={myMpr}
       scheduleBlocks={scheduleBlocks}
     />
     </>
