@@ -19,6 +19,7 @@ import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyMatchReady } from "@/lib/notifications/tournament";
+import { createTournamentRefundRequest, notifyRefundRequested } from "@/lib/payments/refunds";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -811,6 +812,51 @@ export async function setTournamentStatus(
         p_action: "tournament.cancelled",
         p_diff: { from: previousStatus, to: "cancelled" } as never,
       });
+
+      // Encolar reembolsos pendientes por cada pago capturado del torneo
+      // (cierra el TODO de docs/product/02-payments.md §5: antes el partner
+      // debía ir tx por tx sin ninguna cola). Best-effort.
+      const { data: capturedTxs } = await admin
+        .from("transactions")
+        .select("id, amount_cents, currency")
+        .eq("kind", "tournament")
+        .eq("ref_id", tournamentId)
+        .eq("status", "captured");
+      const txs = (capturedTxs ?? []) as Array<{ id: string; amount_cents: number | null; currency: string | null }>;
+      if (txs.length > 0) {
+        const { data: regRows } = await admin
+          .from("registrations")
+          .select("id, paid_transaction_id")
+          .eq("tournament_id", tournamentId)
+          .in("paid_transaction_id", txs.map((x) => x.id));
+        const regByTx = new Map<string, string>();
+        for (const r of (regRows ?? []) as Array<{ id: string; paid_transaction_id: string | null }>) {
+          if (r.paid_transaction_id) regByTx.set(r.paid_transaction_id, r.id);
+        }
+        let createdCount = 0;
+        let totalCents = 0;
+        for (const tx of txs) {
+          const created = await createTournamentRefundRequest(admin, {
+            transactionId: tx.id,
+            registrationId: regByTx.get(tx.id) ?? null,
+            tournamentId,
+            requestedBy: editor.userId,
+            reason: "Torneo cancelado",
+          });
+          if (created) {
+            createdCount += 1;
+            totalCents += tx.amount_cents ?? 0;
+          }
+        }
+        if (createdCount > 0) {
+          void notifyRefundRequested(admin, {
+            tournamentId,
+            count: createdCount,
+            totalCents,
+            currency: txs[0]?.currency ?? null,
+          });
+        }
+      }
     }
 
     if (
@@ -953,7 +999,7 @@ export async function cancelMyRegistration(
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
-      .select("id,player_ids,status,paid_transaction_id")
+      .select("id,tournament_id,player_ids,status,paid_transaction_id")
       .eq("id", registrationId)
       .maybeSingle();
     if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Inscripción no encontrada", 404);
@@ -984,7 +1030,7 @@ export async function cancelMyRegistration(
     if (txId) {
       const { data: tx } = await admin
         .from("transactions")
-        .select("id,status")
+        .select("id,status,amount_cents,currency")
         .eq("id", txId)
         .maybeSingle();
       const txStatus = (tx?.status as string | null) ?? null;
@@ -995,8 +1041,27 @@ export async function cancelMyRegistration(
           .update({ status: "failed" } as never)
           .eq("id", txId);
       } else if (txStatus === "captured") {
-        // Pago ya confirmado: requiere reembolso manual por parte del organizador
+        // Pago ya confirmado: encolar el reembolso pendiente para el
+        // organizador (antes esto moría en un toast) y avisarle.
         refundRequired = true;
+        const tournamentId = (reg.tournament_id as string | null) ?? null;
+        if (tournamentId) {
+          const created = await createTournamentRefundRequest(admin, {
+            transactionId: txId,
+            registrationId: reg.id as string,
+            tournamentId,
+            requestedBy: userId,
+            reason: "El jugador canceló su inscripción",
+          });
+          if (created) {
+            void notifyRefundRequested(admin, {
+              tournamentId,
+              count: 1,
+              totalCents: (tx?.amount_cents as number | null) ?? null,
+              currency: (tx?.currency as string | null) ?? null,
+            });
+          }
+        }
       }
     }
 

@@ -24,6 +24,7 @@ import { TorneoInscritosInteractivo } from "@/components/dashboard/partner/Torne
 import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partner/SchedulePanel";
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
 import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
+import { TournamentRefundsPanel } from "@/components/dashboard/partner/TournamentRefundsPanel";
 import { PartnerTorneoOperacionPanel } from "@/components/dashboard/partner/PartnerTorneoOperacionPanel";
 import { LigaOperacionPanel } from "@/components/dashboard/partner/LigaOperacionPanel";
 import { PartnerTorneoPlaybook } from "@/components/dashboard/partner/PartnerTorneoPlaybook";
@@ -668,7 +669,7 @@ export default async function PartnerTorneoPage({
                 </div>
                 <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 3, lineHeight: 1.5 }}>
                   {isCancelled
-                    ? "Las acciones de mutación están bloqueadas. Si cobraste cuotas online, debes devolverlas manualmente a los inscritos en un máximo de 7 días."
+                    ? "Las acciones de mutación están bloqueadas. Si cobraste cuotas online, revisa la sección «Reembolsos pendientes» — cada reembolso muestra su fecha límite."
                     : "Las inscripciones y pagos están congelados. La página es de solo lectura."}
                 </div>
               </div>
@@ -865,6 +866,8 @@ export default async function PartnerTorneoPage({
                     clubCourtsCount={clubCourts.length}
                   />
                 )}
+
+                <TournamentRefundsPanel tournamentId={t.id as string} />
 
                 <PartnerTorneoRailLinks
                   preview={previewPayload}

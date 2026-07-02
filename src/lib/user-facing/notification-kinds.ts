@@ -69,6 +69,7 @@ export const NOTIFICATION_KIND_TITLES: Record<string, string> = {
   registration_accepted: "Inscripción aceptada",
   registration_rejected: "Inscripción rechazada",
   payout_paid: "Pago registrado",
+  refund_requested: "Reembolso pendiente",
   club_featuring_activated: "Featuring activado",
   club_featuring_expiring_soon: "Featuring por vencer",
   plan_expiring_soon: "Tu plan está por vencer",

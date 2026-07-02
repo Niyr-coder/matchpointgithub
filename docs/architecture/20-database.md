@@ -2749,6 +2749,27 @@ Funciones asociadas (mismas mig):
 
 **Notif**: `tournament_match_ready` (mig 20260710010000, kind + flag `tournament_match_ready_notifs` default ON) — "te toca jugar" al completarse el partido de un jugador. Helpers en `src/lib/notifications/tournament.ts`.
 
+**`refund_requests`** (mig 20260712000000) — cola de reembolsos pendientes de torneo. El registro FINAL del reembolso sigue siendo `refunds` + `transactions.status='refunded'`; esta tabla solo trackea el pendiente y su vencimiento.
+
+```sql
+create table public.refund_requests (
+  id              uuid primary key default gen_random_uuid(),
+  transaction_id  uuid not null references transactions(id) on delete cascade,
+  registration_id uuid references registrations(id) on delete set null,
+  tournament_id   uuid not null references tournaments(id) on delete cascade,
+  requested_by    uuid references profiles(id) on delete set null,
+  reason          text not null,
+  status          text not null default 'pending' check (status in ('pending','done','dismissed')),
+  due_at          timestamptz,   -- created_at + platform_config.refund_window_days
+  created_at      timestamptz not null default now(),
+  resolved_at     timestamptz,
+  resolved_by     uuid references profiles(id) on delete set null,
+  unique (transaction_id)        -- dedup entre path individual y masivo
+);
+```
+
+Se encola desde `cancelMyRegistration` (tx captured) y `setTournamentStatus→cancelled` (bulk). Se cierra (`done`) desde `markTransactionRefundedCore` al marcar la tx reembolsada. RLS: admin all + editor del torneo select (predicado partner/club de mig 20260709010000). Audit `tg_audit_refund_requests`. NO realtime. Notif: `refund_requested` al staff del organizador.
+
 ---
 
 ## Próximo: `30-rls.md`

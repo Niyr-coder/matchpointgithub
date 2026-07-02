@@ -114,19 +114,37 @@ quiere aceptar la inscripción además, debe usar `updateRegistrationStatus`.
 **Sin PSP**, el refund real es una transferencia humana. En la app solo
 marcamos estado.
 
+**Cola de pendientes (`refund_requests`, mig `20260712000000`)** — el "por
+hacer" del organizador. Se encola automáticamente cuando:
+
+- Un jugador ejecuta `cancelMyRegistration` con transacción `captured`
+  (antes el `refundRequired=true` moría en un toast sin registro).
+- El torneo pasa a `cancelled` (`setTournamentStatus`): una request por cada
+  tx `captured` del torneo.
+
+Cada request lleva `due_at = created_at + platform_config.refund_window_days`
+(default 7 — antes el "7 días" estaba hardcodeado en el banner del partner) y
+dispara la notif `refund_requested` al staff del organizador (partner org o
+club staff según `partner_id`/`club_id`). Dedup por `unique(transaction_id)`.
+
+**Marcar reembolsada** — core compartido `markTransactionRefundedCore`
+(`src/lib/payments/refunds.ts`), dos entradas:
+
 ```
-admin/partner abre tabla de transactions (Event/TournamentTransactionsTable)
-→ ve botón "Marcar reembolsada" en filas con status='captured'
-→ modal pide motivo (obligatorio) + referencia (opc) + checkbox
-   "Cancelar también la inscripción ligada" (default true)
-→ action crea row en refunds + opcionalmente actualiza registration.status='withdrawn'
-→ transaction NO cambia status (queda 'captured' + hay refund asociado).
-   Para "refunded" puro se setea aparte si se requiere full chargeback.
+admin  → TournamentTransactionsTable / EventTransactionsTable
+         → markTransactionRefundedAdmin (admin-refunds.ts)
+partner/club → TournamentRefundsPanel en la gestión del torneo
+         → markTournamentTransactionRefunded (tournament-refunds.ts,
+           requireTournamentEditor + valida que la tx sea de ESE torneo)
+
+Ambas: validan status='captured' + sin refund previo → transaction pasa a
+status='refunded' (+refund_reason/reference/refunded_at/refunded_by, mig 043)
+→ row en refunds → opcionalmente registration.status='withdrawn' → cierra la
+refund_request pendiente (status='done') → notif refund_completed al cliente.
 ```
 
-**Por hacer**: cuando el partner cancela un torneo, hoy NO se crean refunds
-automáticos. El partner debe ir tx por tx y marcar manualmente. Las cláusulas
-del T&C que aceptan al crear el torneo lo obligan a hacerlo en 7 días.
+RLS de `refund_requests`: admin all; partner/club staff del torneo solo
+lectura (escrituras vía service role con `setAuditActor`).
 
 ## 6. Take rate (comisión MATCHPOINT)
 
@@ -183,7 +201,9 @@ que se defina un flujo contable específico.
 ## 10. Cosas que rompen seguido / regla nemónica
 
 1. **NO autoaprobar proof de kind != tournament** — solo torneos.
-2. **Cancelar torneo NO crea refunds automáticos** — partner manual.
+2. **Cancelar torneo encola refund_requests, NO transfiere dinero** — la
+   transferencia sigue siendo manual; la app solo trackea el pendiente y su
+   vencimiento.
 3. **Usar `txStatusMeta`** en cualquier render de status — no inline.
 4. **`getServerClient.update("transactions")` falla silencioso** —
    siempre `getAdminClient()` tras validar rol.
@@ -214,8 +234,8 @@ dashboard del PSP → flag `psp_checkout_enabled` ON → UI botón "Pagar con ta
 
 ## 12. TODOs
 
-- [ ] Refunds automáticos al cancelar torneo (queue de refunds pendientes
-      para que partner solo confirme transferencia)
+- [x] Refunds automáticos al cancelar torneo (queue `refund_requests` +
+      panel del organizador + notif `refund_requested` · mig 20260712000000)
 - [x] Cron que genere payouts mensuales por club restando take_rate
 - [x] Notif `payment_captured` al user cuando se aprueba su pago
 - [ ] Soporte DeUna como método separado (hoy todo cae en `transfer`)

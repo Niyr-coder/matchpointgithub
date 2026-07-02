@@ -52,6 +52,7 @@ function iconForKind(kind: string): string {
   if (kind === "welcome_owner") return "crown";
   if (kind === "mp_plus_activated" || kind === "mp_plus_revoked") return "crown";
   if (kind === "payment_captured" || kind === "refund_completed") return "wallet";
+  if (kind === "refund_requested") return "rotate-ccw";
   if (kind === "broadcast") return "megaphone";
   if (kind === "report_resolved") return "shield-check";
   if (kind.startsWith("role_request")) return "shield";
@@ -131,6 +132,11 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   }
   if (kind === "payout_paid") {
     return role === "partner" ? "/dashboard/partner/p-finanzas" : "/dashboard/owner/club-finanzas";
+  }
+  if (kind === "refund_requested") {
+    const tId = typeof payload.tournament_id === "string" ? payload.tournament_id : null;
+    if (role === "partner" && tId) return `/dashboard/partner/torneo/${tId}`;
+    return `/dashboard/${role}`;
   }
   if (kind === "club_featuring_activated" || kind === "club_featuring_expiring_soon") {
     return "/dashboard/owner/club-marketing";
@@ -233,6 +239,7 @@ function colorForKind(kind: string): string {
   if (kind === "broadcast") return "var(--primary)";
   if (kind === "payment_captured" || kind === "mp_plus_activated") return "#10b981";
   if (kind === "refund_completed") return "#0ea5e9";
+  if (kind === "refund_requested") return "#f59e0b";
   if (kind === "mp_plus_revoked") return "#dc2626";
   if (kind === "report_resolved") return "#7c3aed";
   if (kind.includes("rejected") || kind.includes("cancelled") || kind.includes("kicked")) return "#dc2626";
