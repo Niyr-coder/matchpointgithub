@@ -34,10 +34,10 @@ export function V2Hero({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' | 'pu
   return (
     <div className="pv3-hero-shell" style={{ background: v2tk.card, border: `1px solid ${v2tk.border}`, borderRadius: 16, overflow: 'hidden' }}>
       {/* Cover */}
-      <div style={{ position: 'relative', height: 220, background: cover.grad, overflow: 'hidden' }}>
+      <div className="pv3-hero-cover" style={{ position: 'relative', height: 220, background: cover.grad, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at 78% 30%, ${cover.glow}, transparent 60%)` }} />
         {/* Watermark inicial gigante */}
-        <div className="font-heading" style={{
+        <div className="font-heading pv3-hero-watermark" style={{
           position: 'absolute', right: -32, bottom: -90,
           fontWeight: 900, fontSize: 360,
           color: 'rgba(255,255,255,0.04)', lineHeight: 0.85, letterSpacing: '-0.06em', pointerEvents: 'none',
@@ -66,7 +66,7 @@ export function V2Hero({ sub, view }: { sub: 'free' | 'plus'; view: 'mine' | 'pu
             border: '5px solid #fff', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 900, fontSize: 50, letterSpacing: '-0.04em',
-          }} className="font-heading">
+          }} className="font-heading pv3-hero-avatar">
             {!me.avatarUrl ? avatarInitials : null}
           </div>
           {isMine && (

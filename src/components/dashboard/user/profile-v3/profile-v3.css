@@ -343,14 +343,40 @@ main:has(.mp-profile-v3) {
     width: 100%;
   }
 
+  /* Hero compacto en mobile: cover más bajo, avatar y watermark a escala */
+  .mp-profile-v3 .pv3-hero-cover {
+    height: 150px !important;
+  }
+
+  .mp-profile-v3 .pv3-hero-watermark {
+    font-size: 200px !important;
+    right: -18px !important;
+    bottom: -48px !important;
+  }
+
+  .mp-profile-v3 .pv3-hero-avatar {
+    width: 104px !important;
+    height: 104px !important;
+    font-size: 36px !important;
+    border-width: 4px !important;
+  }
+
   .mp-profile-v3 .pv3-hero-identity {
     padding-left: 16px !important;
     padding-right: 16px !important;
     align-items: flex-start !important;
+    gap: 10px !important;
   }
 
   .mp-profile-v3 .pv3-hero-identity > div:first-child {
     margin-top: -48px !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Bloque de acciones: ancho completo, sin min-width fijo del desktop */
+  .mp-profile-v3 .pv3-hero-identity > div:last-child {
+    min-width: 0 !important;
+    width: 100%;
   }
 
   .mp-profile-v3 .pv3-kpi-strip {
@@ -410,7 +436,18 @@ main:has(.mp-profile-v3) {
     grid-template-columns: 1fr !important;
   }
 
+  /* 2 columnas compactas (los valores son cortos): 1 sola columna hacía la
+     tira de KPIs larguísima y empujaba el contenido real bajo el fold. */
   .mp-profile-v3 .pv3-kpi-strip {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .mp-profile-v3 .pv3-kpi-strip > div {
+    padding: 12px !important;
+  }
+
+  .mp-profile-v3 .pv3-kpi-strip .profile-v3-stat-value {
+    font-size: 20px;
   }
 }
