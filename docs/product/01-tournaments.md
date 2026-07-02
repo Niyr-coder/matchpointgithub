@@ -172,6 +172,16 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
   href client-side en `NotificationsPanel.hrefForKind` →
   `/dashboard/[role]/torneo/[id]`. Helper: `notifyMatchReady` /
   `notifyGroupsDrawn` en `src/lib/notifications/tournament.ts`.
+- `tournament_category_finished` ✅ "Tu categoría terminó" (mig
+  `20260718000000`): en multi-categoría cada categoría cierra por separado
+  (`tournament_categories.stage='complete'`) y el torneo global sigue live.
+  Se encola a los inscritos (pending+accepted) de ESA categoría al definirse
+  su final, con el campeón en el body cuando se puede derivar. Disparada
+  desde los 3 paths de cierre (confirmación de monitor, reporte del partner,
+  `closeLigaStage`). Helper: `notifyCategoryFinished` en
+  `src/lib/notifications/tournament.ts`. Sin flag (aviso informativo). El
+  jugador además ve banner "Tu categoría terminó" + campeón + su resumen
+  (W-L/ΔMPR) sin esperar el `finished` global (`tournament-player-page.ts`).
 - `registration_waitlisted` / `waitlist_promoted` ✅ (mig `20260713000000`):
   lista de espera opt-in por torneo (`tournaments.allow_waitlist`, toggle en
   el wizard Step 3). Semántica: waitlist NO consume cupo (los counts usan
@@ -455,6 +465,26 @@ Enum propuesto en `tournament_categories.stage`:
 
 El `tournaments.status` global sigue siendo `live` / `finished`; la UI y las
 actions usan `category.stage` para saber qué botones mostrar.
+
+**Reglas multi-categoría (2026-07-02, cierre de P0 del audit):**
+
+1. **Un bracket POR categoría.** `generateBracket` sin `categoryId` se rechaza
+   (`BRACKETS.CATEGORY_REQUIRED`) cuando el torneo tiene categorías; el rail
+   del partner lleva a la pantalla Brackets (acordeón per-categoría). El
+   bracket global (`category_id null`) solo es válido en torneos SIN
+   categorías.
+2. **El jugador ve el bracket de SU categoría** (`player-matches.ts` filtra
+   por `category_id`; fallback al global solo si no tiene categoría).
+3. **Campeones por categoría**: `getDerivedCategoryWinners` resuelve la final
+   del bracket de cada categoría (excluye bronce); el bracket global solo se
+   atribuye si el torneo tiene una única categoría.
+4. **Cola de monitores** (fallback sin cancha): por
+   `bracket_matches.tournament_id` — cubre todos los brackets, no solo el
+   más reciente.
+5. **Auto-finish**: la final de una categoría marca `stage='complete'` y
+   encola `tournament_category_finished`; el torneo pasa a `finished` solo
+   cuando TODAS las categorías están complete. Un bracket global legacy en
+   un torneo con categorías NO auto-finaliza (cierre manual).
 
 ### 13.5 Seeding internacional → cuadro
 

@@ -31,6 +31,8 @@ export type TournamentPrizeView = {
   placeLabel: string;
   prizeLabel: string;
   valueCents: number | null;
+  /** Categoría a la que pertenece el premio (multi-categoría); null = general. */
+  categoryName?: string | null;
 };
 
 type Props = {
@@ -424,9 +426,21 @@ export function EventDetailView({
     { bg: "var(--muted)", col: "var(--muted-fg)" },
   ];
   const pool = t.prizePoolCents ?? 0;
-  const podium =
-    prizes && prizes.length > 0
-      ? prizes.slice(0, 6).map((pz, i) => {
+  // Multi-categoría: los premios se agrupan por categoría en vez de mezclarse
+  // en una lista plana sin atribución. Sin category_id → grupo "General".
+  type PodiumRow = { p: string; amount: string; bg: string; col: string };
+  const podiumGroups: Array<{ category: string | null; rows: PodiumRow[] }> = (() => {
+    if (prizes && prizes.length > 0) {
+      const byCat = new Map<string | null, typeof prizes>();
+      for (const pz of prizes) {
+        const key = pz.categoryName ?? null;
+        const list = byCat.get(key) ?? [];
+        list.push(pz);
+        byCat.set(key, list);
+      }
+      return Array.from(byCat.entries()).map(([category, list]) => ({
+        category,
+        rows: list.slice(0, 6).map((pz, i) => {
           const st = PODIUM_STYLES[Math.min(i, PODIUM_STYLES.length - 1)];
           return {
             p: pz.placeLabel,
@@ -437,14 +451,26 @@ export function EventDetailView({
             bg: st.bg,
             col: st.col,
           };
-        })
-      : pool > 0
-        ? [
+        }),
+      }));
+    }
+    if (pool > 0) {
+      return [
+        {
+          category: null,
+          rows: [
             { p: "1°", amount: formatMoney(Math.round(pool * 0.5)), bg: "#fbbf24", col: "#0a0a0a" },
             { p: "2°", amount: formatMoney(Math.round(pool * 0.3)), bg: "#9ca3af", col: "#fff" },
             { p: "3°", amount: formatMoney(Math.round(pool * 0.2)), bg: "#d97706", col: "#fff" },
-          ]
-        : [];
+          ],
+        },
+      ];
+    }
+    return [];
+  })();
+  // Encabezado de categoría solo cuando hay más de un grupo o el grupo tiene nombre.
+  const showPodiumHeaders =
+    podiumGroups.length > 1 || (podiumGroups.length === 1 && podiumGroups[0].category !== null);
 
   // Cronograma real (tournament_schedule_blocks).
 
@@ -768,41 +794,59 @@ export function EventDetailView({
             >
               {formatMoney(pool)} pozo<span className="dot">.</span>
             </h3>
-            {podium.length > 0
-              ? podium.map((row) => (
-                  <div
-                    key={row.p}
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: 10,
-                      borderRadius: 8,
-                      background: "var(--muted)",
-                      marginBottom: 6,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 8,
-                        background: row.bg,
-                        color: row.col,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontFamily: "Plus Jakarta Sans",
-                        fontWeight: 900,
-                        fontSize: 14,
-                      }}
-                    >
-                      {row.p}
-                    </div>
-                    <div style={{ flex: 1, fontSize: 11, color: "var(--muted-fg)" }}>+ trofeo + kit</div>
-                    <div className="font-heading" style={{ fontSize: 17, fontWeight: 900 }}>
-                      {row.amount}
-                    </div>
+            {podiumGroups.length > 0
+              ? podiumGroups.map((group, gi) => (
+                  <div key={group.category ?? `general-${gi}`}>
+                    {showPodiumHeaders && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 900,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          color: "var(--muted-fg)",
+                          margin: gi === 0 ? "0 0 6px" : "12px 0 6px",
+                        }}
+                      >
+                        {group.category ?? "Generales"}
+                      </div>
+                    )}
+                    {group.rows.map((row, ri) => (
+                      <div
+                        key={`${row.p}-${ri}`}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: 10,
+                          borderRadius: 8,
+                          background: "var(--muted)",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            background: row.bg,
+                            color: row.col,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontFamily: "Plus Jakarta Sans",
+                            fontWeight: 900,
+                            fontSize: 14,
+                          }}
+                        >
+                          {row.p}
+                        </div>
+                        <div style={{ flex: 1, fontSize: 11, color: "var(--muted-fg)" }}>+ trofeo + kit</div>
+                        <div className="font-heading" style={{ fontSize: 17, fontWeight: 900 }}>
+                          {row.amount}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))
               : (
