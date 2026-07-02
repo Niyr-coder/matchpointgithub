@@ -59,14 +59,15 @@ async function loadData(): Promise<AdminHomeData> {
       .select("id", { count: "exact", head: true })
       .eq("status", "active")
       .gte("created_at", weekStart.toISOString()),
+    // Fuente única de dinero: v_transactions_net (captured − refunds).
     supabase
-      .from("transactions")
-      .select("amount_cents")
+      .from("v_transactions_net")
+      .select("net_amount_cents")
       .eq("status", "captured")
       .gte("created_at", monthStart.toISOString()),
     supabase
-      .from("transactions")
-      .select("amount_cents")
+      .from("v_transactions_net")
+      .select("net_amount_cents")
       .eq("status", "captured")
       .gte("created_at", prevMonthStart.toISOString())
       .lt("created_at", monthStart.toISOString()),
@@ -87,8 +88,8 @@ async function loadData(): Promise<AdminHomeData> {
       .limit(4),
   ]);
 
-  const gmvMonthCents = (txnsMonth ?? []).reduce((s, t) => s + ((t.amount_cents as number) ?? 0), 0);
-  const gmvPrevCents = (txnsPrev ?? []).reduce((s, t) => s + ((t.amount_cents as number) ?? 0), 0);
+  const gmvMonthCents = (txnsMonth ?? []).reduce((s, t) => s + ((t.net_amount_cents as number) ?? 0), 0);
+  const gmvPrevCents = (txnsPrev ?? []).reduce((s, t) => s + ((t.net_amount_cents as number) ?? 0), 0);
   const gmvDeltaCents = gmvMonthCents - gmvPrevCents;
 
   const actorIds = Array.from(

@@ -98,9 +98,10 @@ async function loadData(): Promise<PartnerHomeData> {
         .select("tournament_id,status,created_at")
         .in("tournament_id", tourIds)
         .in("status", ["accepted", "pending"]),
+      // Fuente única de dinero: v_transactions_net (captured − refunds).
       supabase
-        .from("transactions")
-        .select("ref_id,amount_cents,created_at")
+        .from("v_transactions_net")
+        .select("ref_id,net_amount_cents,created_at")
         .eq("kind", "tournament")
         .eq("status", "captured")
         .in("ref_id", tourIds)
@@ -118,7 +119,7 @@ async function loadData(): Promise<PartnerHomeData> {
     }
     for (const t of txns ?? []) {
       const tid = t.ref_id as string;
-      const cents = (t.amount_cents as number) ?? 0;
+      const cents = (t.net_amount_cents as number) ?? 0;
       monthRevenueByTour.set(tid, (monthRevenueByTour.get(tid) ?? 0) + cents);
       monthRevenueCents += cents;
     }

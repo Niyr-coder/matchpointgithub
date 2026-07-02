@@ -159,8 +159,10 @@ async function loadDataUncached(): Promise<MetricsData> {
   const [{ data: txnsRaw }, { data: resvsRaw }, { data: profsRaw }, { data: clubsRaw }, takeRatePct] =
     await Promise.all([
       supabase
-        .from("transactions")
-        .select("amount_cents,created_at,club_id")
+        .from("v_transactions_net")
+        // net (captured − refunds) aliaseado a amount_cents para no tocar
+        // las agregaciones downstream.
+        .select("amount_cents:net_amount_cents,created_at,club_id")
         .eq("status", "captured")
         .gte("created_at", yearAgoIso),
       supabase

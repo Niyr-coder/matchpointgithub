@@ -84,16 +84,17 @@ async function loadData(): Promise<FinanzasData> {
   if (tourIds.length > 0) {
     const [{ data: txnsMonth }, { data: txnsPrev }, { data: regsMonth }, { data: regsPrev }, { data: links }] =
       await Promise.all([
+        // Fuente única de dinero: v_transactions_net (captured − refunds).
         supabase
-          .from("transactions")
-          .select("ref_id,amount_cents,club_id")
+          .from("v_transactions_net")
+          .select("ref_id,net_amount_cents,club_id")
           .eq("kind", "tournament")
           .eq("status", "captured")
           .in("ref_id", tourIds)
           .gte("created_at", monthStart.toISOString()),
         supabase
-          .from("transactions")
-          .select("amount_cents")
+          .from("v_transactions_net")
+          .select("net_amount_cents")
           .eq("kind", "tournament")
           .eq("status", "captured")
           .in("ref_id", tourIds)
@@ -103,11 +104,13 @@ async function loadData(): Promise<FinanzasData> {
           .from("registrations")
           .select("tournament_id,created_at")
           .in("tournament_id", tourIds)
+          .in("status", ["pending", "accepted"])
           .gte("created_at", monthStart.toISOString()),
         supabase
           .from("registrations")
           .select("tournament_id,created_at")
           .in("tournament_id", tourIds)
+          .in("status", ["pending", "accepted"])
           .gte("created_at", prevMonthStart.toISOString())
           .lt("created_at", monthStart.toISOString()),
         supabase
@@ -122,7 +125,7 @@ async function loadData(): Promise<FinanzasData> {
     }
 
     for (const t of txnsMonth ?? []) {
-      const cents = (t.amount_cents as number) ?? 0;
+      const cents = (t.net_amount_cents as number) ?? 0;
       monthRevenueCents += cents;
       const tid = t.ref_id as string;
       revByTour.set(tid, (revByTour.get(tid) ?? 0) + cents);
@@ -133,7 +136,7 @@ async function loadData(): Promise<FinanzasData> {
         clubsShareByTour.set(tid, (clubsShareByTour.get(tid) ?? 0) + share);
       }
     }
-    prevRevenueCents = (txnsPrev ?? []).reduce((s, t) => s + ((t.amount_cents as number) ?? 0), 0);
+    prevRevenueCents = (txnsPrev ?? []).reduce((s, t) => s + ((t.net_amount_cents as number) ?? 0), 0);
     inscritosMonth = (regsMonth ?? []).length;
     inscritosPrev = (regsPrev ?? []).length;
   }

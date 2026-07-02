@@ -88,17 +88,20 @@ async function loadData(): Promise<PagosData> {
   const partnerName = new Map<string, string>();
   for (const p of partnersRows ?? []) partnerName.set(p.id as string, p.name as string);
 
-  // KPIs hoy
+  // KPIs hoy — desde v_transactions_net (neto de refunds) y SIN el límite de
+  // 50 filas del listado (antes el KPI era inexacto con volumen).
+  const { data: todayNetRows } = await supabase
+    .from("v_transactions_net")
+    .select("net_amount_cents")
+    .eq("status", "captured")
+    .gte("created_at", todayStart.toISOString());
   let gmvTodayCents = 0;
   let commissionTodayCents = 0;
   let refundsTodayCents = 0;
-  for (const t of txns ?? []) {
-    const at = new Date(t.created_at as string);
-    if (at >= todayStart && t.status === "captured") {
-      const amt = (t.amount_cents as number) ?? 0;
-      gmvTodayCents += amt;
-      commissionTodayCents += Math.round(amt * takeRate);
-    }
+  for (const t of (todayNetRows ?? []) as Array<{ net_amount_cents: number }>) {
+    const amt = t.net_amount_cents ?? 0;
+    gmvTodayCents += amt;
+    commissionTodayCents += Math.round(amt * takeRate);
   }
   for (const r of refunds ?? []) {
     const at = new Date(r.created_at as string);

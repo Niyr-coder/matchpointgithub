@@ -208,7 +208,7 @@ export async function addRegistrationByPartner(
 
       const { data: tournament } = await supabase
         .from("tournaments")
-        .select("id,status,entry_fee_cents,currency")
+        .select("id,status,entry_fee_cents,currency,club_id")
         .eq("id", tournamentId)
         .maybeSingle();
       if (!tournament) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
@@ -304,7 +304,11 @@ export async function addRegistrationByPartner(
           .from("transactions")
           .insert({
             kind: "tournament",
-            ref_id: newReg.id as string,
+            // Convención unificada (mig 20260717000000): ref_id = torneo,
+            // club_id = sede — igual que la inscripción online. El vínculo
+            // por-inscripción vive en registrations.paid_transaction_id.
+            ref_id: tournamentId,
+            club_id: (tournament.club_id as string | null) ?? null,
             amount_cents: entryFeeCents,
             currency: (tournament.currency as string | null) ?? "USD",
             method: "cash",
@@ -421,7 +425,7 @@ export async function addRegistrationsBulkByPartner(
 
       const { data: tournament } = await supabase
         .from("tournaments")
-        .select("id,status,entry_fee_cents,currency,modality")
+        .select("id,status,entry_fee_cents,currency,modality,club_id")
         .eq("id", tournamentId)
         .maybeSingle();
       if (!tournament) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
@@ -518,7 +522,9 @@ export async function addRegistrationsBulkByPartner(
                 .from("transactions")
                 .insert({
                   kind: "tournament",
-                  ref_id: reg.id as string,
+                  // Convención unificada: ref_id = torneo + club_id sede.
+                  ref_id: tournamentId,
+                  club_id: (tournament.club_id as string | null) ?? null,
                   amount_cents: entryFeeCents,
                   currency,
                   method: "cash",

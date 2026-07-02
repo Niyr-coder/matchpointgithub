@@ -10610,6 +10610,26 @@ export type Database = {
         }
         Relationships: []
       }
+      v_transactions_net: {
+        Row: {
+          amount_cents: number | null
+          cash_session_id: string | null
+          club_id: string | null
+          created_at: string | null
+          created_by: string | null
+          currency: Database["public"]["Enums"]["mp_currency"] | null
+          customer_name: string | null
+          customer_user_id: string | null
+          id: string | null
+          kind: string | null
+          method: Database["public"]["Enums"]["mp_payment_method"] | null
+          net_amount_cents: number | null
+          ref_id: string | null
+          refunded_cents: number | null
+          status: Database["public"]["Enums"]["mp_payment_status"] | null
+        }
+        Relationships: []
+      }
       v_public_profiles: {
         Row: {
           avatar_url: string | null

@@ -146,6 +146,29 @@ refund_request pendiente (status='done') → notif refund_completed al cliente.
 RLS de `refund_requests`: admin all; partner/club staff del torneo solo
 lectura (escrituras vía service role con `setAuditActor`).
 
+## 5.b Fuente única de dinero: `v_transactions_net` (mig `20260717000000`)
+
+`net_amount_cents = amount_cents − Σ refunds` si la tx está `captured`
+(soporta refunds PARCIALES); `0` en cualquier otro status. **Toda superficie
+de revenue debe leer de esta vista**, nunca `transactions.status='captured'`
+directo — así el escenario pagar→cancelar→re-inscribirse→pagar cuenta 1×.
+
+Migradas: PartnerFinanzas/Home/Torneos, ClubFinanzas, AdminPagos (KPI del día
+sin el límite de 50 filas), AdminMetrics (alias `amount_cents:net_amount_cents`),
+AdminHome, CoachPagos, closeCashSession (antes sumaba TODOS los status).
+La comisión (take rate) se calcula sobre el NETO en todas ellas.
+
+**Payouts reconciliables** (misma mig + `processPendingPayouts`):
+`gross(periodo) = capturado en el periodo − refunds REGISTRADOS en el periodo`
+(aunque la tx sea de un periodo anterior) → un refund marcado después de
+generado un payout se descuenta del payout siguiente. Si el neto del periodo
+es ≤ 0 el payout se omite (la deuda no se arrastra — límite aceptado en beta).
+
+**`ref_id` unificado**: los walk-ins cash ahora llevan `ref_id = tournament_id`
++ `club_id` de la sede (backfill en la mig) — antes apuntaban a la
+registration y eran invisibles en finanzas y payouts. El vínculo
+por-inscripción vive en `registrations.paid_transaction_id`.
+
 ## 6. Take rate (comisión MATCHPOINT)
 
 - Stored en `platform_config.take_rate_pct` (default 10).

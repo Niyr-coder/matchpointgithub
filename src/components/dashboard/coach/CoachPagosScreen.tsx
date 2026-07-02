@@ -96,8 +96,8 @@ async function loadData(): Promise<PagosData> {
   }
 
   const { data: txns } = await supabase
-    .from("transactions")
-    .select("id,kind,amount_cents,status,created_at,ref_id,customer_user_id,customer_name")
+    .from("v_transactions_net")
+    .select("id,kind,amount_cents,net_amount_cents,status,created_at,ref_id,customer_user_id,customer_name")
     .eq("kind", "class")
     .in("ref_id", Array.from(refIds))
     .order("created_at", { ascending: false });
@@ -124,15 +124,17 @@ async function loadData(): Promise<PagosData> {
   const rows: TxRow[] = (txns ?? []).map((t) => {
     const refId = t.ref_id as string;
     const amt = (t.amount_cents as number) ?? 0;
+    // KPI en neto (captured − refunds); la fila muestra el monto original.
+    const netAmt = (t.net_amount_cents as number) ?? 0;
     if (t.status === "captured") {
-      grossCents += amt;
+      grossCents += netAmt;
       // Resolver % comisión por club: refId → class → club → coach_commissions.
       const clsId = refClass.get(refId);
       const clubId = clsId ? classClub.get(clsId) : undefined;
       const pct = clubId && commissionPctByClub.has(clubId)
         ? commissionPctByClub.get(clubId)!
         : DEFAULT_COMMISSION_PCT;
-      commissionCentsAccum += Math.round(amt * pct);
+      commissionCentsAccum += Math.round(netAmt * pct);
     }
 
     let who = "—";

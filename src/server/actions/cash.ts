@@ -174,14 +174,17 @@ export async function closeCashSession(input: unknown): Promise<ActionResult<Cas
       );
     }
 
-    // Expected cash on hand = opening_float + sum(cash captured) - sum(cash refunded).
-    const { data: cashRows } = await supabase
-      .from("transactions")
-      .select("amount_cents")
+    // Expected cash on hand = opening_float + sum(cash captured) - sum(refunds).
+    // Antes sumaba TODOS los status (pending/failed/refunded inflaban el
+    // arqueo — audit 2026-07-01). Fuente única: v_transactions_net.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: cashRows } = await (supabase as any)
+      .from("v_transactions_net")
+      .select("net_amount_cents")
       .eq("cash_session_id", id)
       .eq("method", "cash");
-    const sumCash = (cashRows ?? []).reduce(
-      (a, r) => a + (r.amount_cents as number),
+    const sumCash = ((cashRows ?? []) as Array<{ net_amount_cents: number }>).reduce(
+      (a, r) => a + (r.net_amount_cents ?? 0),
       0,
     );
     const expected = (current.opening_float_cents as number) + sumCash;

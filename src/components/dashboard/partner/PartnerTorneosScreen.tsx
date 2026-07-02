@@ -95,9 +95,10 @@ async function loadData(clubFilterId?: string): Promise<TorneosData> {
         .select("tournament_id,status")
         .in("tournament_id", tourIds)
         .in("status", ["accepted", "pending"]),
+      // Fuente única de dinero: v_transactions_net (captured − refunds).
       supabase
-        .from("transactions")
-        .select("ref_id,amount_cents")
+        .from("v_transactions_net")
+        .select("ref_id,net_amount_cents")
         .eq("kind", "tournament")
         .eq("status", "captured")
         .in("ref_id", tourIds)
@@ -109,7 +110,7 @@ async function loadData(clubFilterId?: string): Promise<TorneosData> {
     }
     for (const t of txns ?? []) {
       const tid = t.ref_id as string;
-      revByTour.set(tid, (revByTour.get(tid) ?? 0) + ((t.amount_cents as number) ?? 0));
+      revByTour.set(tid, (revByTour.get(tid) ?? 0) + ((t.net_amount_cents as number) ?? 0));
     }
   }
 

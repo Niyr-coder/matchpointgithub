@@ -90,10 +90,25 @@ export async function processPendingPayouts(
         .gte("created_at", periodStart)
         .lte("created_at", periodEnd);
 
-      const grossCents = (txs ?? []).reduce(
+      let grossCents = (txs ?? []).reduce(
         (sum, t) => sum + ((t.amount_cents as number) ?? 0),
         0,
       );
+
+      // Reconciliación: refunds REGISTRADOS en el periodo se descuentan
+      // (incluye refunds de tx de periodos ya pagados — audit 2026-07-01,
+      // misma fórmula que fn_generate_payouts en mig 20260717000000).
+      const { data: refundRows } = await supabase
+        .from("refunds")
+        .select("amount_cents, transactions!inner(club_id)")
+        .eq("transactions.club_id", clubId)
+        .gte("created_at", periodStart)
+        .lte("created_at", periodEnd);
+      const refundsCents = (refundRows ?? []).reduce(
+        (sum, r) => sum + ((r.amount_cents as number) ?? 0),
+        0,
+      );
+      grossCents -= refundsCents;
       if (grossCents <= 0) continue;
 
       const commissionCents = Math.round(grossCents * commissionPct);

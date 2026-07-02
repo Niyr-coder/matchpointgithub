@@ -111,15 +111,16 @@ async function loadData(): Promise<FinanzasData> {
     { data: resTxnsMonth },
     { data: takeRateConfig },
   ] = await Promise.all([
+    // Fuente única de dinero: v_transactions_net (captured − refunds).
     supabase
-      .from("transactions")
-      .select("amount_cents,kind,status")
+      .from("v_transactions_net")
+      .select("net_amount_cents,kind,status")
       .eq("club_id", clubId)
       .in("status", CAPTURED_STATUSES)
       .gte("created_at", monthStart.toISOString()),
     supabase
-      .from("transactions")
-      .select("amount_cents,kind")
+      .from("v_transactions_net")
+      .select("net_amount_cents,kind")
       .eq("club_id", clubId)
       .in("status", CAPTURED_STATUSES)
       .gte("created_at", prevMonthStart.toISOString())
@@ -205,13 +206,13 @@ async function loadData(): Promise<FinanzasData> {
   let revenueGrossCents = 0;
   let txnCount = 0;
   for (const r of txMonth ?? []) {
-    revenueGrossCents += (r.amount_cents as number) ?? 0;
+    revenueGrossCents += (r.net_amount_cents as number) ?? 0;
     txnCount += 1;
   }
   let revenuePrevCents = 0;
   let txnPrevCount = 0;
   for (const r of txPrev ?? []) {
-    revenuePrevCents += (r.amount_cents as number) ?? 0;
+    revenuePrevCents += (r.net_amount_cents as number) ?? 0;
     txnPrevCount += 1;
   }
   const ticketAvgCents = txnCount > 0 ? Math.round(revenueGrossCents / txnCount) : 0;
@@ -257,14 +258,14 @@ async function loadData(): Promise<FinanzasData> {
   for (const r of txMonth ?? []) {
     const b = KIND_TO_SOURCE[r.kind as string];
     if (!b) continue;
-    monthByBucket[b] += (r.amount_cents as number) ?? 0;
+    monthByBucket[b] += (r.net_amount_cents as number) ?? 0;
     monthCountByBucket[b] += 1;
   }
   const prevByBucket = { reservations: 0, events: 0, classes: 0, proshop: 0 };
   for (const r of txPrev ?? []) {
     const b = KIND_TO_SOURCE[r.kind as string];
     if (!b) continue;
-    prevByBucket[b] += (r.amount_cents as number) ?? 0;
+    prevByBucket[b] += (r.net_amount_cents as number) ?? 0;
   }
   const totalSources =
     monthByBucket.reservations +
