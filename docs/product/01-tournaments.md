@@ -469,10 +469,13 @@ actions usan `category.stage` para saber qué botones mostrar.
 **Reglas multi-categoría (2026-07-02, cierre de P0 del audit):**
 
 1. **Un bracket POR categoría.** `generateBracket` sin `categoryId` se rechaza
-   (`BRACKETS.CATEGORY_REQUIRED`) cuando el torneo tiene categorías; el rail
-   del partner lleva a la pantalla Brackets (acordeón per-categoría). El
-   bracket global (`category_id null`) solo es válido en torneos SIN
-   categorías.
+   (`BRACKETS.CATEGORY_REQUIRED`) cuando el torneo tiene categorías. La
+   generación es acción de SETUP y vive en la gestión del torneo: tab
+   Operación → panel "Llaves por categoría" (`TournamentBracketsSetupPanel`,
+   2026-07-02). `p-brackets` solo visualiza/reporta (selector de torneo +
+   acordeón por categoría + podio 1°/2°/3°); sus secciones sin llave apuntan
+   a la gestión. El bracket global (`category_id null`) solo es válido en
+   torneos SIN categorías (botón del rail).
 2. **El jugador ve el bracket de SU categoría** (`player-matches.ts` filtra
    por `category_id`; fallback al global solo si no tiene categoría).
 3. **Campeones por categoría**: `getDerivedCategoryWinners` resuelve la final

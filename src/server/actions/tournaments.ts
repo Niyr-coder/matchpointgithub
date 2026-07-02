@@ -1380,7 +1380,7 @@ export async function generateBracket(
       if ((catCount ?? 0) > 0) {
         throw new MpError(
           "BRACKETS.CATEGORY_REQUIRED",
-          "Este torneo tiene categorías: genera el bracket de cada categoría desde la pantalla Brackets.",
+          "Este torneo tiene categorías: genera la llave de cada categoría desde la gestión del torneo (tab Operación → Llaves por categoría).",
           422,
         );
       }

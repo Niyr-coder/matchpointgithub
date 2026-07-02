@@ -19,6 +19,7 @@ import {
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { TournamentMonitorsPanel } from "@/components/dashboard/partner/TournamentMonitorsPanel";
 import { TournamentMatchSchedulerPanel } from "@/components/dashboard/partner/TournamentMatchSchedulerPanel";
+import { TournamentBracketsSetupPanel } from "@/components/dashboard/partner/TournamentBracketsSetupPanel";
 import { TournamentCourtsLive } from "@/components/dashboard/partner/TournamentCourtsLive";
 import { TournamentIncidentsFeed } from "@/components/dashboard/partner/TournamentIncidentsFeed";
 import { TorneoInscritosInteractivo } from "@/components/dashboard/partner/TorneoInscritosInteractivo";
@@ -396,7 +397,7 @@ export default async function PartnerTorneoPage({
       .select("id,position,place_label,prize_label,value_cents,sponsor,category_id")
       .eq("tournament_id", id)
       .order("position", { ascending: true }),
-    admin.from("brackets").select("id").eq("tournament_id", id),
+    admin.from("brackets").select("id,category_id").eq("tournament_id", id),
   ]);
 
   // Clubes vinculados al partner — para el selector de sede en el modal de edición.
@@ -438,6 +439,11 @@ export default async function PartnerTorneoPage({
     category_id: string | null;
   };
   const hasBracket = ((bracketsRes.data ?? []) as Array<{ id: string }>).length > 0;
+  const bracketCatIds = new Set(
+    ((bracketsRes.data ?? []) as Array<{ id: string; category_id: string | null }>).map(
+      (b) => b.category_id ?? null,
+    ),
+  );
 
 
   const prizes: PrizeRow[] = ((prizesRaw ?? []) as unknown as PrizeRowRaw[]).map((p) => ({
@@ -912,6 +918,18 @@ export default async function PartnerTorneoPage({
                 tournamentFormat={tournamentFormat}
                 tournamentId={t.id as string}
               >
+                {!isClosed && tournamentFormat === "single_elim" && categories.length > 0 && (
+                  <TournamentBracketsSetupPanel
+                    tournamentId={t.id as string}
+                    categories={((catsRaw ?? []) as unknown as CatRow[]).map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      stage: c.stage ?? null,
+                      acceptedCount: acceptedByCategory.get(c.id) ?? 0,
+                      hasBracket: bracketCatIds.has(c.id),
+                    }))}
+                  />
+                )}
                 {!isClosed && clubCourts.length > 0 && (hasBracket || hasGroupOperacion || hasLigaOperacion) && (
                   <TournamentMatchSchedulerPanel
                     tournamentId={t.id as string}

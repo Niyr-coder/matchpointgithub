@@ -6,8 +6,6 @@ import { Icon } from "@/components/Icon";
 import { RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
-import { usePromptModal } from "../widgets/PromptModal";
-import { generateBracket } from "@/server/actions/tournaments";
 import { reportBracketMatch, correctBracketMatch } from "@/server/actions/tournament-group-stage";
 import { REALTIME_DEBOUNCE } from "@/lib/realtime/debounce";
 import { BracketView, type BracketNode } from "../brackets/BracketView";
@@ -462,8 +460,10 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
                       : undefined
                   }
                 >
-                  {/* Barra de acción por categoría */}
-                  {(!cat.hasBracket || (cat.canGenerateRandomBracket && !cat.hasBracket)) && (
+                  {/* Sin llave todavía: la generación es acción de setup y vive
+                      en la gestión del torneo (tab Operación) — aquí solo se
+                      visualiza y reporta. */}
+                  {!cat.hasBracket && (
                     <div
                       style={{
                         padding: "10px 16px",
@@ -471,19 +471,21 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
                         display: "flex",
                         alignItems: "center",
                         gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
-                      {cat.canGenerateRandomBracket && !cat.hasBracket && data.tournamentId && (
-                        <GenerateBracketButton
-                          tournamentId={data.tournamentId}
-                          categoryId={cat.categoryId}
-                        />
-                      )}
-                      {!cat.canGenerateRandomBracket && !cat.hasBracket && (
-                        <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
-                          Sortea grupos, cierra la fase y genera la llave desde la gestión del
-                          torneo; el cuadro aparecerá aquí automáticamente.
-                        </span>
+                      <span style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+                        {cat.canGenerateRandomBracket
+                          ? "Genera la llave de esta categoría desde la gestión del torneo (tab Operación → Llaves por categoría)."
+                          : "Sortea grupos, cierra la fase y genera la llave desde la gestión del torneo; el cuadro aparecerá aquí automáticamente."}
+                      </span>
+                      {data.tournamentId && (
+                        <a
+                          href={`/dashboard/partner/torneo/${data.tournamentId}`}
+                          style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textDecoration: "none", whiteSpace: "nowrap" }}
+                        >
+                          Ir a gestión →
+                        </a>
                       )}
                     </div>
                   )}
@@ -564,53 +566,5 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
         })}
       </div>
     </>
-  );
-}
-
-function GenerateBracketButton({
-  tournamentId,
-  categoryId,
-}: {
-  tournamentId: string;
-  categoryId: string | null;
-}) {
-  const toast = useToast();
-  const router = useRouter();
-  const { confirm } = usePromptModal();
-  const [isPending, startTransition] = useTransition();
-  const doGenerate = async () => {
-    const ok = await confirm({
-      title: "Generar bracket",
-      body: "¿Generar el bracket ahora? Las inscripciones aceptadas se sortearán aleatoriamente.",
-      confirmLabel: "Generar",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      const res = await generateBracket({
-        tournamentId,
-        categoryId: categoryId ?? undefined,
-      });
-      if (res.ok) {
-        toast({ icon: "check", title: "Bracket generado" });
-        router.refresh();
-      } else {
-        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
-      }
-    });
-  };
-  return (
-    <button
-      className="btn"
-      style={{
-        background: "#0a0a0a",
-        color: "#fff",
-        border: "1px solid #0a0a0a",
-      }}
-      disabled={isPending}
-      onClick={doGenerate}
-    >
-      <Icon name="shuffle" size={13} color="#fff" />
-      {isPending ? "Generando…" : "Generar bracket"}
-    </button>
   );
 }
