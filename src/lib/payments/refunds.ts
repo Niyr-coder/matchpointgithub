@@ -17,6 +17,7 @@ import { MpError } from "@/lib/api/errors";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { getRefundWindowDays } from "@/server/queries/platform-config";
+import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
 
 type AdminClient = ReturnType<typeof getAdminClient>;
 
@@ -142,7 +143,7 @@ export async function markTransactionRefundedCore(
     if (!cancelledRegistration) {
       const { data: trReg } = await admin
         .from("registrations")
-        .select("id,status")
+        .select("id,status,tournament_id,category_id")
         .eq("paid_transaction_id", opts.transactionId)
         .maybeSingle();
       if (trReg && trReg.status !== "withdrawn") {
@@ -158,6 +159,13 @@ export async function markTransactionRefundedCore(
           );
         }
         cancelledRegistration = { kind: "tournament", id: trReg.id as string };
+        // El refund liberó un cupo real → promover waitlist.
+        if (trReg.status === "pending" || trReg.status === "accepted") {
+          void promoteFromWaitlist(admin, {
+            tournamentId: trReg.tournament_id as string,
+            categoryId: (trReg.category_id as string | null) ?? null,
+          });
+        }
       }
     }
   }

@@ -87,9 +87,11 @@ function formatMoney(cents: number | null | undefined): string {
 
 const REG_STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente de aprobación",
+  accepted: "Inscripción aceptada",
   approved: "Inscripción aprobada",
   rejected: "Rechazada",
   cancelled: "Cancelada",
+  waitlist: "En lista de espera",
   waitlisted: "En lista de espera",
 };
 
@@ -131,12 +133,14 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
     registrationOpensAt: t.registrationOpensAt,
     registrationClosesAt: t.registrationClosesAt,
     maxParticipants: t.maxParticipants,
+    allowWaitlist: t.allowWaitlist,
     registrationCount: insc,
     categories: categories.map((c) => ({ id: c.id, maxTeams: c.maxTeams })),
     categoryRegistrationCounts,
   });
   const isFull = registrationEligibility.block === "full";
   const canRegister = registrationEligibility.canRegister;
+  const joinsWaitlist = Boolean(registrationEligibility.waitlistAvailable);
 
   const pool = t.prizePoolCents ?? 0;
   const podium = pool > 0
@@ -209,6 +213,23 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           title: "No se pudo inscribir",
           sub: res.error.message,
         });
+        return;
+      }
+      if (res.data.status === "waitlist") {
+        toast({
+          icon: "clock",
+          title: "Estás en lista de espera",
+          sub: "Te avisaremos si se libera un cupo.",
+        });
+        setMyReg({
+          id: res.data.id,
+          status: res.data.status,
+          categoryId: res.data.categoryId ?? pendingCategoryId ?? null,
+        });
+        setPickPaymentOpen(false);
+        setPickCategoryOpen(false);
+        setPendingCategoryId(null);
+        router.refresh();
         return;
       }
       const txId = res.data.paidTransactionId ?? null;
@@ -328,6 +349,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
       );
     }
     if (myReg) {
+      const onWaitlist = myReg.status === "waitlist";
       return (
         <>
           <div
@@ -337,17 +359,21 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
               gap: 10,
               padding: "12px 18px",
               borderRadius: 12,
-              background: "rgba(16,185,129,0.18)",
-              border: "1px solid rgba(16,185,129,0.45)",
+              background: onWaitlist ? "rgba(245,158,11,0.18)" : "rgba(16,185,129,0.18)",
+              border: onWaitlist ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(16,185,129,0.45)",
               color: "#fff",
             }}
           >
-            <Icon name="check-circle-2" size={16} color="#10b981" />
+            <Icon name={onWaitlist ? "clock" : "check-circle-2"} size={16} color={onWaitlist ? "#f59e0b" : "#10b981"} />
             <div>
               <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                Estás inscrito
+                {onWaitlist ? "En lista de espera" : "Estás inscrito"}
               </div>
-              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>{REG_STATUS_LABEL[myReg.status] ?? myReg.status}</div>
+              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                {onWaitlist
+                  ? "Te avisaremos si se libera un cupo"
+                  : REG_STATUS_LABEL[myReg.status] ?? myReg.status}
+              </div>
             </div>
           </div>
           <button
@@ -383,8 +409,12 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
           opacity: registering ? 0.7 : 1,
         }}
       >
-        <Icon name="check" size={14} />
-        {registering ? "Procesando…" : `Inscribirme${fee > 0 ? ` · $${fee}` : " gratis"}`}
+        <Icon name={joinsWaitlist ? "clock" : "check"} size={14} />
+        {registering
+          ? "Procesando…"
+          : joinsWaitlist
+            ? "Unirme a lista de espera"
+            : `Inscribirme${fee > 0 ? ` · $${fee}` : " gratis"}`}
       </button>
     );
   };
@@ -735,7 +765,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
                   opacity: registering ? 0.7 : 1,
                 }}
               >
-                {registering ? "Procesando…" : "Inscribirme"}
+                {registering ? "Procesando…" : joinsWaitlist ? "Unirme a lista de espera" : "Inscribirme"}
                 <Icon name="arrow-right" size={13} />
               </button>
             )}

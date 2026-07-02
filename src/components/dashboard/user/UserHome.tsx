@@ -109,6 +109,7 @@ async function loadData(): Promise<UserHomeData> {
         entryFeeCents: (t.entry_fee_cents as number | undefined) ?? 0,
         currency: (t.currency as TournamentFeatured["currency"]) ?? null,
         maxParticipants: (t.max_participants as number | null) ?? null,
+        allowWaitlist: (t.allow_waitlist as boolean | undefined) ?? false,
         sport: t.sport as TournamentFeatured["sport"],
         format: t.format as TournamentFeatured["format"],
         status: (t.status as string) ?? "draft",

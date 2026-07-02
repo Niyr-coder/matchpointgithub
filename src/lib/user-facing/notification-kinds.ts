@@ -68,6 +68,8 @@ export const NOTIFICATION_KIND_TITLES: Record<string, string> = {
   match_walkover_declared: "Walkover declarado en tu partido",
   registration_accepted: "Inscripción aceptada",
   registration_rejected: "Inscripción rechazada",
+  registration_waitlisted: "En lista de espera",
+  waitlist_promoted: "Se liberó un cupo",
   payout_paid: "Pago registrado",
   refund_requested: "Reembolso pendiente",
   club_featuring_activated: "Featuring activado",

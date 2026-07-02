@@ -172,6 +172,17 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
   href client-side en `NotificationsPanel.hrefForKind` →
   `/dashboard/[role]/torneo/[id]`. Helper: `notifyMatchReady` /
   `notifyGroupsDrawn` en `src/lib/notifications/tournament.ts`.
+- `registration_waitlisted` / `waitlist_promoted` ✅ (mig `20260713000000`):
+  lista de espera opt-in por torneo (`tournaments.allow_waitlist`, toggle en
+  el wizard Step 3). Semántica: waitlist NO consume cupo (los counts usan
+  pending+accepted) y NO genera transacción de pago; `registerToTournament`
+  encola con `status='waitlist'` cuando torneo/categoría están llenos.
+  Promoción FIFO (`promoteFromWaitlist` en `src/lib/tournaments/waitlist.ts`,
+  misma categoría, revalida cupos, solo en fase de inscripciones) desde:
+  `cancelMyRegistration`, `updateRegistrationStatus→rejected/withdrawn/waitlist`,
+  `removeTournamentRegistrationAdmin`, `markTournamentRegistrationStatusAdmin→rejected`
+  y `markTransactionRefundedCore`. El promovido pasa a `pending` y coordina
+  el pago con el organizador (sin deadline automático en esta fase).
 
 ## 7. Sincronía cross-superficie
 

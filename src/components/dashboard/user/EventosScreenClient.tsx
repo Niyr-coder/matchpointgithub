@@ -115,6 +115,7 @@ function eventListEligibility(t: TournamentFeatured) {
     registrationOpensAt: null,
     registrationClosesAt: null,
     maxParticipants: t.maxParticipants,
+    allowWaitlist: t.allowWaitlist,
     registrationCount: t.registrationsCount,
     categories: [],
     categoryRegistrationCounts: {},
@@ -331,6 +332,19 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
         });
         return;
       }
+      if (res.data.status === "waitlist") {
+        toast({
+          icon: "clock",
+          title: "Estás en lista de espera",
+          sub: "Te avisaremos si se libera un cupo.",
+        });
+        setRegisterCtx(null);
+        setPickCategoryOpen(false);
+        setPickPaymentOpen(false);
+        setPendingCategoryId(null);
+        router.refresh();
+        return;
+      }
       const txId = res.data.paidTransactionId ?? null;
       const policy = detail.tournament.paymentPolicy;
       const effectiveMode = paymentMode ?? (policy === "prepay" ? "online" : policy === "onsite" ? "onsite" : null);
@@ -379,6 +393,7 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId }: Pr
         registrationOpensAt: detail.tournament.registrationOpensAt,
         registrationClosesAt: detail.tournament.registrationClosesAt,
         maxParticipants: detail.tournament.maxParticipants,
+        allowWaitlist: detail.tournament.allowWaitlist,
         registrationCount: detail.registrationCount,
         categories: detail.categories.map((c) => ({ id: c.id, maxTeams: c.maxTeams })),
         categoryRegistrationCounts,

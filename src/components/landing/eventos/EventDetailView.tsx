@@ -349,6 +349,9 @@ export function EventDetailView({
   const pct = slots > 0 ? Math.min(100, (insc / slots) * 100) : 0;
   const remaining = slots > 0 ? slots - insc : null;
   const isFull = remaining !== null && remaining <= 0;
+  // Lleno + lista de espera habilitada: el CTA sigue activo (el flow del
+  // dashboard encola con status='waitlist').
+  const joinsWaitlist = isFull && Boolean(t.allowWaitlist);
   const accent = (t.name.split(" ")[0] ?? "OPEN").toUpperCase().slice(0, 6);
   const club = [clubName, clubCity].filter(Boolean).join(" · ") || "Multi-club";
   const fee = Math.round(t.entryFeeCents / 100);
@@ -555,7 +558,7 @@ export function EventDetailView({
                 <Icon name={isCancelled ? "x" : "flag"} size={14} color="rgba(255,255,255,0.6)" />
                 {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
               </button>
-            ) : isFull && !registered ? (
+            ) : isFull && !registered && !joinsWaitlist ? (
               <button
                 className="btn"
                 disabled
@@ -599,12 +602,14 @@ export function EventDetailView({
                 onClick={handleInscribirme}
                 disabled={navigating}
               >
-                <Icon name={navigating ? "loader" : "check"} size={14} />
+                <Icon name={navigating ? "loader" : joinsWaitlist ? "clock" : "check"} size={14} />
                 {navigating
                   ? "Abriendo tu panel…"
-                  : auth
-                    ? `Continuar inscripción${fee > 0 ? ` · $${fee}` : ""}`
-                    : `Inscribirme${fee > 0 ? ` · $${fee}` : " gratis"}`}
+                  : joinsWaitlist
+                    ? "Unirme a lista de espera"
+                    : auth
+                      ? `Continuar inscripción${fee > 0 ? ` · $${fee}` : ""}`
+                      : `Inscribirme${fee > 0 ? ` · $${fee}` : " gratis"}`}
               </button>
             )}
             <button
@@ -788,7 +793,7 @@ export function EventDetailView({
                 <Icon name={isCancelled ? "x" : "flag"} size={13} />
                 {isCancelled ? "Torneo cancelado" : "Torneo finalizado"}
               </button>
-            ) : isFull && !registered ? (
+            ) : isFull && !registered && !joinsWaitlist ? (
               <button
                 className="btn"
                 disabled
@@ -837,9 +842,11 @@ export function EventDetailView({
               >
                 {navigating
                   ? "Abriendo tu panel…"
-                  : auth
-                    ? "Continuar inscripción"
-                    : "Inscribirme"}
+                  : joinsWaitlist
+                    ? "Unirme a lista de espera"
+                    : auth
+                      ? "Continuar inscripción"
+                      : "Inscribirme"}
                 <Icon name={navigating ? "loader" : "arrow-right"} size={13} />
               </button>
             )}

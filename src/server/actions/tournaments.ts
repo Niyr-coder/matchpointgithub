@@ -20,6 +20,7 @@ import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyMatchReady } from "@/lib/notifications/tournament";
 import { createTournamentRefundRequest, notifyRefundRequested } from "@/lib/payments/refunds";
+import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -92,6 +93,7 @@ function mapTournament(row: Record<string, unknown>): Tournament {
     registrationClosesAt: (row.registration_closes_at as string | null) ?? null,
     status: row.status,
     maxParticipants: (row.max_participants as number | null) ?? null,
+    allowWaitlist: (row.allow_waitlist as boolean | null) ?? false,
     entryFeeCents: row.entry_fee_cents,
     currency: (row.currency as string | null) ?? null,
     paymentPolicy: (row.payment_policy as string | null) ?? "prepay",
@@ -263,6 +265,7 @@ export async function listPastTournaments(
         entryFeeCents: r.entry_fee_cents ?? 0,
         currency: r.currency ?? null,
         maxParticipants: r.max_participants ?? null,
+        allowWaitlist: (r.allow_waitlist as boolean | null | undefined) ?? false,
         sport: r.sport,
         format: r.format,
         status: r.status,
@@ -303,6 +306,7 @@ export async function listFeaturedTournaments(
         entryFeeCents: r.entry_fee_cents ?? 0,
         currency: r.currency ?? null,
         maxParticipants: r.max_participants ?? null,
+        allowWaitlist: (r.allow_waitlist as boolean | null | undefined) ?? false,
         sport: r.sport,
         format: r.format,
         status: r.status,
@@ -423,6 +427,7 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
         registration_closes_at: data.registrationClosesAt ?? null,
         status: "draft",
         max_participants: data.maxParticipants ?? null,
+        allow_waitlist: data.allowWaitlist,
         entry_fee_cents: data.entryFeeCents,
         currency: data.currency ?? null,
         payment_policy: resolvedPolicy,
@@ -530,7 +535,7 @@ export async function registerToTournament(
         await assertNotSuspended(supabase, userId);
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id,allow_waitlist")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -564,8 +569,12 @@ export async function registerToTournament(
 
         // Cupo global del torneo. Misma semántica que la UI
         // (registration-eligibility.ts): cuenta inscripciones activas por
-        // equipo, no por jugador. Sin este check, una llamada directa a la
-        // action podía sobre-inscribir aunque la UI bloqueara el botón.
+        // equipo, no por jugador — waitlist NO consume cupo. Sin este check,
+        // una llamada directa a la action podía sobre-inscribir aunque la UI
+        // bloqueara el botón. Si el torneo permite lista de espera, "lleno"
+        // encola en vez de rechazar.
+        const allowWaitlist = Boolean(t.allow_waitlist);
+        let waitlisted = false;
         const maxParticipants = (t.max_participants as number | null) ?? null;
         if (maxParticipants != null && maxParticipants > 0) {
           const { count: totalCount } = await supabase
@@ -574,7 +583,10 @@ export async function registerToTournament(
             .eq("tournament_id", tournamentId)
             .in("status", ["pending", "accepted"]);
           if ((totalCount ?? 0) >= maxParticipants) {
-            throw new MpError("TOURNAMENTS.TOURNAMENT_FULL", "El torneo está lleno", 409);
+            if (!allowWaitlist) {
+              throw new MpError("TOURNAMENTS.TOURNAMENT_FULL", "El torneo está lleno", 409);
+            }
+            waitlisted = true;
           }
         }
 
@@ -598,14 +610,18 @@ export async function registerToTournament(
             throw new MpError("TOURNAMENTS.CATEGORY_NOT_FOUND", "Categoría inválida", 400);
           }
           if (cat.max_teams != null && cat.max_teams > 0) {
+            // pending+accepted: waitlist no consume el cupo de la categoría.
             const { count: catCount } = await supabase
               .from("registrations")
               .select("*", { count: "exact", head: true })
               .eq("tournament_id", tournamentId)
               .eq("category_id", body.categoryId)
-              .not("status", "in", "(withdrawn,rejected,cancelled)");
+              .in("status", ["pending", "accepted"]);
             if ((catCount ?? 0) >= cat.max_teams) {
-              throw new MpError("TOURNAMENTS.CATEGORY_FULL", "Esa categoría está llena", 409);
+              if (!allowWaitlist) {
+                throw new MpError("TOURNAMENTS.CATEGORY_FULL", "Esa categoría está llena", 409);
+              }
+              waitlisted = true;
             }
           }
         } else if (body.categoryId) {
@@ -641,7 +657,9 @@ export async function registerToTournament(
         const admin = getAdminClient();
         await setAuditActor(admin, userId, "user");
         let paidTransactionId: string | null = null;
-        if (effectiveMode !== "free") {
+        // Waitlist no genera transacción: el pago recién aplica al promover
+        // (pasa a 'pending' y sigue el flujo normal de comprobante/onsite).
+        if (!waitlisted && effectiveMode !== "free") {
           // Descuento de membresía VIP del club organizador (si aplica).
           const clubId = (t.club_id as string | null) ?? null;
           const discountPct = clubId ? await getActiveClubDiscountPct(userId, clubId) : 0;
@@ -675,12 +693,31 @@ export async function registerToTournament(
             team_id: body.teamId ?? null,
             player_ids: body.playerIds,
             registered_by: userId,
-            status: "pending",
+            status: waitlisted ? "waitlist" : "pending",
             paid_transaction_id: paidTransactionId,
           } as never)
           .select()
           .single();
         if (error) throw new MpError("TOURNAMENTS.REGISTER_FAILED", error.message, 500);
+
+        if (waitlisted) {
+          for (const pid of body.playerIds) {
+            if (!pid) continue;
+            void notify({
+              userId: pid,
+              role: "user",
+              kind: "registration_waitlisted",
+              title: "Estás en lista de espera",
+              body: `${(t.name as string) ?? "El torneo"} está lleno. Te avisaremos si se libera un cupo.`,
+              payload: {
+                tournament_id: tournamentId,
+                tournament_slug: t.slug,
+                tournament_name: t.name,
+                registration_id: row.id,
+              },
+            });
+          }
+        }
 
         const clubId = (t.club_id as string | null) ?? null;
         if (clubId) {
@@ -690,7 +727,9 @@ export async function registerToTournament(
         }
 
         const partnerId = (t.partner_id as string | null) ?? null;
-        if (partnerId) {
+        // El partner solo se notifica de inscripciones reales; la waitlist se
+        // ve en la gestión (pill ESPERA) sin generar ruido.
+        if (partnerId && !waitlisted) {
           const { data: playerProf } = await admin
             .from("profiles")
             .select("display_name,username")
@@ -999,7 +1038,7 @@ export async function cancelMyRegistration(
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
-      .select("id,tournament_id,player_ids,status,paid_transaction_id")
+      .select("id,tournament_id,category_id,player_ids,status,paid_transaction_id")
       .eq("id", registrationId)
       .maybeSingle();
     if (!reg) throw new MpError("REGISTRATION.NOT_FOUND", "Inscripción no encontrada", 404);
@@ -1023,6 +1062,15 @@ export async function cancelMyRegistration(
       .select("id,status")
       .single();
     if (error) throw new MpError("REGISTRATION.UPDATE_FAILED", error.message, 500);
+
+    // Si la cancelación liberó un cupo real (no era waitlist), promover al
+    // primero de la lista de espera de esa categoría.
+    if (reg.status === "pending" || reg.status === "accepted") {
+      void promoteFromWaitlist(admin, {
+        tournamentId: reg.tournament_id as string,
+        categoryId: (reg.category_id as string | null) ?? null,
+      });
+    }
 
     // Manejar la transacción asociada
     let refundRequired = false;
@@ -1072,7 +1120,7 @@ export async function cancelMyRegistration(
 // ── updateRegistrationStatus (partner admin) ───────────────────────────
 const UpdateRegSchema = z.object({
   registrationId: UuidSchema,
-  status: z.enum(["accepted", "pending", "rejected", "withdrawn"]),
+  status: z.enum(["accepted", "pending", "rejected", "withdrawn", "waitlist"]),
 });
 
 export async function updateRegistrationStatus(
@@ -1082,7 +1130,7 @@ export async function updateRegistrationStatus(
     const supabase = await getServerClient();
     const { data: reg } = await supabase
       .from("registrations")
-      .select("tournament_id,player_ids,status")
+      .select("tournament_id,category_id,player_ids,status")
       .eq("id", registrationId)
       .single();
     if (!reg) throw new MpError("TOURNAMENTS.REG_NOT_FOUND", "Registration not found", 404);
@@ -1103,6 +1151,18 @@ export async function updateRegistrationStatus(
       .select()
       .single();
     if (error) throw new MpError("TOURNAMENTS.UPDATE_REG_FAILED", error.message, 500);
+
+    // Si el partner liberó un cupo real (rechazó/retiró una inscripción
+    // activa), promover al primero de la lista de espera de esa categoría.
+    if (
+      (previousStatus === "pending" || previousStatus === "accepted") &&
+      (status === "rejected" || status === "withdrawn" || status === "waitlist")
+    ) {
+      void promoteFromWaitlist(getAdminClient(), {
+        tournamentId: reg.tournament_id as string,
+        categoryId: (reg.category_id as string | null) ?? null,
+      });
+    }
 
     // Notificación in-app: el partner cambió el status a accepted o rejected
     // (no en cada cambio intermedio). Encolamos un job por cada jugador del

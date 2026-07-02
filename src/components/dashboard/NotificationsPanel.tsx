@@ -62,6 +62,8 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("friend_request")) return "user-plus";
   if (kind === "match_cancelled") return "x-circle";
   if (kind === "tournament_match_ready") return "swords";
+  if (kind === "registration_waitlisted") return "clock";
+  if (kind === "waitlist_promoted") return "check-circle-2";
   if (kind === "match_challenge_received" || kind === "match_challenge_accepted") return "swords";
   if (kind === "match_rescheduled") return "calendar-clock";
   if (kind.startsWith("match_seek")) return "swords";
@@ -136,6 +138,12 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   if (kind === "refund_requested") {
     const tId = typeof payload.tournament_id === "string" ? payload.tournament_id : null;
     if (role === "partner" && tId) return `/dashboard/partner/torneo/${tId}`;
+    return `/dashboard/${role}`;
+  }
+  if (kind === "waitlist_promoted") {
+    const tSlug = typeof payload.tournament_slug === "string" ? payload.tournament_slug : null;
+    const tId = typeof payload.tournament_id === "string" ? payload.tournament_id : null;
+    if (tSlug || tId) return `/eventos/${tSlug ?? tId}`;
     return `/dashboard/${role}`;
   }
   if (kind === "club_featuring_activated" || kind === "club_featuring_expiring_soon") {
@@ -240,6 +248,8 @@ function colorForKind(kind: string): string {
   if (kind === "payment_captured" || kind === "mp_plus_activated") return "#10b981";
   if (kind === "refund_completed") return "#0ea5e9";
   if (kind === "refund_requested") return "#f59e0b";
+  if (kind === "registration_waitlisted") return "#f59e0b";
+  if (kind === "waitlist_promoted") return "#10b981";
   if (kind === "mp_plus_revoked") return "#dc2626";
   if (kind === "report_resolved") return "#7c3aed";
   if (kind.includes("rejected") || kind.includes("cancelled") || kind.includes("kicked")) return "#dc2626";

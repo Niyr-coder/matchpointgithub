@@ -68,7 +68,8 @@ export async function loadTournamentDashboardPageData(
     .from("registrations")
     .select("id,player_ids,category_id,created_at")
     .eq("tournament_id", detailRes.data.tournament.id)
-    .not("status", "in", "(withdrawn,rejected,cancelled)")
+    // Waitlist no aparece en la lista pública de inscritos.
+    .in("status", ["pending", "accepted"])
     .order("created_at", { ascending: true })
     .limit(64);
 

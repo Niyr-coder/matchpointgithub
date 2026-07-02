@@ -23,6 +23,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
 
 async function writeAuditLog(params: {
   admin: ReturnType<typeof getAdminClient>;
@@ -177,6 +178,14 @@ export async function removeTournamentRegistrationAdmin(
       logContext: "removeTournamentRegistrationAdmin",
     });
 
+    // Si se liberó un cupo real, promover al primero de la lista de espera.
+    if (existing.status === "pending" || existing.status === "accepted") {
+      void promoteFromWaitlist(admin, {
+        tournamentId: existing.tournament_id as string,
+        categoryId: (existing.category_id as string | null) ?? null,
+      });
+    }
+
     return mapReg(updated);
   });
 }
@@ -254,6 +263,17 @@ export async function markTournamentRegistrationStatusAdmin(
           previous_status: existing.status,
         },
         logContext: "markTournamentRegistrationStatusAdmin",
+      });
+    }
+
+    // Rechazar una inscripción activa libera cupo → promover waitlist.
+    if (
+      status === "rejected" &&
+      (existing.status === "pending" || existing.status === "accepted")
+    ) {
+      void promoteFromWaitlist(admin, {
+        tournamentId: existing.tournament_id as string,
+        categoryId: (existing.category_id as string | null) ?? null,
       });
     }
 

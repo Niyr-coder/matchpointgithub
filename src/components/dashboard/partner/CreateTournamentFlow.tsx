@@ -200,6 +200,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
   const [regOpensAt, setRegOpensAt] = useState<string>("");
   const [regClosesAt, setRegClosesAt] = useState<string>("");
   const [maxParticipants, setMaxParticipants] = useState<string>("32");
+  const [allowWaitlist, setAllowWaitlist] = useState<boolean>(false);
   const [entryFee, setEntryFee] = useState<string>("20");
   const [prize, setPrize] = useState<string>("");
   const [paymentPolicy, setPaymentPolicyRaw] = useState<
@@ -250,6 +251,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
     setRegOpensAt("");
     setRegClosesAt("");
     setMaxParticipants("32");
+    setAllowWaitlist(false);
     setEntryFee("20");
     setPrize("");
     setPaymentPolicyRaw("prepay");
@@ -390,6 +392,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
         registrationOpensAt: regOpensAt ? localInputToIso(regOpensAt) : undefined,
         registrationClosesAt: regClosesAt ? localInputToIso(regClosesAt) : undefined,
         maxParticipants: cap,
+        allowWaitlist,
         entryFeeCents: Math.round(fee * 100),
         currency: "USD",
         paymentPolicy,
@@ -526,6 +529,8 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
               setRegClosesAt={setRegClosesAt}
               maxParticipants={maxParticipants}
               setMaxParticipants={setMaxParticipants}
+              allowWaitlist={allowWaitlist}
+              setAllowWaitlist={setAllowWaitlist}
               entryFee={entryFee}
               onEntryFeeChange={onEntryFeeChange}
               prize={prize}
@@ -1044,6 +1049,8 @@ function StepLogistics(props: {
   setRegClosesAt: (v: string) => void;
   maxParticipants: string;
   setMaxParticipants: (v: string) => void;
+  allowWaitlist: boolean;
+  setAllowWaitlist: (v: boolean) => void;
   entryFee: string;
   onEntryFeeChange: (v: string) => void;
   prize: string;
@@ -1146,6 +1153,25 @@ function StepLogistics(props: {
             placeholder="Sin límite"
             style={inputStyle}
           />
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 11.5,
+              color: "var(--muted-fg)",
+              cursor: "pointer",
+              marginTop: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={props.allowWaitlist}
+              onChange={(e) => props.setAllowWaitlist(e.target.checked)}
+              style={{ accentColor: "var(--primary)" }}
+            />
+            Permitir lista de espera al llenarse
+          </label>
         </Field>
         <Field label="Cuota (USD)">
           <input

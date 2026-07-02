@@ -250,12 +250,14 @@ export async function addRegistrationByPartner(
           .eq("id", categoryId)
           .maybeSingle();
         if (cat && typeof cat.max_teams === "number") {
+          // Cupo: solo pending+accepted — waitlist NO consume cupo
+          // (mig 20260713000000, misma semántica que registerToTournament).
           const { count } = await supabase
             .from("registrations")
             .select("id", { count: "exact", head: true })
             .eq("tournament_id", tournamentId)
             .eq("category_id", categoryId)
-            .in("status", ["pending", "accepted", "waitlist"]);
+            .in("status", ["pending", "accepted"]);
           if ((count ?? 0) >= cat.max_teams) {
             throw new MpError(
               "REGISTRATION.CATEGORY_FULL",
@@ -452,12 +454,13 @@ export async function addRegistrationsBulkByPartner(
           .eq("id", categoryId)
           .maybeSingle();
         if (cat && typeof cat.max_teams === "number") {
+          // Cupo: solo pending+accepted — waitlist NO consume cupo.
           const { count } = await supabase
             .from("registrations")
             .select("id", { count: "exact", head: true })
             .eq("tournament_id", tournamentId)
             .eq("category_id", categoryId)
-            .in("status", ["pending", "accepted", "waitlist"]);
+            .in("status", ["pending", "accepted"]);
           const remaining = Math.max(0, cat.max_teams - (count ?? 0));
           if (validEntries.length > remaining) {
             const overflow = validEntries.slice(remaining);

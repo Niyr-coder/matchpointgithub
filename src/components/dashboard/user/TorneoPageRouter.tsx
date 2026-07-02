@@ -40,7 +40,10 @@ export function TorneoPageRouter({
 }: Props) {
   const tournamentId = detail.tournament.id;
 
-  if (myRegistration) {
+  // Waitlist NO entra a la vista "dentro del torneo" (no está en el cuadro):
+  // ve el detalle público, que muestra el estado "En lista de espera" y
+  // permite abandonar la inscripción.
+  if (myRegistration && myRegistration.status !== "waitlist") {
     const shell = buildTorneoPlayerShell(detail, clubName, myRegistration.status);
     return (
       <>

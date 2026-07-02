@@ -112,6 +112,8 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `match_incident_reported` | tournaments | partner org del torneo | `reportMatchIncident` | 20260630100000 | ✅ |
 | `tournament_match_ready` | tournaments | jugadores del partido listo | `generateBracket` / `generateKnockoutFromGroups` / avances en `reportBracketMatch`·`correctBracketMatch`·`confirmBracketMatch` / `drawTournamentGroups` (1 por jugador) — helper `notifyMatchReady`/`notifyGroupsDrawn` | 20260710010000 | ✅ |
 | `refund_requested` | pagos | staff del organizador (partner org o club) | `cancelMyRegistration` (tx captured) / `setTournamentStatus→cancelled` (bulk, 1 notif agregada) — helper `notifyRefundRequested` | 20260712000000 | ✅ |
+| `registration_waitlisted` | tournaments | jugadores del registration | `registerToTournament` (torneo/categoría llenos + `allow_waitlist`) | 20260713000000 | ✅ |
+| `waitlist_promoted` | tournaments | jugadores del registration promovido | `promoteFromWaitlist` (FIFO al liberarse cupo desde 5 call sites) | 20260713000000 | ✅ |
 
 ## 2.1 Checklist de cobertura (audit 2026-05)
 

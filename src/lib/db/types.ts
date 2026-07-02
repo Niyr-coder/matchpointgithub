@@ -10004,6 +10004,7 @@ export type Database = {
       }
       tournaments: {
         Row: {
+          allow_waitlist: boolean
           club_id: string | null
           cover_url: string | null
           created_at: string
@@ -10034,6 +10035,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allow_waitlist?: boolean
           club_id?: string | null
           cover_url?: string | null
           created_at?: string
@@ -10064,6 +10066,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allow_waitlist?: boolean
           club_id?: string | null
           cover_url?: string | null
           created_at?: string

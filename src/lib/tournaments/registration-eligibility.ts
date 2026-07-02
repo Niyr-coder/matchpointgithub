@@ -11,6 +11,8 @@ export type TournamentRegistrationEligibility = {
   canRegister: boolean;
   block: TournamentRegistrationBlock | null;
   label: string;
+  /** true = está lleno pero el torneo permite lista de espera (CTA distinto). */
+  waitlistAvailable?: boolean;
 };
 
 type Input = {
@@ -18,6 +20,7 @@ type Input = {
   registrationOpensAt: string | null;
   registrationClosesAt: string | null;
   maxParticipants: number | null;
+  allowWaitlist?: boolean;
   registrationCount: number;
   categories: Array<{ id: string; maxTeams: number | null }>;
   categoryRegistrationCounts: Record<string, number>;
@@ -53,9 +56,15 @@ export function getTournamentRegistrationEligibility(input: Input): TournamentRe
     return { canRegister: false, block: "past_close", label: "Inscripciones cerradas" };
   }
 
+  // Lleno: si el torneo permite lista de espera, se puede "inscribir" igual
+  // (el server encola con status='waitlist'); el CTA cambia de copy.
+  const fullResult: TournamentRegistrationEligibility = input.allowWaitlist
+    ? { canRegister: true, block: "full", label: "Lista de espera disponible", waitlistAvailable: true }
+    : { canRegister: false, block: "full", label: "Cupos llenos" };
+
   const max = input.maxParticipants;
   if (max != null && max > 0 && input.registrationCount >= max) {
-    return { canRegister: false, block: "full", label: "Cupos llenos" };
+    return fullResult;
   }
 
   if (input.categories.length > 0) {
@@ -66,7 +75,7 @@ export function getTournamentRegistrationEligibility(input: Input): TournamentRe
       return taken < cap;
     });
     if (!hasOpenCategory) {
-      return { canRegister: false, block: "full", label: "Cupos llenos" };
+      return fullResult;
     }
   }
 
