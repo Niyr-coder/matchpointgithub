@@ -43,6 +43,7 @@ import {
   nextBracketFeederSlot,
 } from "@/lib/tournaments/match-score";
 import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
+import { advanceFirstRoundByes, feedBronzeMatchLoser, type InsertedBracketMatch } from "@/lib/torneos/bracket-byes";
 import {
   notifyGroupsDrawn,
   notifyMatchReady,
@@ -683,39 +684,6 @@ function mapGroupsForQualifiers(
   }));
 }
 
-async function feedBronzeMatchLoser(
-  admin: ReturnType<typeof getAdminClient>,
-  tournamentId: string,
-  bracketId: string,
-  loserRegId: string,
-): Promise<void> {
-  const { data: bronze } = await admin
-    .from("bracket_matches")
-    .select("id,side_a_registration_id,side_b_registration_id")
-    .eq("bracket_id", bracketId)
-    .eq("is_bronze" as never, true)
-    .maybeSingle();
-  if (!bronze) return;
-  const patch: Record<string, unknown> = {};
-  if (!bronze.side_a_registration_id) patch.side_a_registration_id = loserRegId;
-  else if (!bronze.side_b_registration_id) patch.side_b_registration_id = loserRegId;
-  else return;
-  await admin.from("bracket_matches").update(patch as never).eq("id", bronze.id as string);
-
-  // Si este perdedor completa el partido de bronce, avisar a ambos lados.
-  const otherSlot = (patch.side_a_registration_id
-    ? bronze.side_b_registration_id
-    : bronze.side_a_registration_id) as string | null;
-  if (otherSlot) {
-    void notifyMatchReady(admin, {
-      tournamentId,
-      registrationIds: [loserRegId, otherSlot],
-      matchType: "bracket",
-      matchId: bronze.id as string,
-    });
-  }
-}
-
 /** Genera cuadro eliminatorio desde clasificados de grupos. */
 export async function generateKnockoutFromGroups(
   input: unknown,
@@ -796,7 +764,13 @@ export async function generateKnockoutFromGroups(
       }
     }
 
-    if (config.knockoutExtras?.thirdPlaceMatch && size >= 4) {
+    // En cuadro de 4 con bye solo hay UNA semifinal real: el bronce nunca se
+    // completaria (se alimenta de perdedores de semis). Se omite; el 3ro sale
+    // de facto en el podio.
+    const koByeCount = firstRoundPairs.filter(
+      ([a, b]) => (a ? 1 : 0) + (b ? 1 : 0) === 1,
+    ).length;
+    if (config.knockoutExtras?.thirdPlaceMatch && size >= 4 && !(size === 4 && koByeCount > 0)) {
       matches.push({
         bracket_id: bracketId,
         round: 0,
@@ -809,8 +783,18 @@ export async function generateKnockoutFromGroups(
     const { data: insertedMatches, error: mErr } = await db
       .from("bracket_matches")
       .insert(matches as never)
-      .select("id, round, is_bronze, side_a_registration_id, side_b_registration_id");
+      .select("id, round, position, is_bronze, side_a_registration_id, side_b_registration_id");
     if (mErr) throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
+
+    // Byes: cerrar el partido-bye y pre-colocar al ganador en la ronda 2.
+    await advanceFirstRoundByes(
+      getAdminClient(),
+      tournamentId,
+      bracketId,
+      ((insertedMatches ?? []) as unknown as Array<InsertedBracketMatch & { is_bronze: boolean | null }>).filter(
+        (m) => !m.is_bronze,
+      ),
+    );
 
     const { error: stErr } = await db
       .from("tournament_categories")
@@ -945,21 +929,15 @@ export async function reportBracketMatch(
         }
       }
 
-      if (round === numRounds - 1 && bracket.category_id) {
-        const { data: catRow } = await admin
-          .from("tournament_categories")
-          .select("group_playoff_config")
-          .eq("id", bracket.category_id as string)
-          .maybeSingle();
-        const cfg = catRow?.group_playoff_config as GroupPlayoffConfig | null;
-        if (cfg?.knockoutExtras?.thirdPlaceMatch) {
-          const loserRegId =
-            winnerSide === "a"
-              ? (match.side_b_registration_id as string | null)
-              : (match.side_a_registration_id as string | null);
-          if (loserRegId) {
-            await feedBronzeMatchLoser(admin, tournamentId, bracket.id as string, loserRegId);
-          }
+      if (round === numRounds - 1) {
+        // feedBronzeMatchLoser es no-op si el bracket no tiene bronce; cubre
+        // tanto grupos->llave (config) como single_elim directo (toggle).
+        const loserRegId =
+          winnerSide === "a"
+            ? (match.side_b_registration_id as string | null)
+            : (match.side_a_registration_id as string | null);
+        if (loserRegId) {
+          await feedBronzeMatchLoser(admin, tournamentId, bracket.id as string, loserRegId);
         }
       }
     } else if (!isBronze && round === numRounds) {

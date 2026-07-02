@@ -5,7 +5,7 @@
 // grupos y el cronograma — y NO en p-brackets, que es visualización y
 // reporte en vivo. Cada categoría sortea su propia llave con sus inscritos.
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -40,6 +40,7 @@ export function TournamentBracketsSetupPanel({
   const toast = useToast();
   const { confirm } = usePromptModal();
   const [pending, startTx] = useTransition();
+  const [withThirdPlace, setWithThirdPlace] = useState(true);
 
   if (categories.length === 0) return null;
 
@@ -51,7 +52,11 @@ export function TournamentBracketsSetupPanel({
     });
     if (!ok) return;
     startTx(async () => {
-      const res = await generateBracket({ tournamentId, categoryId: cat.id });
+      const res = await generateBracket({
+        tournamentId,
+        categoryId: cat.id,
+        thirdPlaceMatch: withThirdPlace,
+      });
       if (res.ok) {
         toast({ icon: "check", title: `Llave de ${cat.name} generada` });
         router.refresh();
@@ -77,10 +82,31 @@ export function TournamentBracketsSetupPanel({
           Ver brackets →
         </Link>
       </div>
-      <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+      <p style={{ margin: "4px 0 10px", fontSize: 12, color: "var(--muted-fg)", lineHeight: 1.5 }}>
         Cada categoría sortea su propia llave con sus inscripciones aceptadas.
         Los resultados se reportan desde la pantalla Brackets o el monitor de cancha.
       </p>
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 12,
+          fontWeight: 700,
+          color: "var(--muted-fg)",
+          marginBottom: 12,
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={withThirdPlace}
+          onChange={(e) => setWithThirdPlace(e.target.checked)}
+          style={{ accentColor: "var(--primary)" }}
+        />
+        Incluir partido por el 3er puesto (cuadros de 4+; con 3 inscritos el 3° sale
+        del perdedor de la semifinal)
+      </label>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {categories.map((cat) => {

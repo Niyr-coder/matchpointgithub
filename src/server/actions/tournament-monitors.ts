@@ -11,6 +11,7 @@ import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
 import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyCategoryFinished, notifyMatchReady, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
+import { feedBronzeMatchLoser } from "@/lib/torneos/bracket-byes";
 import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
@@ -1019,6 +1020,17 @@ export async function confirmBracketMatch(
             matchType: "bracket",
             matchId: nextSlot.id as string,
           });
+        }
+      }
+
+      // Semifinal confirmada desde el monitor: alimentar el bronce (no-op
+      // si el bracket no tiene partido por el 3er puesto). Antes solo el
+      // path del partner lo hacía.
+      if (round === numRounds - 1) {
+        const loserRegId =
+          winnerSide === "a" ? match.side_b_registration_id : match.side_a_registration_id;
+        if (loserRegId) {
+          await feedBronzeMatchLoser(admin, tournamentId, bracket.id as string, loserRegId);
         }
       }
     } else if (!isBronze && round === numRounds) {

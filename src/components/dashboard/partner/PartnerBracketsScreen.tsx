@@ -207,6 +207,25 @@ function buildSectionFromMatches(
         : bronzeRaw.side_b_registration_id;
     if (thirdId) thirdLabel = nameByReg.get(thirdId) ?? null;
   }
+  // 3° de facto: sin bronce jugado, si la penúltima ronda tuvo UNA sola
+  // semifinal real (la otra fue bye), su perdedor es el 3ro — con 3
+  // participantes no hay a quién más jugarle el bronce.
+  if (!thirdLabel && finalRaw?.winner_side && sortedRounds.length >= 2) {
+    const penRound = sortedRounds[sortedRounds.length - 2];
+    const semis = byRound.get(penRound) ?? [];
+    const realLoserIds = semis
+      .filter((m) => m.side_a_registration_id && m.side_b_registration_id && m.winner_side)
+      .map((m) =>
+        m.winner_side === "a" ? m.side_b_registration_id : m.side_a_registration_id,
+      )
+      .filter((id): id is string => Boolean(id));
+    const byeCount = semis.filter(
+      (m) => (m.side_a_registration_id ? 1 : 0) + (m.side_b_registration_id ? 1 : 0) === 1,
+    ).length;
+    if (realLoserIds.length === 1 && realLoserIds.length + byeCount === semis.length) {
+      thirdLabel = nameByReg.get(realLoserIds[0]) ?? null;
+    }
+  }
 
   return {
     categoryId,

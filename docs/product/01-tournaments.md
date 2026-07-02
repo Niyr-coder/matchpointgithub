@@ -488,6 +488,16 @@ actions usan `category.stage` para saber qué botones mostrar.
    encola `tournament_category_finished`; el torneo pasa a `finished` solo
    cuando TODAS las categorías están complete. Un bracket global legacy en
    un torneo con categorías NO auto-finaliza (cierre manual).
+6. **Byes y 3er puesto** (2026-07-02, `src/lib/torneos/bracket-byes.ts`):
+   los partidos-bye de ronda 1 se cierran al generar (walkover `'bye'`,
+   `winner_side` null → sin ELO) y el ganador queda pre-colocado en la
+   ronda 2 — antes el cuadro impar se atascaba ("A vs TBD" no reportable).
+   El bronce es opt-in en ambos generadores (toggle en "Llaves por
+   categoría" para single_elim directo; `knockoutExtras.thirdPlaceMatch`
+   en grupos→llave) y se OMITE en cuadro de 4 con bye (una sola semi real
+   → nunca se completaría); en ese caso el 3° del podio sale de facto: el
+   perdedor de la única semifinal real. `feedBronzeMatchLoser` corre en
+   los DOS paths de confirmación (partner y monitor) y es no-op sin bronce.
 
 ### 13.5 Seeding internacional → cuadro
 

@@ -21,6 +21,7 @@ import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
 import { notifyMatchReady } from "@/lib/notifications/tournament";
+import { advanceFirstRoundByes, type InsertedBracketMatch } from "@/lib/torneos/bracket-byes";
 import { createTournamentRefundRequest, notifyRefundRequested } from "@/lib/payments/refunds";
 import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
 import { standardBracketPairings } from "@/lib/tournaments/group-stage";
@@ -1331,12 +1332,14 @@ export async function updateRegistrationStatus(
 const GenerateBracketSchema = z.object({
   tournamentId: UuidSchema,
   categoryId: UuidSchema.optional(),
+  /** Crear partido por el 3er puesto (solo cuadros de 4+ sin bye en semis). */
+  thirdPlaceMatch: z.boolean().optional(),
 });
 
 export async function generateBracket(
   input: unknown,
 ): Promise<ActionResult<{ bracketId: string; size: number }>> {
-  return runAction(GenerateBracketSchema, input, async ({ tournamentId, categoryId }) => {
+  return runAction(GenerateBracketSchema, input, async ({ tournamentId, categoryId, thirdPlaceMatch }) => {
     const supabase = await getServerClient();
     const { data: t } = await supabase
       .from("tournaments")
@@ -1498,11 +1501,26 @@ export async function generateBracket(
         matches.push(m);
       }
     }
+    // Partido por el 3er puesto (opt-in). En cuadro de 4 con bye solo hay
+    // UNA semifinal real → el bronce nunca se completaría; se omite y el 3°
+    // sale de facto (perdedor de la única semi real) en el podio.
+    const byeCount = firstRoundPairs.filter(
+      ([a, b]) => (a ? 1 : 0) + (b ? 1 : 0) === 1,
+    ).length;
+    if (thirdPlaceMatch && size >= 4 && !(size === 4 && byeCount > 0)) {
+      matches.push({
+        bracket_id: bracketId,
+        round: 0,
+        position: 0,
+        status: "scheduled",
+        is_bronze: true,
+      });
+    }
     if (matches.length > 0) {
       const { data: insertedMatches, error: mErr } = await supabase
         .from("bracket_matches")
         .insert(matches as never)
-        .select("id, round, side_a_registration_id, side_b_registration_id");
+        .select("id, round, position, side_a_registration_id, side_b_registration_id");
       if (mErr) {
         const rollback = getAdminClient();
         const { error: delErr } = await rollback
@@ -1532,6 +1550,15 @@ export async function generateBracket(
           matchId: m.id,
         });
       }
+
+      // Byes: cerrar el partido-bye y pre-colocar al ganador en la ronda 2
+      // (sin esto el cuadro impar se atascaba: "A vs TBD" no era reportable).
+      await advanceFirstRoundByes(
+        notifAdmin,
+        tournamentId,
+        bracketId,
+        (insertedMatches ?? []) as InsertedBracketMatch[],
+      );
     }
     return { bracketId, size };
   });
