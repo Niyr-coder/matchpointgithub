@@ -319,7 +319,11 @@ export async function getTournamentLiveDisplay(
     if (!t || t.display_token !== token) {
       throw new MpError("TOURNAMENT.LIVE_FORBIDDEN", "Enlace no válido", 403);
     }
-    if (t.status === "draft" || t.status === "cancelled") {
+    // El link es privado (token): draft SÍ se permite para que el organizador
+    // monte y pruebe la pantalla del venue antes de publicar — el cliente
+    // muestra el standby "Los partidos en vivo aparecerán aquí". Cancelled
+    // sigue bloqueado (no hay nada que transmitir).
+    if (t.status === "cancelled") {
       throw new MpError("TOURNAMENT.LIVE_UNAVAILABLE", "Torneo no disponible", 404);
     }
 
