@@ -87,15 +87,17 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
   const canCloseRegistrations =
     !!data.tournamentId && !!data.tournamentStatus && !registrationsClosed;
 
+  // Filtrado por el torneo elegido — antes escuchaba TODAS las registrations
+  // y TODAS las tx de torneo de la plataforma (audit de costos 2026-07-01).
   useRealtimeRefresh(
-    data.partnerId
+    data.partnerId && data.tournamentId
       ? [
-          { table: "registrations" },
-          { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` },
-          { table: "transactions", filter: "kind=eq.tournament" },
+          { table: "registrations", filter: `tournament_id=eq.${data.tournamentId}` },
+          { table: "tournaments", filter: `id=eq.${data.tournamentId}` },
+          { table: "transactions", filter: `ref_id=eq.${data.tournamentId}` },
         ]
       : [],
-    { enabled: !!data.partnerId, debounceMs: 2000 },
+    { enabled: !!data.partnerId && !!data.tournamentId, debounceMs: 2000 },
   );
 
   const handleMarkPaid = (regId: string) => {

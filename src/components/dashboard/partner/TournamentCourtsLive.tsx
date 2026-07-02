@@ -295,17 +295,17 @@ export function TournamentCourtsLive({
     load();
   }, [load]);
 
-  // Debounce: sin él, cada evento de scoring (global — estas tablas no tienen
-  // tournament_id para filtrar) re-ejecutaba listCourtsLiveStatus completo.
+  // Filtrado server-side por torneo (tournament_id denormalizado, mig
+  // 20260715000000) + debounce de 1s para colapsar ráfagas de puntos.
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (reloadTimer.current) clearTimeout(reloadTimer.current);
   }, []);
   useRealtimeRefresh(
     [
-      { table: "bracket_matches" },
-      { table: "tournament_group_matches" },
-      { table: "tournament_court_monitors" },
+      { table: "bracket_matches", filter: `tournament_id=eq.${tournamentId}` },
+      { table: "tournament_group_matches", filter: `tournament_id=eq.${tournamentId}` },
+      { table: "tournament_court_monitors", filter: `tournament_id=eq.${tournamentId}` },
     ],
     {
       onChange: () => {

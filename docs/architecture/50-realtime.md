@@ -475,28 +475,31 @@ Cuándo dejar default (`router.refresh()`):
 
 ---
 
-## 16. Suscripciones scoped (audit de costos 2026-07-01)
+## 16. Filtro por torneo en tablas de scoring (audit de costos 2026-07-01)
 
-Las tablas de scoring (`bracket_matches`, `tournament_group_matches`,
-`tournament_groups`, `tournament_group_members`) **no tienen `tournament_id`**
-→ no se pueden filtrar en el CDC y su RLS de lectura es pública → **fanout
-global**: cada punto anotado en cualquier torneo llega a TODOS los subscribers
-de la plataforma.
+Histórico: `bracket_matches`, `tournament_group_matches` y `tournament_groups`
+no tenían `tournament_id` → las suscripciones no podían filtrar en el CDC y su
+RLS de lectura es pública → **fanout global**: cada punto anotado en cualquier
+torneo llegaba a TODOS los subscribers de la plataforma, y el handler hacía
+`router.refresh()` de páginas con ~18 queries.
 
-Regla: cualquier suscripción a esas tablas debe usar
-`useScopedRealtimeRefresh` (`src/components/dashboard/useScopedRealtimeRefresh.ts`)
-con `isRelevant` comparando `bracket_id`/`group_id`/`category_id` del payload
-contra los ids del torneo de la página (el loader los provee — ver
-`realtimeScope` en `tournament-player-page.ts`). NUNCA `router.refresh()`
-ciego sin filtro en estas tablas: la página de gestión ejecuta ~18 queries por
-refresh.
+Fix definitivo (mig `20260715000000`): `tournament_id` denormalizado en las 3
+tablas — backfill + trigger BEFORE INSERT que lo llena solo (los inserts del
+código NO necesitan setearlo) + NOT NULL + índice.
 
-Aplicado en: `TournamentGestionRealtime`, `TorneoPlayerRealtime`,
-`PartnerBracketsScreenView`, `AdminTournamentDetailView`;
-`LigaOperacionPanelView` filtra por `group_id` (igualdad válida);
-`TournamentCourtsLive` debounce 1s. Fix definitivo pendiente (fase 4 del plan
-de costos): denormalizar `tournament_id` en ambas tablas de partidos y filtrar
-en la suscripción.
+**Regla**: toda suscripción a esas tablas DEBE llevar
+`filter: tournament_id=eq.<id>`. Aplicado en `TournamentGestionRealtime`,
+`TorneoPlayerRealtime`, `PartnerBracketsScreenView` (cuando hay tid),
+`AdminTournamentDetailView`, `TournamentCourtsLive` (+debounce 1s) y el TV
+display. `LigaOperacionPanelView` filtra por `group_id`.
+`tournament_group_members` sigue sin la columna (eventos raros: sorteo y
+sustituciones — el debounce absorbe).
+
+Pantallas MULTI-torneo (home del partner, eventos del club) no pueden filtrar
+por un solo id: usan `useScopedRealtimeRefresh`
+(`src/components/dashboard/useScopedRealtimeRefresh.ts`) con `isRelevant`
+comparando `payload.tournament_id`/`event_id` contra sus ids. Las pantallas
+admin globales quedan sin filtro a propósito (pocas instancias).
 
 ## 17. Próximo: `60-openapi.md`
 

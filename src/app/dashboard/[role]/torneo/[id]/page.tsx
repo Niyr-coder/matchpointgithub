@@ -24,7 +24,6 @@ export default async function TorneoPlayerPage({
         scheduleBlocks={data.scheduleBlocks}
         myMatches={data.myMatches}
         bracketSides={data.bracketSides}
-        realtimeScope={data.realtimeScope}
         groupView={data.groupView}
       />
     </div>

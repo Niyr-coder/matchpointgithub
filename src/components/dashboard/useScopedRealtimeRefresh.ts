@@ -1,16 +1,12 @@
-// Variante de useRealtimeRefresh para tablas SIN filtro server-side posible
-// (ej. bracket_matches no tiene tournament_id — deuda estructural, ver audit
-// 2026-07-01). El CDC hace fanout global en esas tablas: sin este guard, cada
-// punto anotado en CUALQUIER torneo de la plataforma re-ejecutaba la página
-// completa de todos los subscribers (~18 queries por refresh).
+// Variante de useRealtimeRefresh para pantallas MULTI-torneo (home del
+// partner, listados de club): no pueden filtrar server-side por un solo
+// tournament_id, así que el CDC les entrega eventos de toda la plataforma.
+// `isRelevant` decide client-side (p. ej. payload.tournament_id ∈ mis
+// torneos — la columna existe en las tablas de scoring desde mig
+// 20260715000000) y solo entonces agenda un router.refresh() debounced.
 //
-// isRelevant decide client-side si el evento pertenece a ESTA página (por
-// bracket_id/group_id/category_id del payload). Solo entonces se agenda un
-// router.refresh() debounced. Eventos sin payload identificable (DELETE con
-// replica identity parcial) se tratan como relevantes (fail-open, raros).
-//
-// El fix definitivo (fase 4 del plan de costos) es denormalizar tournament_id
-// y filtrar en la suscripción — esto es el puente barato.
+// Para pantallas de UN torneo NO usar esto: filtrar directo en la suscripción
+// (`filter: tournament_id=eq.<id>` — ver 50-realtime.md §16).
 "use client";
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -24,7 +20,7 @@ import {
 type Opts = {
   enabled?: boolean;
   debounceMs?: number;
-  /** true = el evento pertenece a esta página → refresh. */
+  /** true = el evento pertenece a esta pantalla → refresh. */
   isRelevant: (table: string, payload: RealtimePayload) => boolean;
 };
 

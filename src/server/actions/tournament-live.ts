@@ -346,28 +346,60 @@ export async function getTournamentLiveDisplay(
     type RawStandingRow = { registrationId: string; wins: number; losses: number; played: number; setsWon: number; setsLost: number };
     const allGroupStandingRows: RawStandingRow[] = [];
 
+    // Bulk fetch de grupos/miembros/partidos en 3 queries totales — antes era
+    // un N+1 de 2 queries POR grupo × categorías, re-ejecutado por cada
+    // refresh del TV display (audit de costos 2026-07-01).
+    const catIds = (cats ?? []).map((c) => c.id as string);
+    const { data: allGroupsRaw } = catIds.length
+      ? await admin
+          .from("tournament_groups")
+          .select("id,name,sort_order,category_id")
+          .in("category_id", catIds)
+      : { data: [] as unknown[] };
+    type GroupRow = { id: string; name: string; sort_order: number; category_id: string };
+    const allGroups = (allGroupsRaw ?? []) as unknown as GroupRow[];
+    const groupIds = allGroups.map((g) => g.id);
+
+    type GmRow = Record<string, unknown>;
+    const [{ data: allMembersRaw }, { data: allGmRaw }] = groupIds.length
+      ? await Promise.all([
+          admin
+            .from("tournament_group_members")
+            .select("registration_id,group_id")
+            .in("group_id", groupIds),
+          admin
+            .from("tournament_group_matches")
+            .select(
+              "id,group_id,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,court_id,courts(code,name)",
+            )
+            .in("group_id", groupIds),
+        ])
+      : [{ data: [] as unknown[] }, { data: [] as unknown[] }];
+
+    const membersByGroup = new Map<string, string[]>();
+    for (const m of (allMembersRaw ?? []) as Array<{ registration_id: string; group_id: string }>) {
+      const list = membersByGroup.get(m.group_id) ?? [];
+      list.push(m.registration_id);
+      membersByGroup.set(m.group_id, list);
+    }
+    const gmByGroup = new Map<string, GmRow[]>();
+    for (const m of (allGmRaw ?? []) as GmRow[]) {
+      const gid = m.group_id as string;
+      const list = gmByGroup.get(gid) ?? [];
+      list.push(m);
+      gmByGroup.set(gid, list);
+    }
+
     for (const cat of cats ?? []) {
       const categoryName = cat.name as string;
       categoryNames.push(categoryName);
-      const { data: groups } = await admin
-        .from("tournament_groups")
-        .select("id,name,sort_order")
-        .eq("category_id", cat.id as string)
-        .order("sort_order", { ascending: true });
+      const groups = allGroups
+        .filter((g) => g.category_id === (cat.id as string))
+        .sort((a, b) => a.sort_order - b.sort_order);
 
-      for (const g of groups ?? []) {
-        const { data: members } = await admin
-          .from("tournament_group_members")
-          .select("registration_id")
-          .eq("group_id", g.id as string);
-        const memberIds = (members ?? []).map((m) => m.registration_id as string);
-
-        const { data: gm } = await admin
-          .from("tournament_group_matches")
-          .select(
-            "id,side_a_registration_id,side_b_registration_id,score,status,winner_side,scheduled_at,court_id,courts(code,name)",
-          )
-          .eq("group_id", g.id as string);
+      for (const g of groups) {
+        const memberIds = membersByGroup.get(g.id) ?? [];
+        const gm = gmByGroup.get(g.id) ?? [];
 
         for (const m of gm ?? []) {
           const { a, b } = formatSetScore(m.score);

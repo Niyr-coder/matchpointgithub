@@ -177,7 +177,7 @@ export function GroupStagePanel({
   useRealtimeRefresh(
     activeCategoryId
       ? [
-          { table: "tournament_group_matches" },
+          { table: "tournament_group_matches", filter: `tournament_id=eq.${tournamentId}` },
           { table: "tournament_groups", filter: `category_id=eq.${activeCategoryId}` },
           { table: "tournament_categories", filter: `id=eq.${activeCategoryId}` },
         ]

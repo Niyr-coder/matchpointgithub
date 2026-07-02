@@ -25,8 +25,6 @@ export type TournamentDashboardPageData = {
   myMatches: TournamentPlayerMatchView[];
   bracketSides: TournamentBracketSideView[];
   groupView: TournamentPlayerGroupView | null;
-  /** Scope client-side de la suscripción realtime (las tablas de scoring no tienen tournament_id). */
-  realtimeScope: { bracketIds: string[]; categoryIds: string[]; groupIds: string[] };
 };
 
 export async function loadTournamentDashboardPageData(
@@ -126,21 +124,6 @@ export async function loadTournamentDashboardPageData(
   );
   const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
-  // Scope de realtime: ids de bracket y grupos del torneo, para que el
-  // subscriber del jugador ignore eventos de scoring de OTROS torneos.
-  const categoryIds = detailRes.data.categories.map((c) => c.id);
-  const [{ data: bracketRows }, { data: groupRows }] = await Promise.all([
-    supabase.from("brackets").select("id").eq("tournament_id", detailRes.data.tournament.id),
-    categoryIds.length > 0
-      ? supabase.from("tournament_groups").select("id").in("category_id", categoryIds)
-      : Promise.resolve({ data: [] as Array<{ id: string }> }),
-  ]);
-  const realtimeScope = {
-    bracketIds: ((bracketRows ?? []) as Array<{ id: string }>).map((b) => b.id),
-    categoryIds,
-    groupIds: ((groupRows ?? []) as Array<{ id: string }>).map((g) => g.id),
-  };
-
   return {
     detail: detailRes.data,
     clubName: summary?.clubName ?? null,
@@ -153,6 +136,5 @@ export async function loadTournamentDashboardPageData(
     myMatches: bracketData.myMatches,
     bracketSides: bracketData.bracketSides,
     groupView: bracketData.groupView,
-    realtimeScope,
   };
 }

@@ -2747,6 +2747,8 @@ Funciones asociadas (mismas mig):
 
 **Shape de `score` en `bracket_matches`/`tournament_group_matches`**: `{sets: [{a,b}...], serving?: 'a'|'b', current?: {a,b}}` — `current` son los puntos del set en curso que el monitor persiste con debounce (2s); `submitMatchResult` lo limpia al escribir el score final. Standings solo leen `sets` de partidos `confirmed`.
 
+**`tournament_id` denormalizado** (mig 20260715000000) en `bracket_matches`, `tournament_group_matches` y `tournament_groups`: NOT NULL + índice + trigger BEFORE INSERT que lo llena solo (los inserts del código NO lo setean). Existe para que las suscripciones realtime filtren por torneo en el CDC (antes: fanout global — ver `50-realtime.md` §16). No usarlo como fuente de verdad relacional: la cadena canónica sigue siendo `bracket_id→brackets` / `group_id→groups→categories`.
+
 **Notif**: `tournament_match_ready` (mig 20260710010000, kind + flag `tournament_match_ready_notifs` default ON) — "te toca jugar" al completarse el partido de un jugador. Helpers en `src/lib/notifications/tournament.ts`.
 
 **`tournaments.allow_waitlist`** (mig 20260713000000) — boolean default false, toggle en el wizard (Step 3, junto a Cupos). Habilita lista de espera: `registerToTournament` encola `status='waitlist'` cuando torneo/categoría están llenos (sin transacción de pago), y `promoteFromWaitlist` (src/lib/tournaments/waitlist.ts) promueve FIFO al liberarse cupo. Waitlist NO consume cupo — todos los counts de cupo usan `in ('pending','accepted')`. La columna también se agregó a la vista `tournaments_public_summary` (recreada en la misma mig) para los CTA de las cards.

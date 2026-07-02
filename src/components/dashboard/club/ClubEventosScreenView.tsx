@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
-import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useScopedRealtimeRefresh, payloadId } from "../useScopedRealtimeRefresh";
 import {
   AssignTournamentPartnerModal,
   type VerifiedPartnerOption,
@@ -246,7 +246,10 @@ function EventPlaceholderCard({ k }: { k: number }) {
 export function ClubEventosScreenView({ data }: { data: EventosData }) {
   const [assignTarget, setAssignTarget] = useState<{ id: string; name: string } | null>(null);
 
-  useRealtimeRefresh(
+  // Inscripciones: relevancia client-side contra los eventos/torneos del club
+  // (no hay club_id en esas tablas para filtrar en el CDC).
+  const myEventIds = new Set(data.events.map((e) => e.id));
+  useScopedRealtimeRefresh(
     data.clubId
       ? [
           { table: "events", filter: `club_id=eq.${data.clubId}` },
@@ -255,7 +258,20 @@ export function ClubEventosScreenView({ data }: { data: EventosData }) {
           { table: "registrations" },
         ]
       : [],
-    { enabled: !!data.clubId },
+    {
+      enabled: !!data.clubId,
+      isRelevant: (table, payload) => {
+        if (table === "registrations") {
+          const tid = payloadId(payload, "tournament_id");
+          return tid == null ? true : myEventIds.has(tid);
+        }
+        if (table === "event_registrations") {
+          const eid = payloadId(payload, "event_id");
+          return eid == null ? true : myEventIds.has(eid);
+        }
+        return true;
+      },
+    },
   );
 
   const hasReal = data.events.length > 0;

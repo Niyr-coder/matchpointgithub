@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import type { AdminTournamentDetail } from "@/server/actions/tournaments";
-import { useScopedRealtimeRefresh, payloadId } from "../useScopedRealtimeRefresh";
+import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import { Kpi, fmtMoney } from "./event-detail/primitives";
 import { TournamentHeaderCard } from "./tournament-detail/TournamentHeaderCard";
 import { TournamentActionsBar } from "./tournament-detail/TournamentActionsBar";
@@ -19,28 +19,13 @@ import { TournamentSubstitutionsTable } from "./tournament-detail/TournamentSubs
 import { AdminOverridesPanel } from "../partner/AdminOverridesPanel";
 
 export function AdminTournamentDetailView({ data }: { data: AdminTournamentDetail }) {
-  // bracket_matches no tiene tournament_id → relevancia client-side por los
-  // brackets de ESTE torneo (sin esto, cada score de la plataforma refrescaba
-  // esta pantalla — audit de costos 2026-07-01).
-  const bracketIdSet = new Set(data.brackets.map((b) => b.id));
-  useScopedRealtimeRefresh(
-    [
-      { table: "tournaments", filter: `id=eq.${data.tournament.id}` },
-      { table: "registrations", filter: `tournament_id=eq.${data.tournament.id}` },
-      { table: "transactions", filter: `ref_id=eq.${data.tournament.id}` },
-      { table: "brackets", filter: `tournament_id=eq.${data.tournament.id}` },
-      { table: "bracket_matches" },
-    ],
-    {
-      isRelevant: (table, payload) => {
-        if (table === "bracket_matches") {
-          const bid = payloadId(payload, "bracket_id");
-          return bid == null ? true : bracketIdSet.has(bid);
-        }
-        return true;
-      },
-    },
-  );
+  useRealtimeRefresh([
+    { table: "tournaments", filter: `id=eq.${data.tournament.id}` },
+    { table: "registrations", filter: `tournament_id=eq.${data.tournament.id}` },
+    { table: "transactions", filter: `ref_id=eq.${data.tournament.id}` },
+    { table: "brackets", filter: `tournament_id=eq.${data.tournament.id}` },
+    { table: "bracket_matches", filter: `tournament_id=eq.${data.tournament.id}` },
+  ]);
 
   const acceptedRegs = data.registrations.filter(
     (r) => r.status === "accepted" || r.status === "pending",

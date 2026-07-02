@@ -88,9 +88,9 @@ export function TournamentLiveDisplayClient({
 
   useRealtimeRefresh(
     [
-      { table: "tournament_group_matches" },
-      { table: "bracket_matches" },
-      { table: "tournament_categories" },
+      { table: "tournament_group_matches", filter: `tournament_id=eq.${initial.tournamentId}` },
+      { table: "bracket_matches", filter: `tournament_id=eq.${initial.tournamentId}` },
+      { table: "tournament_categories", filter: `tournament_id=eq.${initial.tournamentId}` },
       { table: "tournaments", filter: `id=eq.${initial.tournamentId}` },
     ],
     { enabled: true, onChange: debouncedRefresh },

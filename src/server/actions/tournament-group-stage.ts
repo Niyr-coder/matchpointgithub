@@ -241,25 +241,50 @@ export async function getGroupStageSummary(
     }
 
     const groups: GroupStageSummary["groups"] = [];
-    const regIds = await acceptedRegistrationIds(db, tournamentId, categoryId);
-    const courts = await loadClubCourts(db, tournamentId);
+    const [regIds, courts] = await Promise.all([
+      acceptedRegistrationIds(db, tournamentId, categoryId),
+      loadClubCourts(db, tournamentId),
+    ]);
+
+    // Bulk fetch: 2 queries totales en vez de 2 POR grupo (N+1 — este summary
+    // se re-ejecuta con cada refresh de la página de gestión).
+    const allGroupIds = (groupsRaw ?? []).map((g) => g.id as string);
+    const [{ data: allMembersRaw }, { data: allMatchesRaw }] = allGroupIds.length
+      ? await Promise.all([
+          db
+            .from("tournament_group_members")
+            .select("registration_id,sort_order,group_id")
+            .in("group_id", allGroupIds)
+            .order("sort_order"),
+          db
+            .from("tournament_group_matches")
+            .select("*")
+            .in("group_id", allGroupIds)
+            .order("round_no")
+            .order("match_no"),
+        ])
+      : [{ data: [] as unknown[] }, { data: [] as unknown[] }];
+
+    type MemberRow = { registration_id: string; sort_order: number; group_id: string };
+    const membersByGroup = new Map<string, MemberRow[]>();
+    for (const m of (allMembersRaw ?? []) as MemberRow[]) {
+      const list = membersByGroup.get(m.group_id) ?? [];
+      list.push(m);
+      membersByGroup.set(m.group_id, list);
+    }
+    const matchesByGroup = new Map<string, Record<string, unknown>[]>();
+    for (const m of (allMatchesRaw ?? []) as Record<string, unknown>[]) {
+      const gid = m.group_id as string;
+      const list = matchesByGroup.get(gid) ?? [];
+      list.push(m);
+      matchesByGroup.set(gid, list);
+    }
 
     for (const g of groupsRaw ?? []) {
       const groupId = g.id as string;
       const sortOrder = g.sort_order as number;
-      const [{ data: members }, { data: matches }] = await Promise.all([
-        db
-          .from("tournament_group_members")
-          .select("registration_id,sort_order")
-          .eq("group_id", groupId)
-          .order("sort_order"),
-        db
-          .from("tournament_group_matches")
-          .select("*")
-          .eq("group_id", groupId)
-          .order("round_no")
-          .order("match_no"),
-      ]);
+      const members = membersByGroup.get(groupId) ?? [];
+      const matches = matchesByGroup.get(groupId) ?? [];
       const memberIds = (members ?? []).map((m) => m.registration_id as string);
       const matchResults = (matches ?? []).map((m) => mapGroupMatch(m as Record<string, unknown>));
       groups.push({

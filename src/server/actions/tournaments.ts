@@ -814,7 +814,7 @@ export async function setTournamentStatus(
     // /eventos cachea sus datos 60s (unstable_cache); los cambios de status
     // (publicar, cancelar, finalizar) invalidan al instante para no mostrar
     // torneos cancelados en el listado (regla §11.4 de 01-tournaments).
-    revalidateTag(PUBLIC_TOURNAMENTS_TAG);
+    revalidateTag(PUBLIC_TOURNAMENTS_TAG, "max");
     revalidatePath("/eventos");
 
     // Si pasa a 'cancelled' (y antes no lo estaba), notificar a inscritos.

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { TorneoHomeRow, TorneoStat } from "./_TorneoHomeRow";
 import { RHKpi, RHPanel, RHWelcome } from "../widgets/RH";
-import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useScopedRealtimeRefresh, payloadId } from "../useScopedRealtimeRefresh";
 
 export type TorneoCard = {
   id: string;
@@ -118,7 +118,12 @@ function MatchPlaceholder({ first }: { first: boolean }) {
 }
 
 export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
-  useRealtimeRefresh(
+  // Pantalla multi-torneo: no hay un solo tournament_id para filtrar en el
+  // CDC, así que la relevancia es client-side contra los torneos del partner
+  // (payload.tournament_id existe desde mig 20260715000000). Sin esto, cada
+  // inscripción o score de la plataforma refrescaba el home de todo partner.
+  const myTournamentIds = new Set(data.torneos.map((t) => t.id));
+  useScopedRealtimeRefresh(
     data.partnerId
       ? [
           { table: "tournaments", filter: `partner_id=eq.${data.partnerId}` },
@@ -126,7 +131,16 @@ export function PartnerHomeView({ data }: { data: PartnerHomeData }) {
           { table: "bracket_matches" },
         ]
       : [],
-    { enabled: !!data.partnerId },
+    {
+      enabled: !!data.partnerId,
+      isRelevant: (table, payload) => {
+        if (table === "registrations" || table === "bracket_matches") {
+          const tid = payloadId(payload, "tournament_id");
+          return tid == null ? true : myTournamentIds.has(tid);
+        }
+        return true;
+      },
+    },
   );
 
   const hasTorneos = data.torneos.length > 0;

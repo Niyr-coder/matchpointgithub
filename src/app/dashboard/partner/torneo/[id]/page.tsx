@@ -361,42 +361,53 @@ export default async function PartnerTorneoPage({
     acceptedCount: c.acceptedCount,
   }));
 
-  // Clubes vinculados al partner — para el selector de sede en el modal de edición.
-  let availableClubs: Array<{ id: string; name: string }> = [];
-  if (partnerId) {
-    const { data: links } = await admin
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from("partner_club_links")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("clubs(id,name)" as any)
-      .eq("partner_id", partnerId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    availableClubs = ((links ?? []) as any[])
-      .map((l) => l.clubs as { id: string; name: string } | null)
-      .filter((c): c is { id: string; name: string } => !!c);
-  }
-
-  let clubCourts: Array<{ id: string; label: string }> = [];
+  // Bloque de fetches independientes en paralelo — antes corrían en serie y
+  // esta página es la que más se re-renderiza (audit de costos 2026-07-01).
   const tournamentClubId = (t.club_id as string | null) ?? null;
-  if (tournamentClubId) {
-    const { data: courtsRaw } = await admin
-      .from("courts")
-      .select("id,code,name,ordinal")
-      .eq("club_id", tournamentClubId)
-      .eq("active", true)
-      .order("ordinal", { ascending: true });
-    clubCourts = (courtsRaw ?? []).map((c) => ({
-      id: c.id as string,
-      label: ((c.code as string | null) || (c.name as string | null) || "Cancha") as string,
-    }));
-  }
+  const [linksRes, courtsRes, blocksRes, prizesRes, bracketsRes] = await Promise.all([
+    partnerId
+      ? admin
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from("partner_club_links")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .select("clubs(id,name)" as any)
+          .eq("partner_id", partnerId)
+      : Promise.resolve({ data: null }),
+    tournamentClubId
+      ? admin
+          .from("courts")
+          .select("id,code,name,ordinal")
+          .eq("club_id", tournamentClubId)
+          .eq("active", true)
+          .order("ordinal", { ascending: true })
+      : Promise.resolve({ data: null }),
+    admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("tournament_schedule_blocks" as any)
+      .select("id,starts_at,label,category_id,notes")
+      .eq("tournament_id", id)
+      .order("starts_at", { ascending: true }),
+    admin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from("tournament_prizes" as any)
+      .select("id,position,place_label,prize_label,value_cents,sponsor,category_id")
+      .eq("tournament_id", id)
+      .order("position", { ascending: true }),
+    admin.from("brackets").select("id").eq("tournament_id", id),
+  ]);
 
-  const { data: blocksRaw } = await admin
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .from("tournament_schedule_blocks" as any)
-    .select("id,starts_at,label,category_id,notes")
-    .eq("tournament_id", id)
-    .order("starts_at", { ascending: true });
+  // Clubes vinculados al partner — para el selector de sede en el modal de edición.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const availableClubs: Array<{ id: string; name: string }> = (((linksRes.data ?? []) as any[]) ?? [])
+    .map((l) => l.clubs as { id: string; name: string } | null)
+    .filter((c): c is { id: string; name: string } => !!c);
+
+  const clubCourts: Array<{ id: string; label: string }> = ((courtsRes.data ?? []) as Array<Record<string, unknown>>).map((c) => ({
+    id: c.id as string,
+    label: ((c.code as string | null) || (c.name as string | null) || "Cancha") as string,
+  }));
+
+  const blocksRaw = blocksRes.data;
   type BlockRow = {
     id: string;
     starts_at: string;
@@ -413,12 +424,7 @@ export default async function PartnerTorneoPage({
   }));
 
   // tournament_prizes aún no está en los types generados.
-  const { data: prizesRaw } = await admin
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .from("tournament_prizes" as any)
-    .select("id,position,place_label,prize_label,value_cents,sponsor,category_id")
-    .eq("tournament_id", id)
-    .order("position", { ascending: true });
+  const prizesRaw = prizesRes.data;
   type PrizeRowRaw = {
     id: string;
     position: number | null;
@@ -428,24 +434,8 @@ export default async function PartnerTorneoPage({
     sponsor: string | null;
     category_id: string | null;
   };
-  const { data: bracketRows } = await admin
-    .from("brackets")
-    .select("id")
-    .eq("tournament_id", id);
-  const tournamentBracketIds = ((bracketRows ?? []) as Array<{ id: string }>).map((b) => b.id);
-  const hasBracket = tournamentBracketIds.length > 0;
+  const hasBracket = ((bracketsRes.data ?? []) as Array<{ id: string }>).length > 0;
 
-  // Ids de grupos del torneo — scope client-side de la suscripción realtime
-  // (tournament_group_matches no tiene tournament_id para filtrar en el CDC).
-  const allCategoryIds = ((catsRaw ?? []) as unknown as CatRow[]).map((c) => c.id as string);
-  let tournamentGroupIds: string[] = [];
-  if (allCategoryIds.length > 0) {
-    const { data: groupRows } = await admin
-      .from("tournament_groups")
-      .select("id")
-      .in("category_id", allCategoryIds);
-    tournamentGroupIds = ((groupRows ?? []) as Array<{ id: string }>).map((g) => g.id);
-  }
 
   const prizes: PrizeRow[] = ((prizesRaw ?? []) as unknown as PrizeRowRaw[]).map((p) => ({
     id: p.id,
@@ -615,12 +605,7 @@ export default async function PartnerTorneoPage({
 
   return (
     <main className="mp-partner-torneo-page-main">
-      <TournamentGestionRealtime
-        tournamentId={t.id as string}
-        bracketIds={tournamentBracketIds}
-        categoryIds={allCategoryIds}
-        groupIds={tournamentGroupIds}
-      />
+      <TournamentGestionRealtime tournamentId={t.id as string} />
           {isDraft && (
             <div
               style={{

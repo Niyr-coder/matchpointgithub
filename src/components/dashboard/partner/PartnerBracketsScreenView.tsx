@@ -158,7 +158,19 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
 
   useRealtimeRefresh(
     data.partnerId
-      ? [{ table: "bracket_matches" }, { table: "brackets" }]
+      ? [
+          // Con torneo activo, el CDC filtra server-side (tournament_id
+          // denormalizado, mig 20260715000000); el guard de match ids queda
+          // como cinturón para la vista sin tid.
+          {
+            table: "bracket_matches",
+            ...(data.tournamentId ? { filter: `tournament_id=eq.${data.tournamentId}` } : {}),
+          },
+          {
+            table: "brackets",
+            ...(data.tournamentId ? { filter: `tournament_id=eq.${data.tournamentId}` } : {}),
+          },
+        ]
       : [],
     {
       enabled: !!data.partnerId,
