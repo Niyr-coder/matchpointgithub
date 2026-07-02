@@ -10,11 +10,12 @@ import "server-only";
 
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
 import { UuidSchema } from "@/lib/schemas/common";
+import { requireTournamentEditor } from "@/server/actions/tournaments";
+import { notifyGroupsDrawn, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
 import {
   buildRoundRobinRounds,
   computeGroupStandings,
@@ -24,47 +25,23 @@ import type { GroupMatchResult, GroupStandingRow } from "@/lib/tournaments/group
 const LIGA_FORMATS = new Set(["round_robin", "swiss"]);
 
 // ---------------------------------------------------------------------------
-// Auth helper
+// Auth helper — valida formato de liga y delega la autorización al guard
+// centralizado (admin / partner org / club staff del torneo). Antes tenía su
+// propia copia SIN el branch de club anfitrión (misma clase de bug que cerró
+// el commit 10187ea).
 // ---------------------------------------------------------------------------
 async function requireLigaEditor(tournamentId: string) {
   const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Inicia sesión para continuar");
-  const userId = user.id;
-
   const { data: t } = await supabase
     .from("tournaments")
-    .select("partner_id,format")
+    .select("format")
     .eq("id", tournamentId)
     .single();
   if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
   if (!LIGA_FORMATS.has(t.format as string)) {
     throw new MpError("LIGA.WRONG_FORMAT", "Este torneo no usa formato de liga", 422);
   }
-
-  const { data: adminRow } = await supabase
-    .from("role_assignments")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .is("revoked_at", null)
-    .maybeSingle();
-  const isAdmin = !!adminRow;
-  const partnerId = (t.partner_id as string | null) ?? null;
-  if (isAdmin) return { userId, isAdmin, partnerId, actorRole: "admin" as const };
-  if (!partnerId) throw new AuthError("AUTH.ROLE_REQUIRED", "Torneo sin partner — solo admin");
-
-  const { data: member } = await supabase
-    .from("partner_members")
-    .select("user_id")
-    .eq("partner_id", partnerId)
-    .eq("user_id", userId)
-    .in("role", ["owner", "admin"])
-    .maybeSingle();
-  if (!member) throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el partner organizador o un admin");
-  return { userId, isAdmin, partnerId, actorRole: "partner" as const };
+  return requireTournamentEditor(tournamentId);
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +64,8 @@ export type LigaData = {
   memberRegistrationIds: string[];
   matches: LigaMatchRow[];
   standings: GroupStandingRow[];
+  /** 'complete' = liga cerrada (campeón publicado, marcadores read-only). */
+  categoryStage: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -98,12 +77,20 @@ export async function getLigaData(
 ): Promise<LigaData> {
   const admin = getAdminClient();
 
-  const { data: groups } = await admin
-    .from("tournament_groups")
-    .select("id")
-    .eq("category_id", categoryId)
-    .order("sort_order", { ascending: true })
-    .limit(1);
+  const [{ data: groups }, { data: catRow }] = await Promise.all([
+    admin
+      .from("tournament_groups")
+      .select("id")
+      .eq("category_id", categoryId)
+      .order("sort_order", { ascending: true })
+      .limit(1),
+    admin
+      .from("tournament_categories")
+      .select("stage")
+      .eq("id", categoryId)
+      .maybeSingle(),
+  ]);
+  const categoryStage = (catRow?.stage as string | null) ?? null;
 
   const group = groups?.[0] ?? null;
   if (!group) {
@@ -113,6 +100,7 @@ export async function getLigaData(
       memberRegistrationIds: [],
       matches: [],
       standings: [],
+      categoryStage,
     };
   }
 
@@ -152,7 +140,7 @@ export async function getLigaData(
   }));
   const standings = computeGroupStandings(memberRegistrationIds, matchResults);
 
-  return { hasSchedule: true, groupId, memberRegistrationIds, matches, standings };
+  return { hasSchedule: true, groupId, memberRegistrationIds, matches, standings, categoryStage };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +194,7 @@ export async function generateRoundRobinSchedule(
       );
     }
 
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
 
     const { data: groupRow, error: gErr } = await admin
       .from("tournament_groups")
@@ -250,6 +238,14 @@ export async function generateRoundRobinSchedule(
       .insert(matchRows as never);
     if (gmErr) throw new MpError("LIGA.MATCHES_FAILED", gmErr.message, 500);
 
+    // "Te toca jugar": una notif por jugador con copy de liga.
+    void notifyGroupsDrawn(admin, {
+      tournamentId,
+      categoryId,
+      title: "Tu calendario de liga está listo",
+      bodyTemplate: (name) => `El calendario de ${name} está listo. Revisa tus fechas y partidos.`,
+    });
+
     return { groupId, matchesCreated: matchRows.length };
   });
 }
@@ -285,14 +281,17 @@ export async function reportLigaMatch(
       .single();
     const { data: cat } = await admin
       .from("tournament_categories")
-      .select("tournament_id")
+      .select("tournament_id,stage")
       .eq("id", (group?.category_id as string) ?? "")
       .single();
     if ((cat?.tournament_id as string) !== tournamentId) {
       throw new MpError("LIGA.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
     }
+    if ((cat?.stage as string | null) === "complete") {
+      throw new MpError("LIGA.CLOSED", "La liga ya fue finalizada", 409);
+    }
 
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
       .from("tournament_group_matches")
       .update({
@@ -330,14 +329,17 @@ export async function correctLigaMatch(
       .single();
     const { data: cat } = await admin
       .from("tournament_categories")
-      .select("tournament_id")
+      .select("tournament_id,stage")
       .eq("id", (group?.category_id as string) ?? "")
       .single();
     if ((cat?.tournament_id as string) !== tournamentId) {
       throw new MpError("LIGA.MATCH_NOT_FOUND", "Partido no pertenece al torneo", 404);
     }
+    if ((cat?.stage as string | null) === "complete") {
+      throw new MpError("LIGA.CLOSED", "La liga ya fue finalizada", 409);
+    }
 
-    await setAuditActor(admin, editor.userId, editor.actorRole);
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
     const { error } = await admin
       .from("tournament_group_matches")
       .update({
@@ -348,5 +350,78 @@ export async function correctLigaMatch(
       .eq("id", matchId);
     if (error) throw new MpError("LIGA.CORRECT_FAILED", error.message, 500);
     return { id: matchId };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// closeLigaStage — finaliza la liga de una categoría.
+// Exige todos los partidos confirmados, marca la categoría 'complete' y, si
+// todas las categorías del torneo están completas, pasa el torneo a
+// 'finished' + notif tournament_finished (mismo contrato que confirmBracketMatch
+// y reportBracketMatch en la final).
+// ---------------------------------------------------------------------------
+const CloseLigaSchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema,
+});
+
+export async function closeLigaStage(
+  input: unknown,
+): Promise<ActionResult<{ championRegistrationId: string | null; tournamentFinished: boolean }>> {
+  return runAction(CloseLigaSchema, input, async ({ tournamentId, categoryId }) => {
+    const editor = await requireLigaEditor(tournamentId);
+    const admin = getAdminClient();
+
+    const { data: cat } = await admin
+      .from("tournament_categories")
+      .select("id,tournament_id,stage")
+      .eq("id", categoryId)
+      .eq("tournament_id", tournamentId)
+      .single();
+    if (!cat) throw new MpError("CATEGORY.NOT_FOUND", "Categoría no pertenece al torneo", 404);
+    if ((cat.stage as string | null) === "complete") {
+      throw new MpError("LIGA.CLOSED", "La liga ya fue finalizada", 409);
+    }
+
+    const liga = await getLigaData(tournamentId, categoryId);
+    if (!liga.hasSchedule || liga.matches.length === 0) {
+      throw new MpError("LIGA.NO_SCHEDULE", "Genera el calendario antes de cerrar la liga", 409);
+    }
+    const pending = liga.matches.filter((m) => m.status !== "confirmed").length;
+    if (pending > 0) {
+      throw new MpError(
+        "LIGA.MATCHES_PENDING",
+        `Faltan ${pending} partidos por confirmar antes de cerrar la liga`,
+        409,
+      );
+    }
+
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
+
+    const { error: stErr } = await admin
+      .from("tournament_categories")
+      .update({ stage: "complete" } as never)
+      .eq("id", categoryId);
+    if (stErr) throw new MpError("LIGA.CLOSE_FAILED", stErr.message, 500);
+
+    const championRegistrationId = liga.standings[0]?.registrationId ?? null;
+
+    // Si todas las categorías del torneo quedaron completas → finished + notif.
+    const { data: allCats } = await admin
+      .from("tournament_categories")
+      .select("stage")
+      .eq("tournament_id", tournamentId);
+    const allComplete =
+      (allCats ?? []).length > 0 &&
+      (allCats ?? []).every((c) => (c.stage as string | null) === "complete");
+    if (allComplete) {
+      await admin
+        .from("tournaments")
+        .update({ status: "finished" } as never)
+        .eq("id", tournamentId);
+      await notifyTournamentFinishedCore(admin, tournamentId);
+    }
+
+    return { championRegistrationId, tournamentFinished: allComplete };
   });
 }

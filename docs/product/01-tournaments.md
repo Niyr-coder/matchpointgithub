@@ -652,3 +652,58 @@ Los tres solo aparecen si `tournament_monitors_enabled` está activo. `Tournamen
 8. **`updateMatchScore`/`submitMatchResult` validan la cancha**: `requireMatchOnMyCourt` exige que el `court_id` del partido esté entre las canchas del monitor (`403 MONITORS.MATCH_NOT_YOURS`). `updateMatchScore` además solo acepta partidos `live`.
 9. **`score.current` es transitorio**: `{sets, serving, current}` — `current` son los puntos del set en curso; `submitMatchResult` lo limpia al escribir el score final. Los consumidores de standings solo deben leer `sets` de partidos `confirmed` (sin cambio).
 10. **Correcciones SÍ recalculan ELO** (mig `20260710000000`): si cambia `winner_side` de un partido ya aplicado, el trigger revierte los deltas efectivos (tabla `match_rating_applications`) y re-aplica. Partidos aplicados ANTES de esa mig no tienen filas de aplicación → no se revierten (comportamiento legacy preservado). Corrección de solo-score (mismo ganador) no toca el rating.
+
+## 16. Liga (round-robin) — HABILITADO 2026-07-01
+
+`round_robin` quedó habilitado en el wizard (2026-07-01). `swiss` sigue
+"Próximamente" (falta el motor de emparejamiento — ver Fase 3 del plan).
+`double_elim` sigue deshabilitado Y `generateBracket` lo rechaza
+explícitamente (`BRACKETS.FORMAT_UNAVAILABLE`) — antes degradaba en silencio
+a single_elim.
+
+### 16.1 Arquitectura
+
+Storage compartido con grupos: **un `tournament_group` "Liga" por categoría**
+(`tournament_groups`/`_members`/`_matches`). Sin tabla propia. El trigger de
+ELO de `tournament_group_matches` aplica igual (reportar = confirmar directo).
+
+| Pieza | Dónde |
+|---|---|
+| Actions | `src/server/actions/tournament-liga.ts` — `getLigaData`, `generateRoundRobinSchedule`, `reportLigaMatch`, `correctLigaMatch`, `closeLigaStage` |
+| Panel partner | `LigaOperacionPanel` (server) + `LigaOperacionPanelView` (client) — un panel POR categoría en el tab Operación |
+| Motor RR | `buildRoundRobinRounds` (método del círculo, maneja bye impar) — compartido con grupos |
+| Standings | `computeGroupStandings` — compartido |
+| Vista jugador | infra de grupos (`player-matches.ts`), agnóstica de formato |
+
+### 16.2 Flujo
+
+```
+1. Crear torneo formato round_robin (+ ≥1 categoría) → publicar → inscribir
+2. Partner → tab Operación → "Sortear calendario" (por categoría)
+   • generateRoundRobinSchedule: requiere ≥2 accepted; crea grupo Liga +
+     members + partidos por fechas (round_no)
+   • Notif tournament_match_ready por jugador ("Tu calendario de liga está listo")
+3. Partner carga marcadores (ScoreMatchCard) → reportLigaMatch confirma
+   directo → trigger ELO. correctLigaMatch revierte+reaplica (mig 20260710000000)
+4. Todos confirmados → botón "Finalizar liga" → closeLigaStage:
+   • valida 0 pendientes → category.stage='complete' → campeón = rank 1
+   • si TODAS las categorías complete → torneo 'finished' + notif
+     tournament_finished (mismo contrato que brackets)
+   • post-cierre: marcadores read-only (LIGA.CLOSED en report/correct)
+```
+
+### 16.3 Cosas que rompen seguido
+
+1. **`requireLigaEditor` delega en `requireTournamentEditor`** (fix 2026-07-01):
+   la copia local anterior NO tenía el branch de club anfitrión — un torneo de
+   club sin partner era inoperable salvo admin. No volver a duplicar el guard.
+2. **Cierre por categoría, no por torneo**: `closeLigaStage` es per-categoría;
+   el torneo solo pasa a `finished` cuando TODAS las categorías están
+   `complete`. El botón "Finalizar torneo" (closeTournament) sigue siendo el
+   override manual.
+3. **Sin scheduling por cancha en esta fase**: los partidos de liga no llevan
+   `scheduled_at`/`court_id` → los monitores de cancha NO cubren liga (el
+   partner carga scores desde el panel). Documentado como limitación.
+4. **Campeón** = rank 1 de `computeGroupStandings` (wins → dif sets → dif
+   games → h2h). `getDerivedCategoryWinners` ya deriva liga (rank 1 del grupo
+   único cuando no hay bracket).

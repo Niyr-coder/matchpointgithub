@@ -83,10 +83,8 @@ const TOURNAMENT_FORMATS: Array<{
   },
   {
     value: "round_robin",
-    label: "Round-robin",
-    sub: "Todos contra todos en grupos",
-    disabled: true,
-    badge: "Próximamente",
+    label: "Round-robin (liga)",
+    sub: "Todos contra todos, gana la tabla",
   },
   {
     value: "swiss",

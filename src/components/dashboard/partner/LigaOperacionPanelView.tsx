@@ -10,6 +10,7 @@ import {
   generateRoundRobinSchedule,
   reportLigaMatch,
   correctLigaMatch,
+  closeLigaStage,
 } from "@/server/actions/tournament-liga";
 import type { LigaData, LigaMatchRow } from "@/server/actions/tournament-liga";
 import type { GroupStandingRow } from "@/lib/tournaments/group-stage";
@@ -129,6 +130,7 @@ function RoundSection({
   matches,
   registrationLabels,
   busy,
+  readOnly,
   onScore,
 }: {
   roundNo: number;
@@ -136,6 +138,7 @@ function RoundSection({
   matches: LigaMatchRow[];
   registrationLabels: Record<string, string>;
   busy: boolean;
+  readOnly: boolean;
   onScore: (matchId: string, setsA: number, setsB: number) => void;
 }) {
   const pending = matches.filter((m) => m.status === "scheduled").length;
@@ -192,8 +195,8 @@ function RoundSection({
                 scoreA={a}
                 scoreB={b}
                 winnerSide={m.winnerSide}
-                editable={!isReported && !busy}
-                correctable={isReported && !busy}
+                editable={!isReported && !busy && !readOnly}
+                correctable={isReported && !busy && !readOnly}
                 busy={busy}
                 onScoreSubmit={onScore}
               />
@@ -313,6 +316,33 @@ export function LigaOperacionPanelView({
     return { total, done };
   }, [data.matches]);
 
+  const closed = data.categoryStage === "complete";
+  const allConfirmed = progressStats.total > 0 && progressStats.done === progressStats.total;
+  const championLabel =
+    data.standings[0] != null
+      ? label(registrationLabels, data.standings[0].registrationId)
+      : null;
+
+  async function handleClose() {
+    setBusy(true);
+    try {
+      const res = await closeLigaStage({ tournamentId, categoryId });
+      if (!res.ok) {
+        showToast({ icon: "alert-triangle", title: "Error", sub: res.error.message, tone: "error" });
+        return;
+      }
+      showToast({
+        icon: "check",
+        title: `Liga finalizada · Campeón: ${championLabel ?? "—"}`,
+        sub: res.data.tournamentFinished ? "El torneo pasó a finalizado y se notificó a los inscritos." : undefined,
+        tone: "success",
+      });
+      startTransition(() => router.refresh());
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleGenerate() {
     setBusy(true);
     try {
@@ -402,6 +432,68 @@ export function LigaOperacionPanelView({
         </span>
       </div>
 
+      {/* Liga cerrada: campeón publicado */}
+      {closed && (
+        <div
+          className="card"
+          style={{
+            padding: "14px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: "rgba(16,185,129,0.08)",
+            border: "1px solid rgba(16,185,129,0.35)",
+          }}
+        >
+          <Icon name="trophy" size={16} color="#059669" />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase", color: "#059669" }}>
+              Liga finalizada
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Campeón: {championLabel ?? "—"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cierre: disponible cuando todos los partidos están confirmados */}
+      {!closed && allConfirmed && (
+        <div
+          className="card"
+          style={{
+            padding: "14px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Todos los partidos confirmados
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-fg)", marginTop: 2 }}>
+              Al finalizar se publica el campeón ({championLabel ?? "—"}) y los marcadores quedan cerrados.
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={handleClose} disabled={isBusy}>
+            {isBusy ? (
+              <>
+                <Icon name="loader" size={12} color="#fff" />
+                Finalizando…
+              </>
+            ) : (
+              <>
+                <Icon name="flag" size={12} color="#fff" />
+                Finalizar liga
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Tabla de posiciones */}
       <StandingsTable standings={data.standings} registrationLabels={registrationLabels} />
 
@@ -414,6 +506,7 @@ export function LigaOperacionPanelView({
           matches={matches}
           registrationLabels={registrationLabels}
           busy={isBusy}
+          readOnly={closed}
           onScore={handleScore}
         />
       ))}

@@ -91,10 +91,16 @@ export async function notifyMatchReady(
   }
 }
 
-/** Una notif por jugador al sortear los grupos de una categoría. */
+/** Una notif por jugador al sortear los grupos (o calendario de liga) de una categoría. */
 export async function notifyGroupsDrawn(
   admin: AdminClient,
-  opts: { tournamentId: string; categoryId: string },
+  opts: {
+    tournamentId: string;
+    categoryId: string;
+    /** Copy alternativo (ej. liga round-robin). Defaults: sorteo de grupos. */
+    title?: string;
+    bodyTemplate?: (tournamentName: string) => string;
+  },
 ): Promise<void> {
   try {
     if (!(await isMatchReadyNotifsEnabled(admin))) return;
@@ -124,8 +130,10 @@ export async function notifyGroupsDrawn(
           userId: uid,
           role: "user",
           kind: "tournament_match_ready",
-          title: "Tus partidos de grupo están listos",
-          body: `El sorteo de grupos de ${t.name as string} está listo. Revisa tu grupo y tus partidos.`,
+          title: opts.title ?? "Tus partidos de grupo están listos",
+          body: opts.bodyTemplate
+            ? opts.bodyTemplate(t.name as string)
+            : `El sorteo de grupos de ${t.name as string} está listo. Revisa tu grupo y tus partidos.`,
           payload: {
             tournament_id: opts.tournamentId,
             tournament_slug: t.slug,

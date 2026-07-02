@@ -48,7 +48,9 @@ export function PartnerTorneoOperacionPanel({
           <div className="mp-partner-torneo-operacion-brackets-body">
             <div className="label-mp">Marcadores de liga</div>
             <p className="mp-partner-torneo-operacion-brackets-sub">
-              La gestión de partidos y marcadores para formatos de liga (round-robin y suizo) estará disponible próximamente.
+              La operación de liga aparece aquí mientras el torneo está activo y
+              tiene categorías. Crea al menos una categoría para generar el
+              calendario round-robin.
             </p>
           </div>
         </div>

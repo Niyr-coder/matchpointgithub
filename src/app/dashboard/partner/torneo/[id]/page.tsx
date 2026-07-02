@@ -540,10 +540,12 @@ export default async function PartnerTorneoPage({
 
   const LIGA_FORMATS = new Set(["round_robin", "swiss"]);
   const hasLigaOperacion = LIGA_FORMATS.has(tournamentFormat) && !isClosed && categories.length > 0;
-  const ligaCategoryId = categories[0]?.id ?? null;
-  const ligaCategoryName = categories[0]?.name ?? "Categoría";
+  // Una liga por categoría: se monta un panel por cada una (multi-categoría).
+  const ligaCategories = hasLigaOperacion
+    ? categories.map((c) => ({ id: c.id as string, name: (c.name as string) ?? "Categoría" }))
+    : [];
   const defaultGestionTab =
-    hasGroupOperacion || hasBracket || dbStatus === "in_progress" || dbStatus === "active"
+    hasGroupOperacion || hasLigaOperacion || hasBracket || dbStatus === "in_progress" || dbStatus === "active"
       ? ("operacion" as const)
       : ("configuracion" as const);
 
@@ -914,15 +916,16 @@ export default async function PartnerTorneoPage({
                     playerOpsEnabled={playerOpsEnabled}
                   />
                 )}
-                {hasLigaOperacion && ligaCategoryId && (
+                {ligaCategories.map((cat) => (
                   <LigaOperacionPanel
+                    key={cat.id}
                     tournamentId={t.id as string}
-                    categoryId={ligaCategoryId}
-                    categoryName={ligaCategoryName}
+                    categoryId={cat.id}
+                    categoryName={cat.name}
                     tournamentFormat={tournamentFormat}
                     registrationLabels={registrationLabels}
                   />
-                )}
+                ))}
               {!isClosed && monitorsEnabled && (
                   <TournamentMonitorsPanel
                     tournamentId={t.id as string}
