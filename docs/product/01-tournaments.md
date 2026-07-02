@@ -586,14 +586,21 @@ pagada (no confundir con `is_featured`/"estelar").
 
 ### 14.1 Acceso y token
 
-- URL: `/t/[slug]/live?k=<display_token>`. Sin login.
+- URL corta (la que reparte el panel): `tv.matchpoint.top/[slug]?k=<token>`.
+  El host `tv.*` lo reescribe **`src/proxy.ts`** (Next 16: `proxy.ts`
+  reemplaza a `middleware.ts` — NO crear un middleware.ts ni duplicar el
+  rewrite en next.config) hacia la ruta real `/t/[slug]/live?k=`; sin slug
+  cae al empty state `/tv`. Override del dominio: env `NEXT_PUBLIC_TV_URL`.
+- URL real: `/t/[slug]/live?k=<display_token>`. Sin login.
 - `tournaments.display_token` (uuid) se genera/rota desde el panel partner
   (`TournamentVenueDisplayPanel`) vía `ensureTournamentDisplayToken` /
   `rotateTournamentDisplayToken`. Guard: `requireTournamentEditor` (admin o
   owner/admin del partner). Lectura pública valida `slug + token` con
   `getAdminClient` (RLS no aplica al ser service-role tras validar token).
-- Bloqueada si el torneo está `draft` o `cancelled`. Página marcada
-  `robots: noindex`.
+- **`draft` SÍ funciona** (2026-07-02): el link es privado por token, así el
+  organizador monta y prueba la TV del venue antes de publicar; sin partidos
+  el cliente muestra el standby "Los partidos en vivo aparecerán aquí".
+  Bloqueada solo si el torneo está `cancelled`. Página `robots: noindex`.
 
 ### 14.2 Qué muestra
 

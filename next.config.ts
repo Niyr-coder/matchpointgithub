@@ -39,18 +39,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async rewrites() {
-    return [
-      // URL corta de la pantalla TV: tv.matchpoint.top/{slug}?k= → ruta real.
-      // Solo aplica si el subdominio se agrega en Vercel/DNS; mientras tanto
-      // el panel genera el link con la ruta /t/[slug]/live directamente.
-      {
-        source: "/:slug",
-        has: [{ type: "host", value: "tv.matchpoint.top" }],
-        destination: "/t/:slug/live",
-      },
-    ];
-  },
+  // OJO: el rewrite del subdominio tv.matchpoint.top vive en src/proxy.ts
+  // (Next 16: proxy.ts reemplaza a middleware.ts) — NO duplicarlo aquí.
   async redirects() {
     return [
       // www → apex. Requiere que www.matchpoint.top esté en Vercel con SSL.
