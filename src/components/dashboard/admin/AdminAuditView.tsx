@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 import { InfoTip, LabelWithTip } from "@/components/dashboard/widgets/InfoTip";
 import { verifyAuditChain, rebackfillAuditChain, type ChainStatus } from "@/server/actions/audit";
 
@@ -192,12 +193,9 @@ export function AdminAuditView({ events, now, chainedCount }: { events: AuditEve
     [events, now, range, customFrom, customTo],
   );
 
-  // Refresca datos reales del server cada 15s mientras live tail está on.
-  useEffect(() => {
-    if (!liveTail) return;
-    const id = setInterval(() => router.refresh(), 15000);
-    return () => clearInterval(id);
-  }, [liveTail, router]);
+  // Live tail: event-driven vía realtime (audit_log está en el publication)
+  // con el debounce default del hook. Antes: poll ciego cada 15s.
+  useRealtimeRefresh([{ table: "audit_log" }], { enabled: liveTail });
 
   const filtered = rangeEvents.filter((e) => {
     if (catF !== "all" && e.cat !== catF) return false;

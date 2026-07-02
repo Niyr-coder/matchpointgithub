@@ -1,6 +1,6 @@
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
-import { getTournament, listFeaturedTournaments } from "@/server/actions/tournaments";
+import { getTournament } from "@/server/actions/tournaments";
 import type { MyRegistration, TournamentInscrito } from "@/components/dashboard/eventos/TournamentDetailView";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 
@@ -25,25 +25,32 @@ export type TournamentDashboardPageData = {
   myMatches: TournamentPlayerMatchView[];
   bracketSides: TournamentBracketSideView[];
   groupView: TournamentPlayerGroupView | null;
+  /** Scope client-side de la suscripción realtime (las tablas de scoring no tienen tournament_id). */
+  realtimeScope: { bracketIds: string[]; categoryIds: string[]; groupIds: string[] };
 };
 
 export async function loadTournamentDashboardPageData(
   idOrSlug: string,
 ): Promise<TournamentDashboardPageData | null> {
-  const [detailRes, summaryRes] = await Promise.all([
-    getTournament({ idOrSlug }),
-    listFeaturedTournaments({ limit: 24 }),
-  ]);
+  const detailRes = await getTournament({ idOrSlug });
   if (!detailRes.ok) return null;
-
-  const summary = summaryRes.ok
-    ? summaryRes.data.find(
-        (t) => t.slug === idOrSlug || t.id === idOrSlug || t.slug === detailRes.data.tournament.slug,
-      )
-    : undefined;
 
   const sess = await getSession();
   const supabase = await getServerClient();
+
+  // Club de la sede: 1 fila puntual de la vista pública (antes se traían 24
+  // torneos con listFeaturedTournaments solo para extraer este dato).
+  const { data: summaryRow } = await supabase
+    .from("tournaments_public_summary")
+    .select("club_name,club_city")
+    .eq("id", detailRes.data.tournament.id)
+    .maybeSingle();
+  const summary = summaryRow
+    ? {
+        clubName: (summaryRow.club_name as string | null) ?? null,
+        clubCity: (summaryRow.club_city as string | null) ?? null,
+      }
+    : undefined;
   let myRegistration: MyRegistration | null = null;
   if (sess.authenticated) {
     const { data: regRow } = await supabase
@@ -119,6 +126,21 @@ export async function loadTournamentDashboardPageData(
   );
   const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
+  // Scope de realtime: ids de bracket y grupos del torneo, para que el
+  // subscriber del jugador ignore eventos de scoring de OTROS torneos.
+  const categoryIds = detailRes.data.categories.map((c) => c.id);
+  const [{ data: bracketRows }, { data: groupRows }] = await Promise.all([
+    supabase.from("brackets").select("id").eq("tournament_id", detailRes.data.tournament.id),
+    categoryIds.length > 0
+      ? supabase.from("tournament_groups").select("id").in("category_id", categoryIds)
+      : Promise.resolve({ data: [] as Array<{ id: string }> }),
+  ]);
+  const realtimeScope = {
+    bracketIds: ((bracketRows ?? []) as Array<{ id: string }>).map((b) => b.id),
+    categoryIds,
+    groupIds: ((groupRows ?? []) as Array<{ id: string }>).map((g) => g.id),
+  };
+
   return {
     detail: detailRes.data,
     clubName: summary?.clubName ?? null,
@@ -131,5 +153,6 @@ export async function loadTournamentDashboardPageData(
     myMatches: bracketData.myMatches,
     bracketSides: bracketData.bracketSides,
     groupView: bracketData.groupView,
+    realtimeScope,
   };
 }

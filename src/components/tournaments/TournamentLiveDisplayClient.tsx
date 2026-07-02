@@ -14,7 +14,9 @@ import {
 import { useRealtimeRefresh } from "@/components/dashboard/useRealtimeRefresh";
 
 const SCENE_MS = 14000;
-const REFRESH_MS = 12000;
+// Fallback lento: realtime ya notifica los cambios de score al instante; este
+// poll solo cubre reconexiones perdidas. Antes 12s = refetch N+1 redundante.
+const REFRESH_MS = 60000;
 const STALE_MS = 45000;
 const BUMP_MS = 800;
 const REALTIME_DEBOUNCE_MS = 1000;

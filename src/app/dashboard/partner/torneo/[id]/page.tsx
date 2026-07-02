@@ -428,13 +428,24 @@ export default async function PartnerTorneoPage({
     sponsor: string | null;
     category_id: string | null;
   };
-  const { data: bracketRow } = await admin
+  const { data: bracketRows } = await admin
     .from("brackets")
     .select("id")
-    .eq("tournament_id", id)
-    .limit(1)
-    .maybeSingle();
-  const hasBracket = !!bracketRow;
+    .eq("tournament_id", id);
+  const tournamentBracketIds = ((bracketRows ?? []) as Array<{ id: string }>).map((b) => b.id);
+  const hasBracket = tournamentBracketIds.length > 0;
+
+  // Ids de grupos del torneo — scope client-side de la suscripción realtime
+  // (tournament_group_matches no tiene tournament_id para filtrar en el CDC).
+  const allCategoryIds = ((catsRaw ?? []) as unknown as CatRow[]).map((c) => c.id as string);
+  let tournamentGroupIds: string[] = [];
+  if (allCategoryIds.length > 0) {
+    const { data: groupRows } = await admin
+      .from("tournament_groups")
+      .select("id")
+      .in("category_id", allCategoryIds);
+    tournamentGroupIds = ((groupRows ?? []) as Array<{ id: string }>).map((g) => g.id);
+  }
 
   const prizes: PrizeRow[] = ((prizesRaw ?? []) as unknown as PrizeRowRaw[]).map((p) => ({
     id: p.id,
@@ -604,7 +615,12 @@ export default async function PartnerTorneoPage({
 
   return (
     <main className="mp-partner-torneo-page-main">
-      <TournamentGestionRealtime tournamentId={t.id as string} />
+      <TournamentGestionRealtime
+        tournamentId={t.id as string}
+        bracketIds={tournamentBracketIds}
+        categoryIds={allCategoryIds}
+        groupIds={tournamentGroupIds}
+      />
           {isDraft && (
             <div
               style={{

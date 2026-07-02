@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useRef, useTransition } from "react";
 import {
   listCourtsLiveStatus,
   type CourtLiveStatus,
@@ -295,13 +295,24 @@ export function TournamentCourtsLive({
     load();
   }, [load]);
 
+  // Debounce: sin él, cada evento de scoring (global — estas tablas no tienen
+  // tournament_id para filtrar) re-ejecutaba listCourtsLiveStatus completo.
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+  }, []);
   useRealtimeRefresh(
     [
       { table: "bracket_matches" },
       { table: "tournament_group_matches" },
       { table: "tournament_court_monitors" },
     ],
-    { onChange: () => load() },
+    {
+      onChange: () => {
+        if (reloadTimer.current) clearTimeout(reloadTimer.current);
+        reloadTimer.current = setTimeout(() => load(), 1000);
+      },
+    },
   );
 
   if (loading) {

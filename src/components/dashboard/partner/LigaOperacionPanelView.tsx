@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ScoreMatchCard } from "@/components/dashboard/brackets/ScoreMatchCard";
@@ -290,13 +290,13 @@ export function LigaOperacionPanelView({
 
   const isBusy = busy || isPending;
 
+  // Filtrado por el grupo de ESTA liga (group_id es filtro de igualdad válido)
+  // + debounce default del hook. Antes: sin filtro (fanout global de todos los
+  // torneos) y refresh inmediato sin debounce, multiplicado por un panel por
+  // categoría (audit de costos 2026-07-01).
   useRealtimeRefresh(
-    [{ table: "tournament_group_matches" }],
-    {
-      onChange: useCallback(() => {
-        startTransition(() => router.refresh());
-      }, [router]),
-    },
+    [{ table: "tournament_group_matches", filter: `group_id=eq.${data.groupId}` }],
+    { enabled: !!data.groupId },
   );
 
   const roundsMap = useMemo(() => {

@@ -137,16 +137,43 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
     startTx(() => router.refresh());
   }, [router, startTx]);
 
+  // Relevancia client-side: bracket_matches no tiene tournament_id, así que
+  // sin este guard cada score de CUALQUIER torneo de la plataforma refrescaba
+  // esta pantalla (audit de costos 2026-07-01). UPDATEs se validan contra los
+  // match ids visibles; INSERTs (generación de llave) son raros → fail-open.
+  const knownMatchIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const cat of data.categories) {
+      for (const col of cat.columns) for (const m of col.matches) ids.add(m.id);
+      if (cat.thirdPlaceMatch) ids.add(cat.thirdPlaceMatch.id);
+    }
+    return ids;
+  }, [data.categories]);
+  const knownMatchIdsRef = useRef(knownMatchIds);
+  knownMatchIdsRef.current = knownMatchIds;
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+  }, []);
+
   useRealtimeRefresh(
     data.partnerId
       ? [{ table: "bracket_matches" }, { table: "brackets" }]
       : [],
     {
       enabled: !!data.partnerId,
-      debounceMs: REALTIME_DEBOUNCE.LIVE,
-      onChange: () => {
+      onChange: (table, payload) => {
         if (Date.now() < skipRealtimeUntil.current) return;
-        syncFromServer();
+        if (table === "bracket_matches" && payload.eventType !== "INSERT") {
+          const rowId = (payload.new?.id ?? payload.old?.id) as string | undefined;
+          if (rowId && !knownMatchIdsRef.current.has(rowId)) return;
+        }
+        if (table === "brackets" && data.tournamentId) {
+          const tid = payload.new?.tournament_id as string | undefined;
+          if (tid && tid !== data.tournamentId) return;
+        }
+        if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+        realtimeTimer.current = setTimeout(syncFromServer, REALTIME_DEBOUNCE.LIVE);
       },
     },
   );

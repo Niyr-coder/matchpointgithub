@@ -21,6 +21,7 @@ export default async function DashboardTournamentPage({
       meUserId={data.meUserId}
       myMatches={data.myMatches}
       bracketSides={data.bracketSides}
+        realtimeScope={data.realtimeScope}
       categoryRegistrationCounts={data.categoryRegistrationCounts}
       scheduleBlocks={data.scheduleBlocks}
     />

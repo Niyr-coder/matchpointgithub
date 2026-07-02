@@ -9,7 +9,7 @@ import type { TournamentDetail } from "@/lib/schemas/tournaments";
 import type { TournamentBracketSideView, TournamentPlayerGroupView, TournamentPlayerMatchView } from "@/lib/torneos/player-matches";
 import { buildTorneoPlayerShell } from "@/lib/torneos/player-view";
 import { TorneoDetailView } from "./TorneoDetailView";
-import { TorneoPlayerRealtime } from "./TorneoPlayerRealtime";
+import { TorneoPlayerRealtime, type TorneoRealtimeScope } from "./TorneoPlayerRealtime";
 
 type Props = {
   detail: TournamentDetail;
@@ -23,6 +23,7 @@ type Props = {
   myMatches?: TournamentPlayerMatchView[];
   bracketSides?: TournamentBracketSideView[];
   groupView?: TournamentPlayerGroupView | null;
+  realtimeScope?: TorneoRealtimeScope;
 };
 
 export function TorneoPageRouter({
@@ -37,6 +38,7 @@ export function TorneoPageRouter({
   myMatches = [],
   bracketSides = [],
   groupView = null,
+  realtimeScope = { bracketIds: [], categoryIds: [], groupIds: [] },
 }: Props) {
   const tournamentId = detail.tournament.id;
 
@@ -47,7 +49,7 @@ export function TorneoPageRouter({
     const shell = buildTorneoPlayerShell(detail, clubName, myRegistration.status);
     return (
       <>
-        <TorneoPlayerRealtime tournamentId={tournamentId} />
+        <TorneoPlayerRealtime tournamentId={tournamentId} scope={realtimeScope} />
         <TorneoDetailView
           shell={shell}
           detail={detail}
@@ -62,7 +64,7 @@ export function TorneoPageRouter({
 
   return (
     <>
-      <TorneoPlayerRealtime tournamentId={tournamentId} />
+      <TorneoPlayerRealtime tournamentId={tournamentId} scope={realtimeScope} />
       <TournamentDetailView
       detail={detail}
       clubName={clubName}

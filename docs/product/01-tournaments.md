@@ -304,8 +304,11 @@ agregue ese render (TODO — hoy solo está en el preview modal del panel).
 3. **Notif duplicada al cancelar** — antes `cancelTournament` y
    `setTournamentStatus` ambas mutaban; ahora la primera delega en la
    segunda. NO volver a duplicar.
-4. **`/eventos` cacheado mostrando torneos cancelados** — fixed con
-   `force-dynamic`. NO sacar.
+4. **`/eventos` cacheado mostrando torneos cancelados** — desde 2026-07-01:
+   `revalidate = 60` + `revalidatePath("/eventos")` en `setTournamentStatus`
+   (publicar/cancelar/finalizar invalidan al instante). NO volver a
+   `force-dynamic` (2 queries por visita anónima) ni quitar el
+   `revalidatePath` (volvería el bug de cancelados visibles).
 5. **MPR mostrado como "DUPR"** — el rename es completo, no volver a usar
    DUPR ni en copy ni en código.
 6. **status hardcoded en pills sin cubrir todos los enums** — usar

@@ -475,6 +475,29 @@ Cuándo dejar default (`router.refresh()`):
 
 ---
 
-## 16. Próximo: `60-openapi.md`
+## 16. Suscripciones scoped (audit de costos 2026-07-01)
+
+Las tablas de scoring (`bracket_matches`, `tournament_group_matches`,
+`tournament_groups`, `tournament_group_members`) **no tienen `tournament_id`**
+→ no se pueden filtrar en el CDC y su RLS de lectura es pública → **fanout
+global**: cada punto anotado en cualquier torneo llega a TODOS los subscribers
+de la plataforma.
+
+Regla: cualquier suscripción a esas tablas debe usar
+`useScopedRealtimeRefresh` (`src/components/dashboard/useScopedRealtimeRefresh.ts`)
+con `isRelevant` comparando `bracket_id`/`group_id`/`category_id` del payload
+contra los ids del torneo de la página (el loader los provee — ver
+`realtimeScope` en `tournament-player-page.ts`). NUNCA `router.refresh()`
+ciego sin filtro en estas tablas: la página de gestión ejecuta ~18 queries por
+refresh.
+
+Aplicado en: `TournamentGestionRealtime`, `TorneoPlayerRealtime`,
+`PartnerBracketsScreenView`, `AdminTournamentDetailView`;
+`LigaOperacionPanelView` filtra por `group_id` (igualdad válida);
+`TournamentCourtsLive` debounce 1s. Fix definitivo pendiente (fase 4 del plan
+de costos): denormalizar `tournament_id` en ambas tablas de partidos y filtrar
+en la suscripción.
+
+## 17. Próximo: `60-openapi.md`
 
 Cierra Fase 1 documentando cómo se autogenera la spec desde Zod y cómo se sirve la UI de Scalar en `/docs`.

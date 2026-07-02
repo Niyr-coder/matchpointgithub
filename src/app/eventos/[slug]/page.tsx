@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getTournament, listFeaturedTournaments } from "@/server/actions/tournaments";
+import { getTournament } from "@/server/actions/tournaments";
 import { getEvent } from "@/server/actions/events";
 import { getClub } from "@/server/actions/clubs";
 import { getSession } from "@/lib/auth/session";
@@ -22,15 +22,25 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   // Slug-collision policy: si el slug existe tanto en tournaments como en events,
   // gana el torneo (se intenta primero). Es consistente con el comportamiento
   // previo y con que los torneos suelen tener mayor visibilidad.
-  const [detailRes, summaryRes] = await Promise.all([
-    getTournament({ idOrSlug: slug }),
-    listFeaturedTournaments({ limit: 24 }),
-  ]);
+  const detailRes = await getTournament({ idOrSlug: slug });
 
   if (detailRes.ok) {
-    const summary = summaryRes.ok ? summaryRes.data.find((t) => t.slug === slug) : undefined;
     const sess = await getSession();
     const supabase = await getServerClient();
+
+    // Club de la sede: 1 fila puntual de la vista pública (antes se traían 24
+    // torneos con listFeaturedTournaments solo para extraer este dato).
+    const { data: summaryRow } = await supabase
+      .from("tournaments_public_summary")
+      .select("club_name,club_city")
+      .eq("id", detailRes.data.tournament.id)
+      .maybeSingle();
+    const summary = summaryRow
+      ? {
+          clubName: (summaryRow.club_name as string | null) ?? null,
+          clubCity: (summaryRow.club_city as string | null) ?? null,
+        }
+      : undefined;
 
     // Si hay sesión, chequeamos si ya está inscrito a este torneo.
     let myRegistration: MyRegistration | null = null;
