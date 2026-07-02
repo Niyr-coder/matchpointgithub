@@ -9,8 +9,12 @@ import {
   rotateTournamentDisplayToken,
 } from "@/server/actions/tournament-live";
 
-const TV_URL =
-  process.env.NEXT_PUBLIC_TV_URL ?? "https://tv.matchpoint.top";
+// Si hay subdominio de TV configurado (DNS + rewrite en next.config) se usa
+// la URL corta; si no, la ruta real /t/[slug]/live — que funciona siempre.
+// El default anterior (tv.matchpoint.top) generaba links 404 porque el
+// subdominio nunca se configuró.
+const TV_SUBDOMAIN = process.env.NEXT_PUBLIC_TV_URL ?? null;
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top";
 
 export function TournamentVenueDisplayPanel({
   tournamentId,
@@ -46,8 +50,12 @@ export function TournamentVenueDisplayPanel({
     fetchToken();
   }, [token, fetchToken]);
 
-  const liveUrl = token ? `${TV_URL}/${slug}?k=${token}` : null;
-  const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://matchpoint.top"}/eventos/${slug}`;
+  const liveUrl = token
+    ? TV_SUBDOMAIN
+      ? `${TV_SUBDOMAIN}/${slug}?k=${token}`
+      : `${APP_URL}/t/${slug}/live?k=${token}`
+    : null;
+  const publicUrl = `${APP_URL}/eventos/${slug}`;
 
   const copy = async (url: string, label: string) => {
     try {
