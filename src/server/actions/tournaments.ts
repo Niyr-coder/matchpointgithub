@@ -538,7 +538,7 @@ export async function registerToTournament(
         await assertNotSuspended(supabase, userId);
         const { data: t } = await supabase
           .from("tournaments")
-          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id,allow_waitlist,starts_at")
+          .select("status,registration_opens_at,registration_closes_at,max_participants,entry_fee_cents,currency,club_id,payment_policy,name,slug,partner_id,allow_waitlist,starts_at,sport,modality")
           .eq("id", tournamentId)
           .single();
         if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Tournament not found", 404);
@@ -660,10 +660,15 @@ export async function registerToTournament(
               .eq("key", "category_mpr_enforcement")
               .maybeSingle();
             if (mprFlag?.enabled_default) {
+              // player_stats es por (user, sport, mode): comparar contra el
+              // rating del modo del torneo, no contra todos los modos.
+              const mprMode = (t.modality as string | null) === "singles" ? "singles" : "doubles";
               const { data: statRows } = await getAdminClient()
                 .from("player_stats")
                 .select("user_id,current_rating")
-                .in("user_id", body.playerIds);
+                .in("user_id", body.playerIds)
+                .eq("sport", (t.sport as "pickleball" | "padel" | "tennis" | null) ?? "pickleball")
+                .eq("mode", mprMode);
               const lo = cat.mpr_min != null ? Number(cat.mpr_min) : null;
               const hi = cat.mpr_max != null ? Number(cat.mpr_max) : null;
               for (const s of statRows ?? []) {

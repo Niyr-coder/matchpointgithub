@@ -29,18 +29,27 @@ export async function EventosScreen() {
     : Promise.resolve({ data: [] as { tournament_id: string }[] });
 
   // MPR propio para el aviso de rango en el modal de categoria (escala /1000).
+  // player_stats es por (user, sport, mode): traemos singles y dobles de
+  // pickleball; el client elige segun la modalidad del torneo.
   const myRatingPromise = userId
-    ? supabase.from("player_stats").select("current_rating").eq("user_id", userId).maybeSingle()
-    : Promise.resolve({ data: null as { current_rating: number | null } | null });
+    ? supabase
+        .from("player_stats")
+        .select("mode,current_rating")
+        .eq("user_id", userId)
+        .eq("sport", "pickleball")
+    : Promise.resolve({ data: [] as Array<{ mode: string; current_rating: number | null }> });
 
   const [tournamentsRes, myRegisteredRes, myRatingRes] = await Promise.all([
     tournamentsPromise,
     myRegisteredPromise,
     myRatingPromise,
   ]);
-  const myMpr = myRatingRes.data?.current_rating != null
-    ? (myRatingRes.data.current_rating as number) / 1000
-    : null;
+  const ratingRows = (myRatingRes.data ?? []) as Array<{ mode: string; current_rating: number | null }>;
+  const ratingFor = (mode: string) => {
+    const row = ratingRows.find((r) => r.mode === mode);
+    return row?.current_rating != null ? row.current_rating / 1000 : null;
+  };
+  const myRatings = userId ? { singles: ratingFor("singles"), doubles: ratingFor("doubles") } : null;
 
   const tournaments: TournamentFeatured[] = (tournamentsRes.data ?? [])
     .map((row) => {
@@ -78,7 +87,7 @@ export async function EventosScreen() {
       tournaments={tournaments}
       myRegisteredIds={myRegisteredIds}
       userId={userId}
-      myMpr={myMpr}
+      myRatings={myRatings}
     />
   );
 }

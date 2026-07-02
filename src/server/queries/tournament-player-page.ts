@@ -78,12 +78,17 @@ export async function loadTournamentDashboardPageData(
   }
 
   // MPR propio para el aviso de rango del modal de categoría (escala /1000).
+  // player_stats es por (user, sport, mode): usamos el modo de la modalidad
+  // del torneo (singles → singles; doubles/mixed_doubles → doubles).
   let myMpr: number | null = null;
   if (sess.authenticated) {
+    const mode = detailRes.data.tournament.modality === "singles" ? "singles" : "doubles";
     const { data: statRow } = await supabase
       .from("player_stats")
       .select("current_rating")
       .eq("user_id", sess.session.userId)
+      .eq("sport", detailRes.data.tournament.sport)
+      .eq("mode", mode)
       .maybeSingle();
     if (statRow?.current_rating != null) myMpr = (statRow.current_rating as number) / 1000;
   }

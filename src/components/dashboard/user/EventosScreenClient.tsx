@@ -18,8 +18,8 @@ type Props = {
   tournaments: TournamentFeatured[];
   myRegisteredIds: string[];
   userId: string | null;
-  /** MPR del jugador (2.0-8.0) para el aviso de rango en el modal de categoria. */
-  myMpr?: number | null;
+  /** MPR del jugador por modo (2.0-8.0) — el modal elige segun la modalidad del torneo. */
+  myRatings?: { singles: number | null; doubles: number | null } | null;
 };
 
 // Pide al usuario elegir modo de pago cuando el torneo tiene policy 'flexible'.
@@ -227,7 +227,7 @@ function padRows(arr: TournamentFeatured[]): RowItem[] {
   return out;
 }
 
-export function EventosScreenClient({ tournaments, myRegisteredIds, userId, myMpr = null }: Props) {
+export function EventosScreenClient({ tournaments, myRegisteredIds, userId, myRatings = null }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -563,7 +563,11 @@ export function EventosScreenClient({ tournaments, myRegisteredIds, userId, myMp
           entryFeeCents={registerCtx.detail.tournament.entryFeeCents ?? 0}
           categories={registerCtx.detail.categories}
           registrationCountByCategory={registerCtx.categoryCounts}
-          myMpr={myMpr}
+          myMpr={
+            registerCtx.detail.tournament.modality === "singles"
+              ? (myRatings?.singles ?? null)
+              : (myRatings?.doubles ?? null)
+          }
           pending={registering}
           onClose={() => {
             if (!registering) {
