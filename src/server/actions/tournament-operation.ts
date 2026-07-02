@@ -17,6 +17,8 @@ export type CourtLiveMatch = {
   teamA: string;
   teamB: string;
   setsCompleted: Array<{ a: number; b: number }>;
+  /** Puntos del set en curso (persistidos por el monitor con debounce). */
+  currentPoints: { a: number; b: number } | null;
   status: "scheduled" | "live" | "reported";
   scheduledAt: string | null;
 };
@@ -190,7 +192,7 @@ export async function listCourtsLiveStatus(
       let currentMatch: CourtLiveMatch | null = null;
       if (found) {
         const { match, matchType } = found;
-        const scoreRaw = match.score as { sets?: Array<{ a: number; b: number }> } | null;
+        const scoreRaw = match.score as { sets?: Array<{ a: number; b: number }>; current?: { a: number; b: number } } | null;
         const setsCompleted = scoreRaw?.sets ?? [];
         currentMatch = {
           matchId: match.id,
@@ -198,6 +200,7 @@ export async function listCourtsLiveStatus(
           teamA: nameByReg.get(match.side_a_registration_id ?? "") ?? "Equipo A",
           teamB: nameByReg.get(match.side_b_registration_id ?? "") ?? "Equipo B",
           setsCompleted,
+          currentPoints: scoreRaw?.current ?? null,
           status: match.status as CourtLiveMatch["status"],
           scheduledAt: match.scheduled_at,
         };

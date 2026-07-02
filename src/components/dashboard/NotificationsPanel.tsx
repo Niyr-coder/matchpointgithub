@@ -60,6 +60,7 @@ function iconForKind(kind: string): string {
   if (kind.startsWith("ticket")) return "life-buoy";
   if (kind.startsWith("friend_request")) return "user-plus";
   if (kind === "match_cancelled") return "x-circle";
+  if (kind === "tournament_match_ready") return "swords";
   if (kind === "match_challenge_received" || kind === "match_challenge_accepted") return "swords";
   if (kind === "match_rescheduled") return "calendar-clock";
   if (kind.startsWith("match_seek")) return "swords";
@@ -116,6 +117,10 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
   if (kind.startsWith("tournament") || kind.startsWith("registration")) {
     const tId = typeof payload.tournament_id === "string" ? payload.tournament_id : null;
     const tSlug = typeof payload.tournament_slug === "string" ? payload.tournament_slug : null;
+    if (kind === "tournament_match_ready") {
+      // Directo a la vista del jugador dentro del torneo (llave + sus partidos).
+      return tId ? `/dashboard/${role}/torneo/${tId}` : `/dashboard/${role}`;
+    }
     if (kind === "tournament_published" || kind === "tournament_registration_new") {
       const base = role === "partner" ? "/dashboard/partner" : `/dashboard/${role}`;
       const section = kind === "tournament_registration_new" ? "p-inscritos" : "p-torneos";
@@ -233,6 +238,7 @@ function colorForKind(kind: string): string {
   if (kind.includes("rejected") || kind.includes("cancelled") || kind.includes("kicked")) return "#dc2626";
   if (kind.includes("approved")) return "#10b981";
   if (kind.startsWith("reservation")) return "var(--primary)";
+  if (kind === "tournament_match_ready") return "#10b981";
   if (kind.startsWith("match")) return "var(--primary)";
   if (kind.startsWith("ticket")) return "#fbbf24";
   if (kind.startsWith("friend")) return "#7c3aed";

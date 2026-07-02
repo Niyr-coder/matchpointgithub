@@ -93,20 +93,20 @@ export function MonitorAppClient({
   const [servingFirst, setServingFirst] = useState<"a" | "b" | null>(null);
   const [starting, setStarting] = useState(false);
 
-  // Live state — restaurar sets completados y serving desde DB
+  // Live state — restaurar sets completados, serving y puntos del set en curso desde DB
   const [live, setLive] = useState<LiveState>(() => {
     const m = context.currentMatch;
     if (!m || (m.status !== "live" && m.status !== "reported")) {
       return { setScores: [], currentA: 0, currentB: 0, serving: "a", history: [], setsA: 0, setsB: 0, startedAt: 0 };
     }
-    const score = m.score as { sets?: Array<{ a: number; b: number }>; serving?: "a" | "b" } | null;
+    const score = m.score as { sets?: Array<{ a: number; b: number }>; serving?: "a" | "b"; current?: { a: number; b: number } } | null;
     const completedSets: SetScore[] = score?.sets ?? [];
     const setsA = completedSets.filter((s) => s.a > s.b).length;
     const setsB = completedSets.filter((s) => s.b > s.a).length;
     return {
       setScores: completedSets,
-      currentA: 0,
-      currentB: 0,
+      currentA: score?.current?.a ?? 0,
+      currentB: score?.current?.b ?? 0,
       serving: score?.serving ?? "a",
       history: [],
       setsA,
@@ -157,22 +157,98 @@ export function MonitorAppClient({
   const teamA = currentMatch?.teamA ?? "Equipo A";
   const teamB = currentMatch?.teamB ?? "Equipo B";
 
-  // ── Persistir set completado ────────────────────────────────────────────────
+  // ── Persistencia del marcador ──────────────────────────────────────────────
+  // Dos capas: (1) localStorage síncrono por punto — sobrevive recarga
+  // inmediata en el mismo teléfono; (2) server con debounce de 2s — sobrevive
+  // cambio de dispositivo y alimenta el courts-live del partner.
 
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const localKey = useCallback(
+    (matchId: string) => `mp:monitor:${matchId}`,
+    [],
+  );
+
+  const saveLocal = useCallback(
+    (matchId: string, state: { setScores: SetScore[]; currentA: number; currentB: number; serving: "a" | "b"; history: Array<"a" | "b"> }) => {
+      try {
+        localStorage.setItem(
+          localKey(matchId),
+          JSON.stringify({
+            sets: state.setScores.length,
+            currentA: state.currentA,
+            currentB: state.currentB,
+            serving: state.serving,
+            history: state.history,
+          }),
+        );
+      } catch {
+        // storage lleno o bloqueado — la capa server sigue cubriendo
+      }
+    },
+    [localKey],
+  );
+
+  const clearLocal = useCallback(
+    (matchId: string) => {
+      try {
+        localStorage.removeItem(localKey(matchId));
+      } catch {
+        // ignorar
+      }
+    },
+    [localKey],
+  );
+
+  // Set completado: persistir inmediato (sin debounce) y resetear current.
   const persistScore = useCallback(
     (sets: SetScore[], serving: "a" | "b") => {
       if (!currentMatch) return;
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
       startTx(async () => {
         await updateMatchScore({
           matchId: currentMatch.matchId,
           matchType: currentMatch.matchType as MatchType,
-          score: { sets, serving },
+          score: { sets, serving, current: { a: 0, b: 0 } },
           slug,
         });
       });
     },
     [currentMatch, slug],
   );
+
+  // Punto suelto: persistir con debounce para no saturar realtime.
+  const persistLivePoints = useCallback(
+    (state: { setScores: SetScore[]; currentA: number; currentB: number; serving: "a" | "b" }) => {
+      if (!currentMatch) return;
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = setTimeout(() => {
+        persistTimerRef.current = null;
+        startTx(async () => {
+          await updateMatchScore({
+            matchId: currentMatch.matchId,
+            matchType: currentMatch.matchType as MatchType,
+            score: {
+              sets: state.setScores,
+              serving: state.serving,
+              current: { a: state.currentA, b: state.currentB },
+            },
+            slug,
+          });
+        });
+      }, 2000);
+    },
+    [currentMatch, slug],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, []);
 
   // ── Sumar punto ────────────────────────────────────────────────────────────
 
@@ -190,6 +266,9 @@ export function MonitorAppClient({
           const newSetsB = prev.setsB + (newB > newA ? 1 : 0);
           const nextServing: "a" | "b" = newA > newB ? "a" : "b";
           persistScore(newSetScores, nextServing);
+          if (currentMatch) {
+            saveLocal(currentMatch.matchId, { setScores: newSetScores, currentA: 0, currentB: 0, serving: nextServing, history: [] });
+          }
           return {
             ...prev,
             setScores: newSetScores,
@@ -202,10 +281,14 @@ export function MonitorAppClient({
           };
         }
 
+        if (currentMatch) {
+          saveLocal(currentMatch.matchId, { setScores: prev.setScores, currentA: newA, currentB: newB, serving: prev.serving, history: newHistory });
+        }
+        persistLivePoints({ setScores: prev.setScores, currentA: newA, currentB: newB, serving: prev.serving });
         return { ...prev, currentA: newA, currentB: newB, history: newHistory };
       });
     },
-    [persistScore],
+    [persistScore, persistLivePoints, saveLocal, currentMatch, scoringConfig],
   );
 
   // ── Deshacer último punto ───────────────────────────────────────────────────
@@ -215,12 +298,17 @@ export function MonitorAppClient({
       // Deshacer dentro del set actual
       if (prev.history.length > 0) {
         const last = prev.history[prev.history.length - 1];
-        return {
+        const next = {
           ...prev,
           currentA: last === "a" ? prev.currentA - 1 : prev.currentA,
           currentB: last === "b" ? prev.currentB - 1 : prev.currentB,
           history: prev.history.slice(0, -1),
         };
+        if (currentMatch) {
+          saveLocal(currentMatch.matchId, { setScores: next.setScores, currentA: next.currentA, currentB: next.currentB, serving: next.serving, history: next.history });
+        }
+        persistLivePoints({ setScores: next.setScores, currentA: next.currentA, currentB: next.currentB, serving: next.serving });
+        return next;
       }
       // Deshacer el último set completado (cuando el set actual no ha empezado)
       if (prev.setScores.length > 0) {
@@ -229,18 +317,57 @@ export function MonitorAppClient({
         const newSetsA = prev.setsA - (lastSet.a > lastSet.b ? 1 : 0);
         const newSetsB = prev.setsB - (lastSet.b > lastSet.a ? 1 : 0);
         const lastWinner: "a" | "b" = lastSet.a > lastSet.b ? "a" : "b";
-        return {
+        const next = {
           ...prev,
           setScores: newSetScores,
           currentA: lastSet.a - (lastWinner === "a" ? 1 : 0),
           currentB: lastSet.b - (lastWinner === "b" ? 1 : 0),
           setsA: newSetsA,
           setsB: newSetsB,
-          history: [lastWinner],
+          history: [lastWinner] as Array<"a" | "b">,
         };
+        if (currentMatch) {
+          saveLocal(currentMatch.matchId, { setScores: next.setScores, currentA: next.currentA, currentB: next.currentB, serving: next.serving, history: next.history });
+        }
+        persistLivePoints({ setScores: next.setScores, currentA: next.currentA, currentB: next.currentB, serving: next.serving });
+        return next;
       }
       return prev;
     });
+  }, [currentMatch, saveLocal, persistLivePoints]);
+
+  // ── Restaurar desde localStorage (solo al montar) ──────────────────────────
+  // El server ya restauró sets + puntos del set en curso (score.current); el
+  // localStorage puede tener hasta 2s más de puntos (debounce) y el history
+  // para deshacer. Solo se adopta si corresponde al mismo partido y set.
+  useEffect(() => {
+    if (!wasRestoredRef.current || !currentMatch || phase !== "live") return;
+    try {
+      const raw = localStorage.getItem(localKey(currentMatch.matchId));
+      if (!raw) return;
+      const entry = JSON.parse(raw) as {
+        sets?: number;
+        currentA?: number;
+        currentB?: number;
+        serving?: "a" | "b";
+        history?: Array<"a" | "b">;
+      };
+      setLive((prev) => {
+        if (entry.sets !== prev.setScores.length) return prev;
+        const entryPoints = (entry.currentA ?? 0) + (entry.currentB ?? 0);
+        if (entryPoints < prev.currentA + prev.currentB) return prev;
+        return {
+          ...prev,
+          currentA: entry.currentA ?? prev.currentA,
+          currentB: entry.currentB ?? prev.currentB,
+          serving: entry.serving ?? prev.serving,
+          history: entry.history ?? prev.history,
+        };
+      });
+    } catch {
+      // entrada corrupta — quedarse con lo del server
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Tiempo fuera ───────────────────────────────────────────────────────────
@@ -276,10 +403,17 @@ export function MonitorAppClient({
     });
     setStarting(false);
     if (!res.ok) {
+      if (res.error.code === "MONITORS.MATCH_TAKEN") {
+        // Otro monitor ganó la carrera por este partido — cargar el siguiente.
+        toast({ icon: "alert-triangle", title: "Partido tomado por otra cancha", sub: "Cargando el siguiente partido…", tone: "error" });
+        await onNextMatch();
+        return;
+      }
       toast({ icon: "alert-triangle", title: "Error al iniciar", sub: res.error.message, tone: "error" });
       return;
     }
     wasRestoredRef.current = false;
+    clearLocal(currentMatch.matchId);
     setLive({
       setScores: [],
       currentA: 0,
@@ -300,6 +434,11 @@ export function MonitorAppClient({
     const winner = getWinner(live.setsA, live.setsB, scoringConfig.bestOf);
     if (!winner) return;
     setSubmitting(true);
+    // Cancelar cualquier persist debounced pendiente: no debe pisar el score final.
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
     const durationMs = live.startedAt > 0 ? Math.round(Date.now() - live.startedAt) : undefined;
     const res = await submitMatchResult({
       matchId: currentMatch.matchId,
@@ -314,12 +453,14 @@ export function MonitorAppClient({
       toast({ icon: "alert-triangle", title: "Error al enviar", sub: res.error.message, tone: "error" });
       return;
     }
+    clearLocal(currentMatch.matchId);
     setSubmitted(true);
   };
 
   // ── Siguiente partido ──────────────────────────────────────────────────────
 
   const onNextMatch = async () => {
+    if (currentMatch) clearLocal(currentMatch.matchId);
     setLoadingNext(true);
     const res = await getNextMatchForCourt({ slug });
     setLoadingNext(false);
@@ -751,9 +892,9 @@ export function MonitorAppClient({
           {winnerBanner}
 
           {/* Aviso de sesión restaurada */}
-          {wasRestoredRef.current && live.setScores.length > 0 && !winner && (
-            <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,165,0,0.6)", padding: "4px 0", flexShrink: 0 }}>
-              Sesión restaurada · puntos del set actual no recuperados
+          {wasRestoredRef.current && !winner && (
+            <div style={{ textAlign: "center", fontSize: 11, color: "rgba(52,211,153,0.6)", padding: "4px 0", flexShrink: 0 }}>
+              Sesión restaurada · marcador recuperado
             </div>
           )}
         </div>

@@ -43,6 +43,11 @@ import {
   nextBracketFeederSlot,
 } from "@/lib/tournaments/match-score";
 import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
+import {
+  notifyGroupsDrawn,
+  notifyMatchReady,
+  notifyTournamentFinishedCore,
+} from "@/lib/notifications/tournament";
 
 const MatchScoreSchema = z.object({
   sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })).min(1),
@@ -389,6 +394,8 @@ export async function drawTournamentGroups(
       .eq("id", categoryId);
     if (stErr) throw new MpError("GROUPS.STAGE_FAILED", stErr.message, 500);
 
+    void notifyGroupsDrawn(getAdminClient(), { tournamentId, categoryId });
+
     return { groupsCreated: buckets.filter((b) => b.length > 0).length, matchesCreated };
   });
 }
@@ -652,6 +659,7 @@ function mapGroupsForQualifiers(
 
 async function feedBronzeMatchLoser(
   admin: ReturnType<typeof getAdminClient>,
+  tournamentId: string,
   bracketId: string,
   loserRegId: string,
 ): Promise<void> {
@@ -667,6 +675,19 @@ async function feedBronzeMatchLoser(
   else if (!bronze.side_b_registration_id) patch.side_b_registration_id = loserRegId;
   else return;
   await admin.from("bracket_matches").update(patch as never).eq("id", bronze.id as string);
+
+  // Si este perdedor completa el partido de bronce, avisar a ambos lados.
+  const otherSlot = (patch.side_a_registration_id
+    ? bronze.side_b_registration_id
+    : bronze.side_a_registration_id) as string | null;
+  if (otherSlot) {
+    void notifyMatchReady(admin, {
+      tournamentId,
+      registrationIds: [loserRegId, otherSlot],
+      matchType: "bracket",
+      matchId: bronze.id as string,
+    });
+  }
 }
 
 /** Genera cuadro eliminatorio desde clasificados de grupos. */
@@ -759,7 +780,10 @@ export async function generateKnockoutFromGroups(
       });
     }
 
-    const { error: mErr } = await db.from("bracket_matches").insert(matches as never);
+    const { data: insertedMatches, error: mErr } = await db
+      .from("bracket_matches")
+      .insert(matches as never)
+      .select("id, round, is_bronze, side_a_registration_id, side_b_registration_id");
     if (mErr) throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
 
     const { error: stErr } = await db
@@ -767,6 +791,19 @@ export async function generateKnockoutFromGroups(
       .update({ stage: "knockout" } as never)
       .eq("id", categoryId);
     if (stErr) throw new MpError("GROUPS.STAGE_FAILED", stErr.message, 500);
+
+    // "Te toca jugar" para los partidos de ronda 1 con ambos lados definidos.
+    const admin = getAdminClient();
+    for (const m of (insertedMatches ?? []) as Array<{ id: string; round: number; is_bronze: boolean | null; side_a_registration_id: string | null; side_b_registration_id: string | null }>) {
+      if (m.round !== 1 || m.is_bronze) continue;
+      if (!m.side_a_registration_id || !m.side_b_registration_id) continue;
+      void notifyMatchReady(admin, {
+        tournamentId,
+        registrationIds: [m.side_a_registration_id, m.side_b_registration_id],
+        matchType: "bracket",
+        matchId: m.id,
+      });
+    }
 
     return { bracketId, size };
   });
@@ -846,6 +883,15 @@ export async function reportBracketMatch(
       if (isSideA) patch.side_a_registration_id = winnerRegId;
       else patch.side_b_registration_id = winnerRegId;
 
+      // Pre-leer el siguiente slot para saber si este avance lo completa.
+      const { data: nextBefore } = await admin
+        .from("bracket_matches")
+        .select("id, side_a_registration_id, side_b_registration_id")
+        .eq("bracket_id", bracket.id as string)
+        .eq("round", nextRound)
+        .eq("position", nextPos)
+        .maybeSingle();
+
       const { error: advErr } = await admin
         .from("bracket_matches")
         .update(patch as never)
@@ -854,6 +900,24 @@ export async function reportBracketMatch(
         .eq("position", nextPos);
       if (advErr) throw new MpError("BRACKETS.ADVANCE_FAILED", advErr.message, 500);
       advanced = true;
+
+      if (nextBefore) {
+        const prevOwnSlot = (isSideA
+          ? nextBefore.side_a_registration_id
+          : nextBefore.side_b_registration_id) as string | null;
+        const otherSlot = (isSideA
+          ? nextBefore.side_b_registration_id
+          : nextBefore.side_a_registration_id) as string | null;
+        // Solo cuando el rival ya estaba definido y este slot recién se llena.
+        if (otherSlot && prevOwnSlot !== winnerRegId) {
+          void notifyMatchReady(admin, {
+            tournamentId,
+            registrationIds: [winnerRegId, otherSlot],
+            matchType: "bracket",
+            matchId: nextBefore.id as string,
+          });
+        }
+      }
 
       if (round === numRounds - 1 && bracket.category_id) {
         const { data: catRow } = await admin
@@ -868,7 +932,7 @@ export async function reportBracketMatch(
               ? (match.side_b_registration_id as string | null)
               : (match.side_a_registration_id as string | null);
           if (loserRegId) {
-            await feedBronzeMatchLoser(admin, bracket.id as string, loserRegId);
+            await feedBronzeMatchLoser(admin, tournamentId, bracket.id as string, loserRegId);
           }
         }
       }
@@ -890,12 +954,14 @@ export async function reportBracketMatch(
             .from("tournaments")
             .update({ status: "finished" } as never)
             .eq("id", tournamentId);
+          await notifyTournamentFinishedCore(admin, tournamentId);
         }
       } else {
         await groupDb(getAdminClient())
           .from("tournaments")
           .update({ status: "finished" } as never)
           .eq("id", tournamentId);
+        await notifyTournamentFinishedCore(admin, tournamentId);
       }
     }
 
@@ -972,7 +1038,7 @@ export async function correctBracketMatch(
       const { nextRound, nextPos, feederSide } = nextBracketFeederSlot(round, position);
       const { data: nextMatch } = await admin
         .from("bracket_matches")
-        .select("id,status")
+        .select("id,status,side_a_registration_id,side_b_registration_id")
         .eq("bracket_id", bracket.id as string)
         .eq("round", nextRound)
         .eq("position", nextPos)
@@ -998,6 +1064,18 @@ export async function correctBracketMatch(
           .eq("id", nextMatch.id as string);
         if (advErr) throw new MpError("BRACKETS.ADVANCE_FAILED", advErr.message, 500);
         advanced = true;
+
+        const otherSlot = (feederSide === "a"
+          ? nextMatch.side_b_registration_id
+          : nextMatch.side_a_registration_id) as string | null;
+        if (otherSlot) {
+          void notifyMatchReady(admin, {
+            tournamentId,
+            registrationIds: [newWinnerRegId, otherSlot],
+            matchType: "bracket",
+            matchId: nextMatch.id as string,
+          });
+        }
       }
     }
 

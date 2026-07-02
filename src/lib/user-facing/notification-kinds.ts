@@ -62,6 +62,7 @@ export const NOTIFICATION_KIND_TITLES: Record<string, string> = {
   tournament_registration_new: "Nueva inscripción",
   tournament_cancelled: "Torneo cancelado",
   tournament_finished: "Torneo finalizado",
+  tournament_match_ready: "Te toca jugar",
   player_substituted: "Fuiste sustituido en un torneo",
   player_substitution_added: "Fuiste agregado como reemplazo",
   match_walkover_declared: "Walkover declarado en tu partido",

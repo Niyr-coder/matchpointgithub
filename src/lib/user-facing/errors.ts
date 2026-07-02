@@ -45,6 +45,9 @@ const ERROR_CODE_MESSAGES_ES: Record<string, string> = {
   "REPORTS.NOT_FOUND": "No encontramos el reporte",
   "PLAN.SUB_NOT_FOUND": "No encontramos la suscripción",
   "PLAN.USER_NOT_FOUND": "No encontramos el usuario",
+  "MONITORS.MATCH_TAKEN": "Otra cancha ya tomó este partido",
+  "MONITORS.MATCH_NOT_YOURS": "Este partido no pertenece a tu cancha",
+  "MONITORS.MATCH_NOT_FOUND": "No encontramos el partido",
 };
 
 const ENGLISH_MESSAGE_ES: Record<string, string> = {

@@ -18,6 +18,7 @@ import { requirePlanWithFlag } from "@/lib/auth/plan";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
+import { notifyMatchReady } from "@/lib/notifications/tournament";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -1185,9 +1186,10 @@ export async function generateBracket(
       }
     }
     if (matches.length > 0) {
-      const { error: mErr } = await supabase
+      const { data: insertedMatches, error: mErr } = await supabase
         .from("bracket_matches")
-        .insert(matches as never);
+        .insert(matches as never)
+        .select("id, round, side_a_registration_id, side_b_registration_id");
       if (mErr) {
         const rollback = getAdminClient();
         const { error: delErr } = await rollback
@@ -1203,6 +1205,19 @@ export async function generateBracket(
           });
         }
         throw new MpError("BRACKETS.MATCHES_FAILED", mErr.message, 500);
+      }
+
+      // "Te toca jugar" para los cruces de ronda 1 sin bye.
+      const notifAdmin = getAdminClient();
+      for (const m of (insertedMatches ?? []) as Array<{ id: string; round: number; side_a_registration_id: string | null; side_b_registration_id: string | null }>) {
+        if (m.round !== 1) continue;
+        if (!m.side_a_registration_id || !m.side_b_registration_id) continue;
+        void notifyMatchReady(notifAdmin, {
+          tournamentId,
+          registrationIds: [m.side_a_registration_id, m.side_b_registration_id],
+          matchType: "bracket",
+          matchId: m.id,
+        });
       }
     }
     return { bracketId, size };

@@ -110,6 +110,7 @@ recreada incrementalmente al agregar kinds nuevos (072, 079).
 | `quedada_reminder` | quedadas | inscritos `joined` | cron `process-quedada-reminders-hourly` | 20260605130000 | ✅ |
 | `match_result_reported` | matches | resto de participantes | `reportScore` | 20260605130000 | ✅ |
 | `match_incident_reported` | tournaments | partner org del torneo | `reportMatchIncident` | 20260630100000 | ✅ |
+| `tournament_match_ready` | tournaments | jugadores del partido listo | `generateBracket` / `generateKnockoutFromGroups` / avances en `reportBracketMatch`·`correctBracketMatch`·`confirmBracketMatch` / `drawTournamentGroups` (1 por jugador) — helper `notifyMatchReady`/`notifyGroupsDrawn` | 20260710010000 | ✅ |
 
 ## 2.1 Checklist de cobertura (audit 2026-05)
 

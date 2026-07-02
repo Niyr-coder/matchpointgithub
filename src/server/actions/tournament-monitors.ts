@@ -9,8 +9,8 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
-import { notify } from "@/server/notifications/dispatch";
 import { notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
+import { notifyMatchReady, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
 import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
@@ -56,7 +56,8 @@ export type MonitorContext = {
 };
 
 export type SetScore = { a: number; b: number };
-export type MatchScore = { sets: SetScore[]; serving?: "a" | "b" };
+/** `current` = puntos del set en curso (aún no completado). Se limpia al enviar el resultado. */
+export type MatchScore = { sets: SetScore[]; serving?: "a" | "b"; current?: SetScore };
 
 export type ScoringConfig = {
   points: number; // e.g. 11, 15, 21
@@ -97,6 +98,57 @@ async function requireMonitorAssignment(
     throw new AuthError("AUTH.ROLE_REQUIRED", "No tienes una cancha asignada en este torneo");
   }
   return rows;
+}
+
+/**
+ * Índice determinístico de la cancha entre las canchas con monitor activo del
+ * torneo. Se usa como offset en los fallbacks de "partido sin cancha" para que
+ * dos monitores no vean el mismo partido; el claim atómico de startMatch cubre
+ * la carrera residual.
+ */
+async function monitorCourtOffset(
+  admin: AnyClient,
+  tournamentId: string,
+  courtId: string,
+): Promise<number> {
+  const { data } = await admin
+    .from("tournament_court_monitors")
+    .select("court_id")
+    .eq("tournament_id", tournamentId)
+    .eq("is_active", true)
+    .order("court_id", { ascending: true });
+  const courts = Array.from(
+    new Set(((data ?? []) as Array<{ court_id: string }>).map((r) => r.court_id)),
+  );
+  const idx = courts.indexOf(courtId);
+  return idx < 0 ? 0 : idx;
+}
+
+/**
+ * Verifica que el partido pertenezca a una de las canchas asignadas del
+ * monitor. Sin esto, un monitor de la cancha A podría escribir el marcador
+ * de un partido de la cancha B del mismo torneo.
+ */
+async function requireMatchOnMyCourt(
+  admin: AnyClient,
+  table: "bracket_matches" | "tournament_group_matches",
+  matchId: string,
+  assignments: Array<{ id: string; court_id: string; position_label: string | null }>,
+): Promise<{ court_id: string | null; status: string }> {
+  const { data } = await admin
+    .from(table)
+    .select("court_id, status")
+    .eq("id", matchId)
+    .maybeSingle();
+  if (!data) {
+    throw new MpError("MONITORS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+  }
+  const matchCourtId = data.court_id as string | null;
+  const myCourtIds = assignments.map((a) => a.court_id);
+  if (!matchCourtId || !myCourtIds.includes(matchCourtId)) {
+    throw new MpError("MONITORS.MATCH_NOT_YOURS", "Este partido no pertenece a tu cancha", 403);
+  }
+  return { court_id: matchCourtId, status: data.status as string };
 }
 
 // ── Helper: resolver scoring config según si el partido es la final ───────────
@@ -354,9 +406,13 @@ export async function getMonitorContext(
       }
     }
 
-    // Fallback: si ningún partido tiene court_id seteado, mostrar el primer partido
-    // live/scheduled del torneo (habitual en fase de grupos sin programación por cancha).
+    // Fallback: partidos programados sin cancha asignada aún (habitual cuando no
+    // hay programación por cancha). Solo 'scheduled' con court_id null — nunca
+    // partidos ya tomados por otra cancha. El offset por cancha reparte los
+    // partidos entre monitores; el claim atómico de startMatch cubre la carrera.
     if (!currentMatch) {
+      const offset = await monitorCourtOffset(admin, tournamentId, assignment.court_id);
+
       // Intentar con bracket → bracket_matches
       const { data: bktsRaw } = await admin
         .from("brackets")
@@ -366,13 +422,20 @@ export async function getMonitorContext(
         .limit(1);
       const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
       if (bracketId) {
-        const { data: fbBmRaw } = await admin
-          .from("bracket_matches")
-          .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-          .eq("bracket_id", bracketId)
-          .in("status", ["scheduled", "live"])
-          .order("scheduled_at", { ascending: true })
-          .limit(1);
+        const fetchFbBm = (from: number) =>
+          admin
+            .from("bracket_matches")
+            .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+            .eq("bracket_id", bracketId)
+            .is("court_id", null)
+            .eq("status", "scheduled")
+            .order("scheduled_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, from);
+        let { data: fbBmRaw } = await fetchFbBm(offset);
+        if ((fbBmRaw ?? []).length === 0 && offset > 0) {
+          ({ data: fbBmRaw } = await fetchFbBm(0));
+        }
         const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; bracket_id: string | null; round: number | null; is_bronze: boolean | null; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
         if (fbBm.length > 0) {
           const m = fbBm[0];
@@ -394,13 +457,20 @@ export async function getMonitorContext(
             .in("category_id", catIds);
           const groupIds = ((grpsRaw ?? []) as Array<{ id: string }>).map((g) => g.id);
           if (groupIds.length > 0) {
-            const { data: fbGmRaw } = await admin
-              .from("tournament_group_matches")
-              .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-              .in("group_id", groupIds)
-              .in("status", ["scheduled", "live"])
-              .order("scheduled_at", { ascending: true })
-              .limit(1);
+            const fetchFbGm = (from: number) =>
+              admin
+                .from("tournament_group_matches")
+                .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+                .in("group_id", groupIds)
+                .is("court_id", null)
+                .eq("status", "scheduled")
+                .order("scheduled_at", { ascending: true })
+                .order("id", { ascending: true })
+                .range(from, from);
+            let { data: fbGmRaw } = await fetchFbGm(offset);
+            if ((fbGmRaw ?? []).length === 0 && offset > 0) {
+              ({ data: fbGmRaw } = await fetchFbGm(0));
+            }
             const fbGm = (fbGmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
             if (fbGm.length > 0) {
               const m = fbGm[0];
@@ -452,22 +522,37 @@ export async function startMatch(input: unknown): Promise<ActionResult<void>> {
     // Guard: no reiniciar un partido ya en curso o reportado
     const { data: existing } = await admin
       .from(table)
-      .select("status")
+      .select("status, court_id")
       .eq("id", matchId)
       .maybeSingle();
-    if (existing?.status === "reported") {
+    if (!existing) {
+      throw new MpError("MONITORS.MATCH_NOT_FOUND", "Partido no encontrado", 404);
+    }
+    if (existing.status === "reported") {
       throw new MpError("MONITORS.MATCH_ALREADY_REPORTED", "Este partido ya fue reportado", 409);
     }
-    if (existing?.status === "live") {
-      // Ya en vivo — no resetear, simplemente OK
-      return;
+    if (existing.status === "live") {
+      // Ya en vivo en esta cancha — no resetear, simplemente OK
+      if ((existing.court_id as string | null) === courtId) return;
+      throw new MpError("MONITORS.MATCH_TAKEN", "Otra cancha ya tomó este partido", 409);
     }
 
     await setAuditActor(admin, userId, "user");
 
     const score: MatchScore = { sets: [], serving: servingFirst };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await admin.from(table).update({ status: "live", score, started_at: new Date().toISOString(), court_id: courtId } as any).eq("id", matchId);
+    // Claim atómico: solo si el partido sigue scheduled y sin cancha ajena.
+    // Evita que dos monitores arranquen el mismo partido a la vez.
+    const { data: claimed } = await admin
+      .from(table)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update({ status: "live", score, started_at: new Date().toISOString(), court_id: courtId } as any)
+      .eq("id", matchId)
+      .eq("status", "scheduled")
+      .or(`court_id.is.null,court_id.eq.${courtId}`)
+      .select("id");
+    if (!claimed || claimed.length === 0) {
+      throw new MpError("MONITORS.MATCH_TAKEN", "Otra cancha ya tomó este partido", 409);
+    }
 
     // Auto-levantar el torneo a 'live' si aún está en inscripciones
     const tStatus = t.status as string;
@@ -484,8 +569,10 @@ const UpdateScoreSchema = z.object({
   matchId: UuidSchema,
   matchType: z.enum(["bracket", "group"]),
   score: z.object({
-    sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })).min(1),
+    // sets puede ir vacío cuando solo se persisten puntos del set en curso.
+    sets: z.array(z.object({ a: z.number().int().min(0), b: z.number().int().min(0) })),
     serving: z.enum(["a", "b"]).optional(),
+    current: z.object({ a: z.number().int().min(0), b: z.number().int().min(0) }).optional(),
   }),
   slug: SlugSchema,
 });
@@ -499,10 +586,15 @@ export async function updateMatchScore(input: unknown): Promise<ActionResult<voi
     const { data: t } = await admin.from("tournaments").select("id").eq("slug", slug).maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
 
-    await requireMonitorAssignment(userId, t.id as string, admin);
-    await setAuditActor(admin, userId, "user");
-
+    const assignments = await requireMonitorAssignment(userId, t.id as string, admin);
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
+    const match = await requireMatchOnMyCourt(admin, table, matchId, assignments);
+    if (match.status !== "live") {
+      // Un persist rezagado no debe pisar un resultado ya enviado/confirmado.
+      throw new MpError("MONITORS.MATCH_ALREADY_REPORTED", "Este partido ya fue reportado", 409);
+    }
+
+    await setAuditActor(admin, userId, "user");
     await admin.from(table).update({ score }).eq("id", matchId);
   });
 }
@@ -529,10 +621,14 @@ export async function submitMatchResult(input: unknown): Promise<ActionResult<vo
     const { data: t } = await admin.from("tournaments").select("id").eq("slug", slug).maybeSingle();
     if (!t) throw new MpError("TOURNAMENTS.NOT_FOUND", "Torneo no encontrado", 404);
 
-    await requireMonitorAssignment(userId, t.id as string, admin);
-    await setAuditActor(admin, userId, "user");
-
+    const assignments = await requireMonitorAssignment(userId, t.id as string, admin);
     const table = matchType === "bracket" ? "bracket_matches" : "tournament_group_matches";
+    const match = await requireMatchOnMyCourt(admin, table, matchId, assignments);
+    if (match.status === "reported" || match.status === "confirmed" || match.status === "walkover") {
+      throw new MpError("MONITORS.MATCH_ALREADY_REPORTED", "Este partido ya fue reportado", 409);
+    }
+
+    await setAuditActor(admin, userId, "user");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await admin.from(table).update({
       status: "reported",
@@ -732,7 +828,10 @@ export async function getNextMatchForCourt(
 
     // Fallback: partidos programados sin cancha asignada aún (bracket primero).
     // Aplica cuando los partidos no fueron pre-programados por cancha.
-    // Al iniciarse, startMatch escribirá court_id y los "reclamará" para esta cancha.
+    // El offset por cancha reparte los partidos entre monitores; al iniciarse,
+    // startMatch escribirá court_id y los "reclamará" atómicamente.
+    const fbOffset = await monitorCourtOffset(admin, tournamentId, courtId);
+
     const { data: bktsRaw } = await admin
       .from("brackets")
       .select("id")
@@ -741,14 +840,20 @@ export async function getNextMatchForCourt(
       .limit(1);
     const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
     if (bracketId) {
-      const { data: fbBmRaw } = await admin
-        .from("bracket_matches")
-        .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-        .eq("bracket_id", bracketId)
-        .is("court_id", null)
-        .eq("status", "scheduled")
-        .order("scheduled_at", { ascending: true })
-        .limit(1);
+      const fetchFbBm = (from: number) =>
+        admin
+          .from("bracket_matches")
+          .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+          .eq("bracket_id", bracketId)
+          .is("court_id", null)
+          .eq("status", "scheduled")
+          .order("scheduled_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from);
+      let { data: fbBmRaw } = await fetchFbBm(fbOffset);
+      if ((fbBmRaw ?? []).length === 0 && fbOffset > 0) {
+        ({ data: fbBmRaw } = await fetchFbBm(0));
+      }
       const fbBm = (fbBmRaw ?? []) as unknown as Array<{ id: string; bracket_id: string | null; round: number | null; is_bronze: boolean | null; side_a_registration_id: string | null; side_b_registration_id: string | null; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
       if (fbBm.length > 0) {
         const m = fbBm[0];
@@ -779,14 +884,20 @@ export async function getNextMatchForCourt(
         .in("category_id", catIds);
       const groupIds = ((grpsRaw ?? []) as Array<{ id: string }>).map((g) => g.id);
       if (groupIds.length > 0) {
-        const { data: fbGmRaw } = await admin
-          .from("tournament_group_matches")
-          .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-          .in("group_id", groupIds)
-          .is("court_id", null)
-          .eq("status", "scheduled")
-          .order("scheduled_at", { ascending: true })
-          .limit(1);
+        const fetchFbGm = (from: number) =>
+          admin
+            .from("tournament_group_matches")
+            .select("id, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
+            .in("group_id", groupIds)
+            .is("court_id", null)
+            .eq("status", "scheduled")
+            .order("scheduled_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, from);
+        let { data: fbGmRaw } = await fetchFbGm(fbOffset);
+        if ((fbGmRaw ?? []).length === 0 && fbOffset > 0) {
+          ({ data: fbGmRaw } = await fetchFbGm(0));
+        }
         const fbGm = (fbGmRaw ?? []) as unknown as Array<{ id: string; side_a_registration_id: string; side_b_registration_id: string; score: unknown; status: string; scheduled_at: string | null; started_at: string | null }>;
         if (fbGm.length > 0) {
           const m = fbGm[0];
@@ -807,40 +918,6 @@ export async function getNextMatchForCourt(
 
     return null;
   });
-}
-
-// ── Helper: notif tournament_finished ────────────────────────────────────────
-
-async function notifyTournamentFinished(tournamentId: string, admin: AnyClient): Promise<void> {
-  const [{ data: t }, { data: regs }] = await Promise.all([
-    admin.from("tournaments").select("id,name,slug").eq("id", tournamentId).maybeSingle(),
-    admin.from("registrations").select("player_ids,status")
-      .eq("tournament_id", tournamentId)
-      .in("status", ["pending", "accepted"]),
-  ]);
-  if (!t) return;
-  const userIds = new Set<string>();
-  for (const r of regs ?? []) {
-    for (const pid of (r.player_ids as string[] | null) ?? []) {
-      if (pid) userIds.add(pid);
-    }
-  }
-  await Promise.all(
-    Array.from(userIds).map((uid) =>
-      notify({
-        userId: uid,
-        role: "user",
-        kind: "tournament_finished",
-        title: "Torneo finalizado",
-        body: `${t.name as string} terminó. Revisa resultados y ranking.`,
-        payload: {
-          tournament_id: tournamentId,
-          tournament_slug: t.slug,
-          tournament_name: t.name,
-        },
-      }),
-    ),
-  );
 }
 
 // ── 10. Confirmar partido de bracket reportado por monitor ────────────────────
@@ -918,7 +995,7 @@ export async function confirmBracketMatch(
 
       const { data: nextSlot } = await admin
         .from("bracket_matches")
-        .select("side_a_registration_id,side_b_registration_id")
+        .select("id,side_a_registration_id,side_b_registration_id")
         .eq("bracket_id", bracket.id as string)
         .eq("round", nextRound)
         .eq("position", nextPos)
@@ -939,6 +1016,19 @@ export async function confirmBracketMatch(
           .eq("round", nextRound)
           .eq("position", nextPos);
         advanced = true;
+
+        // Si el avance completa el siguiente partido, avisar a ambos lados.
+        const otherSlot = (isSideA
+          ? nextSlot?.side_b_registration_id
+          : nextSlot?.side_a_registration_id) as string | null | undefined;
+        if (nextSlot && otherSlot) {
+          void notifyMatchReady(admin, {
+            tournamentId,
+            registrationIds: [winnerRegId, otherSlot],
+            matchType: "bracket",
+            matchId: nextSlot.id as string,
+          });
+        }
       }
     } else if (!isBronze && round === numRounds) {
       if (bracket.category_id) {
@@ -955,13 +1045,13 @@ export async function confirmBracketMatch(
         if (allComplete) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
-          await notifyTournamentFinished(tournamentId, admin);
+          await notifyTournamentFinishedCore(admin, tournamentId);
         }
       } else {
         // Bracket sin categoría asignada: finalizar torneo directamente
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
-        await notifyTournamentFinished(tournamentId, admin);
+        await notifyTournamentFinishedCore(admin, tournamentId);
       }
     }
 

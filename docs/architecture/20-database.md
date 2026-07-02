@@ -2714,6 +2714,35 @@ En el publication `supabase_realtime`. RLS: admin ve todo; partner ve los de su 
 
 **Feature flag**: `tournament_monitors_enabled` (mig 20260626210001, `enabled_default: false`). Activa la sección en el panel partner y la ruta `/t/[slug]/monitor`.
 
+**`match_rating_applications`** (mig 20260710000000) — delta EFECTIVO de ELO aplicado a cada jugador por partido de torneo. Permite revertir con exactitud cuando el organizador corrige un ganador.
+
+```sql
+create table public.match_rating_applications (
+  id          uuid primary key default gen_random_uuid(),
+  match_type  text not null check (match_type in ('bracket', 'group')),
+  match_id    uuid not null,
+  user_id     uuid not null references profiles(id) on delete cascade,
+  sport       mp_sport not null,
+  mode        mp_match_mode not null,
+  delta       int not null,          -- delta efectivo (incluye clamp a rating mínimo 100)
+  won         boolean not null,
+  applied_at  timestamptz not null default now(),
+  unique (match_type, match_id, user_id)
+);
+```
+
+RLS: solo `mp_is_admin()` puede select; nadie muta desde el cliente (escrituras solo vía las funciones SECURITY DEFINER de ELO). Audit trigger `tg_audit_match_rating_applications`. NO está en el publication realtime.
+
+Funciones asociadas (mismas mig):
+- `fn_recalculate_elo_for_bracket_match` / `fn_recalculate_elo_for_group_match` — reescritas para insertar el delta efectivo por jugador al aplicar.
+- `fn_revert_elo_for_match(match_type, match_id) → boolean` — deshace deltas + contadores (`matches_total`, `wins`, `losses`), borra las filas y limpia `rating_applied_at`. Devuelve `false` para partidos aplicados antes de la mig (sin filas) → esos no se revierten ni re-aplican. `peak_rating` no se revierte (cota histórica).
+- Triggers `tg_bracket_matches_elo_on_update` / `tg_group_matches_elo_on_update` — si cambia `winner_side` de un partido ya aplicado: revert + re-aplicar. Solo-score (mismo ganador) no toca ELO.
+- Las 3 funciones tienen `revoke execute from anon, authenticated` (solo triggers las llaman).
+
+**Shape de `score` en `bracket_matches`/`tournament_group_matches`**: `{sets: [{a,b}...], serving?: 'a'|'b', current?: {a,b}}` — `current` son los puntos del set en curso que el monitor persiste con debounce (2s); `submitMatchResult` lo limpia al escribir el score final. Standings solo leen `sets` de partidos `confirmed`.
+
+**Notif**: `tournament_match_ready` (mig 20260710010000, kind + flag `tournament_match_ready_notifs` default ON) — "te toca jugar" al completarse el partido de un jugador. Helpers en `src/lib/notifications/tournament.ts`.
+
 ---
 
 ## Próximo: `30-rls.md`

@@ -156,9 +156,20 @@ dispatcher cron las renderiza en `notifications`. Catálogo:
 
 **Implementados** (mig `20260605130000`):
 - `tournament_published` ✅ (al pasar de draft → registration_open)
-- `tournament_finished` ✅ (al cerrar / auto-finish desde monitor)
+- `tournament_finished` ✅ (al cerrar / auto-finish desde monitor / reporte
+  directo de la final — los tres paths llaman `notifyTournamentFinishedCore`
+  en `src/lib/notifications/tournament.ts`)
 - `match_result_reported` ✅ (cuando reportan tu match)
 - `match_incident_reported` ✅ (incidente desde monitor de cancha · mig `20260630100000`)
+- `tournament_match_ready` ✅ "Te toca jugar" (mig `20260710010000`): se
+  encola cuando el partido de un jugador queda con ambos lados definidos —
+  llave generada (ronda 1 sin byes), avance de ganador que completa el
+  siguiente cruce, bronce completado, y sorteo de grupos (una notif por
+  jugador, no por partido). Killswitch: flag `tournament_match_ready_notifs`
+  (default ON). Render vía payload title/body (patrón mig `20260630100000`);
+  href client-side en `NotificationsPanel.hrefForKind` →
+  `/dashboard/[role]/torneo/[id]`. Helper: `notifyMatchReady` /
+  `notifyGroupsDrawn` en `src/lib/notifications/tournament.ts`.
 
 ## 7. Sincronía cross-superficie
 
@@ -551,8 +562,13 @@ Ambas tablas están en la publication de realtime.
    • match.status = 'live', score = {sets:[], serving:'a'|'b'}
    • Si torneo en registration_open/closed → auto-pasa a 'live' (auto-live)
 7. Monitor toca la mitad de pantalla del equipo que anota → addPoint() en cliente
-   • Al completar un set → updateMatchScore() persiste sets completados + serving
-   • Partner ve sets en TournamentCourtsLive en tiempo real
+   • Cada punto se persiste: localStorage inmediato + updateMatchScore() con
+     debounce de 2s escribe score.current = {a,b} (puntos del set en curso)
+   • Al completar un set → updateMatchScore() persiste sets completados +
+     serving y resetea score.current
+   • Partner ve sets Y puntos en vivo en TournamentCourtsLive en tiempo real
+   • Recargar el teléfono NO pierde el marcador: getMonitorContext restaura
+     sets + score.current del server y el history de undo desde localStorage
 8. Monitor pulsa "Terminar" (habilitado cuando hay ganador) → pantalla Cierre
 9. Monitor pulsa "Confirmar y enviar al organizador" → submitMatchResult()
    • match.status = 'reported', winner_side, score, duration_ms
@@ -619,3 +635,7 @@ Los tres solo aparecen si `tournament_monitors_enabled` está activo. `Tournamen
 4. **Cancha sin monitor asignado**: `TournamentCourtsLive` solo muestra canchas con monitor activo (`is_active=true`). Si se remueve un monitor, la cancha desaparece del grid automáticamente vía realtime.
 5. **Auto-live**: `startMatch` pasa el torneo a `live` si estaba en `registration_open/closed`. No bloquear ese behavior en guards de UI.
 6. **Flag apagada ≠ error silencioso**: todas las actions valoran `requireMonitorsEnabled()` y retornan `403 MONITORS.DISABLED` — no explotan.
+7. **Claim atómico de partidos** (mig lógica en `startMatch`): el UPDATE lleva `status='scheduled'` + `court_id IS NULL OR court_id = miCancha` como filtro; si afecta 0 filas retorna `409 MONITORS.MATCH_TAKEN` y el cliente carga el siguiente partido. Los fallbacks de `getMonitorContext`/`getNextMatchForCourt` solo devuelven partidos `scheduled` con `court_id` null, repartidos por offset determinístico de cancha. NO volver al patrón "primer partido del torneo para todos".
+8. **`updateMatchScore`/`submitMatchResult` validan la cancha**: `requireMatchOnMyCourt` exige que el `court_id` del partido esté entre las canchas del monitor (`403 MONITORS.MATCH_NOT_YOURS`). `updateMatchScore` además solo acepta partidos `live`.
+9. **`score.current` es transitorio**: `{sets, serving, current}` — `current` son los puntos del set en curso; `submitMatchResult` lo limpia al escribir el score final. Los consumidores de standings solo deben leer `sets` de partidos `confirmed` (sin cambio).
+10. **Correcciones SÍ recalculan ELO** (mig `20260710000000`): si cambia `winner_side` de un partido ya aplicado, el trigger revierte los deltas efectivos (tabla `match_rating_applications`) y re-aplica. Partidos aplicados ANTES de esa mig no tienen filas de aplicación → no se revierten (comportamiento legacy preservado). Corrección de solo-score (mismo ganador) no toca el rating.

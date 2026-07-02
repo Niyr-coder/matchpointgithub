@@ -99,7 +99,9 @@ function StatusPill({ status }: { status: CourtLiveMatch["status"] | null }) {
 }
 
 function MatchDetails({ match }: { match: CourtLiveMatch }) {
-  if (match.status === "live" && match.setsCompleted.length === 0) {
+  const livePoints =
+    match.status === "live" && match.currentPoints ? match.currentPoints : null;
+  if (match.status === "live" && match.setsCompleted.length === 0 && !livePoints) {
     return (
       <div style={{ fontSize: 11, color: "#059669" }}>
         Primer set en juego
@@ -117,7 +119,7 @@ function MatchDetails({ match }: { match: CourtLiveMatch }) {
       </div>
     );
   }
-  if (match.setsCompleted.length > 0) {
+  if (match.setsCompleted.length > 0 || livePoints) {
     return (
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {match.setsCompleted.map((s, i) => (
@@ -133,6 +135,18 @@ function MatchDetails({ match }: { match: CourtLiveMatch }) {
             {s.a}-{s.b}
           </span>
         ))}
+        {livePoints && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#059669",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {livePoints.a}-{livePoints.b}
+          </span>
+        )}
       </div>
     );
   }
