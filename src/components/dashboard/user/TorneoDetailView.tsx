@@ -38,6 +38,7 @@ type Props = {
   groupView?: TournamentPlayerGroupView | null;
   /** Resumen del jugador cuando el torneo terminó (Fase C). */
   myTournamentSummary?: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
+  myCategory?: { name: string | null; stage: string | null; championLabel: string | null } | null;
   /** Override status (preview / dev). */
   previewStatus?: TorneoPlayerStatus;
   backHref?: string;
@@ -58,6 +59,7 @@ export function TorneoDetailView({
   bracketSides = [],
   groupView = null,
   myTournamentSummary = null,
+  myCategory = null,
   previewStatus,
   backHref = "/dashboard/user/eventos",
 }: Props) {
@@ -130,6 +132,35 @@ export function TorneoDetailView({
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 18 }}>
       <PlayerBackBtn onClick={() => router.push(backHref)} />
       <PlayerHero tone={tone} statusLabel={shell.statusLabel} title={shell.title} meta={meta} />
+      {myCategory?.stage === "complete" && (
+        <div
+          className="card"
+          style={{
+            padding: "16px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            background: "rgba(245,158,11,0.07)",
+            border: "1px solid rgba(245,158,11,0.35)",
+          }}
+        >
+          <Icon name="trophy" size={22} color="#d97706" />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "#b45309" }}>
+              Tu categoría terminó{myCategory.name ? ` · ${myCategory.name}` : ""}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>
+              {myCategory.championLabel ? `Campeón: ${myCategory.championLabel}` : "Campeón definido"}
+            </div>
+            {status === "live" && (
+              <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 2 }}>
+                El torneo sigue en juego con otras categorías.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {myTournamentSummary && (
         <div
           className="card"

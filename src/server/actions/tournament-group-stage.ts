@@ -46,6 +46,7 @@ import { knockoutRoundLabel } from "@/lib/torneos/bracket-labels";
 import {
   notifyGroupsDrawn,
   notifyMatchReady,
+  notifyCategoryFinished,
   notifyTournamentFinishedCore,
 } from "@/lib/notifications/tournament";
 
@@ -967,6 +968,12 @@ export async function reportBracketMatch(
           .from("tournament_categories")
           .update({ stage: "complete" } as never)
           .eq("id", bracket.category_id as string);
+
+        void notifyCategoryFinished(admin, {
+          tournamentId,
+          categoryId: bracket.category_id as string,
+          championRegistrationId: winnerRegId,
+        });
 
         const { data: allCats } = await groupDb(getAdminClient())
           .from("tournament_categories")

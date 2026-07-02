@@ -148,6 +148,87 @@ export async function notifyGroupsDrawn(
   }
 }
 
+/**
+ * "Tu categoría terminó": notifica a los inscritos (pending + accepted) de UNA
+ * categoría cuando su final queda definida, aunque el torneo global siga live
+ * con otras categorías en juego. Incluye el campeón si se puede resolver.
+ */
+export async function notifyCategoryFinished(
+  admin: AdminClient,
+  opts: {
+    tournamentId: string;
+    categoryId: string;
+    /** Registration ganadora de la final; el helper resuelve el label. */
+    championRegistrationId?: string | null;
+  },
+): Promise<void> {
+  try {
+    const [{ data: t }, { data: cat }, { data: regs }] = await Promise.all([
+      admin.from("tournaments").select("id,name,slug").eq("id", opts.tournamentId).maybeSingle(),
+      admin.from("tournament_categories").select("name").eq("id", opts.categoryId).maybeSingle(),
+      admin
+        .from("registrations")
+        .select("id,player_ids,status")
+        .eq("tournament_id", opts.tournamentId)
+        .eq("category_id", opts.categoryId)
+        .in("status", ["pending", "accepted"]),
+    ]);
+    if (!t) return;
+
+    let championLabel: string | null = null;
+    if (opts.championRegistrationId) {
+      const champReg = (regs ?? []).find((r) => (r.id as string) === opts.championRegistrationId);
+      const pids = (champReg?.player_ids as string[] | null) ?? [];
+      if (pids.length > 0) {
+        const { data: profs } = await admin
+          .from("profiles")
+          .select("id,display_name,username")
+          .in("id", pids);
+        const names = pids
+          .map((pid) => {
+            const p = (profs ?? []).find((x) => (x.id as string) === pid);
+            return (p?.display_name as string | null) ?? (p?.username as string | null);
+          })
+          .filter((n): n is string => Boolean(n));
+        if (names.length > 0) championLabel = names.join(" / ");
+      }
+    }
+
+    const userIds = new Set<string>();
+    for (const r of regs ?? []) {
+      for (const pid of (r.player_ids as string[] | null) ?? []) {
+        if (pid) userIds.add(pid);
+      }
+    }
+    if (userIds.size === 0) return;
+
+    const catName = (cat?.name as string | null) ?? "tu categoría";
+    await Promise.all(
+      Array.from(userIds).map((uid) =>
+        notify({
+          userId: uid,
+          role: "user",
+          kind: "tournament_category_finished",
+          title: `Tu categoría terminó — ${catName}`,
+          body: championLabel
+            ? `La categoría ${catName} de ${t.name as string} terminó. Campeón: ${championLabel}. Revisa tu resumen del torneo.`
+            : `La categoría ${catName} de ${t.name as string} terminó. Revisa tu resumen del torneo.`,
+          payload: {
+            tournament_id: opts.tournamentId,
+            tournament_slug: t.slug,
+            tournament_name: t.name,
+            category_id: opts.categoryId,
+            category_name: catName,
+            champion_label: championLabel,
+          },
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("[notifyCategoryFinished] enqueue failed:", err);
+  }
+}
+
 /** Notifica el cierre del torneo a todos los inscritos (pending + accepted). */
 export async function notifyTournamentFinishedCore(
   admin: AdminClient,

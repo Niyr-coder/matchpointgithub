@@ -24,6 +24,7 @@ type Props = {
   bracketSides?: TournamentBracketSideView[];
   groupView?: TournamentPlayerGroupView | null;
   myTournamentSummary?: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
+  myCategory?: { name: string | null; stage: string | null; championLabel: string | null } | null;
 };
 
 export function TorneoPageRouter({
@@ -39,6 +40,7 @@ export function TorneoPageRouter({
   bracketSides = [],
   groupView = null,
   myTournamentSummary = null,
+  myCategory = null,
 }: Props) {
   const tournamentId = detail.tournament.id;
 
@@ -58,6 +60,7 @@ export function TorneoPageRouter({
           bracketSides={bracketSides}
           groupView={groupView}
           myTournamentSummary={myTournamentSummary}
+          myCategory={myCategory}
         />
       </>
     );

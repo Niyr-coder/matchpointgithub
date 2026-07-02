@@ -10,7 +10,7 @@ import { MpError } from "@/lib/api/errors";
 import { AuthError, requireUserId } from "@/lib/auth/session";
 import { UuidSchema, SlugSchema } from "@/lib/schemas/common";
 import { notifyClubStaff, notifyPartnerOrgStaff } from "@/lib/notifications/helpers";
-import { notifyMatchReady, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
+import { notifyCategoryFinished, notifyMatchReady, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
 import { requireTournamentEditor } from "@/server/actions/tournaments";
 
 // ── Tipos exportados ─────────────────────────────────────────────────────────
@@ -1026,6 +1026,12 @@ export async function confirmBracketMatch(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await admin.from("tournament_categories").update({ stage: "complete" } as any)
           .eq("id", bracket.category_id as string);
+
+        void notifyCategoryFinished(admin, {
+          tournamentId,
+          categoryId: bracket.category_id as string,
+          championRegistrationId: winnerRegId,
+        });
 
         const { data: allCats } = await admin
           .from("tournament_categories")

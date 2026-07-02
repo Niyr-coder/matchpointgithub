@@ -2,6 +2,7 @@ import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getSession } from "@/lib/auth/session";
 import { getTournament } from "@/server/actions/tournaments";
+import { getDerivedCategoryWinners } from "@/server/actions/tournament-close";
 import type { MyRegistration, TournamentInscrito } from "@/components/dashboard/eventos/TournamentDetailView";
 import type { TournamentDetail } from "@/lib/schemas/tournaments";
 
@@ -28,6 +29,8 @@ export type TournamentDashboardPageData = {
   groupView: TournamentPlayerGroupView | null;
   /** Resumen del jugador cuando el torneo terminó: récord + delta de MPR + puesto de grupo. */
   myTournamentSummary: { wins: number; losses: number; deltaRating: number; rank: number | null } | null;
+  /** Fase de MI categoría (multi-categoría: puede estar 'complete' con el torneo aún live). */
+  myCategory: { name: string | null; stage: string | null; championLabel: string | null } | null;
 };
 
 export async function loadTournamentDashboardPageData(
@@ -127,12 +130,37 @@ export async function loadTournamentDashboardPageData(
   );
   const scheduleBlocks = await loadTournamentScheduleBlocks(detailRes.data.tournament.id);
 
+  // Fase por categoría: en multi-categoría MI categoría puede terminar
+  // ('complete') mientras el torneo global sigue live con otras en juego.
+  let myCategory: TournamentDashboardPageData["myCategory"] = null;
+  if (myRegistration?.categoryId) {
+    const { data: catRow } = await supabase
+      .from("tournament_categories")
+      .select("name,stage")
+      .eq("id", myRegistration.categoryId)
+      .maybeSingle();
+    if (catRow) {
+      myCategory = {
+        name: (catRow.name as string | null) ?? null,
+        stage: (catRow.stage as string | null) ?? null,
+        championLabel: null,
+      };
+    }
+  }
+  const myCategoryComplete = myCategory?.stage === "complete";
+  if (myCategory && myCategoryComplete && myRegistration?.categoryId) {
+    const winners = await getDerivedCategoryWinners(detailRes.data.tournament.id);
+    myCategory.championLabel =
+      winners.find((w) => w.categoryId === myRegistration.categoryId)?.winnerLabel ?? null;
+  }
+
   // Resumen post-torneo (Fase C): récord + delta de MPR acumulado del torneo.
   // match_rating_applications es admin-only por RLS → admin client, filtrado
-  // al propio usuario. Solo cuando el torneo terminó y el user participó.
+  // al propio usuario. Cuando el torneo terminó — o cuando MI categoría ya
+  // está completa aunque el torneo global siga live (multi-categoría).
   let myTournamentSummary: TournamentDashboardPageData["myTournamentSummary"] = null;
   if (
-    detailRes.data.tournament.status === "finished" &&
+    (detailRes.data.tournament.status === "finished" || myCategoryComplete) &&
     myRegistration &&
     sess.authenticated
   ) {
@@ -180,5 +208,6 @@ export async function loadTournamentDashboardPageData(
     bracketSides: bracketData.bracketSides,
     groupView: bracketData.groupView,
     myTournamentSummary,
+    myCategory,
   };
 }

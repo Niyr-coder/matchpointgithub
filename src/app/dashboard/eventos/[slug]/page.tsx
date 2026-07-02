@@ -23,6 +23,7 @@ export default async function DashboardTournamentPage({
       bracketSides={data.bracketSides}
       groupView={data.groupView}
       myTournamentSummary={data.myTournamentSummary}
+      myCategory={data.myCategory}
       categoryRegistrationCounts={data.categoryRegistrationCounts}
       scheduleBlocks={data.scheduleBlocks}
     />

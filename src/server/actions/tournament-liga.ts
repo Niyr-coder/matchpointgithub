@@ -15,7 +15,7 @@ import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { UuidSchema } from "@/lib/schemas/common";
 import { requireTournamentEditor } from "@/server/actions/tournaments";
-import { notifyGroupsDrawn, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
+import { notifyCategoryFinished, notifyGroupsDrawn, notifyTournamentFinishedCore } from "@/lib/notifications/tournament";
 import {
   buildRoundRobinRounds,
   computeGroupStandings,
@@ -405,6 +405,12 @@ export async function closeLigaStage(
     if (stErr) throw new MpError("LIGA.CLOSE_FAILED", stErr.message, 500);
 
     const championRegistrationId = liga.standings[0]?.registrationId ?? null;
+
+    void notifyCategoryFinished(admin, {
+      tournamentId,
+      categoryId,
+      championRegistrationId,
+    });
 
     // Si todas las categorías del torneo quedaron completas → finished + notif.
     const { data: allCats } = await admin
