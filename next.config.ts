@@ -18,6 +18,12 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // zod v4 tiene imports circulares internos (core ↔ classic) que el chunking
+  // de Turbopack a veces parte en orden inválido → "Cannot access 'X' before
+  // initialization" al recolectar page data (falla el build de forma no
+  // determinística). Externalizarlo del bundle server evita que Turbopack lo
+  // re-agrupe; Node lo resuelve directo de node_modules.
+  serverExternalPackages: ["zod"],
   async headers() {
     return [
       {
