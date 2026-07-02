@@ -18,6 +18,7 @@ import {
 } from "@/components/dashboard/partner/CategoryGroupConfigPanel";
 import { TournamentVenueDisplayPanel } from "@/components/dashboard/partner/TournamentVenueDisplayPanel";
 import { TournamentMonitorsPanel } from "@/components/dashboard/partner/TournamentMonitorsPanel";
+import { TournamentMatchSchedulerPanel } from "@/components/dashboard/partner/TournamentMatchSchedulerPanel";
 import { TournamentCourtsLive } from "@/components/dashboard/partner/TournamentCourtsLive";
 import { TournamentIncidentsFeed } from "@/components/dashboard/partner/TournamentIncidentsFeed";
 import { TorneoInscritosInteractivo } from "@/components/dashboard/partner/TorneoInscritosInteractivo";
@@ -910,6 +911,12 @@ export default async function PartnerTorneoPage({
                 tournamentFormat={tournamentFormat}
                 tournamentId={t.id as string}
               >
+                {!isClosed && clubCourts.length > 0 && (hasBracket || hasGroupOperacion || hasLigaOperacion) && (
+                  <TournamentMatchSchedulerPanel
+                    tournamentId={t.id as string}
+                    courts={clubCourts}
+                  />
+                )}
                 {!isClosed && monitorsEnabled && clubCourts.length > 0 && (
                   <TournamentCourtsLive
                     tournamentId={t.id as string}

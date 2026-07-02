@@ -2,7 +2,7 @@
 import "server-only";
 
 import { z } from "zod";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor, auditActorRole } from "@/lib/db/client.admin";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
@@ -279,5 +279,88 @@ export async function listMatchIncidents(
     }));
 
     return { incidents };
+  });
+}
+
+// ── Action: cronograma por cancha (Fase A2) ──────────────────────────────────
+// Asigna court_id + scheduled_at en grilla (canchas × slots) a los partidos
+// SIN programar que ya tienen ambos lados definidos. Cubre los 3 formatos
+// (bracket_matches + tournament_group_matches vía tournament_id denormalizado)
+// y es RE-ejecutable: las rondas que se van llenando se programan al volver a
+// correrla. Con esto los monitores dejan de depender del claim atómico y el
+// jugador ve hora + cancha en su vista.
+
+const ScheduleMatchesSchema = z.object({
+  tournamentId: UuidSchema,
+  courtIds: z.array(UuidSchema).min(1).max(12),
+  startsAt: z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), {
+    message: "Fecha de inicio inválida",
+  }),
+  slotMinutes: z.number().int().min(15).max(240),
+});
+
+export async function scheduleTournamentMatches(
+  input: unknown,
+): Promise<ActionResult<{ scheduled: number }>> {
+  return runAction(ScheduleMatchesSchema, input, async ({ tournamentId, courtIds, startsAt, slotMinutes }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const admin = getAdminClient();
+
+    const [{ data: gmsRaw }, { data: bmsRaw }] = await Promise.all([
+      admin
+        .from("tournament_group_matches")
+        .select("id,round_no,match_no")
+        .eq("tournament_id", tournamentId)
+        .is("scheduled_at", null)
+        .eq("status", "scheduled")
+        .order("round_no", { ascending: true })
+        .order("match_no", { ascending: true }),
+      admin
+        .from("bracket_matches")
+        .select("id,round,position")
+        .eq("tournament_id", tournamentId)
+        .is("scheduled_at", null)
+        .eq("status", "scheduled")
+        .not("side_a_registration_id", "is", null)
+        .not("side_b_registration_id", "is", null)
+        .order("round", { ascending: true })
+        .order("position", { ascending: true }),
+    ]);
+
+    // Grupos/liga primero (fase inicial), luego eliminatoria por ronda.
+    const queue: Array<{ table: "tournament_group_matches" | "bracket_matches"; id: string }> = [
+      ...((gmsRaw ?? []) as Array<{ id: string }>).map((m) => ({
+        table: "tournament_group_matches" as const,
+        id: m.id,
+      })),
+      ...((bmsRaw ?? []) as Array<{ id: string }>).map((m) => ({
+        table: "bracket_matches" as const,
+        id: m.id,
+      })),
+    ];
+    if (queue.length === 0) return { scheduled: 0 };
+
+    await setAuditActor(admin, editor.userId, auditActorRole(editor.actorRole));
+
+    const startMs = new Date(startsAt).getTime();
+    let scheduled = 0;
+    // Batches de 10 updates concurrentes (cada partido tiene cancha/hora distinta).
+    for (let i = 0; i < queue.length; i += 10) {
+      const batch = queue.slice(i, i + 10);
+      const results = await Promise.all(
+        batch.map((q, j) => {
+          const k = i + j;
+          const courtId = courtIds[k % courtIds.length];
+          const at = new Date(startMs + Math.floor(k / courtIds.length) * slotMinutes * 60000).toISOString();
+          return admin
+            .from(q.table)
+            .update({ court_id: courtId, scheduled_at: at } as never)
+            .eq("id", q.id);
+        }),
+      );
+      scheduled += results.filter((r) => !r.error).length;
+    }
+
+    return { scheduled };
   });
 }

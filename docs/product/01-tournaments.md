@@ -740,9 +740,12 @@ ELO de `tournament_group_matches` aplica igual (reportar = confirmar directo).
    el torneo solo pasa a `finished` cuando TODAS las categorías están
    `complete`. El botón "Finalizar torneo" (closeTournament) sigue siendo el
    override manual.
-3. **Sin scheduling por cancha en esta fase**: los partidos de liga no llevan
-   `scheduled_at`/`court_id` → los monitores de cancha NO cubren liga (el
-   partner carga scores desde el panel). Documentado como limitación.
+3. **Scheduling por cancha** (Fase A2, 2026-07-01): el panel "Cronograma por
+   cancha" del tab Operación (`scheduleTournamentMatches` en
+   `tournament-operation.ts`) asigna `court_id` + `scheduled_at` en grilla a
+   los partidos sin programar con ambos lados definidos — cubre liga, grupos
+   y brackets (vía `tournament_id`). Es re-ejecutable para rondas nuevas. Con
+   partidos programados, los monitores de cancha SÍ cubren liga.
 4. **Campeón** = rank 1 de `computeGroupStandings` (wins → dif sets → dif
    games → h2h). `getDerivedCategoryWinners` ya deriva liga (rank 1 del grupo
    único cuando no hay bracket).
