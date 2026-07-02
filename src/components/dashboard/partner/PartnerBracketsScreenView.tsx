@@ -45,6 +45,8 @@ export type BracketsData = {
   tournamentSlug: string | null;
   displayToken: string | null;
   tournamentFormat: string;
+  /** Torneos del partner para el selector (los 30 más recientes, desc). */
+  tournamentOptions: Array<{ id: string; name: string; startsAt: string; status: string }>;
   categories: BracketCategorySection[];
 };
 
@@ -55,6 +57,15 @@ const STAGE_LABEL: Record<string, string> = {
   knockout: "Eliminatoria",
   complete: "Finalizado",
 };
+
+const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function tournamentOptionLabel(t: { name: string; startsAt: string; status: string }): string {
+  const d = new Date(t.startsAt);
+  const when = `${d.getDate()} ${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}`;
+  const tag = t.status === "live" ? " · EN VIVO" : t.status === "finished" ? " · Finalizado" : "";
+  return `${t.name} · ${when}${tag}`;
+}
 
 type MatchOptimistic = Pick<
   BracketMatch,
@@ -100,6 +111,18 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
   const [openCats, setOpenCats] = useState<Set<string>>(() =>
     new Set(data.categories.map((c, i) => c.categoryId ?? `__no_cat_${i}`)),
   );
+
+  // Al cambiar de torneo (selector → ?tid=) el componente NO se remonta:
+  // reabrimos todas las secciones del torneo nuevo y limpiamos parches del
+  // anterior (los ids de match ya no existen en esta data).
+  const prevTournamentId = useRef(data.tournamentId);
+  useEffect(() => {
+    if (prevTournamentId.current === data.tournamentId) return;
+    prevTournamentId.current = data.tournamentId;
+    setOpenCats(new Set(data.categories.map((c, i) => c.categoryId ?? `__no_cat_${i}`)));
+    setOptimistic({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.tournamentId]);
 
   const toggleCat = (key: string) => {
     setOpenCats((prev) => {
@@ -319,6 +342,39 @@ export function PartnerBracketsScreenView({ data }: { data: BracketsData }) {
           </button>
         }
       />
+
+      {data.tournamentOptions.length > 1 && (
+        <div
+          className="card"
+          style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Icon name="trophy" size={13} />
+            <span className="label-mp" style={{ margin: 0 }}>Torneo</span>
+          </div>
+          <select
+            value={data.tournamentId ?? ""}
+            onChange={(e) => router.push(`/dashboard/partner/p-brackets?tid=${e.target.value}`)}
+            style={{
+              flex: 1,
+              minWidth: 220,
+              padding: "9px 12px",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 700,
+              background: "#fff",
+            }}
+          >
+            {data.tournamentOptions.map((t) => (
+              <option key={t.id} value={t.id}>
+                {tournamentOptionLabel(t)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {mergedCategories.map((cat, idx) => {

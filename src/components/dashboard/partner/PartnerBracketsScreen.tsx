@@ -225,6 +225,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     tournamentSlug: null,
     displayToken: null,
     tournamentFormat: "single_elim",
+    tournamentOptions: [],
     categories: [placeholderSection],
   };
 
@@ -255,81 +256,82 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     starts_at: string;
     ends_at: string | null;
     slug: string;
+    status: string;
     display_token: string | null;
   };
+  const TOUR_COLS = "id,name,format,starts_at,ends_at,slug,status,display_token";
 
-  let tours: TourPick[];
-
-  if (isAdmin && forceId) {
-    const { data } = await admin
-      .from("tournaments")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
-      .eq("id", forceId)
-      .neq("status", "draft")
-      .neq("status", "cancelled")
-      .limit(1);
-    tours = (data ?? []) as unknown as TourPick[];
-  } else {
-    if (!partnerId) return empty;
+  // Lista para el selector de torneo: los 30 más recientes del partner
+  // (antes: los 20 más ANTIGUOS con order ascending → un partner con
+  // historial siempre veía su primer torneo y nunca los nuevos).
+  let tours: TourPick[] = [];
+  if (partnerId) {
     const { data } = await supabase
       .from("tournaments")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .select("id,name,format,starts_at,ends_at,slug,display_token" as any)
+      .select(TOUR_COLS as any)
       .eq("partner_id", partnerId)
       .neq("status", "draft")
       .neq("status", "cancelled")
-      .order("starts_at", { ascending: true })
-      .limit(20);
+      .order("starts_at", { ascending: false })
+      .limit(30);
     tours = (data ?? []) as unknown as TourPick[];
   }
 
-  let chosen: {
-    id: string;
-    name: string;
-    format: string;
-    slug: string;
-    displayToken: string | null;
-  } | null = null;
-
+  // ?tid= se resuelve con lookup directo (antes dependía de que el torneo
+  // estuviera dentro de la lista limitada → caía a otro torneo en silencio).
+  // Partner: solo torneos propios; admin: cualquiera.
+  let forced: TourPick | null = null;
   if (forceId) {
-    const forced = tours.find((t) => t.id === forceId);
-    if (forced) {
-      chosen = {
-        id: forced.id,
-        name: forced.name ?? "—",
-        format: forced.format ?? "single_elim",
-        slug: forced.slug ?? "",
-        displayToken: forced.display_token ?? null,
-      };
+    forced = tours.find((t) => t.id === forceId) ?? null;
+    if (!forced && (isAdmin || partnerId)) {
+      const client = isAdmin ? admin : supabase;
+      let q = client
+        .from("tournaments")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .select(TOUR_COLS as any)
+        .eq("id", forceId)
+        .neq("status", "draft")
+        .neq("status", "cancelled");
+      if (!isAdmin) q = q.eq("partner_id", partnerId!);
+      const { data } = await q.limit(1);
+      forced = ((data ?? []) as unknown as TourPick[])[0] ?? null;
+      if (forced) tours = [forced, ...tours];
     }
   }
 
+  const pick = (t: TourPick) => ({
+    id: t.id,
+    name: t.name ?? "—",
+    format: t.format ?? "single_elim",
+    slug: t.slug ?? "",
+    displayToken: t.display_token ?? null,
+  });
+
+  // Default inteligente: en vivo → en curso por fechas → próximo más
+  // cercano → el pasado más reciente (antes: el torneo más antiguo).
+  let chosen: ReturnType<typeof pick> | null = forced ? pick(forced) : null;
   if (!chosen) {
-    for (const t of tours) {
+    const live = tours.find((t) => t.status === "live");
+    const inWindow = tours.find((t) => {
       const s = new Date(t.starts_at);
       const e = t.ends_at ? new Date(t.ends_at) : s;
-      if (s <= now && now <= e) {
-        chosen = {
-          id: t.id,
-          name: t.name ?? "—",
-          format: t.format ?? "single_elim",
-          slug: t.slug ?? "",
-          displayToken: t.display_token ?? null,
-        };
-        break;
-      }
-    }
+      return s <= now && now <= e;
+    });
+    // tours viene en starts_at desc: el próximo más cercano es el ÚLTIMO
+    // de los futuros; el pasado más reciente es el PRIMERO de los pasados.
+    const upcoming = [...tours].reverse().find((t) => new Date(t.starts_at) > now);
+    const recentPast = tours.find((t) => new Date(t.starts_at) <= now);
+    const def = live ?? inWindow ?? upcoming ?? recentPast ?? tours[0] ?? null;
+    if (def) chosen = pick(def);
   }
-  if (!chosen && tours[0]) {
-    chosen = {
-      id: tours[0].id,
-      name: tours[0].name ?? "—",
-      format: tours[0].format ?? "single_elim",
-      slug: tours[0].slug ?? "",
-      displayToken: tours[0].display_token ?? null,
-    };
-  }
+
+  const tournamentOptions = tours.map((t) => ({
+    id: t.id,
+    name: t.name ?? "—",
+    startsAt: t.starts_at,
+    status: t.status,
+  }));
 
   if (!chosen) {
     return { ...empty, partnerId: partnerId ?? null };
@@ -408,6 +410,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
       tournamentSlug: chosen.slug,
       displayToken: chosen.displayToken,
       tournamentFormat: chosen.format,
+      tournamentOptions,
       categories,
     };
   }
@@ -495,6 +498,7 @@ async function loadData(forceId?: string | null): Promise<BracketsData> {
     tournamentSlug: chosen.slug,
     displayToken: chosen.displayToken,
     tournamentFormat: chosen.format,
+    tournamentOptions,
     categories,
   };
 }
