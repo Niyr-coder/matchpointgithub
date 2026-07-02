@@ -82,7 +82,8 @@ async function loadData(): Promise<EventosData> {
       .from("event_registrations")
       .select("event_id")
       .in("event_id", eventIds)
-      .in("status", ["registered", "attended"]);
+      // pending_payment consume cupo → cuenta en el número visible.
+      .in("status", ["registered", "pending_payment", "attended"]);
     for (const r of regs ?? []) {
       const eid = r.event_id as string;
       eventCountsById.set(eid, (eventCountsById.get(eid) ?? 0) + 1);
@@ -94,7 +95,8 @@ async function loadData(): Promise<EventosData> {
       .from("registrations")
       .select("tournament_id")
       .in("tournament_id", tournamentIds)
-      .not("status", "in", "(withdrawn,rejected,cancelled)");
+      // Semántica canónica: waitlist no cuenta como inscrito.
+      .in("status", ["pending", "accepted"]);
     for (const r of regs ?? []) {
       const tid = r.tournament_id as string;
       tournamentCountsById.set(tid, (tournamentCountsById.get(tid) ?? 0) + 1);

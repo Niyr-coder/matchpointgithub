@@ -1479,7 +1479,9 @@ export async function getTournamentRegisterContext(
       .from("registrations")
       .select("category_id")
       .eq("tournament_id", detailRes.data.tournament.id)
-      .not("status", "in", "(withdrawn,rejected,cancelled)");
+      // pending+accepted: misma semántica que el cupo server-side — con el
+      // filtro legacy la UI declaraba "llena" una categoría contando waitlist.
+      .in("status", ["pending", "accepted"]);
 
     const categoryRegistrationCounts: Record<string, number> = {};
     for (const r of regsRaw ?? []) {

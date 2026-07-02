@@ -173,15 +173,35 @@ export async function enrollInClass(input: unknown): Promise<ActionResult<ClassE
 
     const status = (count ?? 0) >= (cls.max_students as number) ? "waitlist" : "enrolled";
 
-    const { data: row, error } = await supabase
+    // Re-inscripción: el unique(class_id, student_id) + soft-cancel bloqueaba
+    // volver a inscribirse para siempre ("already enrolled" eterno). Si hay
+    // una fila 'cancelled', se revive en lugar de insertar.
+    const { data: existing } = await supabase
       .from("class_enrollments")
-      .insert({
-        class_id: data.classId,
-        student_id: studentId,
-        status,
-      } as never)
-      .select()
-      .single();
+      .select("id,status")
+      .eq("class_id", data.classId)
+      .eq("student_id", studentId)
+      .maybeSingle();
+    if (existing && existing.status !== "cancelled") {
+      throw new MpError("CLASSES.ALREADY_ENROLLED", "Already enrolled in this class", 409);
+    }
+
+    const { data: row, error } = existing
+      ? await supabase
+          .from("class_enrollments")
+          .update({ status } as never)
+          .eq("id", existing.id)
+          .select()
+          .single()
+      : await supabase
+          .from("class_enrollments")
+          .insert({
+            class_id: data.classId,
+            student_id: studentId,
+            status,
+          } as never)
+          .select()
+          .single();
     if (error) {
       if (error.code === "23505") {
         throw new MpError("CLASSES.ALREADY_ENROLLED", "Already enrolled in this class", 409);

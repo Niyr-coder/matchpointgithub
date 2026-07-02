@@ -773,7 +773,7 @@ export function TournamentDetailView({ detail, clubName, clubCity, myRegistratio
         </div>
       </div>
 
-      <InscritosList items={inscritos} maxParticipants={t.maxParticipants ?? null} />
+      <InscritosList items={inscritos} maxParticipants={t.maxParticipants ?? null} registeredCount={insc} />
 
       {pickCategoryOpen && (
         <TournamentCategoryJoinModal
@@ -993,9 +993,12 @@ function initialsOf(name: string): string {
 function InscritosList({
   items,
   maxParticipants,
+  registeredCount,
 }: {
   items: TournamentInscrito[];
   maxParticipants: number | null;
+  /** Conteo por EQUIPO (misma unidad que maxParticipants). `items` es per-jugador — en dobles duplica. */
+  registeredCount?: number | null;
 }) {
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -1022,7 +1025,7 @@ function InscritosList({
               marginTop: 4,
             }}
           >
-            {items.length}
+            {registeredCount ?? items.length}
             {maxParticipants != null && (
               <span style={{ color: "var(--muted-fg)", fontSize: 14, fontWeight: 600 }}>
                 {" "}/ {maxParticipants}

@@ -25,6 +25,7 @@ import { SchedulePanel, type ScheduleBlock } from "@/components/dashboard/partne
 import { PartnerTorneoGestionShell } from "@/components/dashboard/partner/PartnerTorneoGestionShell";
 import { PartnerTorneoRailLinks } from "@/components/dashboard/partner/PartnerTorneoRailLinks";
 import { TournamentRefundsPanel } from "@/components/dashboard/partner/TournamentRefundsPanel";
+import { countsAsRegistered } from "@/lib/tournaments/registration-status";
 import { PartnerTorneoOperacionPanel } from "@/components/dashboard/partner/PartnerTorneoOperacionPanel";
 import { LigaOperacionPanel } from "@/components/dashboard/partner/LigaOperacionPanel";
 import { PartnerTorneoPlaybook } from "@/components/dashboard/partner/PartnerTorneoPlaybook";
@@ -280,10 +281,11 @@ export default async function PartnerTorneoPage({
     };
   });
 
-  // "Inscritos" = todas las inscripciones válidas (ya filtramos retiradas
-  // /rechazadas/canceladas en la query). El partner ve el total real, no solo
-  // las aceptadas — la mayoría arrancan en pending hasta confirmar pago.
-  const totalCount = regs.length;
+  // "Inscritos" = pending + accepted (semántica canónica, audit 2026-07-01).
+  // La lista `regs` SÍ incluye waitlist (para el pill ESPERA), pero la espera
+  // no consume cupo ni cuenta en el KPI — se muestra aparte.
+  const totalCount = regs.filter((r) => countsAsRegistered(r.status)).length;
+  const waitlistCount = regs.filter((r) => r.status === "waitlist").length;
   const acceptedCount = regs.filter((r) => r.status === "accepted").length;
   const pendingCount = regs.filter((r) => r.status === "pending").length;
   const revenue = Array.from(txById.values())
@@ -797,10 +799,19 @@ export default async function PartnerTorneoPage({
                     accent="#0a0a0a"
                     compact
                     foot={
-                      cap > 0 ? (
-                        <div className="mp-partner-torneo-kpi-bar">
-                          <div style={{ width: `${occupancyPct}%` }} />
-                        </div>
+                      cap > 0 || waitlistCount > 0 ? (
+                        <>
+                          {cap > 0 && (
+                            <div className="mp-partner-torneo-kpi-bar">
+                              <div style={{ width: `${occupancyPct}%` }} />
+                            </div>
+                          )}
+                          {waitlistCount > 0 && (
+                            <span style={{ color: "#b45309" }}>
+                              +{waitlistCount} en espera
+                            </span>
+                          )}
+                        </>
                       ) : null
                     }
                   />

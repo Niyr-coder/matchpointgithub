@@ -3,6 +3,7 @@ import "server-only";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { getServerClient } from "@/lib/db/client.server";
 import { AuthError, requireAdminUserId } from "@/lib/auth/session";
+import { ACTIVE_REGISTRATION_STATUS_LIST } from "@/lib/tournaments/registration-status";
 
 export type AdminPartnerMember = {
   userId: string;
@@ -297,6 +298,9 @@ export async function listAdminPartnersOverview(): Promise<AdminPartnersData> {
           .from("registrations")
           .select("tournament_id,status")
           .in("tournament_id", tournamentIds)
+          // Solo inscripciones activas: sin esto, cancelar + re-inscribirse
+          // contaba 2 (y sumaba rejected/waitlist) — audit 2026-07-01.
+          .in("status", ACTIVE_REGISTRATION_STATUS_LIST)
           .limit(2000)
       : Promise.resolve({ data: [] as RegistrationLite[], error: null }),
     tournamentIds.length

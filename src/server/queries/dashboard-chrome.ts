@@ -5,6 +5,7 @@ import type { Database } from "@/lib/db/types";
 import type { RoleKey } from "@/lib/roles";
 import type { RoleSwitchOption } from "@/components/dashboard/ActiveRoleSwitcher";
 import { getProfileSummary } from "@/lib/auth/profile";
+import { ACTIVE_REGISTRATION_STATUS_LIST } from "@/lib/tournaments/registration-status";
 import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 import { getActiveAnnouncement } from "@/server/queries/announcements";
 import { loadReceptionQueue } from "@/server/queries/reception-queue";
@@ -244,7 +245,8 @@ export async function loadDashboardChromeProps(opts: {
           .from("registrations")
           .select("id, tournaments!inner(partner_id)", { count: "exact", head: true })
           .eq("tournaments.partner_id", partnerId)
-          .eq("status", "accepted"),
+          // pending+accepted: misma semántica que el resto de KPIs de inscritos.
+          .in("status", ACTIVE_REGISTRATION_STATUS_LIST),
       ]);
       badgeOverrides = {
         "p-torneos": torneos.count ?? 0,

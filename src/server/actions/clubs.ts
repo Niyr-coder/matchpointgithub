@@ -609,7 +609,8 @@ export async function getClubSocial(input: unknown): Promise<ActionResult<ClubSo
         .from("registrations")
         .select("tournament_id")
         .in("tournament_id", tournamentIds)
-        .in("status", ["pending", "accepted", "waitlist"]);
+        // Semántica canónica: waitlist no cuenta como inscrito.
+        .in("status", ["pending", "accepted"]);
       for (const r of regs ?? []) {
         const tid = r.tournament_id as string;
         registrationCounts.set(tid, (registrationCounts.get(tid) ?? 0) + 1);

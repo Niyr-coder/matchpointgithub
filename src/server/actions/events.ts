@@ -292,6 +292,20 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
           }
         }
 
+        // Fila previa (unique event_id,user_id): si está activa, error ANTES
+        // de crear la transacción (evita tx huérfana); si está 'cancelled'
+        // (soft-cancel del admin), se revive más abajo — antes el unique
+        // bloqueaba re-inscribirse para siempre.
+        const { data: existingReg } = await supabase
+          .from("event_registrations")
+          .select("id,status")
+          .eq("event_id", id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (existingReg && existingReg.status !== "cancelled") {
+          throw new MpError("EVENTS.ALREADY_REGISTERED", "Already registered", 409);
+        }
+
         const policy = (event.payment_policy as string) ?? "prepay";
         const priceCents = (event.price_cents as number) ?? 0;
 
@@ -350,16 +364,26 @@ export async function registerToEvent(input: unknown): Promise<ActionResult<Even
         const registrationStatus =
           effectiveMode === "online" ? "pending_payment" : "registered";
 
-        const { data: row, error } = await supabase
-          .from("event_registrations")
-          .insert({
-            event_id: id,
-            user_id: userId,
-            status: registrationStatus,
-            paid_transaction_id: paidTransactionId,
-          } as never)
-          .select()
-          .single();
+        const { data: row, error } = existingReg
+          ? await supabase
+              .from("event_registrations")
+              .update({
+                status: registrationStatus,
+                paid_transaction_id: paidTransactionId,
+              } as never)
+              .eq("id", existingReg.id)
+              .select()
+              .single()
+          : await supabase
+              .from("event_registrations")
+              .insert({
+                event_id: id,
+                user_id: userId,
+                status: registrationStatus,
+                paid_transaction_id: paidTransactionId,
+              } as never)
+              .select()
+              .single();
         if (error) {
           if (error.code === "23505") {
             throw new MpError("EVENTS.ALREADY_REGISTERED", "Already registered", 409);

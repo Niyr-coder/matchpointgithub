@@ -70,7 +70,8 @@ async function loadData(): Promise<EventsData> {
       .from("event_registrations")
       .select("event_id")
       .in("event_id", evIds)
-      .in("status", ["registered", "attended"]);
+      // pending_payment consume cupo → cuenta en el número visible.
+      .in("status", ["registered", "pending_payment", "attended"]);
     for (const r of regs ?? []) {
       const eid = r.event_id as string;
       evRegByEvent.set(eid, (evRegByEvent.get(eid) ?? 0) + 1);

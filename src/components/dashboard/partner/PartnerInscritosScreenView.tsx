@@ -261,7 +261,11 @@ export function PartnerInscritosScreenView({ data }: { data: InscritosData }) {
         label={headerLabel}
         title={
           <>
-            Inscritos <span className="dot">●</span> {hasReal ? data.rows.length : 0} / {capLabel}
+            Inscritos <span className="dot">●</span>{" "}
+            {hasReal
+              ? data.rows.filter((r) => r.regStatus === "pending" || r.regStatus === "accepted").length
+              : 0}{" "}
+            / {capLabel}
           </>
         }
         action={

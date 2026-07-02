@@ -61,7 +61,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
       .from("registrations")
       .select("id,player_ids,created_at")
       .eq("tournament_id", detailRes.data.tournament.id)
-      .not("status", "in", "(withdrawn,rejected,cancelled)")
+      // Waitlist no aparece en la lista pública de inscritos.
+      .in("status", ["pending", "accepted"])
       .order("created_at", { ascending: true })
       .limit(64) as unknown as { data: RegRow[] | null };
     // Fetch guest_names separately ya que no están en los tipos generados.

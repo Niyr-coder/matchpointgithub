@@ -311,6 +311,20 @@ agregue ese render (TODO — hoy solo está en el preview modal del panel).
 6. **status hardcoded en pills sin cubrir todos los enums** — usar
    `txStatusMeta` para transactions y mapas exhaustivos para registrations.
 7. **guest_names en label derivation**: al mostrar la label de una registration, verificar guest_names[] ANTES de resolver por player_ids. Si guest_names.length > 0 y player_ids está vacío, es un walk-in — usar guest_names.join(' + ') como label.
+8. **Conteo canónico de inscritos = `in ('pending','accepted')`, POR EQUIPO**
+   (audit 2026-07-01, `src/lib/tournaments/registration-status.ts`). NUNCA
+   `.not("status","in","(withdrawn,rejected,cancelled)")` — 'cancelled' ni
+   existe en el enum y ese filtro incluye waitlist y cualquier status futuro
+   (así nació el doble conteo de cancelar+re-inscribirse). La waitlist se
+   muestra APARTE ("+N en espera"), nunca sumada. Y no mezclar unidades: el
+   cupo es por equipo (registration), las listas de inscritos son por jugador
+   — si comparas contra `max_participants`, usa el conteo por equipo
+   (`InscritosList.registeredCount`).
+9. **Re-inscripción tras soft-cancel**: clases y eventos tienen
+   `unique(recurso, user)` + cancel suave → el alta debe REVIVIR la fila
+   'cancelled' (update), no insertar — si no, "already enrolled" eterno.
+   Torneos no lo sufren (permiten N filas históricas + trigger 067 dedup por
+   status activo).
 
 ## 12. TODOs
 
