@@ -413,20 +413,16 @@ export async function getMonitorContext(
     if (!currentMatch) {
       const offset = await monitorCourtOffset(admin, tournamentId, assignment.court_id);
 
-      // Intentar con bracket → bracket_matches
-      const { data: bktsRaw } = await admin
-        .from("brackets")
-        .select("id")
-        .eq("tournament_id", tournamentId)
-        .order("generated_at", { ascending: false })
-        .limit(1);
-      const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
-      if (bracketId) {
+      // Intentar con bracket_matches por tournament_id (denormalizado): cubre
+      // TODOS los brackets del torneo. Antes se tomaba solo el bracket más
+      // reciente (.limit(1)) y los partidos sin cancha de las demás categorías
+      // nunca llegaban a la cola de los monitores.
+      {
         const fetchFbBm = (from: number) =>
           admin
             .from("bracket_matches")
             .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-            .eq("bracket_id", bracketId)
+            .eq("tournament_id", tournamentId)
             .is("court_id", null)
             .eq("status", "scheduled")
             .order("scheduled_at", { ascending: true })
@@ -832,19 +828,14 @@ export async function getNextMatchForCourt(
     // startMatch escribirá court_id y los "reclamará" atómicamente.
     const fbOffset = await monitorCourtOffset(admin, tournamentId, courtId);
 
-    const { data: bktsRaw } = await admin
-      .from("brackets")
-      .select("id")
-      .eq("tournament_id", tournamentId)
-      .order("generated_at", { ascending: false })
-      .limit(1);
-    const bracketId = ((bktsRaw ?? []) as Array<{ id: string }>)[0]?.id;
-    if (bracketId) {
+    // Por tournament_id (denormalizado): cubre TODOS los brackets del torneo,
+    // no solo el generado más recientemente (bug multi-categoría).
+    {
       const fetchFbBm = (from: number) =>
         admin
           .from("bracket_matches")
           .select("id, bracket_id, round, is_bronze, side_a_registration_id, side_b_registration_id, score, status, scheduled_at, started_at")
-          .eq("bracket_id", bracketId)
+          .eq("tournament_id", tournamentId)
           .is("court_id", null)
           .eq("status", "scheduled")
           .order("scheduled_at", { ascending: true })
@@ -1048,10 +1039,19 @@ export async function confirmBracketMatch(
           await notifyTournamentFinishedCore(admin, tournamentId);
         }
       } else {
-        // Bracket sin categoría asignada: finalizar torneo directamente
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
-        await notifyTournamentFinishedCore(admin, tournamentId);
+        // Bracket sin categoría: solo auto-finalizar si el torneo NO tiene
+        // categorías. Un bracket global legacy en un torneo multi-categoría no
+        // debe cerrar el torneo con su primera final (las demás categorías
+        // seguirían en juego); ese caso queda para el cierre manual.
+        const { count: catCount } = await admin
+          .from("tournament_categories")
+          .select("id", { count: "exact", head: true })
+          .eq("tournament_id", tournamentId);
+        if ((catCount ?? 0) === 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await admin.from("tournaments").update({ status: "finished" } as any).eq("id", tournamentId);
+          await notifyTournamentFinishedCore(admin, tournamentId);
+        }
       }
     }
 

@@ -982,11 +982,20 @@ export async function reportBracketMatch(
           await notifyTournamentFinishedCore(admin, tournamentId);
         }
       } else {
-        await groupDb(getAdminClient())
-          .from("tournaments")
-          .update({ status: "finished" } as never)
-          .eq("id", tournamentId);
-        await notifyTournamentFinishedCore(admin, tournamentId);
+        // Bracket sin categoría: solo auto-finalizar si el torneo NO tiene
+        // categorías (un bracket global legacy no debe cerrar un torneo
+        // multi-categoría con su primera final; queda para el cierre manual).
+        const { count: catCount } = await groupDb(getAdminClient())
+          .from("tournament_categories")
+          .select("id", { count: "exact", head: true })
+          .eq("tournament_id", tournamentId);
+        if ((catCount ?? 0) === 0) {
+          await groupDb(getAdminClient())
+            .from("tournaments")
+            .update({ status: "finished" } as never)
+            .eq("id", tournamentId);
+          await notifyTournamentFinishedCore(admin, tournamentId);
+        }
       }
     }
 

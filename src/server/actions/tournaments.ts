@@ -1298,6 +1298,23 @@ export async function generateBracket(
       );
     }
 
+    // Un bracket global en un torneo CON categorías mezcla niveles/géneros en
+    // una sola llave y su final dispara el auto-finish de todo el torneo.
+    // Con categorías, cada llave se genera por categoría (pantalla Brackets).
+    if (!categoryId) {
+      const { count: catCount } = await supabase
+        .from("tournament_categories")
+        .select("id", { count: "exact", head: true })
+        .eq("tournament_id", tournamentId);
+      if ((catCount ?? 0) > 0) {
+        throw new MpError(
+          "BRACKETS.CATEGORY_REQUIRED",
+          "Este torneo tiene categorías: genera el bracket de cada categoría desde la pantalla Brackets.",
+          422,
+        );
+      }
+    }
+
     let existingQ = supabase
       .from("brackets")
       .select("id")

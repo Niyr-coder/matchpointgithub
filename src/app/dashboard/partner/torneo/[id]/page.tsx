@@ -849,6 +849,7 @@ export default async function PartnerTorneoPage({
                     isAdmin={isAdmin}
                     acceptedCount={acceptedCount}
                     hasBracket={hasBracket}
+                    categoriesCount={categories.length}
                     setupLocked={setupLocked}
                     setupLockMessage={setupLockMessage}
                     categoryWinners={categoryWinners}

@@ -87,12 +87,19 @@ export async function getDerivedCategoryWinners(
 
   const nameByReg = await buildRegLabelMap(tournamentId);
 
-  const { data: bracketRow } = await admin
+  // Los brackets son por categoría: cada campeón sale de la llave de SU
+  // categoría. Antes se tomaba UN bracket (.limit(1)) y todas las categorías
+  // mostraban el mismo campeón. El bracket global (category_id null) solo
+  // aplica como fallback cuando el torneo tiene una única categoría (legacy).
+  const { data: bracketsRaw } = await admin
     .from("brackets")
-    .select("id")
+    .select("id,category_id,generated_at")
     .eq("tournament_id", tournamentId)
-    .limit(1)
-    .maybeSingle();
+    .order("generated_at", { ascending: false });
+  const bracketByCat = new Map<string | null, string>();
+  for (const b of (bracketsRaw ?? []) as Array<{ id: string; category_id: string | null }>) {
+    if (!bracketByCat.has(b.category_id)) bracketByCat.set(b.category_id, b.id);
+  }
 
   const results: CategoryWinner[] = [];
 
@@ -101,11 +108,16 @@ export async function getDerivedCategoryWinners(
     const categoryName = cat.name as string;
     let winnerLabel: string | null = null;
 
-    if (bracketRow) {
+    const bracketId =
+      bracketByCat.get(categoryId) ??
+      (cats.length === 1 ? bracketByCat.get(null) : undefined);
+
+    if (bracketId) {
       const { data: finalMatch } = await admin
         .from("bracket_matches")
         .select("winner_side,side_a_registration_id,side_b_registration_id")
-        .eq("bracket_id", bracketRow.id as string)
+        .eq("bracket_id", bracketId)
+        .eq("is_bronze", false)
         .not("winner_side", "is", null)
         .order("round", { ascending: false })
         .limit(1)

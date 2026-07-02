@@ -28,6 +28,7 @@ type Props = {
   isAdmin: boolean;
   acceptedCount: number;
   hasBracket: boolean;
+  categoriesCount?: number;
   setupLocked: boolean;
   setupLockMessage?: string | null;
   editable: EditableTournament;
@@ -43,6 +44,7 @@ export function PartnerTorneoActions({
   isAdmin,
   acceptedCount,
   hasBracket,
+  categoriesCount = 0,
   setupLocked,
   setupLockMessage,
   editable,
@@ -151,6 +153,12 @@ export function PartnerTorneoActions({
   };
 
   const isGroupsFormat = format === "groups_to_knockout";
+  const isLigaFormat = format === "round_robin" || format === "swiss";
+  // Con categorías, cada llave se genera POR categoría en la pantalla Brackets;
+  // el botón directo generaría un bracket global que mezcla categorías (y su
+  // final cerraría todo el torneo). El server también lo rechaza
+  // (BRACKETS.CATEGORY_REQUIRED) — esto es la entrada correcta, no solo UI.
+  const isBracketFormat = !isGroupsFormat && !isLigaFormat;
 
   const onGenerar = () => {
     if (acceptedCount < 2) {
@@ -222,13 +230,21 @@ export function PartnerTorneoActions({
           loading={busy === "cerrar"}
           disabled={closed}
         />
-        {!isGroupsFormat && !hasBracket && (
+        {isBracketFormat && categoriesCount === 0 && !hasBracket && (
           <ActionBtn
             icon="trophy"
             label="Generar bracket"
             onClick={onGenerar}
             loading={busy === "bracket"}
             primary
+          />
+        )}
+        {isBracketFormat && categoriesCount > 0 && (
+          <ActionBtn
+            icon="trophy"
+            label="Brackets por categoría"
+            onClick={() => router.push(`/dashboard/partner/p-brackets?tid=${tournamentId}`)}
+            primary={!hasBracket}
           />
         )}
         {status === "live" && (

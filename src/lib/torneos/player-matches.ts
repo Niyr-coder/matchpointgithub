@@ -278,14 +278,22 @@ export async function loadTournamentPlayerBracketData(
     groupData = await loadTournamentPlayerGroupData(supabase, categoryId, myRegistrationId);
   }
 
-  const { data: brackets } = await supabase
+  // Los brackets son POR CATEGORÍA: el jugador debe ver el cuadro de SU
+  // categoría, no el último generado del torneo (con N categorías eso mostraba
+  // un cuadro ajeno y hacía desaparecer sus partidos de eliminatoria). Fallback
+  // al bracket global (category_id null: torneo sin categorías o legacy) y,
+  // para el espectador sin categoría, al más reciente.
+  const { data: bracketsRaw } = await supabase
     .from("brackets")
-    .select("id")
+    .select("id,category_id")
     .eq("tournament_id", tournamentId)
-    .order("generated_at", { ascending: false })
-    .limit(1);
+    .order("generated_at", { ascending: false });
 
-  const bracketId = brackets?.[0]?.id as string | undefined;
+  const allBrackets = (bracketsRaw ?? []) as Array<{ id: string; category_id: string | null }>;
+  const bracketId = categoryId
+    ? (allBrackets.find((b) => b.category_id === categoryId)?.id ??
+      allBrackets.find((b) => b.category_id === null)?.id)
+    : (allBrackets.find((b) => b.category_id === null)?.id ?? allBrackets[0]?.id);
   if (!bracketId) {
     return {
       myMatches: groupData.myMatches,
