@@ -124,6 +124,8 @@ const MPR_DEFAULT_MAX = 4.0;
 type CatDraft = {
   name: string;
   gender: "m" | "f" | "mixed" | "open";
+  /** "" = hereda la modalidad del torneo. */
+  modality: "" | "singles" | "doubles" | "mixed_doubles";
   mprMin: number;
   mprMax: number;
   noLevelLimit: boolean;
@@ -138,6 +140,7 @@ type WizardCategory = CatDraft & { key: number };
 const EMPTY_CAT: CatDraft = {
   name: "",
   gender: "open",
+  modality: "",
   mprMin: MPR_DEFAULT_MIN,
   mprMax: MPR_DEFAULT_MAX,
   noLevelLimit: true,
@@ -360,6 +363,7 @@ export function CreateTournamentFlow({ partnerId, clubs, open, onClose, initialC
       const apiCategories = categories.map((c) => ({
         name: c.name.trim(),
         gender: c.gender,
+        modality: c.modality === "" ? undefined : c.modality,
         mprMin: c.noLevelLimit ? null : c.mprMin,
         mprMax: c.noLevelLimit ? null : c.noUpperCap ? null : c.mprMax,
         ageMin: c.ageMin === "" ? null : Number(c.ageMin),
@@ -1211,8 +1215,18 @@ function StepLogistics(props: {
 }
 
 // ── Categorías ─────────────────────────────────────────────────────────
+const CAT_MODALITIES = [
+  { value: "" as const, label: "Igual que el torneo" },
+  { value: "singles" as const, label: "Singles (1 vs 1)" },
+  { value: "doubles" as const, label: "Dobles (2 vs 2)" },
+  { value: "mixed_doubles" as const, label: "Dobles mixto" },
+];
+
 function catSummary(c: WizardCategory): string {
   const parts: string[] = [];
+  if (c.modality) {
+    parts.push(CAT_MODALITIES.find((m) => m.value === c.modality)?.label.split(" (")[0] ?? c.modality);
+  }
   const gLabel = GENDERS.find((g) => g.value === c.gender)?.label;
   if (gLabel && c.gender !== "open") parts.push(gLabel);
   if (c.noLevelLimit) parts.push("Open");
@@ -1350,6 +1364,22 @@ function StepCategories({
               {GENDERS.map((g) => (
                 <option key={g.value} value={g.value}>
                   {g.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Modalidad">
+            <select
+              value={draft.modality}
+              onChange={(e) =>
+                setDraft({ ...draft, modality: e.target.value as CatDraft["modality"] })
+              }
+              style={inputStyle}
+            >
+              {CAT_MODALITIES.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
                 </option>
               ))}
             </select>

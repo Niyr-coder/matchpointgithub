@@ -117,6 +117,13 @@ export function TournamentCategoryJoinModal({
               >
                 <div style={{ fontSize: 13, fontWeight: 900 }}>{c.name}</div>
                 <div style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 3 }}>
+                  {c.modality === "singles"
+                    ? "Singles · "
+                    : c.modality === "doubles"
+                      ? "Dobles · "
+                      : c.modality === "mixed_doubles"
+                        ? "Dobles mixto · "
+                        : ""}
                   MPR {formatMprRange(c.mprMin ?? null, c.mprMax ?? null)}
                   {cap > 0 ? ` · ${taken}/${cap} cupos` : taken > 0 ? ` · ${taken} inscritos` : ""}
                   {isFull ? " · Llena" : ""}

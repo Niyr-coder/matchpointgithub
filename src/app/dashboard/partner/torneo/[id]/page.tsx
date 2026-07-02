@@ -303,13 +303,14 @@ export default async function PartnerTorneoPage({
   const { data: catsRaw } = await admin
     .from("tournament_categories")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select("id,name,gender,level,mpr_min,mpr_max,age_min,age_max,max_teams,stage,group_playoff_config" as any)
+    .select("id,name,gender,modality,level,mpr_min,mpr_max,age_min,age_max,max_teams,stage,group_playoff_config" as any)
     .eq("tournament_id", id)
     .order("name", { ascending: true });
   type CatRow = {
     id: string;
     name: string;
     gender: string | null;
+    modality: string | null;
     level: string | null;
     mpr_min: number | string | null;
     mpr_max: number | string | null;
@@ -323,6 +324,7 @@ export default async function PartnerTorneoPage({
     id: c.id,
     name: c.name,
     gender: c.gender ?? null,
+    modality: c.modality ?? null,
     level: c.level ?? null,
     mprMin: c.mpr_min != null ? Number(c.mpr_min) : null,
     mprMax: c.mpr_max != null ? Number(c.mpr_max) : null,

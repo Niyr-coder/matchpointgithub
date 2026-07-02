@@ -373,6 +373,7 @@ export async function getTournament(input: unknown): Promise<ActionResult<Tourna
             id: c.id,
             name: c.name,
             gender: (c.gender as TournamentDetail["categories"][number]["gender"]) ?? null,
+            modality: (c.modality as TournamentDetail["categories"][number]["modality"]) ?? null,
             level: (c.level as TournamentDetail["categories"][number]["level"]) ?? null,
             ageMin: (c.age_min as number | null) ?? null,
             ageMax: (c.age_max as number | null) ?? null,
@@ -479,6 +480,7 @@ export async function createTournament(input: unknown): Promise<ActionResult<Tou
           tournament_id: row.id,
           name: c.name,
           gender: c.gender ?? null,
+          modality: c.modality ?? null,
           mpr_min: c.mprMin ?? null,
           mpr_max: c.mprMax ?? null,
           age_min: c.ageMin ?? null,
@@ -596,7 +598,7 @@ export async function registerToTournament(
 
         const { data: catRows } = await supabase
           .from("tournament_categories")
-          .select("id,max_teams,mpr_min,mpr_max,age_min,age_max")
+          .select("id,max_teams,mpr_min,mpr_max,age_min,age_max,modality")
           .eq("tournament_id", tournamentId);
         const categories = (catRows ?? []) as Array<{
           id: string;
@@ -605,6 +607,7 @@ export async function registerToTournament(
           mpr_max: number | string | null;
           age_min: number | null;
           age_max: number | null;
+          modality: string | null;
         }>;
 
         if (categories.length > 0) {
@@ -662,8 +665,9 @@ export async function registerToTournament(
               .maybeSingle();
             if (mprFlag?.enabled_default) {
               // player_stats es por (user, sport, mode): comparar contra el
-              // rating del modo del torneo, no contra todos los modos.
-              const mprMode = (t.modality as string | null) === "singles" ? "singles" : "doubles";
+              // rating del modo de la CATEGORIA (fallback: modalidad del torneo).
+              const effModality = cat.modality ?? (t.modality as string | null);
+              const mprMode = effModality === "singles" ? "singles" : "doubles";
               const { data: statRows } = await getAdminClient()
                 .from("player_stats")
                 .select("user_id,current_rating")
@@ -2159,6 +2163,8 @@ export async function requireTournamentEditor(tournamentId: string): Promise<{
 const CategoryBodySchema = z.object({
   name: z.string().min(1).max(80),
   gender: z.enum(["m", "f", "mixed", "open"]).nullable().optional(),
+  /** null = hereda la modalidad del torneo. */
+  modality: z.enum(["singles", "doubles", "mixed_doubles"]).nullable().optional(),
   level: z.enum(["beginner", "intermediate", "advanced", "pro"]).nullable().optional(),
   mprMin: z.number().min(2.0).max(8.0).nullable().optional(),
   mprMax: z.number().min(2.0).max(8.0).nullable().optional(),
@@ -2177,6 +2183,8 @@ export type TournamentCategoryRow = {
   tournamentId: string;
   name: string;
   gender: string | null;
+  /** null = hereda la modalidad del torneo. */
+  modality: string | null;
   level: string | null;
   mprMin: number | null;
   mprMax: number | null;
@@ -2191,6 +2199,7 @@ function mapCategory(row: Record<string, unknown>): TournamentCategoryRow {
     tournamentId: row.tournament_id as string,
     name: row.name as string,
     gender: (row.gender as string | null) ?? null,
+    modality: (row.modality as string | null) ?? null,
     level: (row.level as string | null) ?? null,
     mprMin: row.mpr_min != null ? Number(row.mpr_min) : null,
     mprMax: row.mpr_max != null ? Number(row.mpr_max) : null,
@@ -2218,6 +2227,7 @@ export async function createTournamentCategory(
       tournament_id: tournamentId,
       name: body.name,
       gender: body.gender ?? null,
+      modality: body.modality ?? null,
       level: body.level ?? null,
       mpr_min: body.mprMin ?? null,
       mpr_max: body.mprMax ?? null,
@@ -2260,6 +2270,7 @@ export async function updateTournamentCategory(
     const update: Record<string, unknown> = {};
     if (body.name !== undefined) update.name = body.name;
     if (body.gender !== undefined) update.gender = body.gender;
+    if (body.modality !== undefined) update.modality = body.modality;
     if (body.level !== undefined) update.level = body.level;
     if (body.mprMin !== undefined) update.mpr_min = body.mprMin;
     if (body.mprMax !== undefined) update.mpr_max = body.mprMax;

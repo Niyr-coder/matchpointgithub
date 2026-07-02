@@ -133,6 +133,8 @@ export const TournamentCategorySchema = z
     id: UuidSchema,
     name: z.string(),
     gender: z.enum(["m", "f", "mixed", "open"]).nullable(),
+    /** null = hereda la modalidad del torneo. */
+    modality: TournamentModalitySchema.nullable().optional(),
     level: MpSkillLevelSchema.nullable(),
     ageMin: z.number().int().nullable(),
     ageMax: z.number().int().nullable(),

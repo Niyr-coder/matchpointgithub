@@ -16,6 +16,8 @@ export type CategoryRow = {
   id: string;
   name: string;
   gender: string | null;
+  /** null = hereda la modalidad del torneo. */
+  modality: string | null;
   level: string | null;
   mprMin: number | null;
   mprMax: number | null;
@@ -31,11 +33,19 @@ export const GENDERS = [
   { value: "mixed", label: "Mixto" },
 ] as const;
 
+export const CAT_MODALITIES = [
+  { value: "", label: "Igual que el torneo" },
+  { value: "singles", label: "Singles (1 vs 1)" },
+  { value: "doubles", label: "Dobles (2 vs 2)" },
+  { value: "mixed_doubles", label: "Dobles mixto" },
+] as const;
+
 
 type FormState = {
   id: string | null;
   name: string;
   gender: string;
+  modality: string; // "" = hereda la modalidad del torneo
   mprMin: number; // 2.0 hasta MPR_MAX
   mprMax: number; // mprMin hasta 8.0
   noLevelLimit: boolean; // si true, no se guardan mprMin/mprMax (open)
@@ -53,6 +63,7 @@ const EMPTY_FORM: FormState = {
   id: null,
   name: "",
   gender: "open",
+  modality: "",
   mprMin: 3.0,
   mprMax: 4.0,
   noLevelLimit: false,
@@ -90,6 +101,7 @@ export function CategoriesPanel({
       id: c.id,
       name: c.name,
       gender: c.gender ?? "open",
+      modality: c.modality ?? "",
       mprMin: c.mprMin ?? 3.0,
       mprMax: c.mprMax ?? 4.0,
       noLevelLimit: !hasDupr,
@@ -110,6 +122,7 @@ export function CategoriesPanel({
     const body = {
       name: form.name.trim(),
       gender: (form.gender || null) as "m" | "f" | "mixed" | "open" | null,
+      modality: (form.modality || null) as "singles" | "doubles" | "mixed_doubles" | null,
       level: null as null,
       mprMin: form.noLevelLimit ? null : form.mprMin,
       mprMax: form.noLevelLimit ? null : form.noUpperCap ? null : form.mprMax,
@@ -202,6 +215,9 @@ export function CategoriesPanel({
               </div>
               <div style={{ color: "var(--muted-fg)", textTransform: "uppercase", fontSize: 10, fontWeight: 800, letterSpacing: "0.08em" }}>
                 {GENDERS.find((g) => g.value === c.gender)?.label ?? "—"}
+                {c.modality
+                  ? ` · ${CAT_MODALITIES.find((m) => m.value === c.modality)?.label.split(" (")[0] ?? c.modality}`
+                  : ""}
               </div>
               <div style={{ color: "var(--muted-fg)", fontSize: 11, fontWeight: 700 }}>
                 {c.mprMin != null || c.mprMax != null
@@ -312,6 +328,20 @@ export function CategoriesPanel({
                   {GENDERS.map((g) => (
                     <option key={g.value} value={g.value}>
                       {g.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Modalidad">
+                <select
+                  value={form.modality}
+                  onChange={(e) => setForm({ ...form, modality: e.target.value })}
+                  style={inputStyle}
+                >
+                  {CAT_MODALITIES.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
                     </option>
                   ))}
                 </select>

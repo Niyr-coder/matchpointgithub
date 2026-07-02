@@ -77,22 +77,6 @@ export async function loadTournamentDashboardPageData(
     }
   }
 
-  // MPR propio para el aviso de rango del modal de categoría (escala /1000).
-  // player_stats es por (user, sport, mode): usamos el modo de la modalidad
-  // del torneo (singles → singles; doubles/mixed_doubles → doubles).
-  let myMpr: number | null = null;
-  if (sess.authenticated) {
-    const mode = detailRes.data.tournament.modality === "singles" ? "singles" : "doubles";
-    const { data: statRow } = await supabase
-      .from("player_stats")
-      .select("current_rating")
-      .eq("user_id", sess.session.userId)
-      .eq("sport", detailRes.data.tournament.sport)
-      .eq("mode", mode)
-      .maybeSingle();
-    if (statRow?.current_rating != null) myMpr = (statRow.current_rating as number) / 1000;
-  }
-
   const { data: regsRaw } = await supabase
     .from("registrations")
     .select("id,player_ids,category_id,created_at")
@@ -151,12 +135,15 @@ export async function loadTournamentDashboardPageData(
   // Fase por categoría: en multi-categoría MI categoría puede terminar
   // ('complete') mientras el torneo global sigue live con otras en juego.
   let myCategory: TournamentDashboardPageData["myCategory"] = null;
+  let myCategoryModality: string | null = null;
   if (myRegistration?.categoryId) {
     const { data: catRow } = await supabase
       .from("tournament_categories")
-      .select("name,stage")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("name,stage,modality" as any)
       .eq("id", myRegistration.categoryId)
-      .maybeSingle();
+      .maybeSingle<{ name: string | null; stage: string | null; modality: string | null }>();
+    myCategoryModality = catRow?.modality ?? null;
     if (catRow) {
       myCategory = {
         name: (catRow.name as string | null) ?? null,
@@ -165,6 +152,23 @@ export async function loadTournamentDashboardPageData(
       };
     }
   }
+  // MPR propio para el aviso de rango del modal de categoría (escala /1000).
+  // player_stats es por (user, sport, mode): manda la modalidad de la
+  // CATEGORÍA del jugador; fallback, la del torneo.
+  let myMpr: number | null = null;
+  if (sess.authenticated) {
+    const effModality = myCategoryModality ?? detailRes.data.tournament.modality;
+    const mode = effModality === "singles" ? "singles" : "doubles";
+    const { data: statRow } = await supabase
+      .from("player_stats")
+      .select("current_rating")
+      .eq("user_id", sess.session.userId)
+      .eq("sport", detailRes.data.tournament.sport)
+      .eq("mode", mode)
+      .maybeSingle();
+    if (statRow?.current_rating != null) myMpr = (statRow.current_rating as number) / 1000;
+  }
+
   const myCategoryComplete = myCategory?.stage === "complete";
   if (myCategory && myCategoryComplete && myRegistration?.categoryId) {
     const winners = await getDerivedCategoryWinners(detailRes.data.tournament.id);
