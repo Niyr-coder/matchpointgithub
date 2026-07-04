@@ -22,6 +22,7 @@ import {
   type MatchToSchedule,
 } from "@/lib/tournaments/group-court-schedule";
 import {
+  buildLateEntryMatchRows,
   buildRoundRobinRounds,
   computeGroupStandings,
   crossGroupFirstRound,
@@ -32,6 +33,7 @@ import {
   rankQualifiersGlobally,
   standardBracketPairings,
   validateGroupPlayoffConfig,
+  validateManualGroupAssignment,
   wildcardCount,
   type GroupMatchResult,
   type GroupPlayoffConfig,
@@ -361,70 +363,307 @@ export async function drawTournamentGroups(
     if (err) throw new MpError("GROUPS.INVALID_CONFIG", err, 422);
 
     const buckets = distributeToGroups(regIds, config.groupsCount);
-    await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
+    return persistGroupsFromBuckets(db, tournamentId, categoryId, buckets, config, editor);
+  });
+}
 
-    let matchesCreated = 0;
-    const createdGroups: Array<{ id: string; sortOrder: number }> = [];
-    for (let i = 0; i < buckets.length; i++) {
-      const memberIds = buckets[i];
-      if (memberIds.length === 0) continue;
+/**
+ * Persiste grupos + miembros + calendario RR a partir de "buckets" ya
+ * definidos (cada bucket = las inscripciones de un grupo, en orden A/B/C…).
+ * Compartido por el sorteo automático (`drawTournamentGroups`) y el manual
+ * (`assignGroupsManually`); ambos producen exactamente la misma estructura.
+ */
+async function persistGroupsFromBuckets(
+  db: ReturnType<typeof groupDb>,
+  tournamentId: string,
+  categoryId: string,
+  buckets: string[][],
+  config: GroupPlayoffConfig,
+  editor: Awaited<ReturnType<typeof requireTournamentEditor>>,
+): Promise<{ groupsCreated: number; matchesCreated: number }> {
+  await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
 
-      const { data: groupRow, error: gErr } = await db
-        .from("tournament_groups")
-        .insert({
-          category_id: categoryId,
-          name: groupLabel(i),
-          sort_order: i,
-        } as never)
-        .select("id")
-        .single();
-      if (gErr) throw new MpError("GROUPS.CREATE_FAILED", gErr.message, 500);
-      const groupId = groupRow.id as string;
-      createdGroups.push({ id: groupId, sortOrder: i });
+  let matchesCreated = 0;
+  const createdGroups: Array<{ id: string; sortOrder: number }> = [];
+  for (let i = 0; i < buckets.length; i++) {
+    const memberIds = buckets[i];
+    if (memberIds.length === 0) continue;
 
-      const memberRows = memberIds.map((registrationId, sortOrder) => ({
-        group_id: groupId,
-        registration_id: registrationId,
-        sort_order: sortOrder,
-      }));
-      const { error: mErr } = await db.from("tournament_group_members").insert(memberRows as never);
-      if (mErr) throw new MpError("GROUPS.MEMBERS_FAILED", mErr.message, 500);
+    const { data: groupRow, error: gErr } = await db
+      .from("tournament_groups")
+      .insert({
+        category_id: categoryId,
+        name: groupLabel(i),
+        sort_order: i,
+      } as never)
+      .select("id")
+      .single();
+    if (gErr) throw new MpError("GROUPS.CREATE_FAILED", gErr.message, 500);
+    const groupId = groupRow.id as string;
+    createdGroups.push({ id: groupId, sortOrder: i });
 
-      const rounds = buildRoundRobinRounds(memberIds);
-      const matchRows: Record<string, unknown>[] = [];
-      rounds.forEach((pairs, roundIdx) => {
-        pairs.forEach(([a, b], matchIdx) => {
-          matchRows.push({
-            group_id: groupId,
-            round_no: roundIdx + 1,
-            match_no: matchIdx + 1,
-            side_a_registration_id: a,
-            side_b_registration_id: b,
-            status: "scheduled",
-          });
+    const memberRows = memberIds.map((registrationId, sortOrder) => ({
+      group_id: groupId,
+      registration_id: registrationId,
+      sort_order: sortOrder,
+    }));
+    const { error: mErr } = await db.from("tournament_group_members").insert(memberRows as never);
+    if (mErr) throw new MpError("GROUPS.MEMBERS_FAILED", mErr.message, 500);
+
+    const rounds = buildRoundRobinRounds(memberIds);
+    const matchRows: Record<string, unknown>[] = [];
+    rounds.forEach((pairs, roundIdx) => {
+      pairs.forEach(([a, b], matchIdx) => {
+        matchRows.push({
+          group_id: groupId,
+          round_no: roundIdx + 1,
+          match_no: matchIdx + 1,
+          side_a_registration_id: a,
+          side_b_registration_id: b,
+          status: "scheduled",
         });
       });
-      if (matchRows.length > 0) {
-        const { error: gmErr } = await db.from("tournament_group_matches").insert(matchRows as never);
-        if (gmErr) throw new MpError("GROUPS.MATCHES_FAILED", gmErr.message, 500);
-        matchesCreated += matchRows.length;
-      }
+    });
+    if (matchRows.length > 0) {
+      const { error: gmErr } = await db.from("tournament_group_matches").insert(matchRows as never);
+      if (gmErr) throw new MpError("GROUPS.MATCHES_FAILED", gmErr.message, 500);
+      matchesCreated += matchRows.length;
+    }
+  }
+
+  if (config.scheduling?.courtIds?.length) {
+    await applyCourtSchedule(db, createdGroups, config.scheduling);
+  }
+
+  const { error: stErr } = await db
+    .from("tournament_categories")
+    .update({ stage: "group_stage" } as never)
+    .eq("id", categoryId);
+  if (stErr) throw new MpError("GROUPS.STAGE_FAILED", stErr.message, 500);
+
+  void notifyGroupsDrawn(getAdminClient(), { tournamentId, categoryId });
+
+  return { groupsCreated: buckets.filter((b) => b.length > 0).length, matchesCreated };
+}
+
+const AssignGroupsManuallySchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema,
+  assignments: z
+    .array(
+      z.object({
+        groupIndex: z.number().int().min(0).max(15),
+        registrationIds: z.array(UuidSchema).min(1),
+      }),
+    )
+    .min(1)
+    .max(16),
+});
+
+/**
+ * Sorteo MANUAL de grupos (Opción A). El organizador decide qué inscripción va
+ * a cada grupo (permite tamaños disparejos). Aditivo: `drawTournamentGroups`
+ * (automático) queda intacto; ambos terminan en `persistGroupsFromBuckets`.
+ */
+export async function assignGroupsManually(
+  input: unknown,
+): Promise<ActionResult<{ groupsCreated: number; matchesCreated: number }>> {
+  return runAction(AssignGroupsManuallySchema, input, async ({ tournamentId, categoryId, assignments }) => {
+    const editor = await requireTournamentEditor(tournamentId);
+    const { cat, config } = await loadCategoryContext(categoryId);
+    if ((cat.tournament_id as string) !== tournamentId) {
+      throw new MpError("CATEGORY.NOT_FOUND", "Categoría no pertenece al torneo", 404);
+    }
+    if ((cat.stage as string) !== "pending_groups") {
+      throw new MpError("GROUPS.ALREADY_DRAWN", "Los grupos ya fueron sorteados", 409);
     }
 
-    if (config.scheduling?.courtIds?.length) {
-      await applyCourtSchedule(db, createdGroups, config.scheduling);
-    }
+    const db = groupDb(getAdminClient());
+    const regIds = await acceptedRegistrationIds(db, tournamentId, categoryId);
+    const cfgErr = validateGroupPlayoffConfig(config, regIds.length);
+    if (cfgErr) throw new MpError("GROUPS.INVALID_CONFIG", cfgErr, 422);
 
-    const { error: stErr } = await db
-      .from("tournament_categories")
-      .update({ stage: "group_stage" } as never)
-      .eq("id", categoryId);
-    if (stErr) throw new MpError("GROUPS.STAGE_FAILED", stErr.message, 500);
+    const manualErr = validateManualGroupAssignment(assignments, regIds, config.groupsCount);
+    if (manualErr) throw new MpError("GROUPS.MANUAL_INVALID", manualErr, 422);
 
-    void notifyGroupsDrawn(getAdminClient(), { tournamentId, categoryId });
+    const buckets = [...assignments]
+      .sort((a, b) => a.groupIndex - b.groupIndex)
+      .map((a) => a.registrationIds);
 
-    return { groupsCreated: buckets.filter((b) => b.length > 0).length, matchesCreated };
+    return persistGroupsFromBuckets(db, tournamentId, categoryId, buckets, config, editor);
   });
+}
+
+const ListAcceptedRegsSchema = z.object({
+  tournamentId: UuidSchema,
+  categoryId: UuidSchema,
+});
+
+/**
+ * IDs de inscripciones aceptadas de una categoría. Lo usa el sorteo manual
+ * (Opción A) para saber qué parejas hay que repartir en los grupos.
+ */
+export async function listCategoryAcceptedRegistrationIds(
+  input: unknown,
+): Promise<ActionResult<{ registrationIds: string[] }>> {
+  return runAction(ListAcceptedRegsSchema, input, async ({ tournamentId, categoryId }) => {
+    await requireTournamentEditor(tournamentId);
+    const db = groupDb(getAdminClient());
+    const registrationIds = await acceptedRegistrationIds(db, tournamentId, categoryId);
+    return { registrationIds };
+  });
+}
+
+const AddLateEntryToGroupSchema = z.object({
+  tournamentId: UuidSchema,
+  groupId: UuidSchema,
+  registrationId: UuidSchema,
+});
+
+/**
+ * Ingreso tardío a un grupo (Opción B). Agrega una inscripción aceptada a un
+ * grupo con la fase YA en curso y le crea sus partidos contra los miembros
+ * existentes (status scheduled). Los partidos ya jugados no se tocan; el que
+ * entra juega contra todos. Aditivo: no toca `registerToTournament` ni el
+ * `setup-lock` global — es una operación de roster sobre la estructura viva.
+ */
+export async function addLateEntryToGroup(
+  input: unknown,
+): Promise<ActionResult<{ matchesCreated: number }>> {
+  return runAction(
+    AddLateEntryToGroupSchema,
+    input,
+    async ({ tournamentId, groupId, registrationId }) => {
+      const editor = await requireTournamentEditor(tournamentId);
+      const admin = groupDb(getAdminClient());
+
+      const { data: group } = await admin
+        .from("tournament_groups")
+        .select("id,category_id")
+        .eq("id", groupId)
+        .maybeSingle();
+      if (!group) throw new MpError("GROUPS.NOT_FOUND", "Grupo no encontrado", 404);
+      const categoryId = group.category_id as string;
+
+      const { data: cat } = await admin
+        .from("tournament_categories")
+        .select("id,tournament_id,stage")
+        .eq("id", categoryId)
+        .maybeSingle();
+      if (!cat || (cat.tournament_id as string) !== tournamentId) {
+        throw new MpError("CATEGORY.NOT_FOUND", "Categoría no pertenece al torneo", 404);
+      }
+      if ((cat.stage as string) !== "group_stage") {
+        throw new MpError(
+          "GROUPS.LATE_ENTRY_WRONG_STAGE",
+          "Solo puedes agregar parejas durante la fase de grupos en curso",
+          409,
+        );
+      }
+
+      const { data: reg } = await admin
+        .from("registrations")
+        .select("id,status,tournament_id,category_id")
+        .eq("id", registrationId)
+        .maybeSingle();
+      if (
+        !reg ||
+        (reg.tournament_id as string) !== tournamentId ||
+        (reg.category_id as string) !== categoryId
+      ) {
+        throw new MpError(
+          "GROUPS.LATE_ENTRY_INVALID_REG",
+          "La inscripción no pertenece a esta categoría",
+          422,
+        );
+      }
+      if ((reg.status as string) !== "accepted") {
+        throw new MpError(
+          "GROUPS.LATE_ENTRY_NOT_ACCEPTED",
+          "La inscripción debe estar aceptada",
+          422,
+        );
+      }
+
+      // ¿ya está en algún grupo de la categoría? (constraint: unique por categoría)
+      const { data: catGroups } = await admin
+        .from("tournament_groups")
+        .select("id")
+        .eq("category_id", categoryId);
+      const catGroupIds = (catGroups ?? []).map((g) => g.id as string);
+      if (catGroupIds.length > 0) {
+        const { data: dupe } = await admin
+          .from("tournament_group_members")
+          .select("id")
+          .eq("registration_id", registrationId)
+          .in("group_id", catGroupIds)
+          .maybeSingle();
+        if (dupe) {
+          throw new MpError(
+            "GROUPS.LATE_ENTRY_ALREADY_ASSIGNED",
+            "Esta pareja ya está en un grupo",
+            409,
+          );
+        }
+      }
+
+      const { data: memberRows } = await admin
+        .from("tournament_group_members")
+        .select("registration_id,sort_order")
+        .eq("group_id", groupId)
+        .order("sort_order", { ascending: true });
+      const existingMemberIds = (memberRows ?? []).map((m) => m.registration_id as string);
+
+      const { data: lastMatch } = await admin
+        .from("tournament_group_matches")
+        .select("round_no")
+        .eq("group_id", groupId)
+        .order("round_no", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const maxRound = (lastMatch?.round_no as number | undefined) ?? 0;
+
+      await setAuditActor(getAdminClient(), editor.userId, auditActorRole(editor.actorRole));
+
+      const { error: memErr } = await admin.from("tournament_group_members").insert({
+        group_id: groupId,
+        registration_id: registrationId,
+        sort_order: existingMemberIds.length,
+      } as never);
+      if (memErr) throw new MpError("GROUPS.LATE_ENTRY_MEMBER_FAILED", memErr.message, 500);
+
+      const rows = buildLateEntryMatchRows(registrationId, existingMemberIds, maxRound);
+      let firstMatchId: string | null = null;
+      if (rows.length > 0) {
+        const { data: inserted, error: mErr } = await admin
+          .from("tournament_group_matches")
+          .insert(
+            rows.map((r) => ({
+              group_id: groupId,
+              round_no: r.roundNo,
+              match_no: r.matchNo,
+              side_a_registration_id: r.sideA,
+              side_b_registration_id: r.sideB,
+              status: "scheduled",
+            })) as never,
+          )
+          .select("id");
+        if (mErr) throw new MpError("GROUPS.LATE_ENTRY_MATCHES_FAILED", mErr.message, 500);
+        firstMatchId = (inserted?.[0]?.id as string | undefined) ?? null;
+      }
+
+      if (firstMatchId) {
+        void notifyMatchReady(getAdminClient(), {
+          tournamentId,
+          registrationIds: [registrationId],
+          matchType: "group",
+          matchId: firstMatchId,
+        });
+      }
+
+      return { matchesCreated: rows.length };
+    },
+  );
 }
 
 const ReportGroupMatchSchema = z.object({

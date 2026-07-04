@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLateEntryMatchRows,
   pickAllQualifiers,
   pickBestThirdsGlobal,
   previewGroupPlayoff,
   validateGroupPlayoffConfig,
+  validateManualGroupAssignment,
   type GroupMatchResult,
 } from "@/lib/tournaments/group-stage";
 
@@ -125,5 +127,104 @@ describe("validateGroupPlayoffConfig", () => {
       16,
     );
     expect(err).toMatch(/al menos 2 por grupo/);
+  });
+});
+
+describe("validateManualGroupAssignment", () => {
+  const accepted = ["r1", "r2", "r3", "r4", "r5", "r6"];
+
+  it("acepta una partición válida (incluye grupos disparejos)", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1", "r2", "r3", "r4"] },
+        { groupIndex: 1, registrationIds: ["r5", "r6"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toBeNull();
+  });
+
+  it("rechaza si el número de grupos no coincide con groupsCount", () => {
+    const err = validateManualGroupAssignment(
+      [{ groupIndex: 0, registrationIds: accepted }],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/exactamente 2/);
+  });
+
+  it("rechaza índices de grupo repetidos", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1", "r2", "r3"] },
+        { groupIndex: 0, registrationIds: ["r4", "r5", "r6"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/repetido/);
+  });
+
+  it("rechaza un grupo con menos de 2 parejas", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1"] },
+        { groupIndex: 1, registrationIds: ["r2", "r3", "r4", "r5", "r6"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/al menos 2 parejas/);
+  });
+
+  it("rechaza una inscripción en dos grupos", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1", "r2", "r3"] },
+        { groupIndex: 1, registrationIds: ["r3", "r4", "r5"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/más de un grupo/);
+  });
+
+  it("rechaza una inscripción que no está aceptada", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1", "r2", "rX"] },
+        { groupIndex: 1, registrationIds: ["r3", "r4", "r5"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/no está aceptada/);
+  });
+
+  it("rechaza si quedan parejas sin asignar", () => {
+    const err = validateManualGroupAssignment(
+      [
+        { groupIndex: 0, registrationIds: ["r1", "r2"] },
+        { groupIndex: 1, registrationIds: ["r3", "r4"] },
+      ],
+      accepted,
+      2,
+    );
+    expect(err).toMatch(/Faltan 2 pareja/);
+  });
+});
+
+describe("buildLateEntryMatchRows", () => {
+  it("crea un partido del nuevo contra cada miembro en fechas nuevas", () => {
+    const rows = buildLateEntryMatchRows("new", ["m1", "m2", "m3"], 3);
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.roundNo)).toEqual([4, 5, 6]);
+    expect(rows.every((r) => r.sideA === "new")).toBe(true);
+    expect(rows.map((r) => r.sideB)).toEqual(["m1", "m2", "m3"]);
+  });
+
+  it("grupo sin miembros previos → sin partidos", () => {
+    expect(buildLateEntryMatchRows("new", [], 0)).toHaveLength(0);
   });
 });

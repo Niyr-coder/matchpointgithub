@@ -406,9 +406,17 @@ Config por categoría (`tournament_categories.group_playoff_config` jsonb propue
 {
   "groupsCount": 2,
   "advancePerGroup": 4,
+  "drawMode": "auto",
   "finalScoringOverride": { "type": "side_out", "points": 11, "winBy": 2, "bestOf": 5 }
 }
 ```
+
+`drawMode` (`auto` default | `manual`) — **Opción A, 2026-07**. `auto` = sorteo
+aleatorio equitativo (comportamiento histórico, sin cambios). `manual` = el
+organizador asigna las parejas a mano y puede dejar **grupos disparejos**.
+Ausente/null se trata como `auto` (torneos previos intactos). Es una opción
+aditiva: ambos caminos terminan en el mismo `persistGroupsFromBuckets` y
+producen idéntica estructura de grupos/miembros/calendario.
 
 `advancePerGroup` = cuántos equipos **de cada grupo** pasan a eliminatoria (los
 N primeros de la tabla de ese grupo). Debe ser `< tamaño del grupo` y el total
@@ -420,6 +428,30 @@ Si `finalScoringOverride` es null → usa `tournaments.scoring_config`.
 
 **Sorteo:** con G grupos y R inscripciones aceptadas, repartir `floor(R/G)` o
 `ceil(R/G)` (diferencia máx 1 por grupo). Grupos con nombres A, B, C…
+
+**Sorteo manual (Opción A):** si `config.drawMode === "manual"`, en vez de
+`drawTournamentGroups` (aleatorio) el organizador usa `assignGroupsManually`
+(`{ assignments: [{ groupIndex, registrationIds[] }] }`). Valida con
+`validateManualGroupAssignment` (motor puro): exactamente `groupsCount` grupos,
+índices únicos, cada grupo ≥2 parejas, cada inscripción aceptada asignada una
+sola vez. Permite grupos de distinto tamaño a propósito. La UI es el tablero
+tap-to-assign en `GroupStagePanel` (toggle en `CategoryGroupConfigPanel`;
+`listCategoryAcceptedRegistrationIds` alimenta las parejas a repartir). El
+scheduling por cancha se aplica igual (lee `config.scheduling`).
+
+**Ingreso tardío a un grupo (Opción B):** con la fase `group_stage` ya en
+curso, `addLateEntryToGroup({ tournamentId, groupId, registrationId })` agrega
+una inscripción **aceptada** que aún no está en ningún grupo de la categoría y
+le crea sus partidos contra **todos** los miembros actuales (uno por fecha
+nueva vía `buildLateEntryMatchRows`, status `scheduled`). Los partidos ya
+jugados no se tocan; el total queda igual al RR completo de N+1 equipos, así
+las tablas cierran bien (`closeGroupStage` sigue exigiendo todos `confirmed`).
+Notifica `tournament_match_ready` al que entra + audit. UI: card "Agregar
+pareja tarde" en `GroupStagePanel` (aparece solo si hay aceptadas sin grupo —
+p. ej. un walk-in que el partner sumó con el torneo `live`). Aditivo: no toca
+`registerToTournament` ni el `setup-lock`. **Pendiente v2:** ingreso tardío al
+**cuadro** (reemplazar un bye) — requiere revertir el auto-avance de byes;
+por ahora el ingreso tardío es solo fase de grupos.
 
 **Calendario RR:** dentro de cada grupo, generar fechas balanceadas (round-robin
  clásico: con 4 equipos → 3 fechas). Persistir en `tournament_group_matches`.

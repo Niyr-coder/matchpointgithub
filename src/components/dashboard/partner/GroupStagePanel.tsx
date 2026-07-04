@@ -9,10 +9,13 @@ import { useToast, TOAST_SCORE_MS } from "../ToastProvider";
 import { usePromptModal } from "@/components/dashboard/widgets/PromptModal";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
 import {
+  addLateEntryToGroup,
+  assignGroupsManually,
   closeGroupStage,
   drawTournamentGroups,
   generateKnockoutFromGroups,
   getGroupStageSummary,
+  listCategoryAcceptedRegistrationIds,
   reportGroupMatch,
   correctGroupMatch,
   confirmGroupMatch,
@@ -20,6 +23,7 @@ import {
   resetGroupDraw,
 } from "@/server/actions/tournament-group-stage";
 import type { GroupStageSummary } from "@/server/actions/tournament-group-stage";
+import { groupLabel, validateManualGroupAssignment } from "@/lib/tournaments/group-stage";
 import { GroupStageScheduleView } from "./GroupStageScheduleView";
 import { DeclareWalkoverModal } from "./DeclareWalkoverModal";
 
@@ -128,6 +132,9 @@ export function GroupStagePanel({
     initial && initial.categoryId === (initialCategoryId ?? categories[0]?.id) ? initial : null,
   );
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [manualAcceptedIds, setManualAcceptedIds] = useState<string[] | null>(null);
+  const [lateReg, setLateReg] = useState("");
+  const [lateGroupId, setLateGroupId] = useState("");
 
   const [selectedCourts, setSelectedCourts] = useState<string[]>([]);
   const [slotMin, setSlotMin] = useState(50);
@@ -159,6 +166,14 @@ export function GroupStagePanel({
     [tournamentId, toast],
   );
 
+  const reloadAccepted = useCallback(
+    async (categoryId: string) => {
+      const res = await listCategoryAcceptedRegistrationIds({ tournamentId, categoryId });
+      if (res.ok) setManualAcceptedIds(res.data.registrationIds);
+    },
+    [tournamentId],
+  );
+
   useEffect(() => {
     if (!activeCategoryId) return;
     if (summary?.categoryId === activeCategoryId) return;
@@ -180,12 +195,16 @@ export function GroupStagePanel({
           { table: "tournament_group_matches", filter: `tournament_id=eq.${tournamentId}` },
           { table: "tournament_groups", filter: `category_id=eq.${activeCategoryId}` },
           { table: "tournament_categories", filter: `id=eq.${activeCategoryId}` },
+          // Ingreso tardío (Opción B): un walk-in aceptado debe aparecer en vivo.
+          { table: "registrations", filter: `tournament_id=eq.${tournamentId}` },
         ]
       : [],
     {
       enabled: !!activeCategoryId,
       onChange: () => {
-        if (activeCategoryId) void reloadSummary(activeCategoryId);
+        if (!activeCategoryId) return;
+        void reloadSummary(activeCategoryId);
+        void reloadAccepted(activeCategoryId);
       },
     },
   );
@@ -193,6 +212,13 @@ export function GroupStagePanel({
   const stage = summary?.stage ?? "pending_groups";
   const groups = summary?.groups ?? [];
   const acceptedCount = summary?.acceptedCount ?? 0;
+  const drawMode: "auto" | "manual" =
+    summary?.config.drawMode === "manual" ? "manual" : "auto";
+  // Ingreso tardío (Opción B): aceptadas que aún no están en ningún grupo.
+  const assignedRegIds = new Set(
+    groups.flatMap((g) => g.standings.map((s) => s.registrationId)),
+  );
+  const unassignedLate = (manualAcceptedIds ?? []).filter((id) => !assignedRegIds.has(id));
 
   useEffect(() => {
     if (groups.length === 0) {
@@ -207,6 +233,29 @@ export function GroupStagePanel({
   useEffect(() => {
     setViewMode("groups");
   }, [activeCategoryId]);
+
+  // Inscripciones aceptadas de la categoría: para el sorteo manual (Opción A,
+  // en pending_groups) y para el ingreso tardío (Opción B, en group_stage).
+  useEffect(() => {
+    const needsAccepted =
+      (stage === "pending_groups" && drawMode === "manual") || stage === "group_stage";
+    if (!needsAccepted || !activeCategoryId) {
+      setManualAcceptedIds(null);
+      return;
+    }
+    let cancelled = false;
+    setManualAcceptedIds(null);
+    void listCategoryAcceptedRegistrationIds({ tournamentId, categoryId: activeCategoryId }).then(
+      (res) => {
+        if (cancelled) return;
+        if (res.ok) setManualAcceptedIds(res.data.registrationIds);
+        else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, drawMode, activeCategoryId, tournamentId, toast]);
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? groups[0] ?? null;
   const teamsPerGroup =
@@ -324,6 +373,27 @@ export function GroupStagePanel({
         });
       },
       "Grupos sorteados y calendario generado",
+    );
+  };
+
+  const onManualCreate = (
+    assignments: Array<{ groupIndex: number; registrationIds: string[] }>,
+  ) => {
+    if (!activeCategoryId) return;
+    wrap(
+      "manual",
+      () => assignGroupsManually({ tournamentId, categoryId: activeCategoryId, assignments }),
+      "Grupos creados y calendario generado",
+    );
+  };
+
+  const onAddLate = () => {
+    if (!lateReg || !lateGroupId) return;
+    wrap(
+      "late",
+      () => addLateEntryToGroup({ tournamentId, groupId: lateGroupId, registrationId: lateReg }),
+      "Pareja agregada al grupo",
+      () => setLateReg(""),
     );
   };
 
@@ -455,15 +525,6 @@ export function GroupStagePanel({
     );
   };
 
-  if (categories.length === 0) {
-    return (
-      <div className="card mp-grp-panel">
-        <div className="label-mp">Fase de grupos</div>
-        <p className="mp-grp-empty">Crea una categoría con config de grupos para este torneo.</p>
-      </div>
-    );
-  }
-
   const schedulePendingPlayCount = useMemo(
     () =>
       groups.reduce(
@@ -484,6 +545,15 @@ export function GroupStagePanel({
     () => groups.reduce((n, g) => n + g.matches.length, 0),
     [groups],
   );
+
+  if (categories.length === 0) {
+    return (
+      <div className="card mp-grp-panel">
+        <div className="label-mp">Fase de grupos</div>
+        <p className="mp-grp-empty">Crea una categoría con config de grupos para este torneo.</p>
+      </div>
+    );
+  }
 
   const canEditScores = stage === "group_stage";
   const showScheduling = stage === "pending_groups" || stage === "group_stage";
@@ -540,7 +610,7 @@ export function GroupStagePanel({
               </p>
             </div>
             <div className="mp-grp-panel-actions">
-              {stage === "pending_groups" && (
+              {stage === "pending_groups" && drawMode === "auto" && (
                 <ActionBtn
                   icon="shuffle"
                   label="Sortear grupos"
@@ -690,6 +760,100 @@ export function GroupStagePanel({
               Este torneo no tiene canchas del club configuradas. Los partidos se generan sin
               horario hasta que el club registre canchas.
             </p>
+          )}
+
+          {stage === "pending_groups" &&
+            drawMode === "manual" &&
+            (manualAcceptedIds === null ? (
+              <p className="mp-grp-empty">Cargando inscripciones…</p>
+            ) : (
+              <ManualGroupDraw
+                key={manualAcceptedIds.join(",")}
+                groupsCount={summary.config.groupsCount}
+                advancePerGroup={summary.config.advancePerGroup}
+                acceptedIds={manualAcceptedIds}
+                registrationLabels={registrationLabels}
+                busy={busy === "manual"}
+                onCreate={onManualCreate}
+              />
+            ))}
+
+          {stage === "group_stage" && unassignedLate.length > 0 && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 14,
+                borderRadius: 12,
+                border: "1px solid var(--border)",
+                background: "#fff",
+              }}
+            >
+              <div className="label-mp">Agregar pareja tarde</div>
+              <p style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.5 }}>
+                {unassignedLate.length} inscripción(es) aceptada(s) sin grupo. Al agregar, se le
+                crean sus partidos contra todos los del grupo (los ya jugados no se tocan).
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginTop: 10,
+                }}
+              >
+                <select
+                  value={lateReg}
+                  onChange={(e) => setLateReg(e.target.value)}
+                  style={{
+                    flex: "1 1 200px",
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#0a0a0a",
+                  }}
+                >
+                  <option value="">Elige la pareja…</option>
+                  {unassignedLate.map((id) => (
+                    <option key={id} value={id}>
+                      {registrationLabels[id] ?? "Equipo sin nombre"}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={lateGroupId}
+                  onChange={(e) => setLateGroupId(e.target.value)}
+                  style={{
+                    flex: "1 1 140px",
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#0a0a0a",
+                  }}
+                >
+                  <option value="">Elige el grupo…</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      Grupo {g.name} ({g.standings.length})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={onAddLate}
+                  disabled={!lateReg || !lateGroupId || busy === "late"}
+                >
+                  {busy === "late" ? "Agregando…" : "Agregar al grupo"}
+                </button>
+              </div>
+            </div>
           )}
 
           {groups.length > 0 && (
@@ -1151,5 +1315,295 @@ function ActionBtn({
       <Icon name={icon} size={13} />
       {loading ? "…" : label}
     </button>
+  );
+}
+
+/**
+ * Tablero de asignación manual de grupos (Opción A). Tap-to-assign: cada pareja
+ * sin asignar tiene botones con la letra del grupo; las asignadas se quitan con
+ * ×. Valida en vivo con el mismo `validateManualGroupAssignment` del server.
+ */
+function ManualGroupDraw({
+  groupsCount,
+  advancePerGroup,
+  acceptedIds,
+  registrationLabels,
+  busy,
+  onCreate,
+}: {
+  groupsCount: number;
+  advancePerGroup: number;
+  acceptedIds: string[];
+  registrationLabels: Record<string, string>;
+  busy: boolean;
+  onCreate: (assignments: Array<{ groupIndex: number; registrationIds: string[] }>) => void;
+}) {
+  const [assign, setAssign] = useState<Record<string, number | null>>(() =>
+    Object.fromEntries(acceptedIds.map((id) => [id, null])),
+  );
+
+  const groupCols = Array.from({ length: groupsCount }, (_, i) => i);
+  const unassigned = acceptedIds.filter((id) => assign[id] == null);
+  const bucketOf = (i: number) => acceptedIds.filter((id) => assign[id] === i);
+  const assignments = groupCols.map((i) => ({ groupIndex: i, registrationIds: bucketOf(i) }));
+  const validationError = validateManualGroupAssignment(assignments, acceptedIds, groupsCount);
+  const label = (id: string) => registrationLabels[id] ?? "Equipo sin nombre";
+
+  const setGroup = (id: string, group: number | null) =>
+    setAssign((prev) => ({ ...prev, [id]: group }));
+
+  const autofill = () =>
+    setAssign((prev) => {
+      const next = { ...prev };
+      const counts = groupCols.map((i) => acceptedIds.filter((id) => next[id] === i).length);
+      for (const id of acceptedIds) {
+        if (next[id] != null) continue;
+        let min = 0;
+        for (let i = 1; i < counts.length; i++) if (counts[i] < counts[min]) min = i;
+        next[id] = min;
+        counts[min]++;
+      }
+      return next;
+    });
+
+  const clearAll = () => setAssign(Object.fromEntries(acceptedIds.map((id) => [id, null])));
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 14,
+        borderRadius: 12,
+        border: "1px solid var(--border)",
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <div className="label-mp">Asignar grupos a mano</div>
+          <p style={{ fontSize: 11, color: "var(--muted-fg)", marginTop: 2, lineHeight: 1.5 }}>
+            {acceptedIds.length} parejas · {groupsCount} grupos · pasan {advancePerGroup} por grupo.
+            Toca la letra del grupo para asignar cada pareja.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="btn"
+            style={{ background: "#fff", border: "1px solid var(--border)" }}
+            onClick={autofill}
+            disabled={busy || unassigned.length === 0}
+          >
+            Rellenar parejo
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ background: "#fff", border: "1px solid var(--border)" }}
+            onClick={clearAll}
+            disabled={busy || unassigned.length === acceptedIds.length}
+          >
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div className="label-mp" style={{ marginBottom: 6 }}>
+          Sin asignar ({unassigned.length})
+        </div>
+        {unassigned.length === 0 ? (
+          <p style={{ fontSize: 11, color: "var(--muted-fg)" }}>
+            Todas las parejas están en un grupo.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {unassigned.map((id) => (
+              <div
+                key={id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  justifyContent: "space-between",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "#fff",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#0a0a0a",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={label(id)}
+                >
+                  {label(id)}
+                </span>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {groupCols.map((i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setGroup(id, i)}
+                      disabled={busy}
+                      title={`Mover a Grupo ${groupLabel(i)}`}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        background: "#fff",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: "#0a0a0a",
+                        cursor: busy ? "default" : "pointer",
+                      }}
+                    >
+                      {groupLabel(i)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+          gap: 10,
+        }}
+      >
+        {groupCols.map((i) => {
+          const members = bucketOf(i);
+          const short = members.length < 2;
+          return (
+            <div
+              key={i}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 10,
+                background: "var(--muted)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#0a0a0a" }}>
+                  Grupo {groupLabel(i)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: short ? "#dc2626" : "var(--muted-fg)",
+                  }}
+                >
+                  {members.length} pareja{members.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {members.length === 0 ? (
+                <p style={{ fontSize: 11, color: "var(--muted-fg)" }}>Vacío</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {members.map((id) => (
+                    <div
+                      key={id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 6,
+                        padding: "5px 8px",
+                        borderRadius: 6,
+                        background: "#fff",
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          color: "#0a0a0a",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={label(id)}
+                      >
+                        {label(id)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setGroup(id, null)}
+                        disabled={busy}
+                        aria-label="Quitar del grupo"
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: busy ? "default" : "pointer",
+                          color: "var(--muted-fg)",
+                          fontSize: 15,
+                          lineHeight: 1,
+                          padding: 2,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontSize: 11, color: validationError ? "#dc2626" : "#16a34a" }}>
+          {validationError ?? "Todo listo para crear los grupos."}
+        </span>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy || !!validationError}
+          onClick={() => onCreate(assignments)}
+        >
+          {busy ? "Creando…" : "Crear grupos y calendario"}
+        </button>
+      </div>
+    </div>
   );
 }

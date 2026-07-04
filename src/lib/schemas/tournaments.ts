@@ -62,6 +62,7 @@ export const GroupPlayoffConfigSchema = z
   .object({
     groupsCount: z.number().int().min(1).max(16),
     advancePerGroup: z.number().int().min(1).max(16),
+    drawMode: z.enum(["auto", "manual"]).nullable().optional(),
     groupScoringOverride: ScoringConfigSchema.nullable().optional(),
     finalScoringOverride: ScoringConfigSchema.nullable().optional(),
     scheduling: GroupSchedulingConfigSchema.nullable().optional(),
