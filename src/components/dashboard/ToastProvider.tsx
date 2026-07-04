@@ -13,7 +13,7 @@ export type ToastPayload = {
   tone?: "success" | "error" | "default";
 };
 
-type Toast = ToastPayload & { id: number };
+type Toast = ToastPayload & { id: number; key: string; count: number };
 
 type ToastCtx = (t: ToastPayload) => void;
 
@@ -30,30 +30,73 @@ function resolveDuration(t: ToastPayload): number {
 }
 
 /** Duración recomendada para acciones de marcador / torneo en cancha. */
-export const TOAST_SCORE_MS = 8000;
+export const TOAST_SCORE_MS = 2500;
+
+/** Máximo de toasts visibles a la vez (los más viejos se descartan). */
+const MAX_TOASTS = 3;
+
+/** Toasts iguales (mismo icono+título+sub+tono) colapsan en uno con contador. */
+function toastKey(t: ToastPayload): string {
+  return `${t.icon ?? ""}|${t.title}|${t.sub ?? ""}|${t.tone ?? ""}`;
+}
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastsRef = useRef<Toast[]>([]);
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-  const dismiss = useCallback((id: number) => {
-    const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-    }
-    setToasts((prev) => prev.filter((x) => x.id !== id));
+  const commit = useCallback((next: Toast[]) => {
+    toastsRef.current = next;
+    setToasts(next);
   }, []);
+
+  const dismiss = useCallback(
+    (id: number) => {
+      const timer = timers.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        timers.current.delete(id);
+      }
+      commit(toastsRef.current.filter((x) => x.id !== id));
+    },
+    [commit],
+  );
 
   const push = useCallback(
     (t: ToastPayload) => {
-      const id = Date.now() + Math.random();
-      setToasts((prev) => [...prev, { ...t, id }]);
       const ms = resolveDuration(t);
-      const timer = setTimeout(() => dismiss(id), ms);
-      timers.current.set(id, timer);
+      const key = toastKey(t);
+      const current = toastsRef.current;
+      // Colapso: si ya hay uno igual visible, sube el contador y reinicia timer
+      // (en vez de apilar otro). Así una ráfaga de confirmaciones = 1 toast "×N".
+      const existing = current.find((x) => x.key === key);
+      if (existing) {
+        const old = timers.current.get(existing.id);
+        if (old) clearTimeout(old);
+        timers.current.set(existing.id, setTimeout(() => dismiss(existing.id), ms));
+        commit(
+          current.map((x) =>
+            x.id === existing.id ? { ...x, count: x.count + 1, sub: t.sub ?? x.sub } : x,
+          ),
+        );
+        return;
+      }
+      const id = Date.now() + Math.random();
+      let next: Toast[] = [...current, { ...t, id, key, count: 1 }];
+      // Cap: descarta los más viejos si excede el máximo.
+      while (next.length > MAX_TOASTS) {
+        const dropped = next[0];
+        const dt = timers.current.get(dropped.id);
+        if (dt) {
+          clearTimeout(dt);
+          timers.current.delete(dropped.id);
+        }
+        next = next.slice(1);
+      }
+      commit(next);
+      timers.current.set(id, setTimeout(() => dismiss(id), ms));
     },
-    [dismiss],
+    [commit, dismiss],
   );
 
   useEffect(() => {
@@ -121,7 +164,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.3 }}>{t.title}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.3 }}>
+                  {t.title}
+                  {t.count > 1 ? ` ×${t.count}` : ""}
+                </div>
                 {t.sub && (
                   <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.65)", marginTop: 2 }}>
                     {t.sub}
