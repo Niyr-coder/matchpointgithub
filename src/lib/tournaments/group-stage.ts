@@ -28,10 +28,22 @@ export type KnockoutExtrasConfig = {
 export type GroupPlayoffConfig = {
   groupsCount: number;
   advancePerGroup: number;
+  /**
+   * Cómo se arman los grupos. `auto` (default) = sorteo aleatorio equitativo.
+   * `manual` = el organizador asigna las parejas a mano (Opción A).
+   * Ausente/null se trata como `auto` para no alterar torneos existentes.
+   */
+  drawMode?: "auto" | "manual" | null;
   finalScoringOverride?: ScoringConfig | null;
   scheduling?: GroupSchedulingConfig | null;
   wildcards?: GroupWildcardConfig | null;
   knockoutExtras?: KnockoutExtrasConfig | null;
+};
+
+/** Asignación manual de inscripciones a un grupo (por índice 0-based = A, B, C…). */
+export type ManualGroupAssignment = {
+  groupIndex: number;
+  registrationIds: string[];
 };
 
 export type MatchScore = {
@@ -95,6 +107,91 @@ export function distributeToGroups(registrationIds: string[], groupsCount: numbe
     groups[i % groupsCount].push(id);
   });
   return groups;
+}
+
+/**
+ * Valida una asignación manual de grupos (Opción A) antes de persistir.
+ * Reglas: exactamente `groupsCount` grupos con índices únicos en rango; cada
+ * grupo con ≥2 parejas; cada inscripción aceptada asignada exactamente una vez.
+ * Devuelve el mensaje de error, o `null` si la asignación es válida.
+ */
+export function validateManualGroupAssignment(
+  assignments: ManualGroupAssignment[],
+  acceptedIds: string[],
+  groupsCount: number,
+): string | null {
+  if (assignments.length !== groupsCount) {
+    return `Debes definir exactamente ${groupsCount} grupo(s)`;
+  }
+  const seenIdx = new Set<number>();
+  for (const a of assignments) {
+    if (a.groupIndex < 0 || a.groupIndex >= groupsCount) {
+      return "Un índice de grupo está fuera de rango";
+    }
+    if (seenIdx.has(a.groupIndex)) return "Hay un grupo repetido";
+    seenIdx.add(a.groupIndex);
+  }
+  const accepted = new Set(acceptedIds);
+  const assigned = new Set<string>();
+  for (const a of assignments) {
+    if (a.registrationIds.length < 2) {
+      return "Cada grupo necesita al menos 2 parejas";
+    }
+    for (const rid of a.registrationIds) {
+      if (!accepted.has(rid)) {
+        return "Una inscripción no está aceptada en esta categoría";
+      }
+      if (assigned.has(rid)) return "Una inscripción quedó en más de un grupo";
+      assigned.add(rid);
+    }
+  }
+  if (assigned.size !== accepted.size) {
+    return `Faltan ${accepted.size - assigned.size} pareja(s) por asignar a un grupo`;
+  }
+  return null;
+}
+
+/**
+ * Partidos a crear cuando entra una pareja tarde a un grupo (Opción B): uno
+ * contra cada miembro existente, cada uno en una fecha nueva (para no
+ * duplicar al recién llegado en una misma fecha). Los partidos ya jugados de
+ * los demás no se tocan. El total resultante coincide con el RR completo de
+ * N+1 equipos, así que las tablas quedan consistentes.
+ */
+export function buildLateEntryMatchRows(
+  newRegistrationId: string,
+  existingMemberIds: string[],
+  maxRoundNo: number,
+): Array<{ roundNo: number; matchNo: number; sideA: string; sideB: string }> {
+  return existingMemberIds.map((memberId, i) => ({
+    roundNo: maxRoundNo + 1 + i,
+    matchNo: 1,
+    sideA: newRegistrationId,
+    sideB: memberId,
+  }));
+}
+
+/**
+ * Valida un orden de siembra manual del cuadro (Opción C): debe ser
+ * exactamente una permutación de las inscripciones aceptadas — mismos ids, sin
+ * faltantes, sin duplicados ni extras. El seed 1 es el primero de la lista.
+ * Devuelve el mensaje de error, o `null` si es válido.
+ */
+export function validateManualSeeds(
+  manualSeeds: string[],
+  acceptedIds: string[],
+): string | null {
+  if (manualSeeds.length !== acceptedIds.length) {
+    return `Las semillas deben incluir exactamente a las ${acceptedIds.length} inscripciones aceptadas`;
+  }
+  const accepted = new Set(acceptedIds);
+  const seen = new Set<string>();
+  for (const id of manualSeeds) {
+    if (!accepted.has(id)) return "Una semilla no corresponde a una inscripción aceptada";
+    if (seen.has(id)) return "Una inscripción está repetida en las semillas";
+    seen.add(id);
+  }
+  return null;
 }
 
 /** Round-robin clásico (método del círculo). Devuelve fechas de emparejamientos. */

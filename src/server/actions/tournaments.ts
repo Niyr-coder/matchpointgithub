@@ -24,7 +24,7 @@ import { notifyMatchReady } from "@/lib/notifications/tournament";
 import { advanceFirstRoundByes, type InsertedBracketMatch } from "@/lib/torneos/bracket-byes";
 import { createTournamentRefundRequest, notifyRefundRequested } from "@/lib/payments/refunds";
 import { promoteFromWaitlist } from "@/lib/tournaments/waitlist";
-import { standardBracketPairings } from "@/lib/tournaments/group-stage";
+import { standardBracketPairings, validateManualSeeds } from "@/lib/tournaments/group-stage";
 import {
   BracketMatchSchema,
   BracketSchema,
@@ -1338,12 +1338,18 @@ const GenerateBracketSchema = z.object({
   categoryId: UuidSchema.optional(),
   /** Crear partido por el 3er puesto (solo cuadros de 4+ sin bye en semis). */
   thirdPlaceMatch: z.boolean().optional(),
+  /**
+   * Orden de siembra manual (Opción C): registration_ids en orden de seed
+   * (seed 1 primero). Si viene, reemplaza el seeding por MPR. Debe ser una
+   * permutación exacta de las inscripciones aceptadas.
+   */
+  manualSeeds: z.array(UuidSchema).optional(),
 });
 
 export async function generateBracket(
   input: unknown,
 ): Promise<ActionResult<{ bracketId: string; size: number }>> {
-  return runAction(GenerateBracketSchema, input, async ({ tournamentId, categoryId, thirdPlaceMatch }) => {
+  return runAction(GenerateBracketSchema, input, async ({ tournamentId, categoryId, thirdPlaceMatch, manualSeeds }) => {
     const supabase = await getServerClient();
     const { data: t } = await supabase
       .from("tournaments")
@@ -1428,43 +1434,50 @@ export async function generateBracket(
     let size = 2;
     while (size < ids.length) size *= 2;
 
-    // Seeding por rating MPR (Fase A del plan antes/durante/después): promedio
-    // de player_stats.current_rating del equipo, descendente. Jugadores sin
-    // rating cuentan 2500 (baseline) — sin datos, el orden de inscripción se
-    // preserva (sort estable). Antes: Fisher-Yates aleatorio.
-    const { data: regPlayersRaw } = await supabase
-      .from("registrations")
-      .select("id,player_ids")
-      .in("id", ids);
-    const regPlayers = (regPlayersRaw ?? []) as Array<{ id: string; player_ids: string[] | null }>;
-    const allPlayerIds = Array.from(
-      new Set(regPlayers.flatMap((r) => (r.player_ids ?? []).filter(Boolean))),
-    );
-    const statsMode = (t.modality as string | null) === "singles" ? "singles" : "doubles";
-    const ratingByUser = new Map<string, number>();
-    if (allPlayerIds.length > 0) {
-      const { data: stats } = await supabase
-        .from("player_stats")
-        .select("user_id,current_rating")
-        .eq("sport", t.sport as never)
-        .eq("mode", statsMode as never)
-        .in("user_id", allPlayerIds);
-      for (const s of (stats ?? []) as Array<{ user_id: string; current_rating: number }>) {
-        ratingByUser.set(s.user_id, s.current_rating);
+    // Orden de siembra: manual (Opción C) o por rating MPR (default).
+    let seedOrder: string[];
+    if (manualSeeds && manualSeeds.length > 0) {
+      const seedErr = validateManualSeeds(manualSeeds, ids);
+      if (seedErr) throw new MpError("BRACKETS.SEED_INVALID", seedErr, 422);
+      seedOrder = [...manualSeeds];
+    } else {
+      // Seeding por rating MPR: promedio de player_stats.current_rating del
+      // equipo, descendente. Jugadores sin rating cuentan 2500 (baseline) — sin
+      // datos, el orden de inscripción se preserva (sort estable).
+      const { data: regPlayersRaw } = await supabase
+        .from("registrations")
+        .select("id,player_ids")
+        .in("id", ids);
+      const regPlayers = (regPlayersRaw ?? []) as Array<{ id: string; player_ids: string[] | null }>;
+      const allPlayerIds = Array.from(
+        new Set(regPlayers.flatMap((r) => (r.player_ids ?? []).filter(Boolean))),
+      );
+      const statsMode = (t.modality as string | null) === "singles" ? "singles" : "doubles";
+      const ratingByUser = new Map<string, number>();
+      if (allPlayerIds.length > 0) {
+        const { data: stats } = await supabase
+          .from("player_stats")
+          .select("user_id,current_rating")
+          .eq("sport", t.sport as never)
+          .eq("mode", statsMode as never)
+          .in("user_id", allPlayerIds);
+        for (const s of (stats ?? []) as Array<{ user_id: string; current_rating: number }>) {
+          ratingByUser.set(s.user_id, s.current_rating);
+        }
       }
-    }
-    const ratingByReg = new Map<string, number>();
-    for (const r of regPlayers) {
-      const pids = (r.player_ids ?? []).filter(Boolean);
-      const ratings = pids.map((p) => ratingByUser.get(p) ?? 2500);
-      ratingByReg.set(
-        r.id,
-        ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 2500,
+      const ratingByReg = new Map<string, number>();
+      for (const r of regPlayers) {
+        const pids = (r.player_ids ?? []).filter(Boolean);
+        const ratings = pids.map((p) => ratingByUser.get(p) ?? 2500);
+        ratingByReg.set(
+          r.id,
+          ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 2500,
+        );
+      }
+      seedOrder = [...ids].sort(
+        (a, b) => (ratingByReg.get(b) ?? 2500) - (ratingByReg.get(a) ?? 2500),
       );
     }
-    const seedOrder = [...ids].sort(
-      (a, b) => (ratingByReg.get(b) ?? 2500) - (ratingByReg.get(a) ?? 2500),
-    );
     // Emparejamiento estándar por seed (1 vs último, etc): los byes caen en
     // los seeds altos, como corresponde.
     const seeds: Array<string | null> = [...seedOrder];

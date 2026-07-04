@@ -923,6 +923,7 @@ export default async function PartnerTorneoPage({
                 {!isClosed && tournamentFormat === "single_elim" && categories.length > 0 && (
                   <TournamentBracketsSetupPanel
                     tournamentId={t.id as string}
+                    registrationLabels={registrationLabels}
                     categories={((catsRaw ?? []) as unknown as CatRow[]).map((c) => ({
                       id: c.id,
                       name: c.name,

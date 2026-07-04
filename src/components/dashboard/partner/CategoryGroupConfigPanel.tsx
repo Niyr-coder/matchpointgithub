@@ -38,6 +38,7 @@ function defaultConfig(): GroupPlayoffConfig {
   return {
     groupsCount: 2,
     advancePerGroup: 2,
+    drawMode: "auto",
     finalScoringOverride: null,
     wildcards: null,
     knockoutExtras: null,
@@ -48,6 +49,7 @@ function parseConfig(raw: GroupPlayoffConfig): GroupPlayoffConfig {
   return {
     groupsCount: raw.groupsCount ?? 2,
     advancePerGroup: raw.advancePerGroup ?? 2,
+    drawMode: raw.drawMode ?? "auto",
     finalScoringOverride: raw.finalScoringOverride ?? null,
     scheduling: raw.scheduling ?? null,
     wildcards: raw.wildcards ?? null,
@@ -80,6 +82,9 @@ export function CategoryGroupConfigPanel({
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(
     !!active?.config.knockoutExtras?.thirdPlaceMatch,
   );
+  const [drawMode, setDrawMode] = useState<"auto" | "manual">(
+    active?.config.drawMode === "manual" ? "manual" : "auto",
+  );
   const [saving, setSaving] = useState(false);
 
   const switchCategory = (c: GroupConfigCategoryRow) => {
@@ -91,6 +96,7 @@ export function CategoryGroupConfigPanel({
     setFinalBo5(!!cfg.finalScoringOverride?.bestOf && cfg.finalScoringOverride.bestOf >= 5);
     setBestThirds(String(cfg.wildcards?.mode === "best_thirds_global" ? cfg.wildcards.count : 0));
     setThirdPlaceMatch(!!cfg.knockoutExtras?.thirdPlaceMatch);
+    setDrawMode(cfg.drawMode === "manual" ? "manual" : "auto");
   };
 
   const draftConfig = useMemo((): GroupPlayoffConfig => {
@@ -98,14 +104,18 @@ export function CategoryGroupConfigPanel({
     return {
       groupsCount: Number(groupsCount) || 1,
       advancePerGroup: Number(advancePerGroup) || 1,
+      drawMode,
       finalScoringOverride: finalBo5
         ? { type: "side_out", points: 11, winBy: 2, bestOf: 5 }
         : null,
+      // Preservar la programación por cancha (se guarda aparte con
+      // saveGroupStageScheduling); sin esto, guardar el formato la borraba.
+      scheduling: active?.config.scheduling ?? null,
       wildcards:
         wc > 0 ? { mode: "best_thirds_global", count: wc } : null,
       knockoutExtras: thirdPlaceMatch ? { thirdPlaceMatch: true } : null,
     };
-  }, [groupsCount, advancePerGroup, finalBo5, bestThirds, thirdPlaceMatch]);
+  }, [groupsCount, advancePerGroup, drawMode, finalBo5, bestThirds, thirdPlaceMatch, active]);
 
   const preview = useMemo(() => {
     if (!active) return null;
@@ -278,6 +288,46 @@ export function CategoryGroupConfigPanel({
                 style={inputStyle}
               />
             </Field>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div className="label-mp" style={{ marginBottom: 8 }}>
+              Armado de grupos
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["auto", "manual"] as const).map((mode) => {
+                const on = drawMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={structureLocked}
+                    onClick={() => setDrawMode(mode)}
+                    className={`btn${on ? " btn-primary" : ""}`}
+                    style={
+                      on
+                        ? { flex: 1 }
+                        : { flex: 1, background: "#fff", border: "1px solid var(--border)" }
+                    }
+                  >
+                    {mode === "auto" ? "Sorteo automático" : "Asignar a mano"}
+                  </button>
+                );
+              })}
+            </div>
+            <span
+              style={{
+                display: "block",
+                fontSize: 10.5,
+                color: "var(--muted-fg)",
+                lineHeight: 1.45,
+                marginTop: 6,
+              }}
+            >
+              {drawMode === "auto"
+                ? "Las parejas se reparten al azar en grupos parejos (comportamiento por defecto)."
+                : "Tú decides qué pareja va a cada grupo desde Operación. Permite grupos de distinto tamaño."}
+            </span>
           </div>
 
           <div style={{ marginTop: 14 }}>
