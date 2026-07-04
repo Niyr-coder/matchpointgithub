@@ -356,6 +356,15 @@ se filtra al propio uid). Walkovers no cuentan (no generan filas).
    promedio de `player_stats.current_rating` del equipo (sport + mode según
    modality, default 2500) + `standardBracketPairings` (1 vs último; byes
    caen en seeds altos). Ya NO es Fisher-Yates aleatorio.
+   **Siembra manual (Opción C, 2026-07):** `generateBracket` acepta
+   `manualSeeds?` (registration_ids en orden de seed). Si viene, reemplaza el
+   MPR — validado con `validateManualSeeds` (permutación exacta de las
+   aceptadas; error `BRACKETS.SEED_INVALID`). Es aditivo y opt-in: sin
+   `manualSeeds`, todo sigue por MPR. UI: botón "Sembrar a mano" por categoría
+   en `TournamentBracketsSetupPanel` (reordenar con ▲▼ y "Generar con este
+   orden"). v1 = solo `single_elim`; sin feature flag (el opt-in es el editor).
+   **Pendiente v2:** override manual del seeding en `generateKnockoutFromGroups`
+   (cuadro que sale de grupos) y swap de slots sobre un cuadro ya generado.
 12. **Check-in del día** (mig `20260716000000`): `registrations.checked_in_at`
    — el organizador marca presentes desde la lista de inscritos de gestión
    (`setRegistrationCheckIn`, contador "X/Y presentes"). Resolver no-shows
@@ -365,7 +374,10 @@ se filtra al propio uid). Walkovers no cuentan (no generan filas).
 
 - [ ] Cronograma + premios visibles en `/eventos/[slug]` (hoy solo en preview interno)
 - [x] Notif `tournament_published` y `tournament_finished` — implementadas · `20260605130000`
-- [ ] Bracket editor visual (hoy solo `generateBracket` random + render)
+- [~] Bracket editor visual — v1: siembra manual antes de generar
+  (`manualSeeds`, botón "Sembrar a mano" en `TournamentBracketsSetupPanel`,
+  single_elim). Pendiente v2: reordenar/swap sobre un cuadro YA generado + el
+  mismo override en grupos→llave.
 - [ ] Match reporting (reportar resultados de cada partido del cuadro)
 - [ ] Estelar pago con flujo de transacción (hoy solo admin lo marca tras cobro manual)
 - [ ] Filtrar torneos cancelados del widget user "Mis torneos" tras N días

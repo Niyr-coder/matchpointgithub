@@ -171,6 +171,29 @@ export function buildLateEntryMatchRows(
   }));
 }
 
+/**
+ * Valida un orden de siembra manual del cuadro (Opción C): debe ser
+ * exactamente una permutación de las inscripciones aceptadas — mismos ids, sin
+ * faltantes, sin duplicados ni extras. El seed 1 es el primero de la lista.
+ * Devuelve el mensaje de error, o `null` si es válido.
+ */
+export function validateManualSeeds(
+  manualSeeds: string[],
+  acceptedIds: string[],
+): string | null {
+  if (manualSeeds.length !== acceptedIds.length) {
+    return `Las semillas deben incluir exactamente a las ${acceptedIds.length} inscripciones aceptadas`;
+  }
+  const accepted = new Set(acceptedIds);
+  const seen = new Set<string>();
+  for (const id of manualSeeds) {
+    if (!accepted.has(id)) return "Una semilla no corresponde a una inscripción aceptada";
+    if (seen.has(id)) return "Una inscripción está repetida en las semillas";
+    seen.add(id);
+  }
+  return null;
+}
+
 /** Round-robin clásico (método del círculo). Devuelve fechas de emparejamientos. */
 export function buildRoundRobinRounds(memberIds: string[]): Array<Array<[string, string]>> {
   const teams = [...memberIds];

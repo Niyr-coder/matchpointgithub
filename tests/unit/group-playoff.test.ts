@@ -6,6 +6,7 @@ import {
   previewGroupPlayoff,
   validateGroupPlayoffConfig,
   validateManualGroupAssignment,
+  validateManualSeeds,
   type GroupMatchResult,
 } from "@/lib/tournaments/group-stage";
 
@@ -226,5 +227,25 @@ describe("buildLateEntryMatchRows", () => {
 
   it("grupo sin miembros previos → sin partidos", () => {
     expect(buildLateEntryMatchRows("new", [], 0)).toHaveLength(0);
+  });
+});
+
+describe("validateManualSeeds", () => {
+  const ids = ["a", "b", "c"];
+
+  it("acepta una permutación exacta", () => {
+    expect(validateManualSeeds(["c", "a", "b"], ids)).toBeNull();
+  });
+
+  it("rechaza si faltan o sobran inscripciones", () => {
+    expect(validateManualSeeds(["a", "b"], ids)).toMatch(/exactamente/);
+  });
+
+  it("rechaza duplicados", () => {
+    expect(validateManualSeeds(["a", "a", "b"], ids)).toMatch(/repetida/);
+  });
+
+  it("rechaza una semilla que no es inscripción aceptada", () => {
+    expect(validateManualSeeds(["a", "b", "x"], ids)).toMatch(/no corresponde/);
   });
 });
