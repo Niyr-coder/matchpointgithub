@@ -37,20 +37,14 @@ export function GroupStageScheduleView({
   summary,
   registrationLabels,
   canEditScores,
-  reportingMatchId,
-  confirmingMatchId,
-  reportingBusy,
-  confirmingBusy,
+  savingIds,
   onScoreSubmit,
   onConfirmMatch,
 }: {
   summary: GroupStageSummary;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
-  reportingMatchId: string | null;
-  confirmingMatchId: string | null;
-  reportingBusy: boolean;
-  confirmingBusy: boolean;
+  savingIds: Set<string>;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
   onConfirmMatch: (matchId: string) => void;
 }) {
@@ -167,10 +161,7 @@ export function GroupStageScheduleView({
                             showTime={showCourtTime}
                             registrationLabels={registrationLabels}
                             canEditScores={canEditScores}
-                            reportingMatchId={reportingMatchId}
-                            confirmingMatchId={confirmingMatchId}
-                            reportingBusy={reportingBusy}
-                            confirmingBusy={confirmingBusy}
+                            savingIds={savingIds}
                             onScoreSubmit={onScoreSubmit}
                             onConfirmMatch={onConfirmMatch}
                           />
@@ -196,10 +187,7 @@ function ScheduleMatchCard({
   showTime,
   registrationLabels,
   canEditScores,
-  reportingMatchId,
-  confirmingMatchId,
-  reportingBusy,
-  confirmingBusy,
+  savingIds,
   onScoreSubmit,
   onConfirmMatch,
 }: {
@@ -208,10 +196,7 @@ function ScheduleMatchCard({
   showTime: boolean;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
-  reportingMatchId: string | null;
-  confirmingMatchId: string | null;
-  reportingBusy: boolean;
-  confirmingBusy: boolean;
+  savingIds: Set<string>;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
   onConfirmMatch: (matchId: string) => void;
 }) {
@@ -237,10 +222,7 @@ function ScheduleMatchCard({
       correctable={canEditScores && (awaiting || confirmed)}
       confirmable={canEditScores && awaiting}
       onConfirm={() => onConfirmMatch(match.id)}
-      busy={
-        (reportingMatchId === match.id && reportingBusy) ||
-        (confirmingMatchId === match.id && confirmingBusy)
-      }
+      busy={savingIds.has(match.id)}
       dimmed={confirmed}
       embedded
       meta={metaParts.join(" · ")}

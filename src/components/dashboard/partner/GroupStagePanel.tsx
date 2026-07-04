@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
@@ -26,6 +26,42 @@ import type { GroupStageSummary } from "@/server/actions/tournament-group-stage"
 import { groupLabel, validateManualGroupAssignment } from "@/lib/tournaments/group-stage";
 import { GroupStageScheduleView } from "./GroupStageScheduleView";
 import { DeclareWalkoverModal } from "./DeclareWalkoverModal";
+import { REALTIME_DEBOUNCE } from "@/lib/realtime/debounce";
+
+/**
+ * Parche optimista de un partido de grupo (Opción de latencia): se aplica al
+ * instante en la UI mientras el server confirma. `score`/`winnerSide` solo
+ * vienen al reportar/corregir; al confirmar basta el `status`.
+ */
+type GroupScorePatch = {
+  score?: { sets: Array<{ a: number; b: number }> };
+  winnerSide?: "a" | "b";
+  status: string;
+};
+
+/** Aplica los parches optimistas a las matches del summary (no toca standings). */
+function applyScorePatches(
+  summary: GroupStageSummary | null,
+  patches: Record<string, GroupScorePatch>,
+): GroupStageSummary | null {
+  if (!summary || Object.keys(patches).length === 0) return summary;
+  return {
+    ...summary,
+    groups: summary.groups.map((g) => ({
+      ...g,
+      matches: g.matches.map((m) => {
+        const p = patches[m.id];
+        if (!p) return m;
+        return {
+          ...m,
+          ...(p.score !== undefined ? { score: p.score } : {}),
+          ...(p.winnerSide !== undefined ? { winnerSide: p.winnerSide } : {}),
+          status: p.status,
+        };
+      }),
+    })),
+  };
+}
 
 export type GroupStageCategory = {
   id: string;
@@ -116,8 +152,12 @@ export function GroupStagePanel({
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
-  const [reportingMatchId, setReportingMatchId] = useState<string | null>(null);
-  const [confirmingMatchId, setConfirmingMatchId] = useState<string | null>(null);
+  // Latencia del marcador: optimismo per-match + guard per-match (no un `busy`
+  // global que descarta taps) + ventana para ignorar el eco de realtime propio.
+  const [scoreOptimistic, setScoreOptimistic] = useState<Record<string, GroupScorePatch>>({});
+  const [savingScoreIds, setSavingScoreIds] = useState<Set<string>>(() => new Set());
+  const skipRealtimeUntil = useRef(0);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [walkoverTarget, setWalkoverTarget] = useState<{
     matchId: string;
     teamA: string;
@@ -174,6 +214,46 @@ export function GroupStagePanel({
     [tournamentId],
   );
 
+  // Reconciliación DEBOUNCED: una ráfaga de confirmaciones (o de ecos de
+  // realtime) colapsa en un solo refetch. La comparte el éxito de la acción y
+  // el realtime onChange, así no se refetchea dos veces por marcador.
+  const scheduleReload = useCallback(() => {
+    if (!activeCategoryId) return;
+    const cid = activeCategoryId;
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => {
+      void reloadSummary(cid);
+      void reloadAccepted(cid);
+    }, REALTIME_DEBOUNCE.LIVE);
+  }, [activeCategoryId, reloadSummary, reloadAccepted]);
+
+  useEffect(
+    () => () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    },
+    [],
+  );
+
+  // Limpia el parche optimista cuando el server ya refleja el mismo estado.
+  useEffect(() => {
+    if (!summary) return;
+    setScoreOptimistic((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const statusById = new Map<string, string>();
+      for (const g of summary.groups) for (const m of g.matches) statusById.set(m.id, m.status);
+      const next = { ...prev };
+      let changed = false;
+      for (const id of Object.keys(prev)) {
+        const serverStatus = statusById.get(id);
+        if (serverStatus !== undefined && serverStatus === prev[id].status) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [summary]);
+
   useEffect(() => {
     if (!activeCategoryId) return;
     if (summary?.categoryId === activeCategoryId) return;
@@ -203,14 +283,20 @@ export function GroupStagePanel({
       enabled: !!activeCategoryId,
       onChange: () => {
         if (!activeCategoryId) return;
-        void reloadSummary(activeCategoryId);
-        void reloadAccepted(activeCategoryId);
+        // Ignora el eco de nuestra propia escritura (ya mostramos el optimista);
+        // los cambios de otros (otro monitor, otra pantalla) sí reconcilian.
+        if (Date.now() < skipRealtimeUntil.current) return;
+        scheduleReload();
       },
     },
   );
 
   const stage = summary?.stage ?? "pending_groups";
-  const groups = summary?.groups ?? [];
+  const mergedSummary = useMemo(
+    () => applyScorePatches(summary, scoreOptimistic),
+    [summary, scoreOptimistic],
+  );
+  const groups = mergedSummary?.groups ?? [];
   const acceptedCount = summary?.acceptedCount ?? 0;
   const drawMode: "auto" | "manual" =
     summary?.config.drawMode === "manual" ? "manual" : "auto";
@@ -306,8 +392,6 @@ export function GroupStagePanel({
         }
       } finally {
         setBusy(null);
-        setReportingMatchId(null);
-        setConfirmingMatchId(null);
       }
     });
   };
@@ -398,12 +482,15 @@ export function GroupStagePanel({
   };
 
   const closeReadiness = useMemo(() => {
-    if (groups.length === 0) return { canClose: false, confirmed: 0, expected: 0, awaiting: 0, pending: 0 };
+    // Sobre datos del server (raw), NO optimistas: "Cerrar grupos" solo se
+    // habilita cuando el server confirmó de verdad todos los partidos.
+    const rawGroups = summary?.groups ?? [];
+    if (rawGroups.length === 0) return { canClose: false, confirmed: 0, expected: 0, awaiting: 0, pending: 0 };
     let confirmed = 0;
     let expected = 0;
     let awaiting = 0;
     let pending = 0;
-    for (const g of groups) {
+    for (const g of rawGroups) {
       expected += (g.members.length * (g.members.length - 1)) / 2;
       for (const m of g.matches) {
         if (isMatchConfirmed(m.status)) confirmed++;
@@ -418,7 +505,7 @@ export function GroupStagePanel({
       awaiting,
       pending,
     };
-  }, [groups]);
+  }, [summary]);
 
   const onCloseGroups = async () => {
     if (!closeReadiness.canClose) {
@@ -484,8 +571,8 @@ export function GroupStagePanel({
   };
 
   const onScoreSubmit = (matchId: string, setsA: number, setsB: number) => {
-    if (busy) return;
-    const winnerSide = setsA > setsB ? "a" : "b";
+    if (savingScoreIds.has(matchId)) return;
+    const winnerSide: "a" | "b" = setsA > setsB ? "a" : "b";
     let isCorrection = false;
     for (const g of groups) {
       const m = g.matches.find((x) => x.id === matchId);
@@ -494,35 +581,68 @@ export function GroupStagePanel({
         break;
       }
     }
-    setReportingMatchId(matchId);
-    wrap(
-      isCorrection ? "correct" : "report",
-      () =>
-        isCorrection
-          ? correctGroupMatch({
-              tournamentId,
-              matchId,
-              winnerSide,
-              score: { sets: [{ a: setsA, b: setsB }] },
-            })
-          : reportGroupMatch({
-              tournamentId,
-              matchId,
-              winnerSide,
-              score: { sets: [{ a: setsA, b: setsB }] },
-            }),
-      isCorrection ? "Marcador corregido" : "Resultado registrado",
-    );
+    const score = { sets: [{ a: setsA, b: setsB }] };
+    // Optimista: se ve al instante; el server reconcilia por scheduleReload.
+    setScoreOptimistic((prev) => ({ ...prev, [matchId]: { score, winnerSide, status: "reported" } }));
+    setSavingScoreIds((prev) => new Set(prev).add(matchId));
+    skipRealtimeUntil.current = Date.now() + 2500;
+    startTx(async () => {
+      try {
+        const res = isCorrection
+          ? await correctGroupMatch({ tournamentId, matchId, winnerSide, score })
+          : await reportGroupMatch({ tournamentId, matchId, winnerSide, score });
+        if (res.ok) {
+          toast({
+            icon: "check",
+            title: isCorrection ? "Marcador corregido" : "Resultado registrado",
+            durationMs: TOAST_SCORE_MS,
+          });
+          scheduleReload();
+        } else {
+          setScoreOptimistic((prev) => {
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+          toast({ icon: "alert-triangle", title: "No se pudo", sub: res.error.message, tone: "error" });
+        }
+      } finally {
+        setSavingScoreIds((prev) => {
+          const next = new Set(prev);
+          next.delete(matchId);
+          return next;
+        });
+      }
+    });
   };
 
   const onConfirmMatch = (matchId: string) => {
-    if (busy) return;
-    setConfirmingMatchId(matchId);
-    wrap(
-      "confirm",
-      () => confirmGroupMatch({ tournamentId, matchId }),
-      "Resultado confirmado",
-    );
+    if (savingScoreIds.has(matchId)) return;
+    setScoreOptimistic((prev) => ({ ...prev, [matchId]: { status: "confirmed" } }));
+    setSavingScoreIds((prev) => new Set(prev).add(matchId));
+    skipRealtimeUntil.current = Date.now() + 2500;
+    startTx(async () => {
+      try {
+        const res = await confirmGroupMatch({ tournamentId, matchId });
+        if (res.ok) {
+          toast({ icon: "check", title: "Resultado confirmado", durationMs: TOAST_SCORE_MS });
+          scheduleReload();
+        } else {
+          setScoreOptimistic((prev) => {
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+          toast({ icon: "alert-triangle", title: "No se pudo", sub: res.error.message, tone: "error" });
+        }
+      } finally {
+        setSavingScoreIds((prev) => {
+          const next = new Set(prev);
+          next.delete(matchId);
+          return next;
+        });
+      }
+    });
   };
 
   const schedulePendingPlayCount = useMemo(
@@ -892,13 +1012,10 @@ export function GroupStagePanel({
 
           {groups.length > 0 && viewMode === "schedule" && (
             <GroupStageScheduleView
-              summary={summary}
+              summary={mergedSummary ?? summary}
               registrationLabels={registrationLabels}
               canEditScores={canEditScores}
-              reportingMatchId={reportingMatchId}
-              confirmingMatchId={confirmingMatchId}
-              reportingBusy={busy === "report"}
-              confirmingBusy={busy === "confirm"}
+              savingIds={savingScoreIds}
               onScoreSubmit={onScoreSubmit}
               onConfirmMatch={onConfirmMatch}
             />
@@ -982,10 +1099,7 @@ export function GroupStagePanel({
                             totalCount={selectedTotalCount}
                             registrationLabels={registrationLabels}
                             canEditScores={canEditScores}
-                            reportingMatchId={reportingMatchId}
-                            confirmingMatchId={confirmingMatchId}
-                            reportingBusy={busy === "report"}
-                            confirmingBusy={busy === "confirm"}
+                            savingIds={savingScoreIds}
                             onScoreSubmit={onScoreSubmit}
                             onConfirmMatch={onConfirmMatch}
                             playerOpsEnabled={playerOpsEnabled}
@@ -1185,10 +1299,7 @@ function GroupMatchesPane({
   totalCount,
   registrationLabels,
   canEditScores,
-  reportingMatchId,
-  confirmingMatchId,
-  reportingBusy,
-  confirmingBusy,
+  savingIds,
   onScoreSubmit,
   onConfirmMatch,
   playerOpsEnabled = false,
@@ -1198,10 +1309,7 @@ function GroupMatchesPane({
   totalCount: number;
   registrationLabels: Record<string, string>;
   canEditScores: boolean;
-  reportingMatchId: string | null;
-  confirmingMatchId: string | null;
-  reportingBusy: boolean;
-  confirmingBusy: boolean;
+  savingIds: Set<string>;
   onScoreSubmit: (matchId: string, setsA: number, setsB: number) => void;
   onConfirmMatch: (matchId: string) => void;
   playerOpsEnabled?: boolean;
@@ -1247,10 +1355,7 @@ function GroupMatchesPane({
                     correctable={canEditScores && (awaiting || confirmed)}
                     confirmable={canEditScores && awaiting}
                     onConfirm={() => onConfirmMatch(m.id)}
-                    busy={
-                      (reportingMatchId === m.id && reportingBusy) ||
-                      (confirmingMatchId === m.id && confirmingBusy)
-                    }
+                    busy={savingIds.has(m.id)}
                     dimmed={confirmed || isWalkover}
                     meta={isWalkover ? `W/O · Partido ${m.matchNo}` : `Partido ${m.matchNo}`}
                     onScoreSubmit={onScoreSubmit}
