@@ -39,15 +39,28 @@ export async function loadReceptionQueue(
   const graceMs = (opts?.lateGraceMinutes ?? 30) * 60 * 1000;
   const windowEnd = new Date(now.getTime() + windowHours * 3600 * 1000);
 
-  const { data: reservations, error } = await supabase
-    .from("reservations")
-    .select(
-      "id,during,sport,source,organizer_id,for_user_id,notes,check_in_code,max_players,courts(code,name)",
-    )
-    .eq("club_id", clubId)
-    .overlaps("during", overlapsRangeIso(now, windowEnd))
-    .in("status", [...ACTIVE_STATUSES])
-    .limit(80);
+  // Mismo patrón tolerante que MisReservasScreen: en prod puede faltar la
+  // columna check_in_code (drift de migración) — si el select falla por eso,
+  // se reintenta sin ella y el código cae al label legacy (prefijo del UUID).
+  const SELECT_WITH_CODE =
+    "id,during,sport,source,organizer_id,for_user_id,notes,check_in_code,max_players,courts(code,name)";
+  const SELECT_WITHOUT_CODE =
+    "id,during,sport,source,organizer_id,for_user_id,notes,max_players,courts(code,name)";
+
+  const query = (cols: string) =>
+    supabase
+      .from("reservations")
+      .select(cols)
+      .eq("club_id", clubId)
+      .overlaps("during", overlapsRangeIso(now, windowEnd))
+      .in("status", [...ACTIVE_STATUSES])
+      .limit(80);
+
+  let res = await query(SELECT_WITH_CODE);
+  if (res.error?.message.includes("check_in_code")) {
+    res = await query(SELECT_WITHOUT_CODE);
+  }
+  const { data: reservations, error } = res;
 
   if (error) throw new Error(`RECEPTION.RESERVATIONS_FAILED: ${error.message}`);
 
