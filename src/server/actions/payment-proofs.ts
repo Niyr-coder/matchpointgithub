@@ -205,6 +205,9 @@ export async function approvePaymentProofAdmin(
     }
 
     const nowIso = new Date().toISOString();
+    // CAS: el filtro por status garantiza que ante dos aprobaciones
+    // concurrentes gane exactamente una — sin esto, la cascada de captura
+    // corría dos veces (doble activación de plan/featuring + doble conteo).
     const { data, error } = await supabase
       .from("transactions")
       .update({
@@ -214,9 +217,17 @@ export async function approvePaymentProofAdmin(
         proof_rejection_reason: null,
       } as never)
       .eq("id", transactionId)
+      .eq("status", "proof_submitted")
       .select("id,status,proof_url,proof_submitted_at,proof_reviewed_at,proof_rejection_reason")
-      .single();
+      .maybeSingle();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+    if (!data) {
+      throw new MpError(
+        "PAYMENT_PROOF.INVALID_STATE",
+        "Otro revisor procesó este comprobante hace un instante",
+        409,
+      );
+    }
 
     await runTransactionCaptureCascade(supabase, {
       id: tx.id as string,
@@ -266,6 +277,8 @@ export async function rejectPaymentProofAdmin(
     }
 
     const nowIso = new Date().toISOString();
+    // CAS: sin el filtro por status, un reject concurrente con un approve
+    // podía revertir una transacción ya capturada a pending_proof.
     const { data, error } = await supabase
       .from("transactions")
       .update({
@@ -278,9 +291,17 @@ export async function rejectPaymentProofAdmin(
         proof_submitted_at: null,
       } as never)
       .eq("id", transactionId)
+      .eq("status", "proof_submitted")
       .select("id,status,proof_url,proof_submitted_at,proof_reviewed_at,proof_rejection_reason")
-      .single();
+      .maybeSingle();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+    if (!data) {
+      throw new MpError(
+        "PAYMENT_PROOF.INVALID_STATE",
+        "Otro revisor procesó este comprobante hace un instante",
+        409,
+      );
+    }
 
     // Notificar al customer con la razón del rechazo. Best-effort: si falla
     // la cola, la mutación principal sigue siendo válida.
