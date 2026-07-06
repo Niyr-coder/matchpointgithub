@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080" role="img" aria-label="Bracket single-elim 8 seeds — MATCHPOINT">
+  <title>Bracket single-elim 8 seeds — MATCHPOINT</title>
+  <desc>Plantilla de bracket de eliminación directa 8 seeds. Placeholder para nombres del circuito y de la parada. Formato IG-square 1080x1080. Layout también aplica al render web dentro de la app; en web el header ocupa 96px y el bracket se ajusta al ancho del container.</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+      .body { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+      .player { font-family: "Inter", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+      .seed { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; }
+      .score { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; }
+      .meta { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#fafafa"/>
+
+  <!-- Header block -->
+  <g id="header">
+    <!-- Sub-marca chip -->
+    <g transform="translate(60,60)">
+      <rect x="0" y="0" width="240" height="34" rx="17" fill="rgba(4,120,87,0.10)"/>
+      <text x="20" y="22" class="chip" font-size="14" fill="#047857">CIRCUITO · TEMPORADA 2026</text>
+    </g>
+
+    <!-- Título principal -->
+    <text x="60" y="150" class="heading" font-size="48" fill="#0a0a0a">{CIRCUITO}</text>
+    <text x="60" y="200" class="heading" font-size="32" fill="#047857">Copa {CIUDAD} · {MES}</text>
+
+    <!-- Meta row -->
+    <g transform="translate(60,222)" fill="#737373">
+      <g transform="translate(0,0)">
+        <!-- calendar icon -->
+        <path d="M2 4 h20 v18 H2z M2 8 h20 M7 2 v4 M17 2 v4" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="30" y="18" class="body" font-size="16">Sábado 12 · septiembre 2026</text>
+      </g>
+      <g transform="translate(300,0)">
+        <!-- map-pin icon -->
+        <path d="M12 22 s8-7 8-13a8 8 0 1 0 -16 0c0 6 8 13 8 13z M12 11 a2 2 0 1 1 0 -4 a2 2 0 0 1 0 4z" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="30" y="18" class="body" font-size="16">Club Los Chillos · {CIUDAD}</text>
+      </g>
+      <g transform="translate(660,0)">
+        <!-- shield icon -->
+        <path d="M12 3 l8 3 v6 c0 5 -3.5 8 -8 9 c-4.5 -1 -8 -4 -8 -9 V6z" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="30" y="18" class="body" font-size="16">Dobles Open · MPR 4.0+</text>
+      </g>
+    </g>
+
+    <!-- Divider verde -->
+    <rect x="60" y="258" width="80" height="4" rx="2" fill="#10b981"/>
+  </g>
+
+  <!-- Section title -->
+  <text x="60" y="316" class="section" font-size="20" fill="#0a0a0a">BRACKET · ELIMINACIÓN DIRECTA</text>
+
+  <!-- Round labels -->
+  <g class="chip" font-size="12" fill="#737373">
+    <text x="80" y="360">CUARTOS</text>
+    <text x="360" y="360">SEMIS</text>
+    <text x="620" y="360">FINAL</text>
+    <text x="870" y="360">CAMPEÓN</text>
+  </g>
+
+  <!-- Bracket lines & match cards -->
+  <g id="bracket">
+    <!-- Common bracket connector style -->
+    <g stroke="#e5e5e5" stroke-width="2" fill="none">
+      <!-- QF to SF connectors -->
+      <path d="M330 430 h20 v72 h-20 M330 574 h20 v-72 h20"/>
+      <path d="M330 718 h20 v72 h-20 M330 862 h20 v-72 h20"/>
+      <!-- SF to F connectors -->
+      <path d="M590 538 h20 v108 h-20 M590 826 h20 v-108 h20"/>
+    </g>
+
+    <!-- QF match template — last names only, sets-won score -->
+    <!-- QF1 -->
+    <g transform="translate(80,400)">
+      <rect x="0" y="0" width="250" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">1</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Herrera / Vega</text>
+      <text x="234" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="234" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">8</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Torres / Rojas</text>
+      <text x="234" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">0</text>
+    </g>
+    <!-- QF2 -->
+    <g transform="translate(80,472)">
+      <rect x="0" y="0" width="250" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">4</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Molina / Paz</text>
+      <text x="234" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="234" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">5</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Ríos / Yépez</text>
+      <text x="234" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">1</text>
+    </g>
+    <!-- QF3 -->
+    <g transform="translate(80,688)">
+      <rect x="0" y="0" width="250" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">3</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Salas / Cueva</text>
+      <text x="234" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="234" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">6</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Coba / Peña</text>
+      <text x="234" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">0</text>
+    </g>
+    <!-- QF4 -->
+    <g transform="translate(80,760)">
+      <rect x="0" y="0" width="250" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">2</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Andrade / Bravo</text>
+      <text x="234" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="234" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">7</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Cano / Gómez</text>
+      <text x="234" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">1</text>
+    </g>
+
+    <!-- SF1 -->
+    <g transform="translate(370,508)">
+      <rect x="0" y="0" width="220" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">1</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Herrera / Vega</text>
+      <text x="204" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="204" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">4</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Molina / Paz</text>
+      <text x="204" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">1</text>
+    </g>
+    <!-- SF2 -->
+    <g transform="translate(370,796)">
+      <rect x="0" y="0" width="220" height="60" rx="8" fill="#ffffff" stroke="#e5e5e5"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">2</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#0a0a0a">Andrade / Bravo</text>
+      <text x="204" y="24" class="score" font-size="16" fill="#047857" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="204" y2="30" stroke="#e5e5e5"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">3</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#737373">Salas / Cueva</text>
+      <text x="204" y="50" class="score" font-size="16" fill="#737373" text-anchor="end">0</text>
+    </g>
+
+    <!-- FINAL -->
+    <g transform="translate(630,652)">
+      <rect x="0" y="0" width="220" height="60" rx="8" fill="#0a0a0a"/>
+      <text x="16" y="24" class="seed" font-size="13" fill="#737373">1</text>
+      <text x="36" y="24" class="player" font-size="15" fill="#ffffff">Herrera / Vega</text>
+      <text x="204" y="24" class="score" font-size="16" fill="#10b981" text-anchor="end">2</text>
+      <line x1="16" y1="30" x2="204" y2="30" stroke="#2a2a2a"/>
+      <text x="16" y="50" class="seed" font-size="13" fill="#737373">2</text>
+      <text x="36" y="50" class="player" font-size="15" fill="#a3a3a3">Andrade / Bravo</text>
+      <text x="204" y="50" class="score" font-size="16" fill="#a3a3a3" text-anchor="end">1</text>
+    </g>
+
+    <!-- CAMPEÓN badge -->
+    <g transform="translate(880,660)">
+      <circle cx="60" cy="60" r="60" fill="#0a0a0a"/>
+      <circle cx="60" cy="60" r="52" fill="none" stroke="#10b981" stroke-width="2"/>
+      <!-- trophy icon inline -->
+      <g transform="translate(38,32)" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" fill="none">
+        <path d="M6 4 h12 v8 a6 6 0 0 1 -12 0z"/>
+        <path d="M6 6 h-3 a3 3 0 0 0 0 6 h3"/>
+        <path d="M18 6 h3 a3 3 0 0 1 0 6 h-3"/>
+        <path d="M9 20 h6 M8 24 h8"/>
+        <line x1="12" y1="16" x2="12" y2="20"/>
+      </g>
+      <text x="60" y="102" class="chip" font-size="10" fill="#10b981" text-anchor="middle">CAMPEÓN</text>
+    </g>
+  </g>
+
+  <!-- Footer / signature -->
+  <g id="footer" transform="translate(60,980)">
+    <circle cx="10" cy="16" r="8" fill="#10b981"/>
+    <text x="26" y="22" class="heading" font-size="20" fill="#0a0a0a">MATCHPOINT</text>
+    <text x="960" y="22" class="body" font-size="14" fill="#737373" text-anchor="end">matchpoint.top/eventos</text>
+  </g>
+</svg>
