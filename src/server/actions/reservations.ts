@@ -33,6 +33,7 @@ import {
   loadUserUpcomingReservations,
   type UserUpcomingReservation,
 } from "@/server/queries/user-upcoming-reservations";
+import { isLateCancelHold } from "@/server/queries/court-busy-ranges";
 import { revalidateCourtOccupancy } from "./_revalidate-occupancy";
 
 // Postgres `tstzrange` looks like `[2026-05-17T18:00:00+00:00,2026-05-17T19:30:00+00:00)`.
@@ -177,14 +178,45 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         const { assertNotSuspended } = await import("@/lib/auth/suspension");
         await assertNotSuspended(supabase, userId);
 
+        const callerIsStaff = await isClubStaff(userId, data.clubId);
+
         // Reservar a nombre de otro usuario (for_user_id, mig 170) es una
         // capacidad de staff del club: sin este gate cualquier jugador podría
         // crear reservas atribuidas a terceros.
-        if (data.forUserId && data.forUserId !== userId) {
-          if (!(await isClubStaff(userId, data.clubId))) {
-            throw new AuthError(
-              "AUTH.ROLE_REQUIRED",
-              "Solo el staff del club puede reservar a nombre de otro usuario",
+        if (data.forUserId && data.forUserId !== userId && !callerIsStaff) {
+          throw new AuthError(
+            "AUTH.ROLE_REQUIRED",
+            "Solo el staff del club puede reservar a nombre de otro usuario",
+          );
+        }
+
+        // Regla 30 min: un slot cancelado a menos de 30 min de su inicio queda
+        // retenido para el club — el jugador no lo puede retomar desde la app,
+        // pero recepción sí (walk-in / reserva manual). Mismo criterio que
+        // isLateCancelHold en loadCourtBusyRanges (el picker ya lo oculta;
+        // esto cubre el POST directo).
+        if (!callerIsStaff) {
+          const adminDb = getAdminClient();
+          const { data: lateCancels } = await adminDb
+            .from("reservations")
+            .select("during,cancelled_at")
+            .eq("court_id", data.courtId)
+            .eq("status", "cancelled")
+            .not("cancelled_at", "is", null)
+            .overlaps("during", toRange(data.startsAt, data.endsAt));
+          const held = (lateCancels ?? []).some((r) => {
+            try {
+              const { startsAt } = parseRange(r.during as string);
+              return isLateCancelHold(new Date(startsAt), new Date(r.cancelled_at as string));
+            } catch {
+              return false;
+            }
+          });
+          if (held) {
+            throw new MpError(
+              "RESERVATION.SLOT_HELD",
+              "Este horario se liberó a último momento y solo el club puede reasignarlo. Pregunta en recepción.",
+              409,
             );
           }
         }
