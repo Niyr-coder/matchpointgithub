@@ -1325,15 +1325,17 @@ function GalleryCard({
 
 
 // ────────────────────────────────────────────────────────────────────────
-// ScheduleView: timeline simple del día por court usando today reservations.
-// Cada slot está derivado de nowPlaying / nextSlot por court (ya tenemos
-// solo esos 2 picos del día). Para una agenda completa habría que extender
-// el server fetch — TODO Stage 2.
+// ScheduleView: timeline del día por court con TODOS los slots reales
+// (todaySlots, mismos datos que la agenda del drawer). La línea AHORA
+// avanza con un tick por minuto; los bloques se refrescan por realtime.
 function ScheduleView({ courts }: { courts: CourtCard[] }) {
   const hours = Array.from({ length: 17 }, (_, i) => 6 + i); // 06..22
-  // Lectura única en mount — la posición se actualiza en cada re-render
-  // por realtime (cambios en reservations).
-  const [now] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const nowMs = now.getTime();
   const nowPct = Math.max(
     0,
     Math.min(
@@ -1478,27 +1480,19 @@ function ScheduleView({ courts }: { courts: CourtCard[] }) {
                   MANTENIMIENTO · {c.maintenanceReason ?? "cerrada"}
                 </div>
               )}
-              {/* Now playing block */}
-              {c.nowPlaying && (
-                <SlotBar
-                  startMs={c.nowPlaying.startMs}
-                  endMs={c.nowPlaying.endMs}
-                  hours={hours}
-                  who={c.nowPlaying.who}
-                  kind={c.nowPlaying.kind}
-                  live
-                />
-              )}
-              {/* Next slot (best-effort: duration assumed 90 min) */}
-              {c.nextSlot && (
-                <SlotBar
-                  startMs={c.nextSlot.startMs}
-                  endMs={c.nextSlot.startMs + 90 * 60 * 1000}
-                  hours={hours}
-                  who={c.nextSlot.who}
-                  kind={c.nextSlot.kind}
-                />
-              )}
+              {/* Todos los slots del día con horas reales */}
+              {c.status !== "maintenance" &&
+                c.todaySlots.map((s) => (
+                  <SlotBar
+                    key={s.id}
+                    startMs={s.startMs}
+                    endMs={s.endMs}
+                    hours={hours}
+                    who={s.who}
+                    kind={s.kind}
+                    live={s.startMs <= nowMs && nowMs < s.endMs}
+                  />
+                ))}
             </div>
           </div>
         ))}
