@@ -2,8 +2,13 @@
 // pantallas del dashboard owner/manager/employee/admin.
 //
 // Orden de resolución:
-// 1. session.activeClubId (cookie, set por RoleSwitcher / club picker)
-// 2. role_assignments con role staff (owner/manager/employee) y club_id no null
+// 1. session.activeClubId (cookie, set por RoleSwitcher / club picker) si
+//    sigue siendo un club donde el user es staff
+// 2. role_assignments de staff con club_id no null; si el rol activo de la
+//    sesión es uno de los staffRoles, se prefieren los clubes de ESE rol
+//    (evita que un owner+employee multi-club caiga a un club arbitrario
+//    cuando la cookie de club está stale); dentro del grupo gana el
+//    granted_at más reciente
 // 3. Si el user es admin global: fallback al primer club activo del sistema
 //    (admin opera sobre cualquier club por default cuando no hay activeClubId)
 // 4. null
@@ -40,6 +45,12 @@ export async function resolveActiveClubId(opts: Opts = {}): Promise<string | nul
   if (activeClubId && (staffRows ?? []).some((r) => r.club_id === activeClubId)) {
     return activeClubId;
   }
+  const activeRole = session.session.activeRole ?? null;
+  const sameRoleRow =
+    activeRole && staffRoles.includes(activeRole)
+      ? (staffRows ?? []).find((r) => r.role === activeRole)
+      : undefined;
+  if (sameRoleRow?.club_id) return sameRoleRow.club_id as string;
   if (staffRows?.[0]?.club_id) return staffRows[0].club_id as string;
 
   // Admin global → la cookie vale sobre cualquier club activo; si no hay

@@ -178,22 +178,6 @@ export async function requireAdminUserId(): Promise<string> {
   return userId;
 }
 
-export async function requireRole(role: RoleKey): Promise<SessionShape> {
-  const s = await requireSession();
-  if (s.activeRole !== role) {
-    throw new AuthError("AUTH.ROLE_REQUIRED", `Role '${role}' required, active is '${s.activeRole}'`);
-  }
-  return s;
-}
-
-export async function requireClubScope(clubId: string): Promise<SessionShape> {
-  const s = await requireSession();
-  if (s.activeClubId !== clubId) {
-    throw new AuthError("AUTH.SCOPE_REQUIRED", `Active club mismatch`);
-  }
-  return s;
-}
-
 export class AuthError extends Error {
   constructor(
     public code: "AUTH.UNAUTHENTICATED" | "AUTH.ROLE_REQUIRED" | "AUTH.SCOPE_REQUIRED",

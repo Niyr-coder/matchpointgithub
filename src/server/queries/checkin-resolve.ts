@@ -42,12 +42,16 @@ export async function resolveReservationForCheckIn(
 
   const code = parsed.checkInCode;
 
+  // Incluye no_show/completed para que el caller distinga "código no existe"
+  // de "estado no chequeable" y dé un mensaje honesto. Cancelled queda fuera:
+  // el índice único (club_id, check_in_code) excluye canceladas, así que su
+  // código puede estar reutilizado por una reserva viva.
   const { data: byCode, error: byCodeErr } = await supabase
     .from("reservations")
     .select(RESERVATION_LOOKUP_COLS)
     .eq("club_id", clubId)
     .eq("check_in_code", code)
-    .in("status", ["booked", "confirmed", "checked_in"])
+    .neq("status", "cancelled")
     .maybeSingle();
 
   if (byCodeErr && !isMissingCheckInCodeColumn(byCodeErr.message)) {

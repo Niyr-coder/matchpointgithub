@@ -320,8 +320,12 @@ export function EmployeeWalkinsScreenView({ data }: { data: WalkinsData }) {
         sport: sportStr.trim().toLowerCase() as "pickleball" | "padel" | "tennis",
         notes: notes || undefined,
       });
-      if (res.ok) toast({ icon: "check", title: "Walk-in registrado" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      if (res.ok) {
+        toast({ icon: "check", title: "Walk-in registrado" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
     });
   };
 
@@ -396,8 +400,12 @@ export function EmployeeWalkinsScreenView({ data }: { data: WalkinsData }) {
     if (!ok) return;
     startTransition(async () => {
       const res = await removeWalkin({ id, clubId: data.clubId! });
-      if (res.ok) toast({ icon: "check", title: "Quitado de la cola" });
-      else toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      if (res.ok) {
+        toast({ icon: "check", title: "Quitado de la cola" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "Error", sub: res.error.message });
+      }
     });
   };
 

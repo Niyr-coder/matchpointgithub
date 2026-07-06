@@ -1,5 +1,5 @@
 // POST /api/v1/walkins (employee/manager)
-import { createWalkin } from "@/server/actions/reservations";
+import { createWalkinReservation } from "@/server/actions/reservations";
 import { httpFail, httpOk } from "@/lib/api/response";
 
 export async function POST(req: Request) {
@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   } catch {
     return httpFail(400, "VALIDATION.INVALID_JSON", "Request body must be JSON");
   }
-  const r = await createWalkin(body);
+  const r = await createWalkinReservation(body);
   if (!r.ok) {
     const code = r.error.code;
     const status =

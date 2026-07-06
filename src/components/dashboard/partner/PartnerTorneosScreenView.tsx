@@ -1,6 +1,6 @@
 // Client view de PartnerTorneosScreen.
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RSHeader, RSPill } from "../widgets/RS";
@@ -52,7 +52,23 @@ function TorneoCard({ t }: { t: TorneoRow }) {
   const { confirm } = usePromptModal();
   const [, startTx] = useTransition();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuDir, setMenuDir] = useState<"down" | "up">("down");
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+
+  // Abre el menú hacia arriba cuando no hay espacio suficiente abajo (última
+  // card de la lista o cerca del borde inferior de la pantalla).
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const anchor = menuRef.current;
+    const panel = menuPanelRef.current;
+    if (!anchor || !panel) return;
+    const rect = anchor.getBoundingClientRect();
+    const menuH = panel.offsetHeight;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setMenuDir(spaceBelow < menuH + 12 && spaceAbove > spaceBelow ? "up" : "down");
+  }, [menuOpen]);
 
   // Cierre al click fuera.
   useEffect(() => {
@@ -161,7 +177,10 @@ function TorneoCard({ t }: { t: TorneoRow }) {
             <Icon name="more-horizontal" size={13} color="currentColor" />
           </button>
           {menuOpen && (
-            <div className="mp-partner-torneo-card-menu mp-modal-panel">
+            <div
+              ref={menuPanelRef}
+              className={`mp-partner-torneo-card-menu mp-modal-panel${menuDir === "up" ? " is-up" : ""}`}
+            >
               <KebabItem icon="pencil" label="Editar torneo" onClick={onEditar} />
               <KebabItem
                 icon="lock"

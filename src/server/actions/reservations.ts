@@ -8,12 +8,12 @@ import "server-only";
 
 import { z } from "zod";
 import { headers } from "next/headers";
-import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { assertClubStaff, isClubStaff as isClubStaffWith, FRONT_DESK_ROLES } from "@/lib/auth/club-staff";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { withIdempotency } from "@/lib/api/idempotency";
 import {
@@ -33,6 +33,7 @@ import {
   loadUserUpcomingReservations,
   type UserUpcomingReservation,
 } from "@/server/queries/user-upcoming-reservations";
+import { revalidateCourtOccupancy } from "./_revalidate-occupancy";
 
 // Postgres `tstzrange` looks like `[2026-05-17T18:00:00+00:00,2026-05-17T19:30:00+00:00)`.
 // We round-trip it into discrete startsAt/endsAt camelCase fields for the API.
@@ -44,6 +45,16 @@ function parseRange(range: string): { startsAt: string; endsAt: string } {
 function toRange(startsAt: string, endsAt: string): string {
   return `[${startsAt},${endsAt})`;
 }
+
+// Labels en español para mensajes de error visibles al usuario.
+const STATUS_LABEL_ES: Record<string, string> = {
+  booked: "reservada",
+  confirmed: "confirmada",
+  checked_in: "en cancha",
+  no_show: "no-show",
+  cancelled: "cancelada",
+  completed: "jugada",
+};
 
 function mapReservation(row: Record<string, unknown>): Reservation {
   const { startsAt, endsAt } = parseRange(row.during as string);
@@ -64,6 +75,7 @@ function mapReservation(row: Record<string, unknown>): Reservation {
     createdAt: row.created_at,
     cancelledAt: row.cancelled_at ?? null,
     version: row.version ?? 1,
+    checkInCode: (row.check_in_code as string | null | undefined) ?? null,
   });
 }
 
@@ -76,19 +88,10 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
-async function isClubStaff(userId: string, clubId: string): Promise<boolean> {
-  const supabase = await getServerClient();
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role,club_id")
-    .eq("user_id", userId)
-    .is("revoked_at", null);
-  return (roles ?? []).some(
-    (r) =>
-      r.role === "admin" ||
-      (r.club_id === clubId &&
-        (r.role === "owner" || r.role === "manager" || r.role === "employee")),
-  );
+// Reservas es dominio front-desk: owner/manager/employee (+ admin bypass).
+// El userId debe ser el usuario autenticado (el helper valida contra la sesión).
+async function isClubStaff(_userId: string, clubId: string): Promise<boolean> {
+  return isClubStaffWith(clubId, FRONT_DESK_ROLES);
 }
 
 // ── listReservations ───────────────────────────────────────────────────
@@ -174,6 +177,18 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         const { assertNotSuspended } = await import("@/lib/auth/suspension");
         await assertNotSuspended(supabase, userId);
 
+        // Reservar a nombre de otro usuario (for_user_id, mig 170) es una
+        // capacidad de staff del club: sin este gate cualquier jugador podría
+        // crear reservas atribuidas a terceros.
+        if (data.forUserId && data.forUserId !== userId) {
+          if (!(await isClubStaff(userId, data.clubId))) {
+            throw new AuthError(
+              "AUTH.ROLE_REQUIRED",
+              "Solo el staff del club puede reservar a nombre de otro usuario",
+            );
+          }
+        }
+
         // Ventana de reserva: no permitir reservar más allí del horizonte del club.
         const { data: settings } = await supabase
           .from("club_settings")
@@ -186,7 +201,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           if (new Date(data.startsAt) > horizon) {
             throw new MpError(
               "RESERVATION.OUTSIDE_WINDOW",
-              `Bookings open up to ${settings.reservation_window_days} days ahead`,
+              `Este club acepta reservas hasta ${settings.reservation_window_days} días de anticipación`,
               422,
             );
           }
@@ -194,7 +209,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         if (new Date(data.startsAt).getTime() < Date.now() - 60_000) {
           throw new MpError(
             "RESERVATION.IN_PAST",
-            "startsAt cannot be in the past",
+            "No puedes reservar un horario que ya pasó",
             422,
           );
         }
@@ -221,7 +236,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           if (error.code === "23P01") {
             throw new MpError(
               "RESERVATION.SLOT_TAKEN",
-              "That slot was just booked by someone else. Pick another time.",
+              "Ese horario se acaba de ocupar. Elige otro.",
               409,
             );
           }
@@ -274,13 +289,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         // Invalidar el cache de las pantallas que dependen de reservations.
         // El realtime ya dispara router.refresh() en clientes conectados,
         // pero esto cubre re-navegaciones server-side y entradas frescas.
-        revalidatePath("/dashboard/owner");
-        revalidatePath("/dashboard/owner/club-reservas");
-        revalidatePath("/dashboard/owner/club-canchas");
-        revalidatePath("/dashboard/manager/club-reservas");
-        revalidatePath("/dashboard/manager/club-canchas");
-        revalidatePath("/dashboard/user");
-        revalidatePath("/dashboard/user/mis-reservas");
+        revalidateCourtOccupancy({ includePlayer: true });
         void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
           syncActiveGiveawayMechanicsForClubUser(userId, data.clubId),
         );
@@ -311,15 +320,19 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
     if (["cancelled", "no_show", "completed"].includes(current.status)) {
       throw new MpError(
         "RESERVATION.CANNOT_CANCEL",
-        `Cannot cancel from status '${current.status}'`,
+        `No puedes cancelar una reserva en estado «${STATUS_LABEL_ES[current.status as string] ?? current.status}»`,
         409,
       );
     }
 
-    const isOrganizer = current.organizer_id === userId;
+    // El cliente de una reserva hecha por el club (for_user_id) tiene el
+    // mismo derecho de cancelar que el organizer.
+    const isOrganizer =
+      current.organizer_id === userId ||
+      ((current as Record<string, unknown>).for_user_id as string | null) === userId;
     const staff = await isClubStaff(userId, current.club_id);
     if (!isOrganizer && !staff) {
-      throw new AuthError("AUTH.ROLE_REQUIRED", "Only organizer or club staff can cancel");
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o el staff del club pueden cancelar");
     }
 
     // Cancellation-window: organizer can only cancel within the club's window.
@@ -335,13 +348,19 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
       if (hoursUntilStart < windowHours) {
         throw new MpError(
           "RESERVATION.WINDOW_CLOSED",
-          `Cancellations require at least ${windowHours}h notice`,
+          `Las cancelaciones requieren al menos ${windowHours} h de anticipación. Contacta al club si necesitas ayuda.`,
           422,
         );
       }
     }
 
-    const { data, error } = await supabase
+    // Mutación via admin client: la RLS res_update no incluye for_user_id
+    // (el cliente de una reserva hecha por el club), así que el UPDATE con el
+    // client del user quedaría en 0 filas para ese caso. La autorización ya
+    // se validó arriba (organizer/for_user/staff) — patrón 30-rls §9.1.
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, staff ? "owner" : "user");
+    const { data, error } = await admin
       .from("reservations")
       .update({
         status: "cancelled",
@@ -361,6 +380,7 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
       body: body.reason ?? null,
       payload: { reservationId: cancelled.id, clubId: cancelled.clubId },
     });
+    revalidateCourtOccupancy({ includePlayer: true });
     return cancelled;
   });
 }
@@ -424,18 +444,17 @@ export async function markReservationNoShow(
       });
     }
 
-    revalidatePath("/dashboard/employee");
-    revalidatePath("/dashboard/employee/e-checkin");
-    revalidatePath("/dashboard/employee/e-walkins");
-    revalidatePath("/dashboard/manager/club-walkins");
-    revalidatePath("/dashboard/user");
-    revalidatePath("/dashboard/user/mis-reservas");
+    revalidateCourtOccupancy({ includePlayer: true });
     return reservation;
   });
 }
 
-// ── createWalkin (employee/manager) ────────────────────────────────────
-export async function createWalkin(input: unknown): Promise<ActionResult<Reservation>> {
+// ── createWalkinReservation (REST API POST /api/v1/walkins) ────────────
+// Camino directo walk-in → reserva checked_in con cancha obligatoria.
+// Distinto de createWalkin en walkins.ts, que solo encola en recepción.
+export async function createWalkinReservation(
+  input: unknown,
+): Promise<ActionResult<Reservation>> {
   return runMutation(WalkinCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     if (!(await isClubStaff(userId, data.clubId))) {
@@ -474,7 +493,7 @@ export async function createWalkin(input: unknown): Promise<ActionResult<Reserva
 
     if (error) {
       if (error.code === "23P01") {
-        throw new MpError("RESERVATION.SLOT_TAKEN", "Court occupied at that time", 409);
+        throw new MpError("RESERVATION.SLOT_TAKEN", "La cancha está ocupada en ese horario", 409);
       }
       throw new MpError("WALKIN.CREATE_FAILED", error.message, 500);
     }
@@ -493,6 +512,7 @@ export async function createWalkin(input: unknown): Promise<ActionResult<Reserva
         attended_by: userId,
       } as never);
 
+    revalidateCourtOccupancy();
     return mapReservation(rsv);
   });
 }
@@ -521,27 +541,12 @@ export async function searchUsersForBooking(
   >
 > {
   return runAction(SearchUsersSchema, input, async ({ clubId, q, limit }) => {
-    // Reuse staff check del courts module (pero copiamos inline para no
-    // crear dependencia cíclica entre actions).
-    const supabase = await getServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-    const { data: roles } = await supabase
-      .from("role_assignments")
-      .select("role,club_id")
-      .eq("user_id", user.id)
-      .is("revoked_at", null);
-    const staff = (roles ?? []).some(
-      (r) =>
-        r.role === "admin" ||
-        (r.club_id === clubId && (r.role === "owner" || r.role === "manager" || r.role === "employee")),
-    );
-    if (!staff) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
+    await assertClubStaff(clubId, FRONT_DESK_ROLES);
 
     const admin = getAdminClient();
-    const term = `%${q.trim()}%`;
+    // El placeholder invita a buscar "@username" pero los usernames se
+    // guardan sin arroba — la quitamos para que el término matchee.
+    const term = `%${q.trim().replace(/^@/, "")}%`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (admin as any)
       .from("profiles")

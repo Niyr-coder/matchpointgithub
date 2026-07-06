@@ -57,7 +57,7 @@ function iconForKind(kind: string): string {
   if (kind === "report_resolved") return "shield-check";
   if (kind.startsWith("role_request")) return "shield";
   if (kind.startsWith("club_application")) return "building-2";
-  if (kind.startsWith("reservation")) return "calendar-clock";
+  if (kind.startsWith("reservation") || kind === "club_reservation_new") return "calendar-clock";
   if (kind.startsWith("ticket")) return "life-buoy";
   if (kind.startsWith("friend_request")) return "user-plus";
   if (kind === "match_cancelled") return "x-circle";
@@ -108,12 +108,15 @@ function hrefForKind(role: RoleKey, kind: string, payload: Record<string, unknow
         : "/dashboard/admin/admin-support"
       : null;
   }
+  // Ojo: "club_reservation_new" NO empieza con "reservation" — el branch va
+  // ANTES del startsWith o queda inalcanzable (bug 2026-07-06: la notif del
+  // owner/manager no navegaba).
+  if (kind === "club_reservation_new") {
+    return role === "manager"
+      ? "/dashboard/manager/club-reservas"
+      : "/dashboard/owner/club-reservas";
+  }
   if (kind.startsWith("reservation")) {
-    if (kind === "club_reservation_new") {
-      return role === "manager"
-        ? "/dashboard/manager/club-reservas"
-        : "/dashboard/owner/club-reservas";
-    }
     return resId
       ? `/dashboard/user/mis-reservas?focus=${resId}`
       : "/dashboard/user/mis-reservas";

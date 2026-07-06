@@ -2,7 +2,7 @@
 // El mock con celdas "+ $14" YA es el estado vacío natural del grid.
 "use client";
 import { Fragment, useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { RS_BORDER, RSHeader } from "../widgets/RS";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
@@ -27,13 +27,15 @@ export type ReservasData = {
     label: string;
     sport: "pickleball" | "padel" | "tennis";
     grid: number[][];
-    // Meta por celda ocupada: nombre del cliente + kind. Key: "${dayIdx}-${hourIdx}".
-    cellMeta: Record<string, { name: string; kind: string; id?: string }>;
+    // Meta por celda ocupada: nombre del cliente + kind + status.
+    // Key: "${dayIdx}-${hourIdx}".
+    cellMeta: Record<string, { name: string; kind: string; id?: string; status?: string }>;
     minPriceCents: number | null;
   }[];
   weekRangeLabel: string;
   daysLabels: string[]; // 7 labels tipo "LUN 12"
   weekStartIso: string; // Mon 00:00 local, ISO string — para derivar fechas de slots
+  weekOffset: number; // semanas relativas a hoy (0 = semana actual), navegable via ?w=
   occupancyPct: number;
   minPriceCents: number | null; // global, fallback
 };
@@ -119,7 +121,7 @@ const EMPTY_COURT = {
   label: "Sin canchas",
   sport: "pickleball" as const,
   grid: emptyGrid(),
-  cellMeta: {} as Record<string, { name: string; kind: string; id?: string }>,
+  cellMeta: {} as Record<string, { name: string; kind: string; id?: string; status?: string }>,
   minPriceCents: null as number | null,
 };
 
@@ -148,12 +150,39 @@ export function ClubReservasScreenView({
   const hasReal = data.courts.length > 0;
 
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Navegación de semanas via query param — el server component lee ?w= y
+  // recarga el grid de esa semana.
+  const goWeek = (offset: number) => {
+    router.push(offset === 0 ? pathname : `${pathname}?w=${offset}`);
+  };
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [activeIdx, setActiveIdx] = useState(0);
   const safeIdx = activeIdx < courts.length ? activeIdx : 0;
   const activeCourt = courts[safeIdx];
   const [manualOpen, setManualOpen] = useState<ManualTarget | "open" | null>(null);
+
+  // Prefill desde e-calendario: ?court=<id>&start=<iso> abre el modal de
+  // reserva manual con cancha + horario ya elegidos.
+  useEffect(() => {
+    if (!hasReal) return;
+    const sp = new URLSearchParams(window.location.search);
+    const court = sp.get("court");
+    const start = sp.get("start");
+    if (!court || !start) return;
+    if (!data.courts.some((c) => c.id === court)) return;
+    const startDate = new Date(start);
+    if (Number.isNaN(startDate.getTime())) return;
+    setManualOpen({
+      courtId: court,
+      startsAt: startDate.toISOString(),
+      endsAt: new Date(startDate.getTime() + 60 * 60 * 1000).toISOString(),
+    });
+    // Solo al montar: el prefill viene del deep-link, no de cambios de estado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "Ahora" leído una sola vez al montar (react-hooks/purity). Se actualiza
   // en re-render por realtime cuando llegan cambios.
@@ -324,6 +353,8 @@ export function ClubReservasScreenView({
             <button
               className="btn"
               disabled={!hasReal}
+              onClick={() => goWeek(data.weekOffset - 1)}
+              aria-label="Semana anterior"
               style={{
                 background: "#fff",
                 border: RS_BORDER,
@@ -335,12 +366,14 @@ export function ClubReservasScreenView({
             </button>
             <button
               className="btn"
-              disabled={!hasReal}
+              disabled={!hasReal || data.weekOffset === 0}
+              onClick={() => goWeek(0)}
+              title={data.weekOffset === 0 ? undefined : "Volver a la semana actual"}
               style={{
                 background: "#fff",
                 border: RS_BORDER,
                 opacity: hasReal ? 1 : 0.5,
-                cursor: hasReal ? "pointer" : "not-allowed",
+                cursor: hasReal && data.weekOffset !== 0 ? "pointer" : "default",
               }}
             >
               {data.weekRangeLabel}
@@ -348,6 +381,8 @@ export function ClubReservasScreenView({
             <button
               className="btn"
               disabled={!hasReal}
+              onClick={() => goWeek(data.weekOffset + 1)}
+              aria-label="Semana siguiente"
               style={{
                 background: "#fff",
                 border: RS_BORDER,
@@ -504,7 +539,12 @@ export function ClubReservasScreenView({
                       onClick={clickable ? () => handleCellClick(di, hi) : undefined}
                       cellStyle={cell(state, { disabled: !hasReal, past })}
                       onCancel={
-                        meta?.id && meta.kind === "booking" && !past
+                        meta?.id &&
+                        meta.kind === "booking" &&
+                        !past &&
+                        // Solo estados cancelables — no_show/checked_in fallan
+                        // en el server con CANNOT_CANCEL.
+                        (!meta.status || meta.status === "booked" || meta.status === "confirmed")
                           ? () => handleCancelReservation(meta.id!)
                           : undefined
                       }
@@ -551,7 +591,7 @@ function ReservedCell({
   state: number;
   past: boolean;
   clickable: boolean;
-  meta: { name: string; kind: string; id?: string } | undefined;
+  meta: { name: string; kind: string; id?: string; status?: string } | undefined;
   hourLabel: string;
   freeLabel: string | undefined;
   onClick: (() => void) | undefined;
@@ -567,6 +607,17 @@ function ReservedCell({
       : meta.kind === "event"
         ? "Evento"
         : "Reserva";
+  // El status matiza el kind en el tooltip: una reserva no_show o en cancha
+  // no debe verse idéntica a una booked.
+  const statusLabel =
+    meta?.status === "checked_in"
+      ? "En cancha"
+      : meta?.status === "no_show"
+        ? "No-show"
+        : meta?.status === "completed"
+          ? "Jugada"
+          : null;
+  const dimmed = meta?.status === "no_show";
 
   // Nombre compacto fijo: no debe empujar el ancho de columna del grid.
   const shortName = (() => {
@@ -596,10 +647,16 @@ function ReservedCell({
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ ...cellStyle, ...transformStyle, padding: "0 3px", minWidth: 0 }}
+      style={{
+        ...cellStyle,
+        ...transformStyle,
+        padding: "0 3px",
+        minWidth: 0,
+        ...(dimmed ? { opacity: 0.45, textDecoration: "line-through" } : {}),
+      }}
       title={
         meta?.name
-          ? `${meta.name}${kindLabel ? ` · ${kindLabel}` : ""} · ${hourLabel}:00`
+          ? `${meta.name}${kindLabel ? ` · ${kindLabel}` : ""}${statusLabel ? ` (${statusLabel})` : ""} · ${hourLabel}:00`
           : clickable
             ? "Crear reserva manual"
             : past && state === 0
@@ -655,7 +712,8 @@ function ReservedCell({
               marginTop: 2,
             }}
           >
-            {kindLabel} · {hourLabel}:00
+            {kindLabel}
+            {statusLabel ? ` · ${statusLabel}` : ""} · {hourLabel}:00
           </div>
           {onCancel && (
             <button
@@ -1367,9 +1425,23 @@ function ManualReservationModal({
             borderTop: "1px solid var(--border)",
             display: "flex",
             justifyContent: "flex-end",
+            alignItems: "center",
             gap: 8,
           }}
         >
+          {!valid && !pending && (
+            <span style={{ marginRight: "auto", fontSize: 11, color: "var(--muted-fg)" }}>
+              {courtIds.size === 0
+                ? "Elige al menos una cancha"
+                : !start || !end
+                  ? "Elige fecha y horario"
+                  : !clientReady
+                    ? "Identifica al cliente"
+                    : hasConflicts
+                      ? "Resuelve los conflictos de horario"
+                      : ""}
+            </span>
+          )}
           <button
             onClick={onClose}
             className="btn"

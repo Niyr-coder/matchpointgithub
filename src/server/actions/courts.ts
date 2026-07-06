@@ -4,11 +4,11 @@
 import "server-only";
 
 import { z } from "zod";
-import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { assertClubStaff, CLUB_MANAGEMENT_ROLES } from "@/lib/auth/club-staff";
 import {
   BulkCourtMaintenanceSchema,
   CourtBlockerSchema,
@@ -22,6 +22,7 @@ import {
   type CourtPricing,
 } from "@/lib/schemas/courts";
 import { UuidSchema } from "@/lib/schemas/common";
+import { revalidateCourtOccupancy } from "./_revalidate-occupancy";
 
 function mapCourt(row: Record<string, unknown>): Court {
   return CourtSchema.parse({
@@ -55,20 +56,10 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
-async function requireClubStaff(clubId: string): Promise<void> {
-  const userId = await requireUserId();
-  const supabase = await getServerClient();
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role,club_id")
-    .eq("user_id", userId)
-    .is("revoked_at", null);
-  const staff = (roles ?? []).some(
-    (r) =>
-      r.role === "admin" ||
-      (r.club_id === clubId && (r.role === "owner" || r.role === "manager")),
-  );
-  if (!staff) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
+// Canchas es dominio de gestión del club: owner/manager (+ admin bypass).
+// El employee de recepción NO gestiona canchas.
+async function requireClubStaff(clubId: string): Promise<string> {
+  return assertClubStaff(clubId, CLUB_MANAGEMENT_ROLES);
 }
 
 // ── listCourtsByClub (public) ───────────────────────────────────────────
@@ -144,8 +135,7 @@ export async function createCourt(input: unknown): Promise<ActionResult<Court>> 
       }
       throw new MpError("COURTS.CREATE_FAILED", error.message, 500);
     }
-    revalidatePath("/dashboard/owner");
-    revalidatePath("/dashboard/partner");
+    revalidateCourtOccupancy();
     return mapCourt(row);
   });
 }
@@ -193,6 +183,7 @@ export async function updateCourt(input: unknown): Promise<ActionResult<Court>> 
       }
       throw new MpError("COURTS.UPDATE_FAILED", error.message, 400);
     }
+    revalidateCourtOccupancy();
     return mapCourt(data);
   });
 }
@@ -235,6 +226,7 @@ export async function setCourtMaintenance(
     } catch (e) {
       console.error("[setCourtMaintenance] log insert failed", e);
     }
+    revalidateCourtOccupancy();
     return mapCourt(data);
   });
 }
@@ -277,6 +269,7 @@ export async function clearCourtMaintenance(
     } catch (e) {
       console.error("[clearCourtMaintenance] log close failed", e);
     }
+    revalidateCourtOccupancy();
     return mapCourt(data);
   });
 }
@@ -316,6 +309,7 @@ export async function bulkSetCourtMaintenance(
         } as never)
         .in("id", courtIds);
       if (error) throw new MpError("COURTS.UPDATE_FAILED", error.message, 500);
+      revalidateCourtOccupancy();
       return { updated: courtIds.length };
     },
   );
@@ -373,6 +367,7 @@ export async function createCourtBlocker(
       }
       throw new MpError("COURTS.BLOCKER_FAILED", error.message, 500);
     }
+    revalidateCourtOccupancy();
     return { id: data.id as string };
   });
 }
@@ -507,6 +502,7 @@ export async function archiveCourt(input: unknown): Promise<ActionResult<Court>>
       .select()
       .single();
     if (error) throw new MpError("COURTS.UPDATE_FAILED", error.message, 400);
+    revalidateCourtOccupancy();
     return mapCourt(data);
   });
 }

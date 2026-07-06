@@ -69,40 +69,86 @@ export function useRealtimeRefresh(watches: RealtimeWatch[], opts: Opts = {}) {
     if (!enabled || watches.length === 0) return;
     const supabase = getBrowserClient();
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryCount = 0;
+    // El cleanup del effect setea disposed para cancelar retries pendientes
+    // (crítico en dev: StrictMode monta el effect dos veces).
+    let disposed = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     const triggerRefresh = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => router.refresh(), debounceMs);
     };
 
-    const channelName = `mp-rt-${Math.random().toString(36).slice(2, 10)}`;
-    let channel = supabase.channel(channelName);
+    const tables = watches.map((w) => w.table).join(",");
 
-    for (const w of watches) {
-      channel = channel.on(
-        "postgres_changes" as never,
-        {
-          event: w.event ?? "*",
-          schema: "public",
-          table: w.table,
-          ...(w.filter ? { filter: w.filter } : {}),
-        },
-        (payload: RealtimePayload) => {
-          if (onChangeRef.current) {
-            // Modo callback: el caller decide qué refetchear. Sin debounce
-            // global — si el caller quiere debounce, lo arma él.
-            onChangeRef.current(w.table, payload);
-          } else {
-            triggerRefresh();
-          }
-        },
-      );
-    }
+    // Si el canal muere (red caída, token vencido, error del server), la
+    // pantalla quedaría muda para siempre: re-suscribimos con backoff
+    // exponencial. En SUBSCRIBED se resetea el contador.
+    const openChannel = () => {
+      if (disposed) return;
+      // Canal reemplazado por un retry: sus callbacks tardíos no deben
+      // volver a agendar otro retry.
+      let stale = false;
+      const channelName = `mp-rt-${Math.random().toString(36).slice(2, 10)}`;
+      let ch = supabase.channel(channelName);
 
-    channel.subscribe();
+      for (const w of watches) {
+        ch = ch.on(
+          "postgres_changes" as never,
+          {
+            event: w.event ?? "*",
+            schema: "public",
+            table: w.table,
+            ...(w.filter ? { filter: w.filter } : {}),
+          },
+          (payload: RealtimePayload) => {
+            if (onChangeRef.current) {
+              // Modo callback: el caller decide qué refetchear. Sin debounce
+              // global — si el caller quiere debounce, lo arma él.
+              onChangeRef.current(w.table, payload);
+            } else {
+              triggerRefresh();
+            }
+          },
+        );
+      }
+
+      ch.subscribe((status: string) => {
+        if (disposed || stale) return;
+        if (status === "SUBSCRIBED") {
+          retryCount = 0;
+          return;
+        }
+        // CLOSED con disposed ya retornó arriba (cleanup normal); aquí es
+        // un cierre inesperado y se trata igual que un error.
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          stale = true;
+          const delay = Math.min(1000 * 2 ** retryCount, 30_000);
+          retryCount += 1;
+          console.warn(
+            `[realtime] canal ${channelName} (${tables}) en estado ${status}; reintento en ${delay}ms`,
+          );
+          if (retryTimer) clearTimeout(retryTimer);
+          retryTimer = setTimeout(() => {
+            if (disposed) return;
+            if (channel) supabase.removeChannel(channel);
+            channel = null;
+            openChannel();
+          }, delay);
+        }
+      });
+      channel = ch;
+    };
+
+    openChannel();
 
     return () => {
+      disposed = true;
       if (timer) clearTimeout(timer);
-      supabase.removeChannel(channel);
+      if (retryTimer) clearTimeout(retryTimer);
+      if (channel) supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled, debounceMs]);

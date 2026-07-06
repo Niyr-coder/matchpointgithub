@@ -1109,6 +1109,26 @@ para el detalle. Aplicado hoy en grant/revoke MATCHPOINT+ y approve/reject
 payment proof — si agregas un nuevo flujo admin con `getAdminClient`,
 acuérdate de llamarlo o el audit no te va a decir quién hizo qué.
 
+### 9.1b · Check de "staff del club" en la capa app: helper único
+
+El equivalente app-layer de `mp_club_staff` / `mp_is_employee_of` es
+`src/lib/auth/club-staff.ts`: `assertClubStaff(clubId, roles)` (lanza
+`AuthError`, retorna `userId`) e `isClubStaff(clubId, roles)` (booleano),
+con presets por dominio:
+
+- `FRONT_DESK_ROLES` = owner/manager/employee → reservas, walk-ins,
+  check-in, caja, proshop.
+- `CLUB_MANAGEMENT_ROLES` = owner/manager → canchas, configuración,
+  marketing, staff.
+
+`admin` de plataforma siempre pasa (mismo bypass que las policies). NO
+copiar el check inline en cada action: las copias divergieron (courts
+excluía a employee; reservations/walkins lo incluían) y el mismo botón
+funcionaba para owner pero fallaba silencioso para employee (fix
+2026-07-06). El preset elegido en la action debe ser consistente con la
+policy RLS de la tabla que muta — si la policy usa `mp_is_employee_of`,
+la action usa `FRONT_DESK_ROLES`.
+
 ### 9.2 · Fix de recursión infinita en partner_members (mig 069)
 
 La policy `pm_partner_admin` original tenía un `exists(select 1 from

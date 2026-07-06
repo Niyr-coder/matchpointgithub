@@ -3,35 +3,19 @@
 // Walk-in queue and check-in actions for the front-desk employee role.
 import "server-only";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getServerClient } from "@/lib/db/client.server";
 import { runAction, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
-import { AuthError } from "@/lib/auth/session";
+import { assertClubStaff, FRONT_DESK_ROLES } from "@/lib/auth/club-staff";
 import { IsoDateTimeSchema, UuidSchema } from "@/lib/schemas/common";
 import { resolveReservationForCheckIn } from "@/server/queries/checkin-resolve";
 import { notify } from "@/server/notifications/dispatch";
+import { revalidateCourtOccupancy } from "./_revalidate-occupancy";
 
+// Recepción es dominio front-desk: owner/manager/employee (+ admin bypass).
 async function requireClubStaff(clubId: string): Promise<string> {
-  const supabase = await getServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role,club_id")
-    .eq("user_id", user.id)
-    .is("revoked_at", null);
-  const ok = (roles ?? []).some(
-    (r) =>
-      r.role === "admin" ||
-      (r.club_id === clubId &&
-        (r.role === "owner" || r.role === "manager" || r.role === "employee")),
-  );
-  if (!ok) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff required");
-  return user.id;
+  return assertClubStaff(clubId, FRONT_DESK_ROLES);
 }
 
 const CreateWalkinSchema = z.object({
@@ -62,6 +46,7 @@ export async function createWalkin(input: unknown): Promise<ActionResult<{ id: s
       .select("id")
       .single();
     if (error) throw new MpError("WALKINS.CREATE_FAILED", error.message, 500);
+    revalidateCourtOccupancy();
     return { id: row.id as string };
   });
 }
@@ -74,6 +59,7 @@ export async function removeWalkin(input: unknown): Promise<ActionResult<{ ok: t
     const supabase = await getServerClient();
     const { error } = await supabase.from("walkins").delete().eq("id", id);
     if (error) throw new MpError("WALKINS.DELETE_FAILED", error.message, 500);
+    revalidateCourtOccupancy();
     return { ok: true as const };
   });
 }
@@ -160,9 +146,7 @@ export async function recordCheckIn(
           clubId: data.clubId,
         },
       });
-      revalidatePath("/dashboard/employee");
-      revalidatePath("/dashboard/employee/e-checkin");
-      revalidatePath("/dashboard/user/mis-reservas");
+      revalidateCourtOccupancy({ includePlayer: true });
 
       return { id: row.id as string };
     }
@@ -216,6 +200,17 @@ export async function checkInByCode(
         id: (existing?.id as string) ?? resolved.id,
         alreadyDone: true,
       };
+    }
+
+    // Código válido pero la reserva ya cerró — mensaje honesto, distinto de
+    // "código no encontrado".
+    if (resolved.status === "no_show" || resolved.status === "completed") {
+      const label = resolved.status === "no_show" ? "no-show" : "jugada";
+      throw new MpError(
+        "CHECKINS.INVALID_STATUS",
+        `El código existe pero la reserva ya está marcada como ${label}`,
+        409,
+      );
     }
 
     const inner = await recordCheckIn({
@@ -317,9 +312,7 @@ export async function assignWalkinCourt(
       .eq("id", data.walkinId);
     if (upErr) throw new MpError("WALKINS.UPDATE_FAILED", upErr.message, 500);
 
-    revalidatePath("/dashboard/employee/e-walkins");
-    revalidatePath("/dashboard/employee/e-checkin");
-    revalidatePath("/dashboard/manager/club-walkins");
+    revalidateCourtOccupancy();
     return { reservationId: rsv.id as string };
   });
 }
@@ -356,7 +349,7 @@ export async function rescheduleWalkin(
       .update({ duration_minutes: data.durationMinutes } as never)
       .eq("id", data.walkinId);
     if (error) throw new MpError("WALKINS.RESCHEDULE_FAILED", error.message, 500);
-    revalidatePath("/dashboard/employee/e-walkins");
+    revalidateCourtOccupancy();
     return { ok: true as const };
   });
 }

@@ -16,7 +16,7 @@ type Props = {
   selectedHourIdx: number | null;
   onSelectHour: (idx: number) => void;
   isPast: (hourIdx: number) => boolean;
-  onFreeCellClick?: (courtLabel: string, hour: string) => void;
+  onFreeCellClick?: (courtLabel: string, hour: string, courtId: string) => void;
 };
 
 function ScheduleCell({
@@ -199,7 +199,7 @@ export function EmployeeCourtScheduleGrid({
                   courtLabel={court.label}
                   onFreeClick={
                     onFreeCellClick
-                      ? () => onFreeCellClick(court.label, hour)
+                      ? () => onFreeCellClick(court.label, hour, court.id)
                       : undefined
                   }
                 />

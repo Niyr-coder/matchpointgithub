@@ -41,7 +41,9 @@ export async function loadReceptionQueue(
 
   const { data: reservations, error } = await supabase
     .from("reservations")
-    .select("id,during,sport,source,organizer_id,max_players,courts(code,name)")
+    .select(
+      "id,during,sport,source,organizer_id,for_user_id,notes,check_in_code,max_players,courts(code,name)",
+    )
     .eq("club_id", clubId)
     .overlaps("during", overlapsRangeIso(now, windowEnd))
     .in("status", [...ACTIVE_STATUSES])
@@ -63,15 +65,22 @@ export async function loadReceptionQueue(
     .sort((a: ParsedRow, b: ParsedRow) => a.start.getTime() - b.start.getTime())
     .slice(0, limit);
 
-  const organizerIds = Array.from(
-    new Set(sorted.map((x) => x.r.organizer_id as string).filter(Boolean)),
+  // El nombre visible en recepción es el del CLIENTE, no el de quien insertó
+  // la fila: en reservas manuales y walk-ins el organizer_id es el staff.
+  // Orden de resolución: for_user_id → notes ("Walk-in · Nombre") → organizer.
+  const profileIds = Array.from(
+    new Set(
+      sorted
+        .flatMap((x) => [x.r.for_user_id as string | null, x.r.organizer_id as string | null])
+        .filter((id): id is string => !!id),
+    ),
   );
   const profNames = new Map<string, string>();
-  if (organizerIds.length > 0) {
+  if (profileIds.length > 0) {
     const { data: profs } = await supabase
       .from("profiles")
       .select("id,display_name")
-      .in("id", organizerIds);
+      .in("id", profileIds);
     for (const p of profs ?? []) {
       profNames.set(p.id as string, p.display_name as string);
     }
@@ -84,13 +93,34 @@ export async function loadReceptionQueue(
     const source = x.r.source as string;
     const st: ReceptionQueueStatus =
       source === "walkin" ? "walkin" : diffMin <= 15 ? "arriving" : "on-time";
+    const forUserId = x.r.for_user_id as string | null;
+    // Walk-ins guardan el cliente en notes ("Walk-in · Nombre"); en reservas
+    // normales notes es texto libre y NO debe tapar el nombre del perfil.
+    const notesParts = (((x.r.notes as string | null) ?? "").split(" · ") as string[])
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const walkinName =
+      source === "walkin"
+        ? notesParts[0]?.toLowerCase() === "walk-in"
+          ? notesParts[1]
+          : notesParts[0]
+        : undefined;
+    const n =
+      (forUserId ? profNames.get(forUserId) : null) ??
+      walkinName ??
+      profNames.get(x.r.organizer_id as string) ??
+      "Cliente";
     return {
       id: x.r.id as string,
       t: fmtHHMM(x.start),
-      n: profNames.get(x.r.organizer_id as string) ?? "Cliente",
+      n,
       c,
       d: durationLabelMinutes(x.start, x.end),
-      code: formatReservationCheckInLabel(source, x.r.id as string),
+      code: formatReservationCheckInLabel(
+        source,
+        x.r.id as string,
+        x.r.check_in_code as string | null,
+      ),
       sport: sportLabel(x.r.sport as string),
       st,
       players: (x.r.max_players as number) ?? 0,

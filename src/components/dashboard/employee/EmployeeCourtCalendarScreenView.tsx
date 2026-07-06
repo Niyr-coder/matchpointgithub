@@ -216,13 +216,20 @@ export function EmployeeCourtCalendarScreenView({ data }: { data: CourtCalendarD
             selectedHourIdx={selectedHourIdx}
             onSelectHour={setSelectedHourIdx}
             isPast={isPast}
-            onFreeCellClick={(court, hour) => {
+            onFreeCellClick={(court, hour, courtId) => {
+              // Prefill del slot: e-reservas abre el modal de reserva manual
+              // con cancha + horario ya elegidos (lee ?court=&start=).
+              const start = new Date(s.dateIso);
+              const [hh] = hour.split(":");
+              start.setHours(Number(hh), 0, 0, 0);
               toast({
                 icon: "calendar",
                 title: `${court} · ${hour} libre`,
-                sub: "Abriendo reservas…",
+                sub: "Abriendo reserva con este horario…",
               });
-              router.push("/dashboard/employee/e-reservas");
+              router.push(
+                `/dashboard/employee/e-reservas?court=${encodeURIComponent(courtId)}&start=${encodeURIComponent(start.toISOString())}`,
+              );
             }}
           />
         )}

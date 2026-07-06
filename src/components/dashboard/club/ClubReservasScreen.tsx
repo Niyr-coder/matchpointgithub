@@ -37,9 +37,10 @@ function emptyGrid(): number[][] {
   return Array(7).fill(null).map(() => Array(HOURS.length).fill(0));
 }
 
-async function loadData(): Promise<ReservasData> {
+async function loadData(weekOffset: number): Promise<ReservasData> {
   const clubId = await resolveActiveClubId();
   const weekStart = startOfWeek(new Date());
+  weekStart.setDate(weekStart.getDate() + weekOffset * 7);
   const weekRangeLabel = fmtWeekRange(weekStart);
   const daysLabels = dayLabelsForWeek(weekStart);
 
@@ -51,6 +52,7 @@ async function loadData(): Promise<ReservasData> {
       weekRangeLabel,
       daysLabels,
       weekStartIso: weekStart.toISOString(),
+      weekOffset,
       occupancyPct: 0,
       minPriceCents: null,
     };
@@ -84,6 +86,7 @@ async function loadData(): Promise<ReservasData> {
       weekRangeLabel,
       daysLabels,
       weekStartIso: weekStart.toISOString(),
+      weekOffset,
       occupancyPct: 0,
       minPriceCents: null,
     };
@@ -156,7 +159,7 @@ async function loadData(): Promise<ReservasData> {
   const grids = new Map<string, number[][]>();
   // Meta paralelo: nombre del cliente + kind por celda, keyed por "${day}-${hour}".
   // Permite hover tooltip en el grid sin tener que re-fetch.
-  type CellMeta = { name: string; kind: string; id: string };
+  type CellMeta = { name: string; kind: string; id: string; status: string };
   const metas = new Map<string, Record<string, CellMeta>>();
   for (const id of courtIds) {
     grids.set(id, emptyGrid());
@@ -237,7 +240,12 @@ async function loadData(): Promise<ReservasData> {
       const hourIdx = HOURS.indexOf(h);
       if (hourIdx < 0) continue;
       grid[dayIdx][hourIdx] = stateVal;
-      metaCourt[`${dayIdx}-${hourIdx}`] = { name, kind, id: r.id as string };
+      metaCourt[`${dayIdx}-${hourIdx}`] = {
+        name,
+        kind,
+        id: r.id as string,
+        status: (r.status as string) ?? "booked",
+      };
       occupied++;
     }
     metas.set(r.court_id as string, metaCourt);
@@ -258,16 +266,28 @@ async function loadData(): Promise<ReservasData> {
     weekRangeLabel,
     daysLabels,
     weekStartIso: weekStart.toISOString(),
+    weekOffset,
     occupancyPct,
     minPriceCents: globalMin,
   };
 }
 
+// Navegación de semanas: `?w=<offset>` relativo a la semana actual (0 = hoy).
+// Clamp ±26 para no permitir rangos absurdos por URL.
+function parseWeekOffset(raw: string | string[] | undefined): number {
+  const n = parseInt(Array.isArray(raw) ? raw[0] ?? "" : raw ?? "", 10);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-26, Math.min(26, n));
+}
+
 export async function ClubReservasScreen({
   showReceptionHourHint = false,
+  searchParams,
 }: {
   showReceptionHourHint?: boolean;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
-  const data = await loadData();
+  const sp = searchParams ? await searchParams : {};
+  const data = await loadData(parseWeekOffset(sp.w));
   return <ClubReservasScreenView data={data} showReceptionHourHint={showReceptionHourHint} />;
 }

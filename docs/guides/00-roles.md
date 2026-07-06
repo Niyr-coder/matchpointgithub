@@ -80,19 +80,24 @@ puede abrir cualquier segmento por URL (view-as). El proxy y
 cookie si el rol existía en assignments — permitía “fingir” otro dashboard.
 Eso ya no aplica salvo admin.
 
-## 4. `RoleSwitcher` (admin only)
+## 4. Switcher de rol (`SidebarRoleMenu`)
 
-Componente `src/components/dashboard/RoleSwitcher.tsx`. Visible solo si el
-user tiene `role=admin` en `role_assignments`. Le permite **previewar
-cualquier rol** sin tener las assignments — admin puede ver el dashboard
-owner, partner, coach, etc para soporte.
+Componente `src/components/dashboard/SidebarRoleMenu.tsx` (el antiguo
+`RoleSwitcher.tsx` ya no existe). Cualquier user con 2+ roles asignados
+puede cambiar entre ellos; si el user tiene `role=admin`, además puede
+**previewar cualquier rol** sin tener las assignments (view-as) — admin
+puede ver el dashboard owner, partner, coach, etc para soporte.
 
 Llamada: `switchRole({ role, clubId?, partnerId? })` (server action) → set
-cookies `mp_active_role` y opcionalmente `mp_active_club_id`.
+cookies `mp_active_role` y opcionalmente `mp_active_club`, más
+`revalidatePath("/dashboard", "layout")` para purgar el cache RSC del rol
+anterior (sin eso, un deep-link tras el switch servía pantallas cacheadas
+del rol/club previo). El cliente complementa con `router.refresh()`.
 
-**Cuidado**: switch role **no** limpia suscripciones realtime de la pantalla
-anterior (gap conocido — ver audit). Recargar la página al cambiar rol si
-hay leak visible.
+Las suscripciones realtime SÍ se limpian al cambiar de rol: el cleanup de
+`useRealtimeRefresh` hace `removeChannel` al desmontar la pantalla (el
+`router.push` del switch desmonta). Si ves un leak, es un canal creado
+fuera de ese hook.
 
 ## 5. Sidebar items por rol
 
@@ -168,7 +173,7 @@ un item de sidebar antes de tener su pantalla lista.
 | Switch entre roles via UI | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ si tiene 2+ roles | ✅ + view-as sin tener el rol |
 
 "Switch entre roles" no es exclusivo de admin: cualquier user con 2+ roles
-asignados puede cambiar entre ellos vía `RoleSwitcher`/`switchRole` (ver
+asignados puede cambiar entre ellos vía `SidebarRoleMenu`/`switchRole` (ver
 §3/§4). Admin además tiene "view-as": puede previsualizar cualquier rol
 sin tenerlo asignado.
 
@@ -223,6 +228,17 @@ verificación fresca contra Supabase Auth.
    token del TV: 5 archivos con su propia copia incompleta dejaban a
    cualquier club sin partner externo sin acceso a gestionar su propio
    torneo (fix 2026-07-01).
+7. **Duplicar el check de "staff del club" inline** — usar
+   `assertClubStaff(clubId, roles)` / `isClubStaff(clubId, roles)` de
+   `src/lib/auth/club-staff.ts` con los presets por dominio:
+   `FRONT_DESK_ROLES` (owner/manager/employee → reservas, walk-ins,
+   check-in, caja, proshop) y `CLUB_MANAGEMENT_ROLES` (owner/manager →
+   canchas, configuración, marketing, staff). Las copias inline divergieron
+   (courts excluía a employee mientras reservations/walkins lo incluían) y
+   una action de courts expuesta a una superficie de employee fallaba
+   silenciosa con `AUTH.ROLE_REQUIRED` (fix 2026-07-06). Quedan copias
+   inline viejas en cash/proshop/clubs/events/marketing — al tocar una,
+   migrarla al helper.
 
 ## 10. Cómo agregar un rol nuevo
 
@@ -269,7 +285,8 @@ Además del modelo por RoleKey, existe una **matriz de capacidades real y editab
 ## 11. TODOs
 
 - [x] UI para asignar roles a usuarios (admin) + matriz de permisos editable (mig 158)
-- [ ] Limpieza de subs realtime al cambiar rol
+- [x] Limpieza de subs realtime al cambiar rol (cleanup de `useRealtimeRefresh`
+      hace `removeChannel` al desmontar; verificado 2026-07-06)
 - [x] Cookie write al navegar via `/dashboard/[role]` y al usar
-      `RoleSwitcher` (proxy sincroniza URL validada y `switchRole` cubre la UI)
+      `SidebarRoleMenu` (proxy sincroniza URL validada y `switchRole` cubre la UI)
 - [ ] Audit log al cambiar rol activo (hoy solo loguea grant/revoke)

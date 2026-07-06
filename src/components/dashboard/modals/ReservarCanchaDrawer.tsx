@@ -12,6 +12,8 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/dashboard/ToastProvider";
+import { getBrowserClient } from "@/lib/db/client.browser";
+import { formatCheckInLabel } from "@/lib/checkin/code";
 import {
   buildGoogleCalendarUrl,
   buildReservationIcs,
@@ -600,7 +602,7 @@ export function ReservarCanchaDrawer() {
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; checkInCode?: string | null } | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [notes, setNotes] = useState("");
   const [visibility, setVisibility] = useState<ReservationVisibility>("private");
@@ -813,6 +815,33 @@ export function ReservarCanchaDrawer() {
     };
   }, [pickingClub]);
 
+  // Algunos puntos de entrada (perfil del club, picker) no traen el precio en
+  // el detail — sin esto el ticket muestra "—" y el total "$0.00". Lo
+  // resolvemos desde clubs_public_summary (min_price_cents) por slug.
+  useEffect(() => {
+    if (!open || !club?.clubSlug || club.price != null) return;
+    const slug = club.clubSlug;
+    let cancelled = false;
+    (async () => {
+      const supabase = getBrowserClient();
+      const { data } = await supabase
+        .from("clubs_public_summary")
+        .select("slug,min_price_cents")
+        .eq("slug", slug)
+        .maybeSingle();
+      if (cancelled) return;
+      const cents = (data as { min_price_cents?: number | null } | null)?.min_price_cents;
+      if (cents != null) {
+        setClub((prev) =>
+          prev && prev.clubSlug === slug ? { ...prev, price: Math.round(cents / 100) } : prev,
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, club?.clubSlug, club?.price]);
+
   const selectClubFromPicker = (c: ClubPickerItem) => {
     setClub({
       name: c.name,
@@ -988,7 +1017,12 @@ export function ReservarCanchaDrawer() {
           courtId,
           startsAt,
           endsAt,
-          sport: club.sport ?? "pickleball",
+          // El schema del server solo acepta tennis|padel|pickleball; si el
+          // club tiene otro deporte primario, caemos a pickleball para no
+          // fallar con VALIDATION.FAILED.
+          sport: club.sport && ["tennis", "padel", "pickleball"].includes(club.sport)
+            ? club.sport
+            : "pickleball",
           visibility,
           maxPlayers: 4,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -1002,7 +1036,10 @@ export function ReservarCanchaDrawer() {
           await loadAvailability();
         }
       } else {
-        setCreated({ id: (json.data?.id as string) ?? "—" });
+        setCreated({
+          id: (json.data?.id as string) ?? "—",
+          checkInCode: (json.data?.checkInCode as string | null | undefined) ?? null,
+        });
         window.dispatchEvent(new Event("mp-reservation-created"));
         router.refresh();
       }
@@ -1533,7 +1570,7 @@ export function ReservarCanchaDrawer() {
                         ? courts === null
                           ? "Cargando canchas…"
                           : "Sin canchas activas"
-                        : "Confirmar y pagar"}
+                        : "Confirmar reserva"}
                 </button>
               </div>
             </div>
@@ -1622,7 +1659,10 @@ export function ReservarCanchaDrawer() {
                     "Hora",
                     time ? formatReservationTimeLabel(time, duration) : "—",
                   ],
-                  ["Total", `$${price.toFixed(2)}`],
+                  ["Total", price > 0 ? `$${price.toFixed(2)}` : "Por confirmar en el club"],
+                  ...(created?.checkInCode
+                    ? [["Código check-in", formatCheckInLabel("app", created.checkInCode)]]
+                    : []),
                 ] as [string, string][]
               ).map(([k, v]) => (
                 <div
