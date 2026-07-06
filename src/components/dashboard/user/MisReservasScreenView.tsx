@@ -1,10 +1,14 @@
 // Pantalla Mis reservas — tabs Próximas / Pasadas / Canceladas.
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ReservationCheckInQr } from "../shared/ReservationCheckInQr";
 import { useRealtimeRefresh } from "../useRealtimeRefresh";
+import { useToast } from "../ToastProvider";
+import { usePromptModal } from "../widgets/PromptModal";
+import { cancelReservation } from "@/server/actions/reservations";
 
 type Status = "booked" | "confirmed" | "checked_in" | "no_show" | "cancelled" | "completed";
 
@@ -205,7 +209,7 @@ export function MisReservasScreenView({ data }: { data: MisReservasData }) {
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           {list.map((r) => (
-            <ReservationRow key={r.id} r={r} />
+            <ReservationRow key={r.id} r={r} canCancel={tab === "proximas"} />
           ))}
         </div>
       )}
@@ -213,11 +217,38 @@ export function MisReservasScreenView({ data }: { data: MisReservasData }) {
   );
 }
 
-function ReservationRow({ r }: { r: MisReserva }) {
+function ReservationRow({ r, canCancel }: { r: MisReserva; canCancel: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const { confirm } = usePromptModal();
+  const [pending, startTransition] = useTransition();
   const { start, end } = parseRange(r.during);
   const startFmt = start ? fmtDateTime(start) : null;
   const endFmt = end ? fmtDateTime(end) : null;
   const accent = STATUS_COLOR[r.status];
+
+  // Solo se puede cancelar una reserva futura que aún no pasó por check-in.
+  const cancellable =
+    canCancel && (r.status === "booked" || r.status === "confirmed");
+
+  const handleCancel = async () => {
+    const ok = await confirm({
+      title: "Cancelar reserva",
+      body: `¿Cancelar tu reserva en ${r.clubName}? El club libera el horario para otros jugadores.`,
+      confirmLabel: "Cancelar reserva",
+      destructive: true,
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const res = await cancelReservation({ id: r.id, body: {} });
+      if (res.ok) {
+        toast({ icon: "check", title: "Reserva cancelada" });
+        router.refresh();
+      } else {
+        toast({ icon: "alert-triangle", title: "No se pudo cancelar", sub: res.error.message });
+      }
+    });
+  };
   return (
     <div
       style={{
@@ -340,6 +371,29 @@ function ReservationRow({ r }: { r: MisReserva }) {
         >
           {start ? fmtRel(start) : ""}
         </div>
+        {cancellable && (
+          <button
+            onClick={handleCancel}
+            disabled={pending}
+            style={{
+              marginTop: 8,
+              padding: "5px 10px",
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#dc2626",
+              background: "transparent",
+              border: "1px solid #dc262644",
+              borderRadius: 8,
+              cursor: pending ? "default" : "pointer",
+              opacity: pending ? 0.6 : 1,
+              fontFamily: "inherit",
+            }}
+          >
+            {pending ? "Cancelando…" : "Cancelar"}
+          </button>
+        )}
       </div>
     </div>
   );

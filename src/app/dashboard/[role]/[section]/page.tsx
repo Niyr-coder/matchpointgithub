@@ -199,7 +199,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "mis-sorteos": () => <MyGiveawaysScreen />,
   },
   owner: {
-    "club-reservas": () => <ClubReservasScreen />,
+    "club-reservas": (sp) => <ClubReservasScreen searchParams={sp} />,
     "club-canchas": () => <ClubCanchasScreen />,
     "club-clientes": () => <ClubClientesScreen />,
     "club-finanzas": () => <ClubFinanzasScreen />,
@@ -212,7 +212,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "club-sorteos": () => <ClubSorteosScreen roleSegment="owner" />,
   },
   manager: {
-    "club-reservas": () => <ClubReservasScreen />,
+    "club-reservas": (sp) => <ClubReservasScreen searchParams={sp} />,
     "club-canchas": () => <ClubCanchasScreen />,
     "club-clientes": () => <ClubClientesScreen />,
     "club-eventos": () => <ClubEventosScreen />,
@@ -247,7 +247,7 @@ const SCREENS: Partial<Record<RoleKey, Record<string, ScreenFactory>>> = {
     "e-walkins": () => <EmployeeWalkinsScreen />,
     "e-calendario": (sp) => <EmployeeCourtCalendarScreen searchParams={sp} />,
     "e-caja": () => <EmployeeCajaScreen />,
-    "e-reservas": () => <ClubReservasScreen showReceptionHourHint />,
+    "e-reservas": (sp) => <ClubReservasScreen showReceptionHourHint searchParams={sp} />,
     "e-shop": () => <EmployeeProShopScreen />,
     "e-soporte": () => <EmployeeSoporteScreen />,
   },

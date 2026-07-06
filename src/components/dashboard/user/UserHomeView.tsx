@@ -523,8 +523,18 @@ function ReservasPanel({
               </div>
             );
           }
-          const confirmed =
-            it.status === "booked" || it.status === "confirmed" || it.status === "checked_in";
+          // Mismos labels que Mis reservas para no rotular la misma reserva
+          // distinto en dos pantallas.
+          const statusChip: Record<string, { label: string; on: boolean }> = {
+            booked: { label: "Reservada", on: true },
+            confirmed: { label: "Confirmada", on: true },
+            checked_in: { label: "En cancha", on: true },
+            no_show: { label: "No-show", on: false },
+            cancelled: { label: "Cancelada", on: false },
+            completed: { label: "Jugada", on: true },
+          };
+          const chip = statusChip[it.status] ?? { label: "Pendiente", on: false };
+          const confirmed = chip.on;
           const courtSub = [it.courtLabel, it.clubLabel].filter(Boolean).join(" · ");
           return (
             <div
@@ -593,7 +603,7 @@ function ReservasPanel({
                   border: confirmed ? "none" : "1px solid #fde68a",
                 }}
               >
-                {confirmed ? "Confirmada" : "Pendiente"}
+                {chip.label}
               </span>
             </div>
           );

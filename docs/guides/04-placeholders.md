@@ -547,6 +547,19 @@ patrón opacity 0.5 + dashed border que ya está estandarizado.
 
 ## 3. 🟢 Stubs internos / Features pending
 
+### Ciclo de vida de reservas: `confirmed` y `completed` son status huérfanos
+- **Enum**: `mp_reservation_status` (002_enums.sql).
+- **Estado (audit 2026-07-06)**: ninguna action/trigger/cron transiciona
+  `booked → confirmed` ni cierra `checked_in → completed`. Las reservas con
+  check-in quedan `checked_in` para siempre; `confirmed` y `completed` solo
+  existen en datos seed. El código que los ACEPTA como entrada (check-in,
+  no-show, cancel, RLS `res_update`, QR en Mis reservas) funciona bien si
+  algún día se generan.
+- **Para activar**: (a) cron pg que marque `completed` las reservas
+  `checked_in`/`booked` cuya `upper(during) < now() - grace`, con notif
+  opcional; (b) decidir si `confirmed` se usa (confirmación manual del club
+  vía `club_settings`) o se elimina del enum y sus guardas.
+
 ### `payouts` table existe pero no se crea automáticamente
 - **Tabla**: `public.payouts` (mig 081)
 - **Estado**: schema + RLS listos. UI lee rows en `AdminPagosScreen`. Pero

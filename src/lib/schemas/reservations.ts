@@ -44,6 +44,9 @@ export const ReservationSchema = z
     createdAt: IsoDateTimeSchema,
     cancelledAt: IsoDateTimeSchema.nullable(),
     version: z.number().int(),
+    // Código corto que el jugador presenta en recepción (trigger mig
+    // 20260601120000). Opcional para no romper payloads viejos.
+    checkInCode: z.string().nullable().optional(),
   })
   .openapi("Reservation");
 

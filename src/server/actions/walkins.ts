@@ -202,6 +202,17 @@ export async function checkInByCode(
       };
     }
 
+    // Código válido pero la reserva ya cerró — mensaje honesto, distinto de
+    // "código no encontrado".
+    if (resolved.status === "no_show" || resolved.status === "completed") {
+      const label = resolved.status === "no_show" ? "no-show" : "jugada";
+      throw new MpError(
+        "CHECKINS.INVALID_STATUS",
+        `El código existe pero la reserva ya está marcada como ${label}`,
+        409,
+      );
+    }
+
     const inner = await recordCheckIn({
       clubId: data.clubId,
       reservationId: resolved.id,

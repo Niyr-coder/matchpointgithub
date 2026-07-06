@@ -9,7 +9,7 @@ import "server-only";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { getServerClient } from "@/lib/db/client.server";
-import { getAdminClient } from "@/lib/db/client.admin";
+import { getAdminClient, setAuditActor } from "@/lib/db/client.admin";
 import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
@@ -46,6 +46,16 @@ function toRange(startsAt: string, endsAt: string): string {
   return `[${startsAt},${endsAt})`;
 }
 
+// Labels en español para mensajes de error visibles al usuario.
+const STATUS_LABEL_ES: Record<string, string> = {
+  booked: "reservada",
+  confirmed: "confirmada",
+  checked_in: "en cancha",
+  no_show: "no-show",
+  cancelled: "cancelada",
+  completed: "jugada",
+};
+
 function mapReservation(row: Record<string, unknown>): Reservation {
   const { startsAt, endsAt } = parseRange(row.during as string);
   return ReservationSchema.parse({
@@ -65,6 +75,7 @@ function mapReservation(row: Record<string, unknown>): Reservation {
     createdAt: row.created_at,
     cancelledAt: row.cancelled_at ?? null,
     version: row.version ?? 1,
+    checkInCode: (row.check_in_code as string | null | undefined) ?? null,
   });
 }
 
@@ -190,7 +201,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           if (new Date(data.startsAt) > horizon) {
             throw new MpError(
               "RESERVATION.OUTSIDE_WINDOW",
-              `Bookings open up to ${settings.reservation_window_days} days ahead`,
+              `Este club acepta reservas hasta ${settings.reservation_window_days} días de anticipación`,
               422,
             );
           }
@@ -198,7 +209,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         if (new Date(data.startsAt).getTime() < Date.now() - 60_000) {
           throw new MpError(
             "RESERVATION.IN_PAST",
-            "startsAt cannot be in the past",
+            "No puedes reservar un horario que ya pasó",
             422,
           );
         }
@@ -225,7 +236,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
           if (error.code === "23P01") {
             throw new MpError(
               "RESERVATION.SLOT_TAKEN",
-              "That slot was just booked by someone else. Pick another time.",
+              "Ese horario se acaba de ocupar. Elige otro.",
               409,
             );
           }
@@ -309,15 +320,19 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
     if (["cancelled", "no_show", "completed"].includes(current.status)) {
       throw new MpError(
         "RESERVATION.CANNOT_CANCEL",
-        `Cannot cancel from status '${current.status}'`,
+        `No puedes cancelar una reserva en estado «${STATUS_LABEL_ES[current.status as string] ?? current.status}»`,
         409,
       );
     }
 
-    const isOrganizer = current.organizer_id === userId;
+    // El cliente de una reserva hecha por el club (for_user_id) tiene el
+    // mismo derecho de cancelar que el organizer.
+    const isOrganizer =
+      current.organizer_id === userId ||
+      ((current as Record<string, unknown>).for_user_id as string | null) === userId;
     const staff = await isClubStaff(userId, current.club_id);
     if (!isOrganizer && !staff) {
-      throw new AuthError("AUTH.ROLE_REQUIRED", "Only organizer or club staff can cancel");
+      throw new AuthError("AUTH.ROLE_REQUIRED", "Solo el organizador o el staff del club pueden cancelar");
     }
 
     // Cancellation-window: organizer can only cancel within the club's window.
@@ -333,13 +348,19 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
       if (hoursUntilStart < windowHours) {
         throw new MpError(
           "RESERVATION.WINDOW_CLOSED",
-          `Cancellations require at least ${windowHours}h notice`,
+          `Las cancelaciones requieren al menos ${windowHours} h de anticipación. Contacta al club si necesitas ayuda.`,
           422,
         );
       }
     }
 
-    const { data, error } = await supabase
+    // Mutación via admin client: la RLS res_update no incluye for_user_id
+    // (el cliente de una reserva hecha por el club), así que el UPDATE con el
+    // client del user quedaría en 0 filas para ese caso. La autorización ya
+    // se validó arriba (organizer/for_user/staff) — patrón 30-rls §9.1.
+    const admin = getAdminClient();
+    await setAuditActor(admin, userId, staff ? "owner" : "user");
+    const { data, error } = await admin
       .from("reservations")
       .update({
         status: "cancelled",
@@ -472,7 +493,7 @@ export async function createWalkinReservation(
 
     if (error) {
       if (error.code === "23P01") {
-        throw new MpError("RESERVATION.SLOT_TAKEN", "Court occupied at that time", 409);
+        throw new MpError("RESERVATION.SLOT_TAKEN", "La cancha está ocupada en ese horario", 409);
       }
       throw new MpError("WALKIN.CREATE_FAILED", error.message, 500);
     }
@@ -523,7 +544,9 @@ export async function searchUsersForBooking(
     await assertClubStaff(clubId, FRONT_DESK_ROLES);
 
     const admin = getAdminClient();
-    const term = `%${q.trim()}%`;
+    // El placeholder invita a buscar "@username" pero los usernames se
+    // guardan sin arroba — la quitamos para que el término matchee.
+    const term = `%${q.trim().replace(/^@/, "")}%`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (admin as any)
       .from("profiles")
