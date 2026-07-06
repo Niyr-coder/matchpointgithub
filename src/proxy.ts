@@ -1,10 +1,10 @@
 // Next 16 Proxy (formerly known as middleware).
 // Responsibilities:
 //   1. Refresh Supabase auth cookies before they expire (critical for SSR session).
-//   2. Inject x-active-role / x-active-club headers downstream so Server
-//      Components and Route Handlers can read them without re-parsing cookies.
-//   3. Gate /dashboard/* behind an authenticated session (cheap optimistic check).
+//   2. Gate /dashboard/* behind an authenticated session (cheap optimistic check).
 //
+// El rol/club activo viaja SOLO por cookies (mp_active_role / mp_active_club);
+// los Server Components lo leen vía getSession()/resolveActiveClubId.
 // Heavy authorization (RLS, role.club_id membership) happens server-side per request.
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -47,12 +47,7 @@ export async function proxy(request: NextRequest) {
   // ni refrescar sesion. Esto evita un round-trip a auth.getUser() (~150ms
   // por hit) en toda la landing para visitantes anonimos.
   if (!isProtected && !isAuthRoute && !hasSupabaseCookie) {
-    const response = NextResponse.next({ request });
-    const activeRole = request.cookies.get(ACTIVE_ROLE_COOKIE)?.value;
-    const activeClub = request.cookies.get(ACTIVE_CLUB_COOKIE)?.value;
-    if (activeRole) response.headers.set("x-active-role", activeRole);
-    if (activeClub) response.headers.set("x-active-club", activeClub);
-    return response;
+    return NextResponse.next({ request });
   }
 
   // Start from the incoming request so cookies refreshed by Supabase get
@@ -82,12 +77,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  // ── Active role / club passthrough ─────────────────────────────────────
-  const activeRole = request.cookies.get(ACTIVE_ROLE_COOKIE)?.value ?? "";
-  const activeClub = request.cookies.get(ACTIVE_CLUB_COOKIE)?.value ?? "";
-  if (activeRole) response.headers.set("x-active-role", activeRole);
-  if (activeClub) response.headers.set("x-active-club", activeClub);
 
   // ── Auth gate ──────────────────────────────────────────────────────────
   if (isProtected && !user) {
@@ -163,20 +152,16 @@ export async function proxy(request: NextRequest) {
 
     if (decision.syncCookieTo) {
       response.cookies.set(ACTIVE_ROLE_COOKIE, decision.syncCookieTo, ACTIVE_COOKIE_OPTS);
-      response.headers.set("x-active-role", decision.syncCookieTo);
       const scoped = ["owner", "manager", "employee", "coach", "partner"] as const;
       if ((scoped as readonly string[]).includes(decision.syncCookieTo)) {
         const row = (assignments ?? []).find((a) => a.role === decision.syncCookieTo);
         if (row?.club_id) {
           response.cookies.set(ACTIVE_CLUB_COOKIE, row.club_id as string, ACTIVE_COOKIE_OPTS);
-          response.headers.set("x-active-club", row.club_id as string);
         } else {
           response.cookies.delete(ACTIVE_CLUB_COOKIE);
-          response.headers.delete("x-active-club");
         }
       } else {
         response.cookies.delete(ACTIVE_CLUB_COOKIE);
-        response.headers.delete("x-active-club");
       }
     }
   }

@@ -60,7 +60,7 @@
 - **Owner:** user (reserva) · employee/manager/owner (gestionan)
 - **Tablas raíz:** `reservations`, `reservation_participants`, `reservation_payments`, `walkins`
 - **Pantallas:** `/user/inicio` (próxima), `/owner/club-reservas`, `/manager/club-reservas`, `/employee/e-reservas`, `/employee/e-walkins`, modal `CrearMatchModal`, modal `ReservaCancha`
-- **Server Actions:** `createReservation`, `cancelReservation`, `joinReservation`, `inviteToReservation`, `createWalkin`
+- **Server Actions:** `createReservation`, `cancelReservation`, `joinReservation`, `inviteToReservation`, `createWalkinReservation`
 - **Endpoints:** `GET /reservations`, `POST /reservations`, `PATCH /reservations/:id`, `DELETE /reservations/:id`, `GET /courts/:id/availability?date=`
 
 ### 5. `checkins`

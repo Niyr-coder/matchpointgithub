@@ -8,12 +8,12 @@ import "server-only";
 
 import { z } from "zod";
 import { headers } from "next/headers";
-import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, runMutation, type ActionResult } from "@/lib/api/action";
 import { MpError } from "@/lib/api/errors";
 import { AuthError } from "@/lib/auth/session";
+import { assertClubStaff, isClubStaff as isClubStaffWith, FRONT_DESK_ROLES } from "@/lib/auth/club-staff";
 import { assertRateLimit, RATE_LIMITS } from "@/lib/api/ratelimit";
 import { withIdempotency } from "@/lib/api/idempotency";
 import {
@@ -33,6 +33,7 @@ import {
   loadUserUpcomingReservations,
   type UserUpcomingReservation,
 } from "@/server/queries/user-upcoming-reservations";
+import { revalidateCourtOccupancy } from "./_revalidate-occupancy";
 
 // Postgres `tstzrange` looks like `[2026-05-17T18:00:00+00:00,2026-05-17T19:30:00+00:00)`.
 // We round-trip it into discrete startsAt/endsAt camelCase fields for the API.
@@ -76,19 +77,10 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
-async function isClubStaff(userId: string, clubId: string): Promise<boolean> {
-  const supabase = await getServerClient();
-  const { data: roles } = await supabase
-    .from("role_assignments")
-    .select("role,club_id")
-    .eq("user_id", userId)
-    .is("revoked_at", null);
-  return (roles ?? []).some(
-    (r) =>
-      r.role === "admin" ||
-      (r.club_id === clubId &&
-        (r.role === "owner" || r.role === "manager" || r.role === "employee")),
-  );
+// Reservas es dominio front-desk: owner/manager/employee (+ admin bypass).
+// El userId debe ser el usuario autenticado (el helper valida contra la sesión).
+async function isClubStaff(_userId: string, clubId: string): Promise<boolean> {
+  return isClubStaffWith(clubId, FRONT_DESK_ROLES);
 }
 
 // ── listReservations ───────────────────────────────────────────────────
@@ -173,6 +165,18 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         const supabase = await getServerClient();
         const { assertNotSuspended } = await import("@/lib/auth/suspension");
         await assertNotSuspended(supabase, userId);
+
+        // Reservar a nombre de otro usuario (for_user_id, mig 170) es una
+        // capacidad de staff del club: sin este gate cualquier jugador podría
+        // crear reservas atribuidas a terceros.
+        if (data.forUserId && data.forUserId !== userId) {
+          if (!(await isClubStaff(userId, data.clubId))) {
+            throw new AuthError(
+              "AUTH.ROLE_REQUIRED",
+              "Solo el staff del club puede reservar a nombre de otro usuario",
+            );
+          }
+        }
 
         // Ventana de reserva: no permitir reservar más allí del horizonte del club.
         const { data: settings } = await supabase
@@ -274,13 +278,7 @@ export async function createReservation(input: unknown): Promise<ActionResult<Re
         // Invalidar el cache de las pantallas que dependen de reservations.
         // El realtime ya dispara router.refresh() en clientes conectados,
         // pero esto cubre re-navegaciones server-side y entradas frescas.
-        revalidatePath("/dashboard/owner");
-        revalidatePath("/dashboard/owner/club-reservas");
-        revalidatePath("/dashboard/owner/club-canchas");
-        revalidatePath("/dashboard/manager/club-reservas");
-        revalidatePath("/dashboard/manager/club-canchas");
-        revalidatePath("/dashboard/user");
-        revalidatePath("/dashboard/user/mis-reservas");
+        revalidateCourtOccupancy({ includePlayer: true });
         void import("@/server/actions/giveaways").then(({ syncActiveGiveawayMechanicsForClubUser }) =>
           syncActiveGiveawayMechanicsForClubUser(userId, data.clubId),
         );
@@ -361,6 +359,7 @@ export async function cancelReservation(input: unknown): Promise<ActionResult<Re
       body: body.reason ?? null,
       payload: { reservationId: cancelled.id, clubId: cancelled.clubId },
     });
+    revalidateCourtOccupancy({ includePlayer: true });
     return cancelled;
   });
 }
@@ -424,18 +423,17 @@ export async function markReservationNoShow(
       });
     }
 
-    revalidatePath("/dashboard/employee");
-    revalidatePath("/dashboard/employee/e-checkin");
-    revalidatePath("/dashboard/employee/e-walkins");
-    revalidatePath("/dashboard/manager/club-walkins");
-    revalidatePath("/dashboard/user");
-    revalidatePath("/dashboard/user/mis-reservas");
+    revalidateCourtOccupancy({ includePlayer: true });
     return reservation;
   });
 }
 
-// ── createWalkin (employee/manager) ────────────────────────────────────
-export async function createWalkin(input: unknown): Promise<ActionResult<Reservation>> {
+// ── createWalkinReservation (REST API POST /api/v1/walkins) ────────────
+// Camino directo walk-in → reserva checked_in con cancha obligatoria.
+// Distinto de createWalkin en walkins.ts, que solo encola en recepción.
+export async function createWalkinReservation(
+  input: unknown,
+): Promise<ActionResult<Reservation>> {
   return runMutation(WalkinCreateSchema, input, async (data) => {
     const userId = await requireUserId();
     if (!(await isClubStaff(userId, data.clubId))) {
@@ -493,6 +491,7 @@ export async function createWalkin(input: unknown): Promise<ActionResult<Reserva
         attended_by: userId,
       } as never);
 
+    revalidateCourtOccupancy();
     return mapReservation(rsv);
   });
 }
@@ -521,24 +520,7 @@ export async function searchUsersForBooking(
   >
 > {
   return runAction(SearchUsersSchema, input, async ({ clubId, q, limit }) => {
-    // Reuse staff check del courts module (pero copiamos inline para no
-    // crear dependencia cíclica entre actions).
-    const supabase = await getServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AuthError("AUTH.UNAUTHENTICATED", "Sign in required");
-    const { data: roles } = await supabase
-      .from("role_assignments")
-      .select("role,club_id")
-      .eq("user_id", user.id)
-      .is("revoked_at", null);
-    const staff = (roles ?? []).some(
-      (r) =>
-        r.role === "admin" ||
-        (r.club_id === clubId && (r.role === "owner" || r.role === "manager" || r.role === "employee")),
-    );
-    if (!staff) throw new AuthError("AUTH.ROLE_REQUIRED", "Club staff role required");
+    await assertClubStaff(clubId, FRONT_DESK_ROLES);
 
     const admin = getAdminClient();
     const term = `%${q.trim()}%`;

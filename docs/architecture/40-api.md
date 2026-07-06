@@ -215,7 +215,7 @@ Server Actions: `createCourt`, `updateCourt`, `archiveCourt`, `setCourtPricing`,
 | `POST` | `/api/v1/reservations/:id/join` | – | `ReservationParticipant` | user (public visibility) | – |
 | `POST` | `/api/v1/walkins` | `WalkinCreateSchema` | `Walkin + Reservation` | employee/manager | – |
 
-Server Actions: `createReservation` (idempotent), `cancelReservation`, `joinReservation`, `inviteToReservation`, `createWalkin`.
+Server Actions: `createReservation` (idempotent), `cancelReservation`, `joinReservation`, `inviteToReservation`, `createWalkinReservation` (walk-in directo a cancha vía `POST /api/v1/walkins`; distinto de `createWalkin` en `walkins.ts`, que solo encola en recepción).
 
 ---
 

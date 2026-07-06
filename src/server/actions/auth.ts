@@ -6,6 +6,7 @@ import "server-only";
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { getServerClient } from "@/lib/db/client.server";
 import { getAdminClient } from "@/lib/db/client.admin";
 import { runAction, type ActionResult } from "@/lib/api/action";
@@ -458,6 +459,12 @@ export async function switchRole(input: unknown): Promise<ActionResult<SessionRe
     const clubForCookie = data.clubId ?? match?.club_id ?? null;
     if (clubForCookie) c.set(ACTIVE_CLUB_COOKIE, clubForCookie, COOKIE_OPTS);
     else c.delete(ACTIVE_CLUB_COOKIE);
+
+    // Purga el cache RSC de todo el dashboard: sin esto, un deep-link tras el
+    // switch puede servir pantallas cacheadas del rol/club anterior. El switch
+    // es un evento raro, así que la invalidación amplia es aceptable aquí
+    // (NO copiar este patrón en mutaciones frecuentes).
+    revalidatePath("/dashboard", "layout");
 
     return await buildSession();
   });

@@ -305,6 +305,36 @@ Patrón uniforme: **lookup Map** indexado por id, mutado por evento, `Array.from
 
 ---
 
+## 11b. Patrón de refresh en 3 capas (ocupación de canchas y similares)
+
+El estado visual de canchas (tiles free/busy, grid semanal, cards de Canchas)
+es 100% server-derived, sin update optimista. Para que se actualice siempre,
+toda mutación que cambie ocupación usa TRES capas — realtime solo es una:
+
+1. **`revalidatePath` en la server action** vía el helper compartido
+   `revalidateCourtOccupancy()` (`src/server/actions/_revalidate-occupancy.ts`).
+   Cubre navegaciones frescas y re-entradas server-side. NUNCA mantener una
+   lista ad-hoc de rutas en la action: así se desincronizaron las superficies
+   de employee vs owner/manager (bug del tile que no cambiaba de color,
+   fix 2026-07-06).
+2. **`router.refresh()` en el handler del cliente que mutó** — quien hizo la
+   acción ve el cambio de inmediato aunque el WebSocket esté caído.
+3. **Realtime (`useRealtimeRefresh`)** — sincronía cross-user con debounce.
+
+Aplica a mutaciones sobre `reservations`, `walkins`, `check_ins` y `courts`
+(mantenimiento/bloqueos/archive). El doble refresh (capa 2 + CDC de la capa 3)
+es idempotente y aceptable; no quitar el debounce.
+
+**Resiliencia del canal**: `useRealtimeRefresh` pasa un callback de status a
+`channel.subscribe()`. En `CHANNEL_ERROR` / `TIMED_OUT` / `CLOSED` inesperado
+hace `console.warn` (`[realtime] canal …`) y re-suscribe con backoff
+exponencial (1s → 30s cap); en `SUBSCRIBED` resetea el contador. El cleanup
+del effect setea un flag `disposed` que cancela retries pendientes (crítico
+con el doble mount de StrictMode en dev). Antes `subscribe()` iba sin
+callback: un canal muerto dejaba la pantalla muda para siempre, sin log.
+
+---
+
 ## 12. Reconnect & backfill
 
 Cuando hay reconnect, Supabase reenvía cambios pero **no garantiza** los que ocurrieron mientras estuvimos offline. Estrategia:

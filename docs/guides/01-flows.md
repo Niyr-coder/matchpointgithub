@@ -317,17 +317,24 @@ nuevo flujo queda pendiente de diseño.
 < createReservation({ courtId, during, sport }) >
     │
     ├── requireUserId()
+    ├── Si forUserId ≠ caller → exige staff del club (front-desk)
     ├── Valida no overlap (gist exclude constraint en reservations)
-    ├── { INSERT reservations status='requested' o 'booked' según config club }
+    ├── { INSERT reservations status='booked' }
+    ├── notif reservation_created (+ club_reservation_new al staff)
+    ├── revalidateCourtOccupancy({ includePlayer: true })
     └── ≈ realtime ≈ → club staff ve la nueva reserva
-         │
-         ▼
-[Si status='requested' → club staff confirma manualmente]
-[Si status='booked' → auto-confirmada]
     │
     ▼
 [User ve reserva en /dashboard/user/mis-reservas con realtime push]
 ```
+
+La reserva nace `'booked'` — el enum `mp_reservation_status` NO tiene
+`requested` ni `pending` (estados reales: `booked / confirmed / checked_in /
+no_show / cancelled / completed`). Toda mutación que cambie ocupación de
+canchas (`reservations`, `walkins`, `check_ins`, `courts`) debe llamar
+`revalidateCourtOccupancy()` (`src/server/actions/_revalidate-occupancy.ts`)
+en vez de mantener su propia lista de `revalidatePath` — ver
+`docs/architecture/50-realtime.md` §"Patrón de refresh en 3 capas".
 
 ---
 
