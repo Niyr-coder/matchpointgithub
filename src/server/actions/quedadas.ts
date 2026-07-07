@@ -161,13 +161,13 @@ async function writeCategoryPodiumRanks(
     supabase.from("quedadas").select("format,match_mode").eq("id", quedadaId).maybeSingle(),
     supabase
       .from("quedada_games")
-      .select("category_id,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status")
+      .select("category_id,round_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status")
       .eq("quedada_id", quedadaId)
       .eq("category_id", categoryId),
-    supabase.from("quedada_pairs").select("id,category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId).eq("category_id", categoryId),
+    supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).eq("category_id", categoryId),
   ]);
-  const games = (gamesData ?? []) as Array<GameForStandings>;
-  const pairs = (pairsData ?? []) as Array<{ id: string; category_id: string; player_a_id: string; player_b_id: string | null }>;
+  const games = (gamesData ?? []) as Array<GameForStandings & { round_no: number | null }>;
+  const pairs = (pairsData ?? []) as Array<{ id: string; category_id: string; slot_no: number; player_a_id: string; player_b_id: string | null }>;
   const engine = getQuedadaEngine((qData?.format as string | undefined) ?? "americano");
   const mode = ((qData?.match_mode as string) === "singles" ? "singles" : "doubles") as AmericanoMode;
   const standingsMode = engine.standingsMode(mode);
@@ -175,13 +175,37 @@ async function writeCategoryPodiumRanks(
     new Set(pairs.flatMap((p) => [p.player_a_id, p.player_b_id]).filter((x): x is string => !!x)),
   );
   if (players.length === 0) return;
-  const standings =
-    standingsMode === "pair" ? pairStandings(games, pairs) : individualStandings(games, players);
-  for (let idx = 0; idx < Math.min(3, standings.length); idx++) {
-    const row = standings[idx];
+
+  // Formatos con podio propio (Modo Torneo: final y bronce mandan sobre la tabla).
+  const enginePodium = engine.podium?.({
+    pairs: pairs.map((p) => ({ id: p.id, slot_no: p.slot_no, player_a_id: p.player_a_id, player_b_id: p.player_b_id })),
+    prior: games.map((g) => ({
+      round_no: g.round_no ?? 0,
+      side_a_p1: g.side_a_p1,
+      side_a_p2: g.side_a_p2,
+      side_b_p1: g.side_b_p1,
+      side_b_p2: g.side_b_p2,
+      points_a: g.points_a,
+      points_b: g.points_b,
+      status: g.status,
+    })),
+    mode,
+    courts: 0,
+  });
+
+  const rankedIds: string[][] = enginePodium
+    ? enginePodium.slice(0, 3)
+    : (standingsMode === "pair" ? pairStandings(games, pairs) : individualStandings(games, players))
+        .slice(0, 3)
+        .map((row) =>
+          "playerIds" in row && Array.isArray(row.playerIds) ? row.playerIds : [row.userId],
+        );
+
+  for (let idx = 0; idx < rankedIds.length; idx++) {
     const rank = idx + 1;
-    const ids = "playerIds" in row && Array.isArray(row.playerIds) ? row.playerIds : [row.userId];
-    for (const uid of ids) {
+    for (const uid of rankedIds[idx]) {
+      // Los walk-ins (guests) no están en quedada_participants: el update
+      // simplemente no matchea filas para ellos.
       const { error: upErr } = await supabase
         .from("quedada_participants")
         .update({ final_rank: rank } as never)
@@ -204,12 +228,27 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
+// Killswitch del formato Modo Torneo (flag ausente = encendido, fail-open).
+async function isTorneoFormatEnabled(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("fn_my_effective_flags");
+  if (error) return true;
+  for (const row of (data ?? []) as Array<{ key: string; enabled: boolean }>) {
+    if (row.key === "quedada_format_torneo") return Boolean(row.enabled);
+  }
+  return true;
+}
+
 // ── createQuedada ────────────────────────────────────────────────────────────
 export async function createQuedada(input: unknown): Promise<ActionResult<{ id: string }>> {
   return runAction(CreateQuedadaSchema, input, async (d) => {
     const userId = await requireUserId();
     const supabase = await getServerClient();
     await requirePlanWithFlag(supabase, userId, "paywall_enforce_quedadas", "premium");
+    if (d.format === "torneo" && !(await isTorneoFormatEnabled(supabase))) {
+      throw new MpError("QUEDADAS.FORMAT_DISABLED", "El Modo Torneo no está disponible por ahora", 403);
+    }
     const { data: row, error } = await supabase
       .from("quedadas")
       .insert({

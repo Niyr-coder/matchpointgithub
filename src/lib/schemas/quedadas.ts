@@ -6,7 +6,7 @@ import { UuidSchema, MpMatchModeSchema } from "./common";
 extendZodWithOpenApi(z);
 
 export const QuedadaFormatSchema = z
-  .enum(["americano", "mexicano", "round_robin", "kotc", "canguil", "libre"])
+  .enum(["americano", "mexicano", "round_robin", "kotc", "canguil", "libre", "torneo"])
   .openapi("QuedadaFormat");
 
 export const QuedadaVisibilitySchema = z.enum(["open", "private"]).openapi("QuedadaVisibility");

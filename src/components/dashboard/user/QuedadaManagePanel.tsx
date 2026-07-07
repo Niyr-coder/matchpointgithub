@@ -4112,6 +4112,7 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
           games={data.games}
           meUserId={data.meUserId}
           matchMode={q.match_mode}
+          format={q.format}
           formatLabel={engine.label}
           roundLabel={engine.roundLabel}
           tableEntityLabel={engine.tableEntityLabel}

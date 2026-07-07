@@ -2468,8 +2468,17 @@ emparejamiento y standings. Tablas nuevas:
   puntos; fallback categoría → quedada → 24).
 
 **Engines:** registry en `src/lib/quedadas/engines/`. Americano, Mexicano y
-Canguil usan roster/tabla individual; Round Robin y KOTC usan pareja cuando el
-modo es dobles; Libre crea partidos manuales. Standings DERIVADOS (append-only)
+Canguil usan roster/tabla individual; Round Robin, KOTC y Torneo usan pareja
+cuando el modo es dobles; Libre crea partidos manuales. **Modo Torneo (mig
+20260723000000):** `alter type mp_quedada_format add value 'torneo'` (migración
+propia — un valor de enum nuevo no puede usarse en la misma transacción). Engine
+`torneo.ts`: grupos (round robin, derivados del orden de cupos) → semifinales →
+final + bronce, SIN tablas de bracket (fases y podio derivados de los games).
+Hooks opcionales nuevos en `QuedadaEngine`: `roundNameFor` (nombre de fase de la
+ronda) y `podium` (podio propio del formato, usado por
+`writeCategoryPodiumRanks`). Flag killswitch `quedada_format_torneo` (mig
+20260723010000, default ON, ausente = ON) gatea la card del wizard y
+`createQuedada`. Standings DERIVADOS (append-only)
 de los games played (`standings.ts` / `pair-standings.ts`). Actions:
 `generateQuedadaRound` (siguiente ronda/fecha/turno), `createManualQuedadaGame`
 (Libre), `reportGame`, `deleteRound` (regenera), `finishQuedada` (podio según

@@ -152,11 +152,14 @@ export function QuedadasScreenView({
   discover,
   mine,
   myActivityStats = null,
+  torneoEnabled = true,
 }: {
   meUserId: string | null;
   discover: QuedadaLite[];
   mine: QuedadaLite[];
   myActivityStats?: QuedadaProfileStats | null;
+  /** Killswitch del formato Modo Torneo (flag quedada_format_torneo). */
+  torneoEnabled?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -505,7 +508,7 @@ export function QuedadasScreenView({
         </>
       ) : null}
 
-      {wizard && <CrearQuedadaModal initial={wizard.initial} onClose={() => setWizard(null)} />}
+      {wizard && <CrearQuedadaModal initial={wizard.initial} torneoEnabled={torneoEnabled} onClose={() => setWizard(null)} />}
       {inviteFor && (
         <InviteModal quedada={inviteFor} meUserId={meUserId} onClose={() => setInviteFor(null)} />
       )}

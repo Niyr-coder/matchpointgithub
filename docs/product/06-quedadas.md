@@ -42,6 +42,31 @@ tabla.
 | Rey de la cancha (KOTC) | ✅ Activo | Orden por canchas/nivel; los equipos se emparejan según rendimiento reciente. |
 | Mezcla social (`canguil`) | ✅ Activo | Rotación social aleatoria cada ronda. |
 | Personalizado (`libre`) | ✅ Activo | El organizador crea partidos manuales y carga resultados. |
+| Modo Torneo (`torneo`) | ✅ Activo | Fase de grupos (round robin) → semifinales → final y bronce, como un torneo real. |
+
+### Modo Torneo (`torneo`) — mig 20260723000000
+
+- **Unidad:** parejas fijas en dobles, individual en singles (igual que
+  `round_robin`). El **orden de cupos es el seeding**.
+- **Estructura derivada** (sin tablas de bracket; todo sale de
+  `quedada_rounds`/`quedada_games`): 1 grupo con <6 equipos, 2 grupos (por seed
+  alternado) con ≥6. Rondas 1..K = fechas del round robin por grupo (método del
+  círculo). Ronda K+1 = **Semifinales** (A1-B2 / B1-A2 con 2 grupos; 1°-4° /
+  2°-3° con 1 grupo de ≥4; con 3 equipos no hay semis). Última ronda = **Final +
+  bronce**. Mínimo 3 equipos.
+- **Gates de progresión:** las semis solo se generan con TODA la fase de grupos
+  jugada; la final solo con ambas semis decididas (un empate en el marcador
+  bloquea — corrige el score). `planNextRound` devuelve null en esos casos.
+- **Podio:** hook `podium` del engine (final y bronce mandan, no la tabla);
+  `finishQuedada`/`finishQuedadaCategory` lo usan vía
+  `writeCategoryPodiumRanks`.
+- **Fases visibles:** hook `roundNameFor` → el panel muestra "Fase de grupos ·
+  Fecha 2" / "Semifinales" / "Final y bronce" (vía `QuedadaGameView`).
+- **Killswitch:** flag `quedada_format_torneo` (default ON, ausente = ON):
+  apagado oculta la card del wizard y `createQuedada` rechaza el formato
+  (`QUEDADAS.FORMAT_DISABLED`).
+- **Ojo:** cambiar el roster re-arma grupos/seeding; con games creados hay que
+  borrar rondas primero (regla general del motor).
 
 ### Rotación de parejas (`americano`)
 

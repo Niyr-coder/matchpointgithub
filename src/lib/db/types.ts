@@ -12755,6 +12755,7 @@ export type Database = {
         | "kotc"
         | "canguil"
         | "libre"
+        | "torneo"
       mp_report_status: "pending" | "reviewing" | "actioned" | "dismissed"
       mp_reservation_status:
         | "booked"
@@ -13022,6 +13023,7 @@ export const Constants = {
         "kotc",
         "canguil",
         "libre",
+        "torneo",
       ],
       mp_report_status: ["pending", "reviewing", "actioned", "dismissed"],
       mp_reservation_status: [

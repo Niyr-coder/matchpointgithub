@@ -4,6 +4,7 @@
 // (patrón ya usado en src/server/actions/quedadas.ts).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { loadQuedadaProfileStats } from "./loadQuedadaProfileStats.server";
 import { QuedadasScreenView, type QuedadaLite } from "./QuedadasScreenView";
@@ -198,12 +199,17 @@ export async function QuedadasScreen() {
 
   const myActivityStats = meUserId ? await loadQuedadaProfileStats(meUserId) : null;
 
+  // Killswitch del formato Modo Torneo (flag ausente = encendido, fail-open).
+  const flagsRes = await getMyEffectiveFlags();
+  const torneoEnabled = flagsRes.ok ? (flagsRes.data["quedada_format_torneo"] ?? true) : true;
+
   return (
     <QuedadasScreenView
       meUserId={meUserId}
       discover={discover}
       mine={mine}
       myActivityStats={myActivityStats}
+      torneoEnabled={torneoEnabled}
     />
   );
 }

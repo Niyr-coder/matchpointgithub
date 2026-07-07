@@ -33,7 +33,7 @@ import { SUMA_MIN, SUMA_MAX, sumaLabel } from "@/lib/quedadas/level";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { quedadaFormatOptions } from "@/lib/quedadas/format-labels";
 
-type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
+type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre" | "torneo";
 type MatchMode = "singles" | "doubles";
 type Visibility = "open" | "private";
 
@@ -77,7 +77,16 @@ function money(cents: number): string {
 
 type TemplateRow = { id: string; name: string; config: QuedadaInitial };
 
-export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; initial?: QuedadaInitial }) {
+export function CrearQuedadaModal({
+  onClose,
+  initial,
+  torneoEnabled = true,
+}: {
+  onClose: () => void;
+  initial?: QuedadaInitial;
+  /** Killswitch del formato Modo Torneo (flag quedada_format_torneo). */
+  torneoEnabled?: boolean;
+}) {
   const router = useRouter();
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
@@ -557,7 +566,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   Todos los formatos tienen vista de partidos, roster, pagos y tabla; cambia solo la mecánica del motor.
                 </div>
                 <div className="mp-crear-quedada-formats">
-                  {FORMATS.map((f) => {
+                  {FORMATS.filter((f) => f.k !== "torneo" || torneoEnabled).map((f) => {
                     const on = format === f.k;
                     return (
                       <button key={f.k} type="button" onClick={() => setFormat(f.k)} style={{ padding: 11, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "var(--color-mp-primary-light)" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>

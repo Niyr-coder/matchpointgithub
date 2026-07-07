@@ -6,6 +6,7 @@ import { kotcEngine } from "./kotc";
 import { libreEngine } from "./libre";
 import { mexicanoEngine } from "./mexicano";
 import { roundRobinEngine } from "./round-robin";
+import { torneoEngine } from "./torneo";
 
 const ENGINES: Record<QuedadaFormat, QuedadaEngine> = {
   americano: americanoEngine,
@@ -14,6 +15,7 @@ const ENGINES: Record<QuedadaFormat, QuedadaEngine> = {
   kotc: kotcEngine,
   canguil: canguilEngine,
   libre: libreEngine,
+  torneo: torneoEngine,
 };
 
 export function getQuedadaEngine(format: string): QuedadaEngine {
