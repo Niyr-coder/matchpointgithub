@@ -15,7 +15,7 @@
 // El podio (1°/2°/3°) sale de final y bronce vía el hook `podium`.
 import { quedadaFormatLabel } from "../format-labels";
 import type { EngineContext, EnginePriorGame, QuedadaEngine, RoundPlan } from "../types";
-import { fixedTeamsFromPairs, nextRoundNo, pairKey } from "./shared";
+import { fixedTeamsFromPairs, pairKey } from "./shared";
 
 type Team = string[];
 
@@ -181,17 +181,21 @@ export const torneoEngine: QuedadaEngine = {
   planNextRound: (ctx): RoundPlan | null => {
     const s = buildStructure(ctx);
     if (!s) return null;
-    const roundNo = nextRoundNo(ctx.prior);
+    // Rondas ya creadas (por games). Si el organizador borró una fecha
+    // intermedia de grupos, se regenera ESA (no la siguiente al máximo).
+    const present = new Set(ctx.prior.map((g) => g.round_no ?? 0));
 
-    // Fase de grupos: la fecha r del round robin de cada grupo.
-    if (roundNo <= s.totalGroupRounds) {
-      const games = s.groupRounds[roundNo - 1] ?? [];
+    // Fase de grupos: la fecha faltante más baja del round robin.
+    for (let r = 1; r <= s.totalGroupRounds; r++) {
+      if (present.has(r)) continue;
+      const games = s.groupRounds[r - 1] ?? [];
       if (games.length === 0) return null;
-      return { roundNo, games: assignCourts(games, ctx.courts), byes: byesFor(s, games) };
+      return { roundNo: r, games: assignCourts(games, ctx.courts), byes: byesFor(s, games) };
     }
 
     // Semifinales: recién cuando TODA la fase de grupos está jugada.
-    if (s.hasSemis && roundNo === s.semiRoundNo) {
+    if (s.hasSemis && !present.has(s.semiRoundNo as number)) {
+      const roundNo = s.semiRoundNo as number;
       if (!groupStageDone(s, ctx.prior)) return null;
       const semis = semiPairings(s, ctx.prior);
       if (!semis) return null;
@@ -199,7 +203,8 @@ export const torneoEngine: QuedadaEngine = {
     }
 
     // Final (+ bronce si hubo semis).
-    if (roundNo === s.finalRoundNo) {
+    if (!present.has(s.finalRoundNo)) {
+      const roundNo = s.finalRoundNo;
       if (!s.hasSemis) {
         // 3 equipos: 1° vs 2° directo a la final.
         if (!groupStageDone(s, ctx.prior)) return null;

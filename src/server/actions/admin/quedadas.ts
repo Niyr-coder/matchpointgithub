@@ -43,7 +43,7 @@ export async function listQuedadasAdmin(): Promise<ActionResult<AdminQuedadaRow[
     const quedadaIds = rows.map((q) => q.id as string);
     const creatorIds = Array.from(new Set(rows.map((q) => q.creator_id as string).filter(Boolean)));
 
-    const [profilesRes, participantsRes, reportsRes] = await Promise.all([
+    const [profilesRes, participantsRes, reportsRes, guestsRes] = await Promise.all([
       creatorIds.length
         ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (admin as any).from("profiles").select("id,display_name,username").in("id", creatorIds)
@@ -55,6 +55,10 @@ export async function listQuedadasAdmin(): Promise<ActionResult<AdminQuedadaRow[
       quedadaIds.length
         ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (admin as any).from("quedada_reports").select("quedada_id,status").in("quedada_id", quedadaIds)
+        : Promise.resolve({ data: [] }),
+      quedadaIds.length
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (admin as any).from("quedada_guests").select("quedada_id").in("quedada_id", quedadaIds)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -72,6 +76,11 @@ export async function listQuedadasAdmin(): Promise<ActionResult<AdminQuedadaRow[
         const quedadaId = p.quedada_id as string;
         participantCounts.set(quedadaId, (participantCounts.get(quedadaId) ?? 0) + 1);
       }
+    }
+    // Walk-ins (guests) también cuentan como inscritos, igual que en la app.
+    for (const g of (guestsRes.data ?? []) as Array<Record<string, unknown>>) {
+      const quedadaId = g.quedada_id as string;
+      participantCounts.set(quedadaId, (participantCounts.get(quedadaId) ?? 0) + 1);
     }
 
     const reportCounts = new Map<string, number>();

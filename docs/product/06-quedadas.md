@@ -65,8 +65,13 @@ tabla.
 - **Killswitch:** flag `quedada_format_torneo` (default ON, ausente = ON):
   apagado oculta la card del wizard y `createQuedada` rechaza el formato
   (`QUEDADAS.FORMAT_DISABLED`).
-- **Ojo:** cambiar el roster re-arma grupos/seeding; con games creados hay que
-  borrar rondas primero (regla general del motor).
+- **Roster bloqueado con games:** cambiar cupos re-armaría grupos/seeding, así
+  que `assignPair`/`removePair`/`autoAssignCategory` rechazan con
+  `QUEDADAS.TORNEO_ROSTER_LOCKED` si la categoría ya tiene partidos — borra las
+  rondas primero.
+- **Borrar rondas:** si borras una fecha intermedia de grupos, "Siguiente"
+  regenera ESA fecha faltante (no la posterior al máximo); semis/final también
+  se regeneran si se borran.
 
 ### Rotación de parejas (`americano`)
 
@@ -162,6 +167,16 @@ efectivo. Quitar un walk-in libera sus cupos; si ya tiene partidos generados,
 se bloquea (`QUEDADAS.WALKIN_LOCKED`) — borra o ajusta esas rondas primero.
 Actions: `addQuedadaWalkIn` / `removeQuedadaWalkIn` / `setGuestPaid` /
 `setGuestCheckedIn`.
+
+- **`addQuedadaWalkIn` NO valida cupo a propósito**: el organizador es el dueño
+  de su cupo y el walk-in llega el día del evento; puede sobrellenar si quiere.
+  Los jugadores que intenten inscribirse después sí reciben `QUEDADAS.FULL`.
+- **Podio con walk-ins (mig 20260723020000)**: `quedada_guests.final_rank`.
+  `writeCategoryPodiumRanks` y `setQuedadaResults` escriben el puesto en
+  participante O guest según a quién corresponda el id; `PodiumSection` y el
+  tab Resultados lo leen de ambos.
+- **Stats del organizador**: `getMyQuedadasFinanceStats` suma inscritos +
+  walk-ins (mismo `fee_cents`), cuadrando con el hero de Pagos del panel.
 
 ## Pagos: check-in, aviso de pago y stats (mig 144–145)
 

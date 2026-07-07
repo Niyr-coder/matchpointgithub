@@ -148,6 +148,7 @@ type ManageGuest = {
   display_name: string;
   paid: boolean;
   checked_in_at: string | null;
+  final_rank: number | null;
   created_at: string;
 };
 type ManageRound = {
@@ -3159,7 +3160,7 @@ function ResumenTab({ data, toast, onGoToParejas }: { data: ManageData; toast: R
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={onGoToParejas} className="btn btn-primary">
-            <Icon name="grid-3x3" size={13} color="#fff" /> {q.format === "americano" ? "Gestionar jugadores" : "Gestionar parejas"}
+            <Icon name="grid-3x3" size={13} color="#fff" /> {rosterModeFor(q.format, q.match_mode) === "individual" ? "Gestionar jugadores" : "Gestionar parejas"}
           </button>
         </div>
       </div>
@@ -3478,7 +3479,8 @@ function PodiumSection({ data }: { data: ManageData }) {
   const guestById = new Map(data.guests.map((g) => [g.id, g]));
   const nameFor = (id: string): string =>
     guestById.get(id)?.display_name ?? nameOf(partById.get(id)?.profiles ?? null);
-  const rankOf = (id: string): number | null => partById.get(id)?.final_rank ?? null;
+  const rankOf = (id: string): number | null =>
+    partById.get(id)?.final_rank ?? guestById.get(id)?.final_rank ?? null;
   const cats = data.categories
     .map((c) => ({
       cat: c,
@@ -3918,7 +3920,7 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
   const [pos, setPos] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const p of data.pairs) {
-      const fr = partById.get(p.player_a_id)?.final_rank;
+      const fr = partById.get(p.player_a_id)?.final_rank ?? guestById.get(p.player_a_id)?.final_rank;
       if (fr != null) init[p.id] = String(fr);
     }
     return init;

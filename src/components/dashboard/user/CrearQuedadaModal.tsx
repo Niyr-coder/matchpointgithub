@@ -94,10 +94,15 @@ export function CrearQuedadaModal({
   const [step, setStep] = useState(0);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
+  // Con el killswitch apagado, un duplicado/plantilla con formato torneo no
+  // puede quedar seleccionado invisible (createQuedada lo rechazaría al final).
+  const sanitizeFormat = (f: Format | "" | undefined): Format | "" =>
+    f === "torneo" && !torneoEnabled ? "" : f ?? "";
+
   // Paso 1 — se siembran de `initial` (duplicar/plantilla) si viene.
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? DEFAULT_QUEDADA_DESCRIPTION);
-  const [format, setFormat] = useState<Format | "">(initial?.format ?? "");
+  const [format, setFormat] = useState<Format | "">(sanitizeFormat(initial?.format));
   const [matchMode, setMatchMode] = useState<MatchMode | "">(initial?.matchMode ?? "");
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? "open");
   // Opt-in: el organizador solo queda inscrito como jugador si lo activa.
@@ -295,7 +300,7 @@ export function CrearQuedadaModal({
   const loadInitial = (init: QuedadaInitial) => {
     setTitle(init.title ?? "");
     setDescription(init.description ?? DEFAULT_QUEDADA_DESCRIPTION);
-    setFormat(init.format ?? "");
+    setFormat(sanitizeFormat(init.format));
     setMatchMode(init.matchMode ?? "");
     if (init.visibility) setVisibility(init.visibility);
     setLocationText(init.locationText ?? "");

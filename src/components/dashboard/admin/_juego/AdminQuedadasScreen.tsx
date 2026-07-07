@@ -137,6 +137,7 @@ export function AdminQuedadasScreen() {
     [
       { table: "quedadas" },
       { table: "quedada_participants" },
+      { table: "quedada_guests" },
       { table: "quedada_reports" },
     ],
     {

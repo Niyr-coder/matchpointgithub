@@ -204,14 +204,21 @@ async function writeCategoryPodiumRanks(
   for (let idx = 0; idx < rankedIds.length; idx++) {
     const rank = idx + 1;
     for (const uid of rankedIds[idx]) {
-      // Los walk-ins (guests) no están en quedada_participants: el update
-      // simplemente no matchea filas para ellos.
-      const { error: upErr } = await supabase
-        .from("quedada_participants")
-        .update({ final_rank: rank } as never)
-        .eq("quedada_id", quedadaId)
-        .eq("user_id", uid);
-      if (upErr) throw new MpError("QUEDADAS.FINISH_FAILED", upErr.message, 500);
+      // Un id puede ser participante O walk-in (guest): se escribe en ambas
+      // tablas y solo matchea donde exista.
+      const [{ error: upErr }, { error: guErr }] = await Promise.all([
+        supabase
+          .from("quedada_participants")
+          .update({ final_rank: rank } as never)
+          .eq("quedada_id", quedadaId)
+          .eq("user_id", uid),
+        supabase
+          .from("quedada_guests")
+          .update({ final_rank: rank } as never)
+          .eq("quedada_id", quedadaId)
+          .eq("id", uid),
+      ]);
+      if (upErr || guErr) throw new MpError("QUEDADAS.FINISH_FAILED", (upErr ?? guErr)?.message ?? "error", 500);
     }
   }
 }
@@ -677,12 +684,21 @@ export async function setQuedadaResults(input: unknown): Promise<ActionResult<{ 
     }
 
     for (const r of results) {
-      const { error } = await supabase
-        .from("quedada_participants")
-        .update({ points: r.points ?? null, final_rank: r.finalRank ?? null } as never)
-        .eq("quedada_id", quedadaId)
-        .eq("user_id", r.userId);
-      if (error) throw new MpError("QUEDADAS.RESULTS_FAILED", error.message, 500);
+      // Un id puede ser participante O walk-in (guest): se escribe en ambas
+      // tablas y solo matchea donde exista (guests no llevan points).
+      const [{ error }, { error: guErr }] = await Promise.all([
+        supabase
+          .from("quedada_participants")
+          .update({ points: r.points ?? null, final_rank: r.finalRank ?? null } as never)
+          .eq("quedada_id", quedadaId)
+          .eq("user_id", r.userId),
+        supabase
+          .from("quedada_guests")
+          .update({ final_rank: r.finalRank ?? null } as never)
+          .eq("quedada_id", quedadaId)
+          .eq("id", r.userId),
+      ]);
+      if (error || guErr) throw new MpError("QUEDADAS.RESULTS_FAILED", (error ?? guErr)?.message ?? "error", 500);
     }
     await supabase
       .from("quedadas")
@@ -819,7 +835,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       supabase.from("quedada_cohosts").select("user_id,profiles!quedada_cohosts_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
       supabase.from("quedada_games").select("id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
-      supabase.from("quedada_guests").select("id,display_name,paid,checked_in_at,created_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
+      supabase.from("quedada_guests").select("id,display_name,paid,checked_in_at,final_rank,created_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
     ]);
 
     return {
@@ -958,12 +974,36 @@ export async function deleteCategory(input: unknown): Promise<ActionResult<{ ok:
   });
 }
 
+// En Modo Torneo la estructura (grupos, seeding, fases) se DERIVA del roster:
+// cambiar cupos con partidos ya generados corrompe grupos y semis. Se bloquea;
+// el organizador debe borrar las rondas primero.
+async function assertTorneoRosterMutable(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+  quedadaId: string,
+  categoryId: string,
+): Promise<void> {
+  const { data: q } = await supabase.from("quedadas").select("format").eq("id", quedadaId).maybeSingle();
+  if ((q?.format as string | undefined) !== "torneo") return;
+  const { count } = await supabase
+    .from("quedada_games")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", categoryId);
+  if ((count ?? 0) > 0) {
+    throw new MpError(
+      "QUEDADAS.TORNEO_ROSTER_LOCKED",
+      "En Modo Torneo el roster se bloquea al generar partidos (define grupos y llaves). Borra las rondas para cambiar cupos.",
+      409,
+    );
+  }
+}
+
 // ── Parejas / slots (creador o co-host) ──────────────────────────────────────
 export async function assignPair(input: unknown): Promise<ActionResult<{ ok: true }>> {
   return runAction(AssignPairSchema, input, async (d) => {
     await requireUserId();
     const supabase = await getServerClient();
     await assertQuedadaEditable(supabase, d.quedadaId);
+    await assertTorneoRosterMutable(supabase, d.quedadaId, d.categoryId);
     const { error } = await supabase.from("quedada_pairs").upsert(
       {
         quedada_id: d.quedadaId,
@@ -987,6 +1027,7 @@ export async function autoAssignCategory(input: unknown): Promise<ActionResult<{
     await requireUserId();
     const supabase = await getServerClient();
     await assertQuedadaEditable(supabase, quedadaId);
+    await assertTorneoRosterMutable(supabase, quedadaId, categoryId);
 
     const { data: q } = await supabase.from("quedadas").select("match_mode,format").eq("id", quedadaId).maybeSingle();
     const matchMode = (q?.match_mode ?? "doubles") === "singles" ? "singles" : "doubles";
@@ -1053,8 +1094,11 @@ export async function removePair(input: unknown): Promise<ActionResult<{ ok: tru
   return runAction(RemovePairSchema, input, async ({ pairId }) => {
     await requireUserId();
     const supabase = await getServerClient();
-    const { data: pair } = await supabase.from("quedada_pairs").select("quedada_id").eq("id", pairId).maybeSingle();
-    if (pair) await assertQuedadaEditable(supabase, pair.quedada_id as string);
+    const { data: pair } = await supabase.from("quedada_pairs").select("quedada_id,category_id").eq("id", pairId).maybeSingle();
+    if (pair) {
+      await assertQuedadaEditable(supabase, pair.quedada_id as string);
+      await assertTorneoRosterMutable(supabase, pair.quedada_id as string, pair.category_id as string);
+    }
     const { error } = await supabase.from("quedada_pairs").delete().eq("id", pairId);
     if (error) throw new MpError("QUEDADAS.PAIR_FAILED", error.message, 500);
     return { ok: true as const };
@@ -2137,15 +2181,26 @@ export async function getMyQuedadasFinanceStats(input: unknown): Promise<ActionR
       return { quedadasCount: 0, totalCollectedCents: 0, totalExpectedCents: 0, pendingCents: 0, totalJoined: 0, totalPaid: 0, payRatePct: 0, avgAttendance: 0 };
     }
     const feeById = new Map(quedadas.map((q) => [q.id, q.fee_cents ?? 0]));
-    const { data: parts, error: pErr } = await supabase
-      .from("quedada_participants")
-      .select("quedada_id,paid")
-      .in("quedada_id", quedadas.map((q) => q.id))
-      .eq("status", "joined");
-    if (pErr) throw new MpError("QUEDADAS.READ_FAILED", pErr.message, 500);
+    // Inscritos + walk-ins (guests): el hero de Pagos del panel suma ambos, el
+    // agregado del organizador debe cuadrar con esa suma.
+    const [{ data: parts, error: pErr }, { data: guestRows, error: gErr }] = await Promise.all([
+      supabase
+        .from("quedada_participants")
+        .select("quedada_id,paid")
+        .in("quedada_id", quedadas.map((q) => q.id))
+        .eq("status", "joined"),
+      supabase
+        .from("quedada_guests")
+        .select("quedada_id,paid")
+        .in("quedada_id", quedadas.map((q) => q.id)),
+    ]);
+    if (pErr || gErr) throw new MpError("QUEDADAS.READ_FAILED", (pErr ?? gErr)?.message ?? "error", 500);
 
     let totalCollectedCents = 0, totalExpectedCents = 0, totalJoined = 0, totalPaid = 0;
-    for (const p of (parts ?? []) as Array<{ quedada_id: string; paid: boolean }>) {
+    for (const p of [
+      ...((parts ?? []) as Array<{ quedada_id: string; paid: boolean }>),
+      ...((guestRows ?? []) as Array<{ quedada_id: string; paid: boolean }>),
+    ]) {
       const fee = feeById.get(p.quedada_id) ?? 0;
       totalJoined += 1;
       totalExpectedCents += fee;

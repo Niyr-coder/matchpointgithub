@@ -561,13 +561,22 @@ type DupQuedada = {
 type DupCategory = { name: string; level_label: string | null; starts_at: string | null; max_slots: number | null };
 
 function buildInitialFromManage(data: unknown): QuedadaInitial {
-  const d = data as { quedada: DupQuedada; categories: DupCategory[] };
+  const d = data as {
+    quedada: DupQuedada & { creator_id?: string };
+    categories: DupCategory[];
+    participants?: Array<{ user_id: string; status: string }>;
+  };
   const q = d.quedada;
   const centsToStr = (c: number | null): string => (c != null && c > 0 ? String(c / 100) : "");
+  // Duplicado preserva "Juego también": el creador estaba inscrito como jugador.
+  const creatorPlays = (d.participants ?? []).some(
+    (p) => p.user_id === q.creator_id && p.status === "joined",
+  );
   return {
     title: q.title,
     description: q.description ?? undefined,
     format: q.format as QuedadaInitial["format"],
+    creatorPlays,
     matchMode: q.match_mode,
     visibility: q.visibility,
     locationText: q.location_text ?? undefined,
@@ -1341,7 +1350,7 @@ function QuedadaCard({
             )}
             {/* El creador ya no queda inscrito al crear (opt-in): puede entrar
                 o salir como jugador desde aquí. */}
-            {q.iAmCreator && !q.iAmJoined && !full && !cancelled && !finished && (
+            {q.iAmCreator && !q.iAmJoined && !full && q.status === "registration_open" && (
               <QKebabItem icon="plus" label="Inscribirme como jugador" onClick={() => { setMenuOpen(false); handleInscribirme(); }} />
             )}
             {q.iAmCreator && q.iAmJoined && !cancelled && !finished && (

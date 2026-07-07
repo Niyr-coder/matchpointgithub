@@ -7052,6 +7052,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           display_name: string
+          final_rank: number | null
           id: string
           paid: boolean
           quedada_id: string
@@ -7062,6 +7063,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           display_name: string
+          final_rank?: number | null
           id?: string
           paid?: boolean
           quedada_id: string
@@ -7072,6 +7074,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           display_name?: string
+          final_rank?: number | null
           id?: string
           paid?: boolean
           quedada_id?: string
