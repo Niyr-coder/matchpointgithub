@@ -24,12 +24,12 @@
     <!-- Sub-marca chip -->
     <g transform="translate(60,60)">
       <rect x="0" y="0" width="240" height="34" rx="17" fill="rgba(4,120,87,0.10)"/>
-      <text x="20" y="22" class="chip" font-size="14" fill="#047857">CIRCUITO · TEMPORADA 2026</text>
+      <text x="20" y="22" class="chip" font-size="14" fill="#047857">PRO SERIES · TEMPORADA 2026</text>
     </g>
 
     <!-- Título principal -->
-    <text x="60" y="150" class="heading" font-size="48" fill="#0a0a0a">{CIRCUITO}</text>
-    <text x="60" y="200" class="heading" font-size="32" fill="#047857">Copa {CIUDAD} · {MES}</text>
+    <text x="60" y="150" class="heading" font-size="48" fill="#0a0a0a">PRO SERIES QUITO</text>
+    <text x="60" y="200" class="heading" font-size="32" fill="#047857">Septiembre · 2026</text>
 
     <!-- Meta row -->
     <g transform="translate(60,222)" fill="#737373">
@@ -41,7 +41,7 @@
       <g transform="translate(300,0)">
         <!-- map-pin icon -->
         <path d="M12 22 s8-7 8-13a8 8 0 1 0 -16 0c0 6 8 13 8 13z M12 11 a2 2 0 1 1 0 -4 a2 2 0 0 1 0 4z" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="30" y="18" class="body" font-size="16">Club Los Chillos · {CIUDAD}</text>
+        <text x="30" y="18" class="body" font-size="16">Club Los Chillos · Quito</text>
       </g>
       <g transform="translate(660,0)">
         <!-- shield icon -->

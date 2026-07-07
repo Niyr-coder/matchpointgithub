@@ -26,9 +26,9 @@
       <text x="30" y="30" class="heading" font-size="28" fill="#ffffff">MATCHPOINT</text>
     </g>
     <!-- Right: parada chip -->
-    <g transform="translate(760,40)">
-      <rect x="0" y="0" width="260" height="42" rx="21" fill="rgba(16,185,129,0.15)"/>
-      <text x="130" y="28" class="chip" font-size="15" fill="#10b981" text-anchor="middle">COPA {CIUDAD} · {MES}</text>
+    <g transform="translate(680,40)">
+      <rect x="0" y="0" width="340" height="42" rx="21" fill="rgba(16,185,129,0.15)"/>
+      <text x="170" y="28" class="chip" font-size="15" fill="#10b981" text-anchor="middle">PRO SERIES QUITO · SEPTIEMBRE</text>
     </g>
   </g>
 

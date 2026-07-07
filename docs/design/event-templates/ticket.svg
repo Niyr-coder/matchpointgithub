@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 940" width="620" height="940" role="img" aria-label="Ticket digital de inscripción — Pro Series Quito — MATCHPOINT">
+  <title>Ticket digital de inscripción — Pro Series Quito — MATCHPOINT</title>
+  <desc>Plantilla de ticket digital de inscripción. ViewBox 620x940 = proporción A6 vertical (2:3). Cabe en pantalla móvil de 375px de ancho sin scroll y también se imprime en A6 (105x148mm) usando 1px = 0.17mm. Muestra parada, jugador, categoría, franja horaria, código QR de check-in y disclaimer legal breve. Layout aplica al render de "Mi ticket" en la app.</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+      .body { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+      .strong { font-family: "Inter", system-ui, sans-serif; font-weight: 700; }
+      .code { font-family: "Plus Jakarta Sans", ui-monospace, monospace; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: 0.08em; }
+      .meta { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Ticket card background -->
+  <rect width="620" height="940" fill="#fafafa"/>
+  <g transform="translate(30,30)">
+    <rect x="0" y="0" width="560" height="880" rx="24" fill="#ffffff" stroke="#e5e5e5"/>
+
+    <!-- Header stripe (dark) -->
+    <g>
+      <path d="M0 0 h560 v120 h-560z M0 100 Q 280 130 560 100" fill="#0a0a0a"/>
+      <rect x="0" y="0" width="560" height="120" fill="#0a0a0a"/>
+      <!-- circle green mark -->
+      <circle cx="42" cy="60" r="10" fill="#10b981"/>
+      <text x="62" y="66" class="heading" font-size="22" fill="#ffffff">MATCHPOINT</text>
+      <text x="540" y="66" class="chip" font-size="12" fill="#10b981" text-anchor="end">TICKET · PARADA</text>
+    </g>
+
+    <!-- Parada title -->
+    <g transform="translate(30,150)">
+      <text x="0" y="0" class="chip" font-size="12" fill="#737373">CIRCUITO PRO SERIES · 2026</text>
+      <text x="0" y="42" class="heading" font-size="34" fill="#0a0a0a">Pro Series Quito</text>
+      <text x="0" y="72" class="body" font-size="16" fill="#737373">Sábado 12 · Septiembre 2026 · Club Los Chillos</text>
+    </g>
+
+    <!-- Perforation divider -->
+    <g transform="translate(0,260)">
+      <line x1="20" y1="0" x2="540" y2="0" stroke="#e5e5e5" stroke-width="2" stroke-dasharray="6 6"/>
+      <circle cx="0" cy="0" r="14" fill="#fafafa" stroke="#e5e5e5"/>
+      <circle cx="560" cy="0" r="14" fill="#fafafa" stroke="#e5e5e5"/>
+    </g>
+
+    <!-- Jugador block -->
+    <g transform="translate(30,300)">
+      <text x="0" y="0" class="chip" font-size="12" fill="#737373">JUGADOR</text>
+      <text x="0" y="34" class="section" font-size="24" fill="#0a0a0a">Miguel Herrera</text>
+      <text x="0" y="60" class="meta" font-size="14" fill="#737373">CI 17······123 · DUPR 4.12</text>
+    </g>
+
+    <!-- Two-column: Categoría / Compañero -->
+    <g transform="translate(30,400)">
+      <text x="0" y="0" class="chip" font-size="12" fill="#737373">CATEGORÍA</text>
+      <text x="0" y="30" class="section" font-size="20" fill="#0a0a0a">Dobles Open</text>
+      <text x="0" y="52" class="body" font-size="14" fill="#737373">MPR 4.0+ · Rally · BO3 a 15</text>
+    </g>
+    <g transform="translate(300,400)">
+      <text x="0" y="0" class="chip" font-size="12" fill="#737373">COMPAÑERO</text>
+      <text x="0" y="30" class="section" font-size="20" fill="#0a0a0a">Luis Vega</text>
+      <text x="0" y="52" class="body" font-size="14" fill="#737373">DUPR 4.05 · seed asignado #1</text>
+    </g>
+
+    <!-- Horario + cancha row -->
+    <g transform="translate(30,500)">
+      <rect x="0" y="0" width="500" height="90" rx="14" fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.30)"/>
+      <g transform="translate(24,20)">
+        <text x="0" y="0" class="chip" font-size="11" fill="#047857">CHECK-IN</text>
+        <text x="0" y="34" class="section" font-size="26" fill="#0a0a0a">07:30 h</text>
+      </g>
+      <g transform="translate(180,20)">
+        <text x="0" y="0" class="chip" font-size="11" fill="#047857">PRIMER PARTIDO</text>
+        <text x="0" y="34" class="section" font-size="26" fill="#0a0a0a">08:30 h</text>
+      </g>
+      <g transform="translate(360,20)">
+        <text x="0" y="0" class="chip" font-size="11" fill="#047857">CANCHA</text>
+        <text x="0" y="34" class="section" font-size="26" fill="#0a0a0a">1</text>
+      </g>
+    </g>
+
+    <!-- QR + código -->
+    <g transform="translate(30,620)">
+      <text x="0" y="0" class="chip" font-size="12" fill="#737373">CÓDIGO DE CHECK-IN</text>
+      <text x="0" y="30" class="code" font-size="24" fill="#0a0a0a">MP · PSQ · 2026 · A17K</text>
+      <text x="0" y="58" class="body" font-size="13" fill="#737373">Muestra este código al staff en la mesa de acreditación.</text>
+    </g>
+
+    <!-- QR-like placeholder — 9x9 grid of dots for visual density -->
+    <g transform="translate(400,610)">
+      <rect x="0" y="0" width="130" height="130" rx="12" fill="#0a0a0a"/>
+      <g fill="#10b981">
+        <!-- corner markers -->
+        <rect x="14" y="14" width="22" height="22"/>
+        <rect x="94" y="14" width="22" height="22"/>
+        <rect x="14" y="94" width="22" height="22"/>
+      </g>
+      <g fill="#ffffff">
+        <!-- inner corner white -->
+        <rect x="20" y="20" width="10" height="10"/>
+        <rect x="100" y="20" width="10" height="10"/>
+        <rect x="20" y="100" width="10" height="10"/>
+      </g>
+      <!-- data-like dot pattern -->
+      <g fill="#ffffff">
+        <rect x="44" y="18" width="6" height="6"/>
+        <rect x="56" y="18" width="6" height="6"/>
+        <rect x="80" y="18" width="6" height="6"/>
+        <rect x="44" y="30" width="6" height="6"/>
+        <rect x="68" y="30" width="6" height="6"/>
+        <rect x="80" y="30" width="6" height="6"/>
+        <rect x="44" y="42" width="6" height="6"/>
+        <rect x="56" y="42" width="6" height="6"/>
+        <rect x="68" y="42" width="6" height="6"/>
+        <rect x="92" y="42" width="6" height="6"/>
+        <rect x="104" y="42" width="6" height="6"/>
+        <rect x="18" y="44" width="6" height="6"/>
+        <rect x="30" y="44" width="6" height="6"/>
+        <rect x="18" y="56" width="6" height="6"/>
+        <rect x="30" y="56" width="6" height="6"/>
+        <rect x="44" y="56" width="6" height="6"/>
+        <rect x="68" y="56" width="6" height="6"/>
+        <rect x="92" y="56" width="6" height="6"/>
+        <rect x="104" y="56" width="6" height="6"/>
+        <rect x="18" y="68" width="6" height="6"/>
+        <rect x="44" y="68" width="6" height="6"/>
+        <rect x="80" y="68" width="6" height="6"/>
+        <rect x="92" y="68" width="6" height="6"/>
+        <rect x="30" y="80" width="6" height="6"/>
+        <rect x="56" y="80" width="6" height="6"/>
+        <rect x="68" y="80" width="6" height="6"/>
+        <rect x="104" y="80" width="6" height="6"/>
+        <rect x="44" y="92" width="6" height="6"/>
+        <rect x="56" y="92" width="6" height="6"/>
+        <rect x="80" y="92" width="6" height="6"/>
+        <rect x="104" y="92" width="6" height="6"/>
+        <rect x="44" y="104" width="6" height="6"/>
+        <rect x="68" y="104" width="6" height="6"/>
+        <rect x="80" y="104" width="6" height="6"/>
+        <rect x="92" y="104" width="6" height="6"/>
+      </g>
+    </g>
+
+    <!-- Bottom bar with disclaimer -->
+    <g transform="translate(30,770)">
+      <line x1="0" y1="0" x2="500" y2="0" stroke="#e5e5e5"/>
+      <text x="0" y="26" class="chip" font-size="10" fill="#a3a3a3">CONDICIONES</text>
+      <text x="0" y="46" class="body" font-size="12" fill="#737373">Este ticket es personal e intransferible. Ingreso hasta 15 minutos después</text>
+      <text x="0" y="62" class="body" font-size="12" fill="#737373">de tu check-in asignado. Reglamento y política de reembolso en</text>
+      <text x="0" y="78" class="strong" font-size="12" fill="#047857">matchpoint.top/reglamento</text>
+    </g>
+  </g>
+</svg>

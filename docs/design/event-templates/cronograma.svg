@@ -27,8 +27,8 @@
       <rect x="0" y="0" width="360" height="42" rx="21" fill="rgba(16,185,129,0.15)"/>
       <text x="24" y="28" class="chip" font-size="18" fill="#10b981">CRONOGRAMA · DÍA DEL EVENTO</text>
     </g>
-    <text x="0" y="118" class="heading" font-size="72" fill="#ffffff">Copa {CIUDAD}</text>
-    <text x="0" y="200" class="heading" font-size="56" fill="#10b981">{MES} · 2026</text>
+    <text x="0" y="118" class="heading" font-size="72" fill="#ffffff">Pro Series Quito</text>
+    <text x="0" y="200" class="heading" font-size="56" fill="#10b981">Septiembre · 2026</text>
 
     <!-- Meta -->
     <g transform="translate(0,240)" fill="#a3a3a3">

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920" role="img" aria-label="Filtro / Story IG — Pro Series Quito — MATCHPOINT">
+  <title>Filtro / Story IG — Pro Series Quito — MATCHPOINT</title>
+  <desc>Plantilla de filtro / story para Instagram Stories. ViewBox 1080x1920. La zona cropsafe de Instagram (Y 250-1670) se reserva para el contenido crítico. El bloque central 380-1540 (proporción 4:5) queda como área libre para foto/reel del jugador — los bordes actúan como filtro con brand identity: chip superior, wordmark inferior, marca de agua sub-marca. Sub-marca demo: Pro Series Quito. Duplicar el archivo cambiando strings y color de acento para Nationals (ámbar), Academy (azul cielo), Nights (púrpura).</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase; }
+      .body { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+    </style>
+    <linearGradient id="topfade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(10,10,10,0.98)"/>
+      <stop offset="80%" stop-color="rgba(10,10,10,0.72)"/>
+      <stop offset="100%" stop-color="rgba(10,10,10,0.0)"/>
+    </linearGradient>
+    <linearGradient id="bottomfade" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="rgba(10,10,10,0.98)"/>
+      <stop offset="80%" stop-color="rgba(10,10,10,0.72)"/>
+      <stop offset="100%" stop-color="rgba(10,10,10,0.0)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base background (mid-tone) suggesting photo area -->
+  <rect width="1080" height="1920" fill="#141414"/>
+  <!-- Faint pattern to signal "photo goes here" -->
+  <g fill="#1a1a1a">
+    <rect x="60" y="580" width="960" height="760" rx="24"/>
+  </g>
+  <text x="540" y="960" class="chip" font-size="14" fill="#3a3a3a" text-anchor="middle">ZONA FOTO / REEL DEL JUGADOR</text>
+
+  <!-- Cropsafe top guide (invisible in export, shown here as dashed line for docs) -->
+  <line x1="0" y1="250" x2="1080" y2="250" stroke="rgba(115,115,115,0.15)" stroke-dasharray="8 8"/>
+  <line x1="0" y1="1670" x2="1080" y2="1670" stroke="rgba(115,115,115,0.15)" stroke-dasharray="8 8"/>
+
+  <!-- Top fade filter -->
+  <rect x="0" y="250" width="1080" height="330" fill="url(#topfade)"/>
+
+  <!-- Top: sub-marca id -->
+  <g transform="translate(80,300)">
+    <rect x="0" y="0" width="380" height="48" rx="24" fill="rgba(16,185,129,0.20)" stroke="rgba(16,185,129,0.40)"/>
+    <text x="28" y="32" class="chip" font-size="18" fill="#10b981">CIRCUITO PRO SERIES · 2026</text>
+  </g>
+
+  <!-- Big wordmark -->
+  <g transform="translate(80,540)">
+    <text x="0" y="0" class="heading" font-size="120" fill="#ffffff">PRO SERIES</text>
+    <text x="0" y="140" class="heading" font-size="120" fill="#10b981">QUITO</text>
+  </g>
+
+  <!-- Bottom fade filter -->
+  <rect x="0" y="1340" width="1080" height="330" fill="url(#bottomfade)"/>
+
+  <!-- Bottom: date + CTA -->
+  <g transform="translate(80,1420)">
+    <text x="0" y="0" class="chip" font-size="16" fill="#a3a3a3">SÁBADO 12 · SEPTIEMBRE 2026</text>
+    <text x="0" y="70" class="section" font-size="52" fill="#ffffff">Club Los Chillos</text>
+    <text x="0" y="128" class="body" font-size="26" fill="#a3a3a3">Dobles Open · MPR 3.5 · 4.0 · 4.5</text>
+  </g>
+
+  <!-- Bottom green CTA bar -->
+  <g transform="translate(80,1560)">
+    <rect x="0" y="0" width="920" height="90" rx="22" fill="#10b981"/>
+    <text x="40" y="42" class="chip" font-size="16" fill="#0a0a0a">INSCRÍBETE</text>
+    <text x="40" y="76" class="heading" font-size="26" fill="#0a0a0a">matchpoint.top/pro-series-quito</text>
+  </g>
+
+  <!-- Footer signature (safe within cropsafe 1670) -->
+  <g transform="translate(80,1670)">
+    <circle cx="10" cy="-10" r="8" fill="#10b981"/>
+    <text x="26" y="-4" class="heading" font-size="24" fill="#ffffff">MATCHPOINT</text>
+    <text x="920" y="-4" class="body" font-size="16" fill="#737373" text-anchor="end">@matchpoint.ec</text>
+  </g>
+</svg>

@@ -33,8 +33,8 @@
       <rect x="0" y="0" width="240" height="40" rx="20" fill="rgba(251,191,36,0.16)"/>
       <text x="24" y="26" class="chip" font-size="14" fill="#fbbf24">PODIO OFICIAL</text>
     </g>
-    <text x="0" y="118" class="heading" font-size="60" fill="#ffffff">Copa {CIUDAD}</text>
-    <text x="0" y="180" class="heading" font-size="36" fill="#10b981">{MES} · 2026</text>
+    <text x="0" y="118" class="heading" font-size="60" fill="#ffffff">Pro Series Quito</text>
+    <text x="0" y="180" class="heading" font-size="36" fill="#10b981">Septiembre · 2026</text>
     <text x="0" y="220" class="meta" font-size="20" fill="#a3a3a3">Dobles Open · MPR 4.0+ · Sábado 12/09/2026</text>
   </g>
 

@@ -4,12 +4,14 @@ Guía de aplicación del sistema visual para todos los eventos del
 portafolio: circuito paraguas, paradas mensuales, insignia anual, clínicas,
 social night y Powered by MATCHPOINT.
 
-Autor: UXDesigner. Iteración: v1 (Phase A — plantillas naming-independent).
+Autor: UXDesigner. Iteración: v2 (Phase A + Phase B — kit completo con
+naming aplicado).
 Alcance de esta versión: paleta, tipografía, sistema de plantillas
-reutilizables y kit por sub-marca **usando placeholders** (`{CIRCUITO}`,
-`{INSIGNIA}`, `{COPA CIUDAD MES}`, `{CLINICA}`, `{SOCIAL}`). Cuando el
-brand designer entregue naming en [MAT-88](/MAT/issues/MAT-88), los
-placeholders se reemplazan sin retrabajo de layout.
+reutilizables y kit por sub-marca **con naming final aplicado**. Los
+placeholders originales (`{CIRCUITO}`, `{INSIGNIA}`, `{COPA CIUDAD MES}`,
+`{CLINICA}`, `{SOCIAL}`) fueron sustituidos por los nombres finalizados
+en [MAT-88](/MAT/issues/MAT-88): Pro Series (circuito), Nationals
+(insignia), Academy (clínicas), Nights (social), MATCHPOINT Ranking.
 
 ---
 
@@ -203,30 +205,33 @@ la fuente de verdad para: (a) render en la app usando el mismo layout,
 (b) export a PNG/PDF para social/print, (c) handoff a brand designer para
 llevarlo a Figma si desea.
 
-### 6.1 Phase A — SIN dependencia de naming (esta iteración)
+### 6.1 Phase A — SIN dependencia de naming
 
 | # | Plantilla | Formatos | Archivo | Status |
 |---|---|---|---|---|
-| 1 | Bracket single-elim 8 seeds | Web + IG-square 1080×1080 | `event-templates/bracket.svg` | ✅ v1 |
-| 2 | Cronograma del día | Web + IG-story 1080×1920 | `event-templates/cronograma.svg` | ✅ v1 |
-| 3 | Resultado por partido | IG-square 1080×1080 | `event-templates/resultado-partido.svg` | ✅ v1 |
-| 4 | Podio 1°/2°/3° | IG-square 1080×1080 | `event-templates/podio.svg` | ✅ v1 |
+| 1 | Bracket single-elim 8 seeds | Web + IG-square 1080×1080 | `event-templates/bracket.svg` | ✅ v1 — naming aplicado |
+| 2 | Cronograma del día | Web + IG-story 1080×1920 | `event-templates/cronograma.svg` | ✅ v1 — naming aplicado |
+| 3 | Resultado por partido | IG-square 1080×1080 | `event-templates/resultado-partido.svg` | ✅ v1 — naming aplicado |
+| 4 | Podio 1°/2°/3° | IG-square 1080×1080 | `event-templates/podio.svg` | ✅ v1 — naming aplicado |
 
-Estas cuatro **no necesitan el nombre final** para funcionar — el layout
-sostiene cualquier string en el título. El placeholder `{CIRCUITO} — Copa
-{Ciudad} {Mes}` prueba el sizing con la cadena más larga esperada.
+Los placeholders (`{CIRCUITO}`, `Copa {Ciudad} {Mes}`) fueron reemplazados
+con los nombres finales de [MAT-88](/MAT/issues/MAT-88): **Pro Series**
+(circuito), **Pro Series [Ciudad]** (parada mensual). Los SVGs ahora
+contienen strings reales; ver guía de declinación en
+`event-templates/README.md §Naming aplicado`.
 
-### 6.2 Phase B — DEPENDE de naming (bloqueado por MAT-88)
+### 6.2 Phase B — Naming-dependent (completado en [MAT-89](/MAT/issues/MAT-89))
 
-| # | Plantilla | Formatos | Blocker |
-|---|---|---|---|
-| 5 | Flyer convocatoria | A4 print + IG-square | Nombre del circuito, insignia |
-| 6 | Ticket digital de inscripción | A6 print + móvil | Nombre del evento en el ticket |
-| 7 | Filtro / Story de IG | IG-story 1080×1920 | Wordmark del evento |
-| 8 | Reel de resumen (frames base) | IG-story 1080×1920 loop | Wordmark + tagline |
+| # | Plantilla | Formatos | Archivo | Status |
+|---|---|---|---|---|
+| 5 | Flyer convocatoria | IG-square 1080×1080 (escala a A4) | `event-templates/flyer.svg` | ✅ v1 |
+| 6 | Ticket digital de inscripción | 620×940 · A6 vertical · móvil | `event-templates/ticket.svg` | ✅ v1 |
+| 7 | Filtro / Story IG | IG-story 1080×1920 | `event-templates/story-ig.svg` | ✅ v1 |
+| 8 | Reel resumen (frames base) | 3×(1080×1920) en un SVG | `event-templates/reel-frames.svg` | ✅ v1 |
 
-Estas cuatro se producen en el momento que MAT-88 aterrice el naming.
-Delegadas al hijo issue (ver comentario del ticket).
+Estas cuatro usan el naming final. Están pobladas con la parada ejemplo
+"Pro Series Quito · Septiembre 2026"; para declinar a otra parada usar
+el `sed` de la guía en `event-templates/README.md`.
 
 ---
 
@@ -266,14 +271,15 @@ Delegadas al hijo issue (ver comentario del ticket).
 
 ## 8. Declinaciones por ciudad / mes (paradas)
 
-La `Copa {Ciudad} {Mes}` es la pieza más recurrente (10 al año, plan
-2026-2027). Debe declinarse fácil.
+La parada **Pro Series [Ciudad]** es la pieza más recurrente (10 al año,
+plan 2026-2027). Debe declinarse fácil. El naming final no usa "Copa"
+— se usa `Pro Series [Ciudad]` directamente.
 
 Regla operativa:
 
-1. **Ciudad** → chip inferior derecho con nombre y bandera de Ecuador
-   (opcional). No es el foco; el foco es el circuito.
-2. **Mes** → chip inferior izquierdo, en Inter 800 uppercase, tracking
+1. **Ciudad** → es el diferenciador visual principal. Aparece en heading
+   grande en flyer, story y cronograma. No es un chip secundario.
+2. **Mes** → chip de apoyo junto al año. En Inter 800 uppercase, tracking
    0.06em. Contrasta contra el fondo.
 3. **Sede** → línea de meta bajo el título, con icono `map-pin` y nombre
    del club. Si el club es aliado ("Powered by"), incluir logo pequeño.
@@ -281,29 +287,28 @@ Regla operativa:
    encima. Preferir gráfica geométrica sobre foto para escalar el
    pipeline sin foto profesional cada mes.
 
-Todo lo demás **no cambia** entre Copa Quito Septiembre y Copa Guayaquil
-Diciembre. Un editor cambia 2 strings y una foto, y publica.
+Todo lo demás **no cambia** entre Pro Series Quito y Pro Series Guayaquil.
+Un editor hace `sed` de 4 strings (ciudad, ciudad en mayúsculas, mes,
+fecha) y publica.
 
 ---
 
 ## 9. Coordinación con brand designer
 
-MAT-88 (BrandDesigner) entrega:
+[MAT-88](/MAT/issues/MAT-88) (BrandDesigner) entregó el naming v1 el
+2026-07-06. Vicente eligió los nombres finales el 2026-07-07. Todos los
+pasos de coordinación están completos:
 
-- Nombre real de `{CIRCUITO}`, `{INSIGNIA}`, `{CLINICA}`, `{SOCIAL}`
-- Convención de string para `Copa {Ciudad} {Mes}`
-- Brief visual (identidad base sub-marca) — puede incluir wordmark
-  custom, iconos accesorios, tratamiento tipográfico específico
-
-Cuando llegue:
-
-1. Reemplazar placeholders en todos los SVGs (`sed` global).
-2. Revisar sizing — si el nombre real es mucho más largo/corto que el
-   placeholder, ajustar `font-size` del título, no el layout.
-3. Producir Phase B (flyer, ticket, story, reel).
-4. Publicar guía de aplicación PDF finalizada.
-5. Handoff a brand designer para que suba el kit final a Figma si
-   requiere edición de partners externos.
+1. ✅ Placeholders reemplazados en Phase A SVGs.
+2. ✅ Sizing revisado — "Pro Series Quito" cabe sin ajuste en heading 112pt
+   (flyer) y heading 120pt (story). Para ciudades con nombres más largos
+   (Santo Domingo, Riobamba), reducir `font-size` del heading ciudad entre
+   5-10pt sin cambiar el layout.
+3. ✅ Phase B producida: flyer, ticket, story-ig, reel-frames.
+4. ✅ PDF final de guía generado: `docs/design/event-brand-system.pdf`.
+5. Handoff Figma → opcional. Los SVGs se importan directo a Figma.
+   Cuando un partner externo necesite editabilidad, el brand designer
+   importa los SVGs y convierte fuentes a paths para distribución.
 
 Este documento y los SVGs son **la fuente de verdad de layout**. El brand
 designer decide identidad (wordmark, ilustración) — UX decide layout,
@@ -313,18 +318,16 @@ grilla, jerarquía, accesibilidad.
 
 ## 10. Deliverables status
 
-- ✅ Sistema visual base + guía de aplicación (este doc)
-- ✅ 4 plantillas Phase A (bracket, cronograma, resultado, podio)
-- 🔒 4 plantillas Phase B → child issue con blocker en MAT-88
-- 🔒 Naming placeholder replacement → depende de MAT-88 v1 aceptada por CEO
-- 🔒 PDF final de guía → después de Phase B (embebe todos los layouts)
-- 🔒 Handoff Figma → opcional, si brand designer necesita editabilidad
-  externa. Los SVGs se importan directo.
+- ✅ Sistema visual base + guía de aplicación (este doc v2)
+- ✅ 4 plantillas Phase A — naming aplicado (Pro Series [Ciudad])
+- ✅ 4 plantillas Phase B — flyer, ticket, story-ig, reel-frames
+- ✅ Naming placeholder replacement — completado desde [MAT-89](/MAT/issues/MAT-89)
+- ✅ PDF final de guía — `docs/design/event-brand-system.pdf`
+- Handoff Figma → pendiente solo si partner externo lo necesita
 
-Timeline al deadline (piloto parada #1, septiembre 2026):
+Timeline al deadline (piloto Pro Series Quito, septiembre 2026):
 
-- Julio 2026: Phase A ✅ (este ticket).
-- Agosto 2026: naming aterriza (MAT-88), reemplazo de placeholders,
-  Phase B producida.
-- Septiembre 2026: kit finalizado, PDF publicado, piloto Copa Quito con
-  todos los assets listos.
+- Julio 2026: Phase A + Phase B ✅ — kit completo entregado.
+- Agosto 2026: verificación legal de naming ([MAT-109](/MAT/issues/MAT-109))
+  → si hay conflicto en "Pro Series", actualizar strings en SVGs con `sed`.
+- Septiembre 2026: piloto Pro Series Quito I con todos los assets listos.
