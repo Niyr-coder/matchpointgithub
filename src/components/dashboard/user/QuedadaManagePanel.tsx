@@ -37,6 +37,10 @@ import {
   setParticipantPaid,
   setParticipantCheckedIn,
   setAllCheckedIn,
+  addQuedadaWalkIn,
+  removeQuedadaWalkIn,
+  setGuestPaid,
+  setGuestCheckedIn,
   remindQuedadaPayment,
   getQuedadaPlayerHistory,
   updateQuedadaDetails,
@@ -137,6 +141,15 @@ type ManageCohost = {
   user_id: string;
   profiles: { display_name: string | null; username: string | null } | null;
 };
+// Walk-in (guest sin cuenta): agregado a mano por el organizador; ocupa cupos
+// y juega games con su UUID propio (quedada_guests).
+type ManageGuest = {
+  id: string;
+  display_name: string;
+  paid: boolean;
+  checked_in_at: string | null;
+  created_at: string;
+};
 type ManageRound = {
   id: string;
   category_id: string;
@@ -169,6 +182,7 @@ type ManageData = {
   pairs: ManagePair[];
   participants: ManageParticipant[];
   cohosts: ManageCohost[];
+  guests: ManageGuest[];
   rounds: ManageRound[];
   games: ManageGame[];
 };
@@ -1224,6 +1238,7 @@ type QuedadaPlayerHistory = {
 // estado, pago, categorías y reportar) + gestión de roster (SlotsSection).
 function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameOf: (id: string) => string; onChanged: () => Promise<void> }) {
   const toast = useToast();
+  const { ask, confirm } = usePromptModal();
   const readOnly = quedadaIsLocked(data.quedada.status);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
@@ -1252,8 +1267,51 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
   }, [historyFor]);
 
   const joined = data.participants.filter((p) => p.status === "joined");
+  const walkIns = data.guests;
   const multiCat = data.categories.length > 1;
   const individualRoster = rosterModeFor(data.quedada.format, data.quedada.match_mode) === "individual";
+
+  // Walk-ins: alta/baja manual de guests sin cuenta.
+  const [walkInBusy, startWalkIn] = useTransition();
+  const addWalkIn = async () => {
+    const name = await ask({
+      title: "Agregar walk-in",
+      label: "Nombre del jugador",
+      placeholder: "Ej. Carlos (llegó sin cuenta)",
+      required: true,
+      confirmLabel: "Agregar",
+      validate: (v) => (v.trim().length < 1 ? "Escribe un nombre" : null),
+    });
+    if (name == null) return;
+    startWalkIn(async () => {
+      const res = await addQuedadaWalkIn({ quedadaId: data.quedada.id, name: name.trim() });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo agregar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check-circle-2", title: "Walk-in agregado", sub: "Asígnale un cupo para que juegue." });
+      await onChanged();
+    });
+  };
+  const removeWalkIn = async (guestId: string) => {
+    const ok = await confirm({
+      title: "Quitar walk-in",
+      body: `¿Quitar a ${nameOf(guestId)} de la quedada? Se libera su cupo.`,
+      confirmLabel: "Quitar",
+      cancelLabel: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+    startWalkIn(async () => {
+      const res = await removeQuedadaWalkIn({ quedadaId: data.quedada.id, guestId });
+      if (!res.ok) {
+        toast({ icon: "alert-triangle", title: "No se pudo quitar", sub: res.error.message });
+        return;
+      }
+      toast({ icon: "check", title: "Walk-in quitado" });
+      await onChanged();
+    });
+  };
 
   // Categorías con al menos un cupo libre (para el picker de asignación directa).
   // Devuelve [{ id, name, freeSlot }] con el cupo libre más bajo.
@@ -1311,9 +1369,15 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
   const catNamesFor = (uid: string) => [...(catsByPlayer.get(uid) ?? [])].map((id) => catNameById.get(id) ?? "—");
 
   const term = query.trim().toLowerCase();
-  const filtered = joined.filter((p) => {
-    if (cat !== "all" && !catsByPlayer.get(p.user_id)?.has(cat)) return false;
-    if (term && !nameOf(p.user_id).toLowerCase().includes(term)) return false;
+  // Lista unificada de seguimiento: inscritos con cuenta + walk-ins (guests).
+  type RosterRow = { id: string; paid: boolean; isWalkIn: boolean };
+  const rosterRows: RosterRow[] = [
+    ...joined.map((p) => ({ id: p.user_id, paid: p.paid, isWalkIn: false })),
+    ...walkIns.map((g) => ({ id: g.id, paid: g.paid, isWalkIn: true })),
+  ];
+  const filtered = rosterRows.filter((r) => {
+    if (cat !== "all" && !catsByPlayer.get(r.id)?.has(cat)) return false;
+    if (term && !nameOf(r.id).toLowerCase().includes(term)) return false;
     return true;
   });
 
@@ -1364,6 +1428,7 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
         </h2>
         <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.82)", marginTop: 8 }}>
           {joined.length} inscrito{joined.length === 1 ? "" : "s"}
+          {walkIns.length > 0 ? ` · ${walkIns.length} walk-in${walkIns.length === 1 ? "" : "s"}` : ""}
           {data.categories.length > 0 ? ` · ${data.categories.length} categoría${data.categories.length === 1 ? "" : "s"}` : ""}
         </div>
       </div>
@@ -1376,15 +1441,27 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
           <h3 className="font-heading" style={{ margin: 0, fontSize: 19, fontWeight: 900, letterSpacing: "-0.02em", textTransform: "uppercase", lineHeight: 1 }}>
             Seguimiento a jugadores<span className="dot">.</span>
           </h3>
-          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{filtered.length} de {joined.length}</span>
+          <span style={{ fontSize: 11, color: "var(--muted-fg)" }}>{filtered.length} de {rosterRows.length}</span>
         </div>
 
-        {/* Buscar + filtro por categoría */}
+        {/* Buscar + walk-in + filtro por categoría */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
           <div style={{ flex: "1 1 200px", minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 9999, padding: "8px 14px" }}>
             <Icon name="search" size={14} color="var(--muted-fg)" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar jugador…" style={{ flex: 1, minWidth: 0, border: 0, outline: "none", background: "transparent", fontFamily: "inherit", fontSize: 13, color: "var(--fg)" }} />
           </div>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => void addWalkIn()}
+              disabled={walkInBusy}
+              className="btn"
+              title="Agrega a alguien que llegó sin cuenta MatchPoint"
+              style={{ background: "#fff", border: "1px solid var(--border)", whiteSpace: "nowrap", opacity: walkInBusy ? 0.6 : 1 }}
+            >
+              <Icon name="user-plus" size={13} /> Agregar walk-in
+            </button>
+          )}
           {multiCat && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {[{ id: "all", name: "Todas" }, ...data.categories.map((c) => ({ id: c.id, name: c.name }))].map((c) => {
@@ -1400,30 +1477,31 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
         {filtered.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted-fg)", padding: "8px 2px" }}>No hay jugadores que coincidan.</div>
         ) : (
-          filtered.map((p, i) => {
-            const inCourt = busy.has(p.user_id);
-            const played = playedById.get(p.user_id) ?? 0;
-            const pending = pendingById.get(p.user_id) ?? 0;
-            const nc = catCount(p.user_id);
-            const catNames = catNamesFor(p.user_id);
+          filtered.map((r, i) => {
+            const inCourt = busy.has(r.id);
+            const played = playedById.get(r.id) ?? 0;
+            const pending = pendingById.get(r.id) ?? 0;
+            const nc = catCount(r.id);
+            const catNames = catNamesFor(r.id);
             const canAssign = !readOnly && nc === 0 && individualRoster && categoriesWithFreeSlot.length > 0;
-            const picking = assignFor === p.user_id;
+            const picking = assignFor === r.id;
             return (
-              <div key={p.user_id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : undefined }}>
+              <div key={r.id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : undefined }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 2px" }}>
-                <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: "50%", background: "var(--muted)", border: "1px solid var(--border)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading, inherit)", fontSize: 12, fontWeight: 900, color: "var(--fg)" }}>{initialsOf(nameOf(p.user_id))}</span>
+                <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: "50%", background: "var(--muted)", border: "1px solid var(--border)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading, inherit)", fontSize: 12, fontWeight: 900, color: "var(--fg)" }}>{initialsOf(nameOf(r.id))}</span>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p.user_id)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(r.id)}</span>
                   <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {r.isWalkIn && chip("Walk-in")}
                     {chip(inCourt ? "En cancha" : "En banca", inCourt ? "warn" : "neutral")}
-                    {chip(p.paid ? "Pagado" : "Pago pendiente", p.paid ? "ok" : "warn")}
+                    {chip(r.paid ? "Pagado" : "Pago pendiente", r.paid ? "ok" : "warn")}
                     {chip(pending > 0 ? `${played} jugados · ${pending} por jugar` : `${played} jugado${played === 1 ? "" : "s"}`)}
                     {nc === 0
                       ? canAssign
                         ? (
                           <button
                             type="button"
-                            onClick={() => setAssignFor(picking ? null : p.user_id)}
+                            onClick={() => setAssignFor(picking ? null : r.id)}
                             title="Asignar a un cupo"
                             style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 700, background: picking ? "var(--fg)" : "#fff7ed", color: picking ? "#fff" : "#b45309", border: `1px solid ${picking ? "var(--fg)" : "#fed7aa"}`, cursor: "pointer", whiteSpace: "nowrap" }}
                           >
@@ -1436,24 +1514,38 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
                         : chip("Con cupo", "ok")}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setHistoryFor(p.user_id)}
-                  aria-label={`Ver historial de ${nameOf(p.user_id)}`}
-                  title="Ver su historial en tus quedadas"
-                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
-                >
-                  <Icon name="history" size={13} color="var(--muted-fg)" />
-                </button>
-                {!readOnly && (
+                {!r.isWalkIn && (
                   <button
                     type="button"
-                    onClick={() => { setReportFor(p.user_id); setReason(""); }}
-                    aria-label={`Reportar a ${nameOf(p.user_id)}`}
+                    onClick={() => setHistoryFor(r.id)}
+                    aria-label={`Ver historial de ${nameOf(r.id)}`}
+                    title="Ver su historial en tus quedadas"
+                    style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
+                  >
+                    <Icon name="history" size={13} color="var(--muted-fg)" />
+                  </button>
+                )}
+                {!readOnly && !r.isWalkIn && (
+                  <button
+                    type="button"
+                    onClick={() => { setReportFor(r.id); setReason(""); }}
+                    aria-label={`Reportar a ${nameOf(r.id)}`}
                     title="Reportar comportamiento indebido"
                     style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: "pointer" }}
                   >
                     <Icon name="flag" size={13} color="var(--muted-fg)" />
+                  </button>
+                )}
+                {!readOnly && r.isWalkIn && (
+                  <button
+                    type="button"
+                    onClick={() => void removeWalkIn(r.id)}
+                    disabled={walkInBusy}
+                    aria-label={`Quitar a ${nameOf(r.id)}`}
+                    title="Quitar walk-in de la quedada"
+                    style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 9999, border: "1px solid var(--border)", background: "#fff", cursor: walkInBusy ? "default" : "pointer", opacity: walkInBusy ? 0.6 : 1 }}
+                  >
+                    <Icon name="x" size={13} color="var(--muted-fg)" />
                   </button>
                 )}
                 </div>
@@ -1465,7 +1557,7 @@ function JugadoresTabView({ data, nameOf, onChanged }: { data: ManageData; nameO
                         key={c.id}
                         type="button"
                         disabled={assigning}
-                        onClick={() => assignToCategory(p.user_id, c.id, c.freeSlot)}
+                        onClick={() => assignToCategory(r.id, c.id, c.freeSlot)}
                         style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 11px", borderRadius: 9999, fontSize: 11, fontWeight: 800, background: "#fff", color: "var(--fg)", border: "1px solid var(--border)", cursor: assigning ? "default" : "pointer", opacity: assigning ? 0.6 : 1, whiteSpace: "nowrap" }}
                       >
                         {c.name} <span style={{ color: "var(--muted-fg)" }}>· cupo {c.freeSlot}</span>
@@ -1703,6 +1795,7 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
     [
       { table: "quedada_pairs", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_participants", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_guests", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_categories", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_rounds", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_games", filter: `quedada_id=eq.${quedadaId}` },
@@ -1722,6 +1815,24 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   // hace el check-in inmediato (antes esperaba un re-fetch completo).
   const togglePaid = useCallback(
     (userId: string) => {
+      // Walk-in (guest): mismo toggle optimista contra quedada_guests.
+      const guest = data?.guests.find((g) => g.id === userId);
+      if (guest) {
+        const gCur = guest.paid;
+        const gNext = !gCur;
+        setData((d) =>
+          d ? { ...d, guests: d.guests.map((g) => (g.id === userId ? { ...g, paid: gNext } : g)) } : d,
+        );
+        void setGuestPaid({ quedadaId, guestId: userId, paid: gNext }).then((res) => {
+          if (!res.ok) {
+            setData((d) =>
+              d ? { ...d, guests: d.guests.map((g) => (g.id === userId ? { ...g, paid: gCur } : g)) } : d,
+            );
+            toast({ icon: "alert-triangle", title: "No se pudo actualizar el pago", sub: res.error.message });
+          }
+        });
+        return;
+      }
       const cur = data?.participants.find((p) => p.user_id === userId)?.paid ?? false;
       const next = !cur;
       setData((d) =>
@@ -1743,14 +1854,22 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const setAllPaid = useCallback(
     (paid: boolean) => {
       const targets = (data?.participants ?? []).filter((p) => p.status === "joined" && p.paid !== paid);
-      if (targets.length === 0) return;
+      const guestTargets = (data?.guests ?? []).filter((g) => g.paid !== paid);
+      if (targets.length === 0 && guestTargets.length === 0) return;
       setData((d) =>
-        d ? { ...d, participants: d.participants.map((p) => (p.status === "joined" ? { ...p, paid } : p)) } : d,
+        d
+          ? {
+              ...d,
+              participants: d.participants.map((p) => (p.status === "joined" ? { ...p, paid } : p)),
+              guests: d.guests.map((g) => ({ ...g, paid })),
+            }
+          : d,
       );
-      let failed = false;
-      Promise.all(targets.map((t) => setParticipantPaid({ quedadaId, userId: t.user_id, paid }))).then((results) => {
-        if (results.some((r) => !r.ok)) failed = true;
-        if (failed) {
+      Promise.all([
+        ...targets.map((t) => setParticipantPaid({ quedadaId, userId: t.user_id, paid })),
+        ...guestTargets.map((g) => setGuestPaid({ quedadaId, guestId: g.id, paid })),
+      ]).then((results) => {
+        if (results.some((r) => !r.ok)) {
           toast({ icon: "alert-triangle", title: "Algunos pagos no se guardaron", sub: "Recarga para ver el estado real." });
         }
       });
@@ -1761,6 +1880,24 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   // Check-in de asistencia (informativo; optimista, best-effort).
   const toggleCheckedIn = useCallback(
     (userId: string) => {
+      // Walk-in (guest): check-in contra quedada_guests.
+      const guest = data?.guests.find((g) => g.id === userId);
+      if (guest) {
+        const gCur = !!guest.checked_in_at;
+        const gNext = gCur ? null : new Date().toISOString();
+        setData((d) =>
+          d ? { ...d, guests: d.guests.map((g) => (g.id === userId ? { ...g, checked_in_at: gNext } : g)) } : d,
+        );
+        void setGuestCheckedIn({ quedadaId, guestId: userId, checkedIn: !gCur }).then((res) => {
+          if (!res.ok) {
+            setData((d) =>
+              d ? { ...d, guests: d.guests.map((g) => (g.id === userId ? { ...g, checked_in_at: gCur ? new Date().toISOString() : null } : g)) } : d,
+            );
+            toast({ icon: "alert-triangle", title: "No se pudo registrar el check-in", sub: res.error.message });
+          }
+        });
+        return;
+      }
       const cur = !!data?.participants.find((p) => p.user_id === userId)?.checked_in_at;
       const next = cur ? null : new Date().toISOString();
       setData((d) =>
@@ -1781,13 +1918,23 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
   const setAllCheckedInLocal = useCallback(
     (checkedIn: boolean) => {
       const targets = (data?.participants ?? []).filter((p) => p.status === "joined" && !!p.checked_in_at !== checkedIn);
-      if (targets.length === 0) return;
+      const guestTargets = (data?.guests ?? []).filter((g) => !!g.checked_in_at !== checkedIn);
+      if (targets.length === 0 && guestTargets.length === 0) return;
       const stamp = checkedIn ? new Date().toISOString() : null;
       setData((d) =>
-        d ? { ...d, participants: d.participants.map((p) => (p.status === "joined" ? { ...p, checked_in_at: stamp } : p)) } : d,
+        d
+          ? {
+              ...d,
+              participants: d.participants.map((p) => (p.status === "joined" ? { ...p, checked_in_at: stamp } : p)),
+              guests: d.guests.map((g) => ({ ...g, checked_in_at: stamp })),
+            }
+          : d,
       );
-      void setAllCheckedIn({ quedadaId, checkedIn }).then((res) => {
-        if (!res.ok) toast({ icon: "alert-triangle", title: "Algunos check-ins no se guardaron", sub: "Recarga para ver el estado real." });
+      Promise.all([
+        setAllCheckedIn({ quedadaId, checkedIn }),
+        ...guestTargets.map((g) => setGuestCheckedIn({ quedadaId, guestId: g.id, checkedIn })),
+      ]).then((results) => {
+        if (results.some((r) => !r.ok)) toast({ icon: "alert-triangle", title: "Algunos check-ins no se guardaron", sub: "Recarga para ver el estado real." });
       });
     },
     [data, quedadaId, toast],
@@ -1930,8 +2077,11 @@ export function QuedadaManagePanel({ quedadaId }: { quedadaId: string }) {
 
   // Ronda actual (la más alta generada en la categoría principal) — para el
   // texto "Ronda N en vivo" del card Estado.
-  const nameById = (id: string): string =>
-    nameOf(data?.participants.find((p) => p.user_id === id)?.profiles ?? null);
+  const nameById = (id: string): string => {
+    const guest = data?.guests.find((g) => g.id === id);
+    if (guest) return guest.display_name;
+    return nameOf(data?.participants.find((p) => p.user_id === id)?.profiles ?? null);
+  };
   const avatarById = (id: string): string | null =>
     data?.participants.find((p) => p.user_id === id)?.profiles?.avatar_url ?? null;
   const catGames = data && mainCategory ? data.games.filter((g) => g.category_id === mainCategory.id) : [];
@@ -3325,7 +3475,9 @@ function PodiumHero({
 // Podio por categoría (legacy / multi-categoría): parejas con final_rank en DB.
 function PodiumSection({ data }: { data: ManageData }) {
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+  const guestById = new Map(data.guests.map((g) => [g.id, g]));
+  const nameFor = (id: string): string =>
+    guestById.get(id)?.display_name ?? nameOf(partById.get(id)?.profiles ?? null);
   const rankOf = (id: string): number | null => partById.get(id)?.final_rank ?? null;
   const cats = data.categories
     .map((c) => ({
@@ -3386,10 +3538,41 @@ function PagosTab({
   const q = data.quedada;
   const readOnly = quedadaIsLocked(q.status);
   const acct = q.payment_account;
-  const joined = data.participants.filter((p) => p.status === "joined");
+  // Fila unificada de cobro: inscritos con cuenta + walk-ins (guests). El aviso
+  // de pago solo aplica a inscritos con cuenta (el walk-in no recibe notifs).
+  type PayRow = {
+    user_id: string;
+    paid: boolean;
+    checked_in_at: string | null;
+    payment_reminded_at: string | null;
+    name: string;
+    username: string | null;
+    isWalkIn: boolean;
+  };
+  const joinedParts = data.participants.filter((p) => p.status === "joined");
+  const joined: PayRow[] = [
+    ...joinedParts.map((p) => ({
+      user_id: p.user_id,
+      paid: p.paid,
+      checked_in_at: p.checked_in_at,
+      payment_reminded_at: p.payment_reminded_at,
+      name: nameOf(p.profiles),
+      username: p.profiles?.username ?? null,
+      isWalkIn: false,
+    })),
+    ...data.guests.map((g) => ({
+      user_id: g.id,
+      paid: g.paid,
+      checked_in_at: g.checked_in_at,
+      payment_reminded_at: null,
+      name: g.display_name,
+      username: null,
+      isWalkIn: true,
+    })),
+  ];
   const paidN = joined.filter((p) => p.paid).length;
   const checkedInN = joined.filter((p) => !!p.checked_in_at).length;
-  const pendingPlayers = joined.filter((p) => !p.paid);
+  const pendingPlayers = joined.filter((p) => !p.paid && !p.isWalkIn);
   const allPaid = joined.length > 0 && paidN === joined.length;
   const allCheckedIn = joined.length > 0 && checkedInN === joined.length;
   const fee = q.fee_cents;
@@ -3423,8 +3606,8 @@ function PagosTab({
   const visible = joined.filter((p) => {
     if (catFilter !== "all" && catIdByUser.get(p.user_id) !== catFilter) return false;
     if (!qn) return true;
-    const nm = nameOf(p.profiles).toLowerCase();
-    const un = (p.profiles?.username ?? "").toLowerCase();
+    const nm = p.name.toLowerCase();
+    const un = (p.username ?? "").toLowerCase();
     return nm.includes(qn) || un.includes(qn);
   });
 
@@ -3444,17 +3627,18 @@ function PagosTab({
   const COLS = "minmax(0,1fr) 90px 116px 104px 110px";
 
   // Fila de la tabla: avatar + nombre, categoría, asistencia, aviso, pago.
-  const Row = (p: ManageParticipant) => {
+  const Row = (p: PayRow) => {
     const present = !!p.checked_in_at;
     const reminded = !!p.payment_reminded_at;
-    const name = nameOf(p.profiles);
+    const name = p.name;
     return (
       <div key={p.user_id} style={{ display: "grid", gridTemplateColumns: COLS, alignItems: "center", gap: 10, padding: "9px 14px", borderTop: "1px solid var(--border)", background: p.paid ? "var(--success-bg)" : "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <span style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: "var(--muted)", color: "var(--muted-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 900 }}>{initialsOf(name)}</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-            {p.profiles?.username && <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{p.profiles.username}</div>}
+            {p.username && <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{p.username}</div>}
+            {p.isWalkIn && <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Walk-in</div>}
           </div>
         </div>
         <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{catNameOf(p.user_id)}</span>
@@ -3469,7 +3653,7 @@ function PagosTab({
           <Icon name={present ? "user-check" : "user"} size={12} color={present ? "#fff" : "var(--muted-fg)"} />
           {present ? "Presente" : "Check-in"}
         </button>
-        {p.paid ? (
+        {p.paid || p.isWalkIn ? (
           <span style={{ justifySelf: "start", fontSize: 12, color: "var(--muted-fg)" }}>—</span>
         ) : (
           <button
@@ -3723,7 +3907,9 @@ function ResultadosTab({ data, onChanged }: { data: ManageData; onChanged: () =>
   const [pending, start] = useTransition();
   const finished = data.quedada.status === "finished";
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+  const guestById = new Map(data.guests.map((g) => [g.id, g]));
+  const nameFor = (id: string): string =>
+    guestById.get(id)?.display_name ?? nameOf(partById.get(id)?.profiles ?? null);
 
   const cats = data.categories
     .map((c) => ({ cat: c, pairs: data.pairs.filter((p) => p.category_id === c.id).sort((a, b) => a.slot_no - b.slot_no) }))
@@ -3921,6 +4107,7 @@ function JuegoTab({ data, onChanged }: { data: ManageData; onChanged: () => Prom
           categories={data.categories}
           pairs={data.pairs}
           participants={data.participants}
+          guests={data.guests}
           rounds={data.rounds}
           games={data.games}
           meUserId={data.meUserId}
@@ -4814,18 +5001,25 @@ function CategorySlots({
   const slots = slotCount > 0 ? Array.from({ length: slotCount }, (_, i) => i + 1) : [];
   const filled = pairsBySlot.size;
   const partById = new Map(data.participants.map((p) => [p.user_id, p]));
-  const nameFor = (id: string | null): string | null => (id ? nameOf(partById.get(id)?.profiles ?? null) : null);
+  const guestById = new Map(data.guests.map((g) => [g.id, g]));
+  const nameFor = (id: string | null): string | null =>
+    id ? guestById.get(id)?.display_name ?? nameOf(partById.get(id)?.profiles ?? null) : null;
 
-  // Inscritos joined que aún no están en un cupo de esta categoría (candidatos
-  // para asignación manual y para el llenado al azar).
+  // Inscritos joined + walk-ins que aún no están en un cupo de esta categoría
+  // (candidatos para asignación manual y para el llenado al azar).
   const assignedInCat = new Set<string>();
   for (const p of pairsBySlot.values()) {
     assignedInCat.add(p.player_a_id);
     if (p.player_b_id) assignedInCat.add(p.player_b_id);
   }
-  const available = data.participants
-    .filter((p) => p.status === "joined" && !assignedInCat.has(p.user_id))
-    .map((p) => ({ id: p.user_id, name: nameOf(p.profiles) }));
+  const available = [
+    ...data.participants
+      .filter((p) => p.status === "joined" && !assignedInCat.has(p.user_id))
+      .map((p) => ({ id: p.user_id, name: nameOf(p.profiles) })),
+    ...data.guests
+      .filter((g) => !assignedInCat.has(g.id))
+      .map((g) => ({ id: g.id, name: `${g.display_name} (walk-in)` })),
+  ];
   const emptyCount = slots.length - pairsBySlot.size;
 
   const autoFill = () => {

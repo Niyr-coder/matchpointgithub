@@ -31,6 +31,10 @@ import {
   SetParticipantPaidSchema,
   SetParticipantCheckedInSchema,
   SetAllCheckedInSchema,
+  AddQuedadaWalkInSchema,
+  RemoveQuedadaWalkInSchema,
+  SetGuestPaidSchema,
+  SetGuestCheckedInSchema,
   RemindQuedadaPaymentSchema,
   QuedadaPlayerHistorySchema,
   MyQuedadasFinanceStatsSchema,
@@ -333,22 +337,35 @@ export async function joinQuedada(
       const perSlot = individualRoster ? 1 : 2;
       const capacity = categories.reduce((sum, c) => sum + ((c.max_slots ?? 0) * perSlot), 0);
       if (capacity > 0) {
-        const { count } = await supabase
-          .from("quedada_participants")
-          .select("user_id", { count: "exact", head: true })
-          .eq("quedada_id", quedadaId)
-          .eq("status", "joined");
-        if ((count ?? 0) >= capacity) {
+        // Los walk-ins (guests) también ocupan cupo.
+        const [{ count }, { count: guestCount }] = await Promise.all([
+          supabase
+            .from("quedada_participants")
+            .select("user_id", { count: "exact", head: true })
+            .eq("quedada_id", quedadaId)
+            .eq("status", "joined"),
+          supabase
+            .from("quedada_guests")
+            .select("id", { count: "exact", head: true })
+            .eq("quedada_id", quedadaId),
+        ]);
+        if ((count ?? 0) + (guestCount ?? 0) >= capacity) {
           throw new MpError("QUEDADAS.FULL", "La quedada está llena", 409);
         }
       }
     } else if (q.max_players != null) {
-      const { count } = await supabase
-        .from("quedada_participants")
-        .select("user_id", { count: "exact", head: true })
-        .eq("quedada_id", quedadaId)
-        .eq("status", "joined");
-      if ((count ?? 0) >= (q.max_players as number)) {
+      const [{ count }, { count: guestCount }] = await Promise.all([
+        supabase
+          .from("quedada_participants")
+          .select("user_id", { count: "exact", head: true })
+          .eq("quedada_id", quedadaId)
+          .eq("status", "joined"),
+        supabase
+          .from("quedada_guests")
+          .select("id", { count: "exact", head: true })
+          .eq("quedada_id", quedadaId),
+      ]);
+      if ((count ?? 0) + (guestCount ?? 0) >= (q.max_players as number)) {
         throw new MpError("QUEDADAS.FULL", "La quedada está llena", 409);
       }
     }
@@ -756,13 +773,14 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
     if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
-    const [cats, pairs, parts, cohosts, rounds, games] = await Promise.all([
+    const [cats, pairs, parts, cohosts, rounds, games, guests] = await Promise.all([
       supabase.from("quedada_categories").select("id,name,level_label,starts_at,court_label,max_slots,target_points,sort_order,status,finished_at").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("id,category_id,slot_no,player_a_id,player_b_id").eq("quedada_id", quedadaId).order("slot_no", { ascending: true }),
       supabase.from("quedada_participants").select("user_id,status,paid,checked_in_at,payment_reminded_at,points,final_rank,profiles!quedada_participants_user_id_fkey(display_name,username,avatar_url)").eq("quedada_id", quedadaId),
       supabase.from("quedada_cohosts").select("user_id,profiles!quedada_cohosts_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId),
       supabase.from("quedada_rounds").select("id,category_id,round_no,status").eq("quedada_id", quedadaId).order("round_no", { ascending: true }),
       supabase.from("quedada_games").select("id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
+      supabase.from("quedada_guests").select("id,display_name,paid,checked_in_at,created_at").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
     ]);
 
     return {
@@ -776,6 +794,7 @@ export async function getQuedadaManageData(input: unknown): Promise<ActionResult
       cohosts: cohosts.data ?? [],
       rounds: rounds.data ?? [],
       games: games.data ?? [],
+      guests: guests.data ?? [],
     };
   });
 }
@@ -951,14 +970,19 @@ export async function autoAssignCategory(input: unknown): Promise<ActionResult<{
       if (p.player_b_id) assigned.add(p.player_b_id as string);
     }
 
-    const { data: parts } = await supabase
-      .from("quedada_participants")
-      .select("user_id,status")
-      .eq("quedada_id", quedadaId)
-      .eq("status", "joined");
-    const available: string[] = (parts ?? [])
-      .map((p: { user_id: string }) => p.user_id)
-      .filter((id: string) => !assigned.has(id));
+    const [{ data: parts }, { data: guestRows }] = await Promise.all([
+      supabase
+        .from("quedada_participants")
+        .select("user_id,status")
+        .eq("quedada_id", quedadaId)
+        .eq("status", "joined"),
+      supabase.from("quedada_guests").select("id").eq("quedada_id", quedadaId),
+    ]);
+    // Inscritos + walk-ins (guests): ambos ocupan cupos por igual.
+    const available: string[] = [
+      ...(parts ?? []).map((p: { user_id: string }) => p.user_id),
+      ...((guestRows ?? []) as Array<{ id: string }>).map((g) => g.id),
+    ].filter((id: string) => !assigned.has(id));
     // Shuffle (Fisher–Yates).
     for (let i = available.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -1043,6 +1067,83 @@ export async function setAllCheckedIn(input: unknown): Promise<ActionResult<{ ok
       .eq("quedada_id", quedadaId)
       .eq("status", "joined");
     if (error) throw new MpError("QUEDADAS.CHECKIN_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+// ── Walk-ins: guests sin cuenta (creador/co-host) ────────────────────────────
+// El walk-in es una fila en quedada_guests con UUID propio; puede ocupar cupos
+// (quedada_pairs) y jugar games igual que un inscrito (el trigger de la mig
+// 20260722 valida profile-o-guest). La RLS qgu_write gatea a mp_quedada_can_manage,
+// así que todo va con server client (actor = el propio organizador).
+export async function addQuedadaWalkIn(input: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(AddQuedadaWalkInSchema, input, async ({ quedadaId, name }) => {
+    const callerId = await requireUserId();
+    const supabase = await getServerClient();
+    await assertQuedadaEditable(supabase, quedadaId);
+    const { data, error } = await supabase
+      .from("quedada_guests")
+      .insert({ quedada_id: quedadaId, display_name: name, created_by: callerId } as never)
+      .select("id")
+      .single();
+    if (error || !data) throw new MpError("QUEDADAS.WALKIN_FAILED", error?.message ?? "No se pudo agregar", 500);
+    return { id: data.id as string };
+  });
+}
+
+export async function removeQuedadaWalkIn(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(RemoveQuedadaWalkInSchema, input, async ({ quedadaId, guestId }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    await assertQuedadaEditable(supabase, quedadaId);
+    // Igual que leaveQuedada: si ya jugó/tiene partidos generados, no se borra
+    // (los standings derivan de los games). Sus cupos los limpia el trigger.
+    const { data: gamesWithGuest, error: gamesErr } = await supabase
+      .from("quedada_games")
+      .select("id")
+      .eq("quedada_id", quedadaId)
+      .or(`side_a_p1.eq.${guestId},side_a_p2.eq.${guestId},side_b_p1.eq.${guestId},side_b_p2.eq.${guestId}`)
+      .limit(1);
+    if (gamesErr) throw new MpError("QUEDADAS.WALKIN_FAILED", gamesErr.message, 500);
+    if ((gamesWithGuest ?? []).length > 0) {
+      throw new MpError("QUEDADAS.WALKIN_LOCKED", "Este walk-in ya tiene partidos generados. Borra o ajusta esas rondas primero.", 409);
+    }
+    const { error } = await supabase
+      .from("quedada_guests")
+      .delete()
+      .eq("id", guestId)
+      .eq("quedada_id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.WALKIN_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function setGuestPaid(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetGuestPaidSchema, input, async ({ quedadaId, guestId, paid }) => {
+    await requireUserId();
+    const supabase = await getServerClient();
+    await assertQuedadaEditable(supabase, quedadaId);
+    const { error } = await supabase
+      .from("quedada_guests")
+      .update({ paid } as never)
+      .eq("id", guestId)
+      .eq("quedada_id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.WALKIN_FAILED", error.message, 500);
+    return { ok: true as const };
+  });
+}
+
+export async function setGuestCheckedIn(input: unknown): Promise<ActionResult<{ ok: true }>> {
+  return runAction(SetGuestCheckedInSchema, input, async ({ quedadaId, guestId, checkedIn }) => {
+    const callerId = await requireUserId();
+    const supabase = await getServerClient();
+    await assertQuedadaEditable(supabase, quedadaId);
+    const { error } = await supabase
+      .from("quedada_guests")
+      .update({ checked_in_at: checkedIn ? new Date().toISOString() : null, checked_in_by: checkedIn ? callerId : null } as never)
+      .eq("id", guestId)
+      .eq("quedada_id", quedadaId);
+    if (error) throw new MpError("QUEDADAS.WALKIN_FAILED", error.message, 500);
     return { ok: true as const };
   });
 }
@@ -1882,10 +1983,11 @@ export async function getQuedadaDetails(input: unknown): Promise<ActionResult<un
     if (qErr) throw new MpError("QUEDADAS.READ_FAILED", qErr.message, 500);
     if (!q) throw new MpError("QUEDADAS.NOT_FOUND", "Quedada no encontrada", 404);
 
-    const [{ data: partsData }, { data: catsData }, { data: pairsData }] = await Promise.all([
+    const [{ data: partsData }, { data: catsData }, { data: pairsData }, { data: guestsData }] = await Promise.all([
       supabase.from("quedada_participants").select("user_id,status,profiles!quedada_participants_user_id_fkey(display_name,username)").eq("quedada_id", quedadaId).eq("status", "joined"),
       supabase.from("quedada_categories").select("id,name,max_slots,sort_order").eq("quedada_id", quedadaId).order("sort_order", { ascending: true }),
       supabase.from("quedada_pairs").select("category_id,player_a_id,player_b_id").eq("quedada_id", quedadaId),
+      supabase.from("quedada_guests").select("id,display_name").eq("quedada_id", quedadaId).order("created_at", { ascending: true }),
     ]);
     const parts = (partsData ?? []) as Array<{
       user_id: string;
@@ -1939,19 +2041,33 @@ export async function getQuedadaDetails(input: unknown): Promise<ActionResult<un
     const nameOf = (p: { display_name: string | null; username: string | null } | null): string =>
       p?.display_name || (p?.username ? `@${p.username}` : "Jugador");
 
+    const guests = (guestsData ?? []) as Array<{ id: string; display_name: string }>;
+
     return {
       quedada: q,
       meUserId: userId,
       isMember: (q.creator_id as string) === userId || userIds.includes(userId),
-      joinedCount: parts.length,
+      joinedCount: parts.length + guests.length,
       categories,
-      participants: parts.map((p) => ({
-        userId: p.user_id,
-        name: nameOf(p.profiles),
-        mpr: mprById.get(p.user_id) ?? null,
-        teamTag: teamTagById.get(p.user_id) ?? null,
-        categoryIds: [...(catsByUser.get(p.user_id) ?? [])],
-      })),
+      participants: [
+        ...parts.map((p) => ({
+          userId: p.user_id,
+          name: nameOf(p.profiles),
+          mpr: mprById.get(p.user_id) ?? null,
+          teamTag: teamTagById.get(p.user_id) ?? null,
+          categoryIds: [...(catsByUser.get(p.user_id) ?? [])],
+          isWalkIn: false,
+        })),
+        // Walk-ins (guests sin cuenta): sin MPR ni team, con badge en la UI.
+        ...guests.map((g) => ({
+          userId: g.id,
+          name: g.display_name,
+          mpr: null as number | null,
+          teamTag: null as string | null,
+          categoryIds: [...(catsByUser.get(g.id) ?? [])],
+          isWalkIn: true,
+        })),
+      ],
     };
   });
 }

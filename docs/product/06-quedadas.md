@@ -124,6 +124,20 @@ presentacional para ver de un vistazo qué pareja ya pagó. Inscritos sin pareja
 caen a un grupo "Sin pareja asignada"; sin parejas, lista plana (comportamiento
 anterior).
 
+## Walk-ins (guests sin cuenta) — mig 20260722000000
+
+El organizador (o co-host) agrega desde el tab **Jugadores** ("Agregar walk-in")
+a quien llegó sin cuenta MatchPoint. El walk-in es una fila en `quedada_guests`
+con UUID propio y **juega como cualquier inscrito**: se le asigna cupo
+(manual o "Llenar al azar"), entra al motor de emparejamiento, a los games y a
+los standings (los engines operan sobre IDs opacos). Aparece con badge
+"Walk-in" en el roster, en Pagos (toggle pagado/check-in propio, sin "Avisar"
+porque no recibe notifs) y en el modal de detalles. Cuenta para el cupo
+efectivo. Quitar un walk-in libera sus cupos; si ya tiene partidos generados,
+se bloquea (`QUEDADAS.WALKIN_LOCKED`) — borra o ajusta esas rondas primero.
+Actions: `addQuedadaWalkIn` / `removeQuedadaWalkIn` / `setGuestPaid` /
+`setGuestCheckedIn`.
+
 ## Pagos: check-in, aviso de pago y stats (mig 144–145)
 
 El tab **Pagos** es el centro de operación del día. Tres capas además del flag

@@ -440,6 +440,7 @@ funcione, la tabla debe estar en el publication `supabase_realtime`.
 | `quedada_pairs` | panel gestión (parejas/slots en vivo) | 133 |
 | `quedada_rounds` | motor de juego — rondas en vivo (panel + detalle jugador) | 141 |
 | `quedada_games` | motor de juego — scoreboard/tabla en vivo | 141 |
+| `quedada_guests` | walk-ins (guests sin cuenta): roster/pagos en vivo (panel + detalle) | 20260722000000 |
 | `sponsors` | Admin patrocinadores: catálogo de marcas | 20260530155713 |
 | `sponsor_slots` | Admin patrocinadores: inventario de superficies | 20260530155713 |
 | `sponsor_placements` | Admin patrocinadores: campañas/placements | 20260530155713 |

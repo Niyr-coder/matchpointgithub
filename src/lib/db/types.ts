@@ -242,6 +242,7 @@ export type Database = {
         Row: {
           bracket_id: string
           court_id: string | null
+          duration_ms: number | null
           id: string
           is_bronze: boolean
           match_result_id: string | null
@@ -252,14 +253,16 @@ export type Database = {
           score: Json | null
           side_a_registration_id: string | null
           side_b_registration_id: string | null
+          started_at: string | null
           status: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id: string
           walkover_reason: string | null
           winner_side: string | null
-          tournament_id: string
         }
         Insert: {
           bracket_id: string
           court_id?: string | null
+          duration_ms?: number | null
           id?: string
           is_bronze?: boolean
           match_result_id?: string | null
@@ -270,14 +273,16 @@ export type Database = {
           score?: Json | null
           side_a_registration_id?: string | null
           side_b_registration_id?: string | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id: string
           walkover_reason?: string | null
           winner_side?: string | null
-          tournament_id?: string
         }
         Update: {
           bracket_id?: string
           court_id?: string | null
+          duration_ms?: number | null
           id?: string
           is_bronze?: boolean
           match_result_id?: string | null
@@ -288,10 +293,11 @@ export type Database = {
           score?: Json | null
           side_a_registration_id?: string | null
           side_b_registration_id?: string | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id?: string
           walkover_reason?: string | null
           winner_side?: string | null
-          tournament_id?: string
         }
         Relationships: [
           {
@@ -327,6 +333,20 @@ export type Database = {
             columns: ["side_b_registration_id"]
             isOneToOne: false
             referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bracket_matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bracket_matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
             referencedColumns: ["id"]
           },
         ]
@@ -504,7 +524,7 @@ export type Database = {
           channels: Database["public"]["Enums"]["mp_notification_channel"][]
           club_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           id: string
           partner_id: string | null
           payload: Json | null
@@ -520,7 +540,7 @@ export type Database = {
           channels?: Database["public"]["Enums"]["mp_notification_channel"][]
           club_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           id?: string
           partner_id?: string | null
           payload?: Json | null
@@ -536,7 +556,7 @@ export type Database = {
           channels?: Database["public"]["Enums"]["mp_notification_channel"][]
           club_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           id?: string
           partner_id?: string | null
           payload?: Json | null
@@ -703,7 +723,7 @@ export type Database = {
           amount_cents: number
           cash_session_id: string
           created_at: string
-          created_by: string
+          created_by: string | null
           id: string
           kind: string
           reason: string | null
@@ -712,7 +732,7 @@ export type Database = {
           amount_cents: number
           cash_session_id: string
           created_at?: string
-          created_by: string
+          created_by?: string | null
           id?: string
           kind: string
           reason?: string | null
@@ -721,7 +741,7 @@ export type Database = {
           amount_cents?: number
           cash_session_id?: string
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           id?: string
           kind?: string
           reason?: string | null
@@ -760,7 +780,7 @@ export type Database = {
           id: string
           notes: string | null
           opened_at: string
-          opened_by: string
+          opened_by: string | null
           opening_float_cents: number
           status: string
           variance_cents: number | null
@@ -774,7 +794,7 @@ export type Database = {
           id?: string
           notes?: string | null
           opened_at?: string
-          opened_by: string
+          opened_by?: string | null
           opening_float_cents?: number
           status?: string
           variance_cents?: number | null
@@ -788,7 +808,7 @@ export type Database = {
           id?: string
           notes?: string | null
           opened_at?: string
-          opened_by?: string
+          opened_by?: string | null
           opening_float_cents?: number
           status?: string
           variance_cents?: number | null
@@ -966,6 +986,13 @@ export type Database = {
             columns: ["paid_transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_enrollments_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
             referencedColumns: ["id"]
           },
           {
@@ -1668,6 +1695,13 @@ export type Database = {
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "club_featuring_subscriptions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
         ]
       }
       club_feed_posts: {
@@ -2289,6 +2323,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "club_memberships_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "club_memberships_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -2773,6 +2814,13 @@ export type Database = {
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "club_subscriptions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
         ]
       }
       clubs: {
@@ -3166,7 +3214,7 @@ export type Database = {
           created_at: string
           id: string
           rating: number
-          reviewer_id: string
+          reviewer_id: string | null
         }
         Insert: {
           coach_id: string
@@ -3174,7 +3222,7 @@ export type Database = {
           created_at?: string
           id?: string
           rating: number
-          reviewer_id: string
+          reviewer_id?: string | null
         }
         Update: {
           coach_id?: string
@@ -3182,7 +3230,7 @@ export type Database = {
           created_at?: string
           id?: string
           rating?: number
-          reviewer_id?: string
+          reviewer_id?: string | null
         }
         Relationships: [
           {
@@ -3293,7 +3341,7 @@ export type Database = {
         Row: {
           club_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           id: string
           kind: string
           last_message_at: string | null
@@ -3305,7 +3353,7 @@ export type Database = {
         Insert: {
           club_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           id?: string
           kind: string
           last_message_at?: string | null
@@ -3317,7 +3365,7 @@ export type Database = {
         Update: {
           club_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           id?: string
           kind?: string
           last_message_at?: string | null
@@ -3694,29 +3742,94 @@ export type Database = {
           },
         ]
       }
+      event_point_config: {
+        Row: {
+          category: string
+          created_at: string
+          event_id: string | null
+          id: string
+          modality: string
+          points: number
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          modality: string
+          points: number
+          position: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          modality?: string
+          points?: number
+          position?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_point_config_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_registrations: {
         Row: {
+          category: string | null
           created_at: string
           event_id: string
           id: string
+          level: string | null
+          level_verified: boolean
+          modality: string | null
           paid_transaction_id: string | null
+          partner_user_id: string | null
+          payment_proof_url: string | null
+          payment_status: string | null
           status: string
+          updated_at: string
           user_id: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           event_id: string
           id?: string
+          level?: string | null
+          level_verified?: boolean
+          modality?: string | null
           paid_transaction_id?: string | null
+          partner_user_id?: string | null
+          payment_proof_url?: string | null
+          payment_status?: string | null
           status?: string
+          updated_at?: string
           user_id: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           event_id?: string
           id?: string
+          level?: string | null
+          level_verified?: boolean
+          modality?: string | null
           paid_transaction_id?: string | null
+          partner_user_id?: string | null
+          payment_proof_url?: string | null
+          payment_status?: string | null
           status?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -3735,6 +3848,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "event_registrations_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_registrations_partner_user_id_fkey"
+            columns: ["partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_registrations_partner_user_id_fkey"
+            columns: ["partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "event_registrations_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -3743,6 +3877,68 @@ export type Database = {
           },
           {
             foreignKeyName: "event_registrations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_results: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          points_awarded: number
+          position: number
+          registration_id: string
+          user_id: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          points_awarded: number
+          position: number
+          registration_id: string
+          user_id: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          points_awarded?: number
+          position?: number
+          registration_id?: string
+          user_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_results_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_results_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_results_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
@@ -3763,7 +3959,7 @@ export type Database = {
           kind: string
           members_only: boolean
           name: string
-          organizer_id: string
+          organizer_id: string | null
           partner_id: string | null
           payment_policy: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents: number
@@ -3785,7 +3981,7 @@ export type Database = {
           kind: string
           members_only?: boolean
           name: string
-          organizer_id: string
+          organizer_id?: string | null
           partner_id?: string | null
           payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents?: number
@@ -3807,7 +4003,7 @@ export type Database = {
           kind?: string
           members_only?: boolean
           name?: string
-          organizer_id?: string
+          organizer_id?: string | null
           partner_id?: string | null
           payment_policy?: Database["public"]["Enums"]["mp_event_payment_policy"]
           price_cents?: number
@@ -4397,7 +4593,7 @@ export type Database = {
       inventory_movements: {
         Row: {
           created_at: string
-          created_by: string
+          created_by: string | null
           delta: number
           id: string
           product_id: string
@@ -4406,7 +4602,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          created_by: string
+          created_by?: string | null
           delta: number
           id?: string
           product_id: string
@@ -4415,7 +4611,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           delta?: number
           id?: string
           product_id?: string
@@ -4450,7 +4646,7 @@ export type Database = {
         Row: {
           cover_url: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           description: string | null
           id: string
           name: string
@@ -4464,7 +4660,7 @@ export type Database = {
         Insert: {
           cover_url?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           description?: string | null
           id?: string
           name: string
@@ -4478,7 +4674,7 @@ export type Database = {
         Update: {
           cover_url?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           name?: string
@@ -4593,6 +4789,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lessons_1on1_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "lessons_1on1_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
@@ -4604,6 +4807,78 @@ export type Database = {
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_incidents: {
+        Row: {
+          court_id: string | null
+          created_at: string
+          id: string
+          match_id: string
+          match_type: string
+          notes: string | null
+          reported_by: string
+          tournament_id: string
+          type: string
+        }
+        Insert: {
+          court_id?: string | null
+          created_at?: string
+          id?: string
+          match_id: string
+          match_type: string
+          notes?: string | null
+          reported_by: string
+          tournament_id: string
+          type: string
+        }
+        Update: {
+          court_id?: string | null
+          created_at?: string
+          id?: string
+          match_id?: string
+          match_type?: string
+          notes?: string | null
+          reported_by?: string
+          tournament_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_incidents_court_id_fkey"
+            columns: ["court_id"]
+            isOneToOne: false
+            referencedRelation: "courts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_incidents_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_incidents_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_incidents_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_incidents_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
             referencedColumns: ["id"]
           },
         ]
@@ -4668,6 +4943,57 @@ export type Database = {
           },
         ]
       }
+      match_rating_applications: {
+        Row: {
+          applied_at: string
+          delta: number
+          id: string
+          match_id: string
+          match_type: string
+          mode: Database["public"]["Enums"]["mp_match_mode"]
+          sport: Database["public"]["Enums"]["mp_sport"]
+          user_id: string
+          won: boolean
+        }
+        Insert: {
+          applied_at?: string
+          delta: number
+          id?: string
+          match_id: string
+          match_type: string
+          mode: Database["public"]["Enums"]["mp_match_mode"]
+          sport: Database["public"]["Enums"]["mp_sport"]
+          user_id: string
+          won: boolean
+        }
+        Update: {
+          applied_at?: string
+          delta?: number
+          id?: string
+          match_id?: string
+          match_type?: string
+          mode?: Database["public"]["Enums"]["mp_match_mode"]
+          sport?: Database["public"]["Enums"]["mp_sport"]
+          user_id?: string
+          won?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_rating_applications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_rating_applications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_results: {
         Row: {
           club_id: string | null
@@ -4677,7 +5003,7 @@ export type Database = {
           disputed_reason: string | null
           id: string
           played_at: string
-          reported_by: string
+          reported_by: string | null
           reservation_id: string | null
           side_a: Json
           side_b: Json
@@ -4694,7 +5020,7 @@ export type Database = {
           disputed_reason?: string | null
           id?: string
           played_at: string
-          reported_by: string
+          reported_by?: string | null
           reservation_id?: string | null
           side_a: Json
           side_b: Json
@@ -4711,7 +5037,7 @@ export type Database = {
           disputed_reason?: string | null
           id?: string
           played_at?: string
-          reported_by?: string
+          reported_by?: string | null
           reservation_id?: string | null
           side_a?: Json
           side_b?: Json
@@ -4981,7 +5307,7 @@ export type Database = {
           confirmed_by: string[]
           court_id: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           disputed_reason: string | null
           duration_min: number
           id: string
@@ -5009,7 +5335,7 @@ export type Database = {
           confirmed_by?: string[]
           court_id?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           disputed_reason?: string | null
           duration_min?: number
           id?: string
@@ -5037,7 +5363,7 @@ export type Database = {
           confirmed_by?: string[]
           court_id?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           disputed_reason?: string | null
           duration_min?: number
           id?: string
@@ -5204,7 +5530,7 @@ export type Database = {
           kind: string
           payload: Json | null
           reply_to_id: string | null
-          sender_id: string
+          sender_id: string | null
         }
         Insert: {
           body?: string | null
@@ -5216,7 +5542,7 @@ export type Database = {
           kind?: string
           payload?: Json | null
           reply_to_id?: string | null
-          sender_id: string
+          sender_id?: string | null
         }
         Update: {
           body?: string | null
@@ -5228,7 +5554,7 @@ export type Database = {
           kind?: string
           payload?: Json | null
           reply_to_id?: string | null
-          sender_id?: string
+          sender_id?: string | null
         }
         Relationships: [
           {
@@ -5267,7 +5593,7 @@ export type Database = {
           duration_hours: number | null
           id: string
           performed_at: string
-          performed_by: string
+          performed_by: string | null
           reason: string
           report_id: string | null
           target_entity: string | null
@@ -5279,7 +5605,7 @@ export type Database = {
           duration_hours?: number | null
           id?: string
           performed_at?: string
-          performed_by: string
+          performed_by?: string | null
           reason: string
           report_id?: string | null
           target_entity?: string | null
@@ -5291,7 +5617,7 @@ export type Database = {
           duration_hours?: number | null
           id?: string
           performed_at?: string
-          performed_by?: string
+          performed_by?: string | null
           reason?: string
           report_id?: string | null
           target_entity?: string | null
@@ -5335,6 +5661,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      mv_refresh_state: {
+        Row: {
+          last_count: number | null
+          last_max: string | null
+          refreshed_at: string | null
+          view_name: string
+        }
+        Insert: {
+          last_count?: number | null
+          last_max?: string | null
+          refreshed_at?: string | null
+          view_name: string
+        }
+        Update: {
+          last_count?: number | null
+          last_max?: string | null
+          refreshed_at?: string | null
+          view_name?: string
+        }
+        Relationships: []
       }
       notification_jobs: {
         Row: {
@@ -5715,6 +6062,7 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string
+          payout_account: Json | null
           slug: string
           status: string
           updated_at: string
@@ -5727,6 +6075,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name: string
+          payout_account?: Json | null
           slug: string
           status?: string
           updated_at?: string
@@ -5739,6 +6088,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string
+          payout_account?: Json | null
           slug?: string
           status?: string
           updated_at?: string
@@ -5779,6 +6129,13 @@ export type Database = {
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_webhook_events_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
             referencedColumns: ["id"]
           },
         ]
@@ -6141,6 +6498,13 @@ export type Database = {
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_subscriptions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
             referencedColumns: ["id"]
           },
           {
@@ -6679,60 +7043,73 @@ export type Database = {
             referencedRelation: "quedada_rounds"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      quedada_guests: {
+        Row: {
+          checked_in_at: string | null
+          checked_in_by: string | null
+          created_at: string
+          created_by: string | null
+          display_name: string
+          id: string
+          paid: boolean
+          quedada_id: string
+        }
+        Insert: {
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_name: string
+          id?: string
+          paid?: boolean
+          quedada_id: string
+        }
+        Update: {
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_name?: string
+          id?: string
+          paid?: boolean
+          quedada_id?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "quedada_games_side_a_p1_fkey"
-            columns: ["side_a_p1"]
+            foreignKeyName: "quedada_guests_checked_in_by_fkey"
+            columns: ["checked_in_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "quedada_games_side_a_p1_fkey"
-            columns: ["side_a_p1"]
+            foreignKeyName: "quedada_guests_checked_in_by_fkey"
+            columns: ["checked_in_by"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "quedada_games_side_a_p2_fkey"
-            columns: ["side_a_p2"]
+            foreignKeyName: "quedada_guests_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "quedada_games_side_a_p2_fkey"
-            columns: ["side_a_p2"]
+            foreignKeyName: "quedada_guests_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "quedada_games_side_b_p1_fkey"
-            columns: ["side_b_p1"]
+            foreignKeyName: "quedada_guests_quedada_id_fkey"
+            columns: ["quedada_id"]
             isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_games_side_b_p1_fkey"
-            columns: ["side_b_p1"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_games_side_b_p2_fkey"
-            columns: ["side_b_p2"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_games_side_b_p2_fkey"
-            columns: ["side_b_p2"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
+            referencedRelation: "quedadas"
             referencedColumns: ["id"]
           },
         ]
@@ -6771,34 +7148,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "quedada_categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_pairs_player_a_id_fkey"
-            columns: ["player_a_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_pairs_player_a_id_fkey"
-            columns: ["player_a_id"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_pairs_player_b_id_fkey"
-            columns: ["player_b_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quedada_pairs_player_b_id_fkey"
-            columns: ["player_b_id"]
-            isOneToOne: false
-            referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
           },
           {
@@ -6870,6 +7219,13 @@ export type Database = {
             columns: ["paid_transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quedada_participants_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
             referencedColumns: ["id"]
           },
           {
@@ -7237,11 +7593,117 @@ export type Database = {
         }
         Relationships: []
       }
+      refund_requests: {
+        Row: {
+          created_at: string
+          due_at: string | null
+          id: string
+          reason: string
+          registration_id: string | null
+          requested_by: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          tournament_id: string
+          transaction_id: string
+        }
+        Insert: {
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          reason: string
+          registration_id?: string | null
+          requested_by?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tournament_id: string
+          transaction_id: string
+        }
+        Update: {
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          reason?: string
+          registration_id?: string | null
+          requested_by?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tournament_id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refund_requests_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: true
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refund_requests_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: true
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       refunds: {
         Row: {
           amount_cents: number
           created_at: string
-          created_by: string
+          created_by: string | null
           id: string
           reason: string
           refund_transaction_id: string | null
@@ -7250,7 +7712,7 @@ export type Database = {
         Insert: {
           amount_cents: number
           created_at?: string
-          created_by: string
+          created_by?: string | null
           id?: string
           reason: string
           refund_transaction_id?: string | null
@@ -7259,7 +7721,7 @@ export type Database = {
         Update: {
           amount_cents?: number
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           id?: string
           reason?: string
           refund_transaction_id?: string | null
@@ -7288,10 +7750,124 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "refunds_refund_transaction_id_fkey"
+            columns: ["refund_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "refunds_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      registration_substitutions: {
+        Row: {
+          authorized_by: string
+          created_at: string
+          id: string
+          in_player_id: string
+          notes: string | null
+          out_player_id: string
+          reason: string
+          registration_id: string
+          tournament_id: string
+        }
+        Insert: {
+          authorized_by: string
+          created_at?: string
+          id?: string
+          in_player_id: string
+          notes?: string | null
+          out_player_id: string
+          reason: string
+          registration_id: string
+          tournament_id: string
+        }
+        Update: {
+          authorized_by?: string
+          created_at?: string
+          id?: string
+          in_player_id?: string
+          notes?: string | null
+          out_player_id?: string
+          reason?: string
+          registration_id?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registration_substitutions_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_in_player_id_fkey"
+            columns: ["in_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_in_player_id_fkey"
+            columns: ["in_player_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_out_player_id_fkey"
+            columns: ["out_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_out_player_id_fkey"
+            columns: ["out_player_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_substitutions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
             referencedColumns: ["id"]
           },
         ]
@@ -7301,10 +7877,11 @@ export type Database = {
           category_id: string | null
           checked_in_at: string | null
           created_at: string
+          guest_names: string[] | null
           id: string
           paid_transaction_id: string | null
           player_ids: string[]
-          registered_by: string
+          registered_by: string | null
           status: string
           team_id: string | null
           tournament_id: string
@@ -7313,10 +7890,11 @@ export type Database = {
           category_id?: string | null
           checked_in_at?: string | null
           created_at?: string
+          guest_names?: string[] | null
           id?: string
           paid_transaction_id?: string | null
           player_ids: string[]
-          registered_by: string
+          registered_by?: string | null
           status?: string
           team_id?: string | null
           tournament_id: string
@@ -7325,10 +7903,11 @@ export type Database = {
           category_id?: string | null
           checked_in_at?: string | null
           created_at?: string
+          guest_names?: string[] | null
           id?: string
           paid_transaction_id?: string | null
           player_ids?: string[]
-          registered_by?: string
+          registered_by?: string | null
           status?: string
           team_id?: string | null
           tournament_id?: string
@@ -7346,6 +7925,13 @@ export type Database = {
             columns: ["paid_transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registrations_paid_transaction_id_fkey"
+            columns: ["paid_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
             referencedColumns: ["id"]
           },
           {
@@ -7393,7 +7979,7 @@ export type Database = {
           entity_id: string
           id: string
           reason: string
-          reporter_id: string
+          reporter_id: string | null
           resolution_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -7406,7 +7992,7 @@ export type Database = {
           entity_id: string
           id?: string
           reason: string
-          reporter_id: string
+          reporter_id?: string | null
           resolution_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -7419,7 +8005,7 @@ export type Database = {
           entity_id?: string
           id?: string
           reason?: string
-          reporter_id?: string
+          reporter_id?: string | null
           resolution_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -7516,78 +8102,6 @@ export type Database = {
           },
         ]
       }
-      registration_substitutions: {
-        Row: {
-          authorized_by: string
-          created_at: string
-          id: string
-          in_player_id: string
-          notes: string | null
-          out_player_id: string
-          reason: string
-          registration_id: string
-          tournament_id: string
-        }
-        Insert: {
-          authorized_by: string
-          created_at?: string
-          id?: string
-          in_player_id: string
-          notes?: string | null
-          out_player_id: string
-          reason: string
-          registration_id: string
-          tournament_id: string
-        }
-        Update: {
-          authorized_by?: string
-          created_at?: string
-          id?: string
-          in_player_id?: string
-          notes?: string | null
-          out_player_id?: string
-          reason?: string
-          registration_id?: string
-          tournament_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "registration_substitutions_tournament_id_fkey"
-            columns: ["tournament_id"]
-            isOneToOne: false
-            referencedRelation: "tournaments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registration_substitutions_registration_id_fkey"
-            columns: ["registration_id"]
-            isOneToOne: false
-            referencedRelation: "registrations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registration_substitutions_out_player_id_fkey"
-            columns: ["out_player_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registration_substitutions_in_player_id_fkey"
-            columns: ["in_player_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registration_substitutions_authorized_by_fkey"
-            columns: ["authorized_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       reservation_payments: {
         Row: {
           amount_cents: number
@@ -7651,12 +8165,20 @@ export type Database = {
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "resp_tx_fk"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
         ]
       }
       reservations: {
         Row: {
           cancellation_reason: string | null
           cancelled_at: string | null
+          check_in_code: string | null
           club_id: string
           court_id: string
           created_at: string
@@ -7666,7 +8188,7 @@ export type Database = {
           kind: string
           max_players: number
           notes: string | null
-          organizer_id: string
+          organizer_id: string | null
           source: string
           sport: Database["public"]["Enums"]["mp_sport"]
           status: Database["public"]["Enums"]["mp_reservation_status"]
@@ -7677,6 +8199,7 @@ export type Database = {
         Insert: {
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          check_in_code?: string | null
           club_id: string
           court_id: string
           created_at?: string
@@ -7686,7 +8209,7 @@ export type Database = {
           kind?: string
           max_players?: number
           notes?: string | null
-          organizer_id: string
+          organizer_id?: string | null
           source?: string
           sport: Database["public"]["Enums"]["mp_sport"]
           status?: Database["public"]["Enums"]["mp_reservation_status"]
@@ -7697,6 +8220,7 @@ export type Database = {
         Update: {
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          check_in_code?: string | null
           club_id?: string
           court_id?: string
           created_at?: string
@@ -7706,7 +8230,7 @@ export type Database = {
           kind?: string
           max_players?: number
           notes?: string | null
-          organizer_id?: string
+          organizer_id?: string | null
           source?: string
           sport?: Database["public"]["Enums"]["mp_sport"]
           status?: Database["public"]["Enums"]["mp_reservation_status"]
@@ -7770,21 +8294,21 @@ export type Database = {
         Row: {
           class_id: string | null
           granted_at: string
-          granted_by: string
+          granted_by: string | null
           resource_id: string
           user_id: string | null
         }
         Insert: {
           class_id?: string | null
           granted_at?: string
-          granted_by: string
+          granted_by?: string | null
           resource_id: string
           user_id?: string | null
         }
         Update: {
           class_id?: string | null
           granted_at?: string
-          granted_by?: string
+          granted_by?: string | null
           resource_id?: string
           user_id?: string | null
         }
@@ -8297,6 +8821,13 @@ export type Database = {
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sales_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "v_transactions_net"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sales_leads: {
@@ -8485,7 +9016,7 @@ export type Database = {
           role: Database["public"]["Enums"]["mp_role"]
           status: string
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           clocked_in_at?: string | null
@@ -8499,7 +9030,7 @@ export type Database = {
           role: Database["public"]["Enums"]["mp_role"]
           status?: string
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           clocked_in_at?: string | null
@@ -8513,7 +9044,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["mp_role"]
           status?: string
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -9081,7 +9612,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          invited_by: string
+          invited_by: string | null
           invited_user_id: string
           responded_at: string | null
           status: string
@@ -9090,7 +9621,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
-          invited_by: string
+          invited_by?: string | null
           invited_user_id: string
           responded_at?: string | null
           status?: string
@@ -9099,7 +9630,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
-          invited_by?: string
+          invited_by?: string | null
           invited_user_id?: string
           responded_at?: string | null
           status?: string
@@ -9316,7 +9847,7 @@ export type Database = {
       teams: {
         Row: {
           allow_external_chat_guests: boolean
-          captain_id: string
+          captain_id: string | null
           captain_only_invites: boolean
           club_id: string | null
           color: string | null
@@ -9339,7 +9870,7 @@ export type Database = {
         }
         Insert: {
           allow_external_chat_guests?: boolean
-          captain_id: string
+          captain_id?: string | null
           captain_only_invites?: boolean
           club_id?: string | null
           color?: string | null
@@ -9362,7 +9893,7 @@ export type Database = {
         }
         Update: {
           allow_external_chat_guests?: boolean
-          captain_id?: string
+          captain_id?: string | null
           captain_only_invites?: boolean
           club_id?: string | null
           color?: string | null
@@ -9466,7 +9997,7 @@ export type Database = {
       }
       ticket_messages: {
         Row: {
-          author_id: string
+          author_id: string | null
           body: string
           created_at: string
           id: string
@@ -9474,7 +10005,7 @@ export type Database = {
           ticket_id: string
         }
         Insert: {
-          author_id: string
+          author_id?: string | null
           body: string
           created_at?: string
           id?: string
@@ -9482,7 +10013,7 @@ export type Database = {
           ticket_id: string
         }
         Update: {
-          author_id?: string
+          author_id?: string | null
           body?: string
           created_at?: string
           id?: string
@@ -9523,7 +10054,7 @@ export type Database = {
           created_at: string
           first_response_at: string | null
           id: string
-          opener_id: string
+          opener_id: string | null
           resolved_at: string | null
           severity: Database["public"]["Enums"]["mp_ticket_severity"]
           status: Database["public"]["Enums"]["mp_ticket_status"]
@@ -9539,7 +10070,7 @@ export type Database = {
           created_at?: string
           first_response_at?: string | null
           id?: string
-          opener_id: string
+          opener_id?: string | null
           resolved_at?: string | null
           severity?: Database["public"]["Enums"]["mp_ticket_severity"]
           status?: Database["public"]["Enums"]["mp_ticket_status"]
@@ -9555,7 +10086,7 @@ export type Database = {
           created_at?: string
           first_response_at?: string | null
           id?: string
-          opener_id?: string
+          opener_id?: string | null
           resolved_at?: string | null
           severity?: Database["public"]["Enums"]["mp_ticket_severity"]
           status?: Database["public"]["Enums"]["mp_ticket_status"]
@@ -9603,6 +10134,121 @@ export type Database = {
             columns: ["opener_id"]
             isOneToOne: false
             referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_bracket_matches: {
+        Row: {
+          bracket_id: string
+          completed: boolean
+          court: string | null
+          created_at: string
+          id: string
+          match_number: number
+          round: number
+          scheduled_time: string | null
+          score_team1: string | null
+          score_team2: string | null
+          team1_registration_id: string | null
+          team2_registration_id: string | null
+          updated_at: string
+          winner_registration_id: string | null
+        }
+        Insert: {
+          bracket_id: string
+          completed?: boolean
+          court?: string | null
+          created_at?: string
+          id?: string
+          match_number: number
+          round: number
+          scheduled_time?: string | null
+          score_team1?: string | null
+          score_team2?: string | null
+          team1_registration_id?: string | null
+          team2_registration_id?: string | null
+          updated_at?: string
+          winner_registration_id?: string | null
+        }
+        Update: {
+          bracket_id?: string
+          completed?: boolean
+          court?: string | null
+          created_at?: string
+          id?: string
+          match_number?: number
+          round?: number
+          scheduled_time?: string | null
+          score_team1?: string | null
+          score_team2?: string | null
+          team1_registration_id?: string | null
+          team2_registration_id?: string | null
+          updated_at?: string
+          winner_registration_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_bracket_matches_bracket_id_fkey"
+            columns: ["bracket_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_brackets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_bracket_matches_team1_registration_id_fkey"
+            columns: ["team1_registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_bracket_matches_team2_registration_id_fkey"
+            columns: ["team2_registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_bracket_matches_winner_registration_id_fkey"
+            columns: ["winner_registration_id"]
+            isOneToOne: false
+            referencedRelation: "event_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_brackets: {
+        Row: {
+          created_at: string
+          event_id: string
+          generated_at: string | null
+          id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          generated_at?: string | null
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          generated_at?: string | null
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_brackets_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
             referencedColumns: ["id"]
           },
         ]
@@ -9707,10 +10353,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "tournament_court_monitors_tournament_id_fkey"
-            columns: ["tournament_id"]
+            foreignKeyName: "tournament_court_monitors_assigned_by_fkey"
+            columns: ["assigned_by"]
             isOneToOne: false
-            referencedRelation: "tournaments"
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_court_monitors_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
           },
           {
@@ -9721,6 +10374,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tournament_court_monitors_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_court_monitors_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tournament_court_monitors_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -9728,10 +10395,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "tournament_court_monitors_assigned_by_fkey"
-            columns: ["assigned_by"]
+            foreignKeyName: "tournament_court_monitors_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "profiles"
+            referencedRelation: "v_public_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -9739,6 +10406,7 @@ export type Database = {
       tournament_group_matches: {
         Row: {
           court_id: string | null
+          duration_ms: number | null
           group_id: string
           id: string
           match_no: number
@@ -9748,13 +10416,15 @@ export type Database = {
           score: Json | null
           side_a_registration_id: string
           side_b_registration_id: string
+          started_at: string | null
           status: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id: string
           walkover_reason: string | null
           winner_side: string | null
-          tournament_id: string
         }
         Insert: {
           court_id?: string | null
+          duration_ms?: number | null
           group_id: string
           id?: string
           match_no: number
@@ -9764,13 +10434,15 @@ export type Database = {
           score?: Json | null
           side_a_registration_id: string
           side_b_registration_id: string
+          started_at?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id: string
           walkover_reason?: string | null
           winner_side?: string | null
-          tournament_id?: string
         }
         Update: {
           court_id?: string | null
+          duration_ms?: number | null
           group_id?: string
           id?: string
           match_no?: number
@@ -9780,10 +10452,11 @@ export type Database = {
           score?: Json | null
           side_a_registration_id?: string
           side_b_registration_id?: string
+          started_at?: string | null
           status?: Database["public"]["Enums"]["mp_match_status"]
+          tournament_id?: string
           walkover_reason?: string | null
           winner_side?: string | null
-          tournament_id?: string
         }
         Relationships: [
           {
@@ -9812,6 +10485,20 @@ export type Database = {
             columns: ["side_b_registration_id"]
             isOneToOne: false
             referencedRelation: "registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_group_matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_group_matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
             referencedColumns: ["id"]
           },
         ]
@@ -9867,7 +10554,7 @@ export type Database = {
           id?: string
           name: string
           sort_order?: number
-          tournament_id?: string
+          tournament_id: string
         }
         Update: {
           category_id?: string
@@ -9883,6 +10570,20 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "tournament_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_groups_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_groups_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments_public_summary"
             referencedColumns: ["id"]
           },
         ]
@@ -10020,7 +10721,7 @@ export type Database = {
           club_id: string | null
           cover_url: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           currency: Database["public"]["Enums"]["mp_currency"] | null
           description: string | null
           display_token: string | null
@@ -10051,7 +10752,7 @@ export type Database = {
           club_id?: string | null
           cover_url?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           currency?: Database["public"]["Enums"]["mp_currency"] | null
           description?: string | null
           display_token?: string | null
@@ -10082,7 +10783,7 @@ export type Database = {
           club_id?: string | null
           cover_url?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           currency?: Database["public"]["Enums"]["mp_currency"] | null
           description?: string | null
           display_token?: string | null
@@ -10600,6 +11301,7 @@ export type Database = {
       }
       tournaments_public_summary: {
         Row: {
+          allow_waitlist: boolean | null
           club_city: string | null
           club_name: string | null
           currency: Database["public"]["Enums"]["mp_currency"] | null
@@ -10616,26 +11318,6 @@ export type Database = {
           sport: Database["public"]["Enums"]["mp_sport"] | null
           starts_at: string | null
           status: Database["public"]["Enums"]["mp_event_status"] | null
-        }
-        Relationships: []
-      }
-      v_transactions_net: {
-        Row: {
-          amount_cents: number | null
-          cash_session_id: string | null
-          club_id: string | null
-          created_at: string | null
-          created_by: string | null
-          currency: Database["public"]["Enums"]["mp_currency"] | null
-          customer_name: string | null
-          customer_user_id: string | null
-          id: string | null
-          kind: string | null
-          method: Database["public"]["Enums"]["mp_payment_method"] | null
-          net_amount_cents: number | null
-          ref_id: string | null
-          refunded_cents: number | null
-          status: Database["public"]["Enums"]["mp_payment_status"] | null
         }
         Relationships: []
       }
@@ -10677,6 +11359,102 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
+      }
+      v_transactions_net: {
+        Row: {
+          amount_cents: number | null
+          cash_session_id: string | null
+          club_id: string | null
+          created_at: string | null
+          created_by: string | null
+          currency: Database["public"]["Enums"]["mp_currency"] | null
+          customer_name: string | null
+          customer_user_id: string | null
+          id: string | null
+          kind: string | null
+          method: Database["public"]["Enums"]["mp_payment_method"] | null
+          net_amount_cents: number | null
+          proof_rejection_reason: string | null
+          proof_reviewed_at: string | null
+          proof_reviewed_by: string | null
+          proof_submitted_at: string | null
+          proof_url: string | null
+          provider: string | null
+          provider_payment_id: string | null
+          receipt_url: string | null
+          ref_id: string | null
+          refund_reason: string | null
+          refund_reference: string | null
+          refunded_at: string | null
+          refunded_by: string | null
+          refunded_cents: number | null
+          status: Database["public"]["Enums"]["mp_payment_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_cash_session_id_fkey"
+            columns: ["cash_session_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_customer_user_id_fkey"
+            columns: ["customer_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_customer_user_id_fkey"
+            columns: ["customer_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "v_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
@@ -10910,6 +11688,17 @@ export type Database = {
         Args: { p_quedada_id: string }
         Returns: string
       }
+      fn_generate_payouts: {
+        Args: { _period_end_exclusive?: string; _period_start?: string }
+        Returns: {
+          created: number
+          total_net_cents: number
+        }[]
+      }
+      fn_get_club_partner_link_code: {
+        Args: { p_club_id: string }
+        Returns: string
+      }
       fn_get_ranking_min_matches: { Args: never; Returns: number }
       fn_get_system_user_id: { Args: never; Returns: string }
       fn_get_team_caps: { Args: never; Returns: Json }
@@ -10950,6 +11739,7 @@ export type Database = {
       fn_process_club_plans: { Args: never; Returns: undefined }
       fn_process_player_plans: { Args: never; Returns: undefined }
       fn_process_quedada_reminders: { Args: never; Returns: undefined }
+      fn_process_ranking_snapshots: { Args: never; Returns: number }
       fn_purge_expired_idempotency: { Args: never; Returns: undefined }
       fn_rate_limit_consume: {
         Args: {
@@ -10970,11 +11760,30 @@ export type Database = {
           rebuilt: number
         }[]
       }
+      fn_recalculate_elo_for_bracket_match: {
+        Args: { p_match_id: string }
+        Returns: undefined
+      }
+      fn_recalculate_elo_for_group_match: {
+        Args: { p_match_id: string }
+        Returns: undefined
+      }
       fn_recalculate_elo_for_match: {
         Args: { p_match_id: string }
         Returns: undefined
       }
       fn_refresh_mv_user_ranking: { Args: never; Returns: undefined }
+      fn_resolve_club_by_partner_link_code: {
+        Args: { p_code: string }
+        Returns: {
+          id: string
+          status: string
+        }[]
+      }
+      fn_revert_elo_for_match: {
+        Args: { p_match_id: string; p_match_type: string }
+        Returns: boolean
+      }
       fn_role_member_counts: {
         Args: never
         Returns: {
@@ -11145,6 +11954,7 @@ export type Database = {
         Args: { p_conversation: string; p_sender: string }
         Returns: boolean
       }
+      mp_generate_check_in_code: { Args: never; Returns: string }
       mp_has_club_access: {
         Args: {
           p_club_id: string
@@ -11201,6 +12011,10 @@ export type Database = {
       }
       mp_quedada_creator: { Args: { p_quedada: string }; Returns: string }
       mp_quedada_is_open: { Args: { p_quedada: string }; Returns: boolean }
+      mp_quedada_player_ref_ok: {
+        Args: { p_player: string; p_quedada: string }
+        Returns: boolean
+      }
       mp_role_can: {
         Args: { _cap: string; _club?: string; _uid: string }
         Returns: boolean

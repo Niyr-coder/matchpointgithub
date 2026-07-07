@@ -80,7 +80,14 @@ function participantName(p: GameViewParticipant | undefined | null): string {
 
 function nameFor(data: PlayerView, userId: string | null | undefined): string {
   if (!userId) return "—";
+  const guest = (data.guests ?? []).find((g) => g.id === userId);
+  if (guest) return guest.display_name;
   return participantName(data.participants.find((p) => p.user_id === userId));
+}
+
+/** Inscritos + walk-ins: universo de jugadores para standings. */
+function playerIdsOf(data: PlayerView): string[] {
+  return [...data.participants.map((p) => p.user_id), ...(data.guests ?? []).map((g) => g.id)];
 }
 
 type MyQuedadaPerf = {
@@ -118,7 +125,7 @@ function myPerformanceInQuedada(data: PlayerView): MyQuedadaPerf | null {
   } else {
     const rows = individualStandings(
       data.games,
-      data.participants.map((p) => p.user_id),
+      playerIdsOf(data),
       (id) => nameFor(data, id),
     );
     const idx = rows.findIndex((r) => r.userId === data.meUserId);
@@ -241,6 +248,7 @@ export function QuedadaDetailView({
       { table: "quedada_rounds", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_games", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedada_participants", filter: `quedada_id=eq.${quedadaId}` },
+      { table: "quedada_guests", filter: `quedada_id=eq.${quedadaId}` },
       { table: "quedadas", filter: `id=eq.${quedadaId}` },
     ],
     {
@@ -580,7 +588,7 @@ function StandingsTab({ data }: { data: PlayerView }) {
         }))
       : individualStandings(
           data.games,
-          data.participants.map((p) => p.user_id),
+          playerIdsOf(data),
           (id) => nameFor(data, id),
         ).map((r) => ({
           id: r.userId,

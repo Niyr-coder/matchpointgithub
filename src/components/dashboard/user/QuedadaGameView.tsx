@@ -18,6 +18,7 @@ export type {
   GameViewCategory,
   GameViewPair,
   GameViewParticipant,
+  GameViewGuest,
   GameViewRound,
   GameViewGame,
 } from "@/lib/quedadas/game-view-types";
@@ -26,6 +27,7 @@ import type {
   GameViewCategory,
   GameViewPair,
   GameViewParticipant,
+  GameViewGuest,
   GameViewRound,
   GameViewGame,
 } from "@/lib/quedadas/game-view-types";
@@ -36,6 +38,8 @@ type Props = {
   categories: GameViewCategory[];
   pairs: GameViewPair[];
   participants: GameViewParticipant[];
+  /** Walk-ins (guests sin cuenta): resuelven nombre por display_name. */
+  guests?: GameViewGuest[];
   rounds: GameViewRound[];
   games: GameViewGame[];
   meUserId: string | null;
@@ -63,6 +67,7 @@ export function QuedadaGameView({
   categories,
   pairs,
   participants,
+  guests,
   rounds,
   games,
   meUserId,
@@ -86,7 +91,12 @@ export function QuedadaGameView({
     .sort((a, b) => a.sort_order - b.sort_order);
 
   const partById = new Map(participants.map((p) => [p.user_id, p]));
-  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+  const guestById = new Map((guests ?? []).map((g) => [g.id, g]));
+  const nameFor = (id: string): string => {
+    const guest = guestById.get(id);
+    if (guest) return guest.display_name;
+    return nameOf(partById.get(id)?.profiles ?? null);
+  };
 
   const [viewMode, setViewMode] = useState<"category" | "courts">("category");
 

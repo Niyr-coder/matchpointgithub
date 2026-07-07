@@ -1506,7 +1506,7 @@ function calHour(iso: string | null): string {
 
 // ── Shells reutilizables para los modales secundarios ─────────────────────────
 // ── Modal de detalles (preview desde la tarjeta) ─────────────────────────────
-type DetailParticipant = { userId: string; name: string; mpr: number | null; teamTag: string | null; categoryIds: string[] };
+type DetailParticipant = { userId: string; name: string; mpr: number | null; teamTag: string | null; categoryIds: string[]; isWalkIn?: boolean };
 type QuedadaDetailData = {
   quedada: {
     creator_id: string;
@@ -1862,7 +1862,7 @@ function QuedadaDetailsModal({
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                     <div style={{ fontSize: 10.5, color: "var(--muted-fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {p.mpr != null ? `Nivel ${(p.mpr / 1000).toFixed(1)}` : "Sin nivel"}
+                      {p.isWalkIn ? "Walk-in" : p.mpr != null ? `Nivel ${(p.mpr / 1000).toFixed(1)}` : "Sin nivel"}
                       {p.teamTag ? ` · ${p.teamTag.toUpperCase()}` : ""}
                     </div>
                   </div>

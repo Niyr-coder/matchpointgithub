@@ -25,6 +25,14 @@ export type GameViewParticipant = {
   profiles: { display_name: string | null; username: string | null } | null;
 };
 
+/** Walk-in (guest sin cuenta): UUID propio, puede ocupar cupos y jugar games. */
+export type GameViewGuest = {
+  id: string;
+  display_name: string;
+  paid?: boolean;
+  checked_in_at?: string | null;
+};
+
 export type GameViewRound = {
   id: string;
   category_id: string;
@@ -77,6 +85,7 @@ export type QuedadaPlayerViewData = {
   categories: GameViewCategory[];
   pairs: GameViewPair[];
   participants: GameViewParticipant[];
+  guests: GameViewGuest[];
   rounds: GameViewRound[];
   games: GameViewGame[];
 };

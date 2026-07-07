@@ -210,6 +210,25 @@ export const SetParticipantPaidSchema = z
   .object({ quedadaId: UuidSchema, userId: UuidSchema, paid: z.boolean() })
   .openapi("SetQuedadaParticipantPaid");
 
+// ── Walk-ins (guests sin cuenta MatchPoint) ──────────────────────────────────
+// El organizador agrega a quien llega sin app. El guest tiene UUID propio
+// (quedada_guests) y puede ocupar cupos y jugar games como cualquier inscrito.
+export const AddQuedadaWalkInSchema = z
+  .object({ quedadaId: UuidSchema, name: z.string().trim().min(1).max(80) })
+  .openapi("AddQuedadaWalkIn");
+
+export const RemoveQuedadaWalkInSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema })
+  .openapi("RemoveQuedadaWalkIn");
+
+export const SetGuestPaidSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema, paid: z.boolean() })
+  .openapi("SetQuedadaGuestPaid");
+
+export const SetGuestCheckedInSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema, checkedIn: z.boolean() })
+  .openapi("SetQuedadaGuestCheckedIn");
+
 // Check-in de asistencia (informativo). El organizador/co-host marca quién llegó.
 export const SetParticipantCheckedInSchema = z
   .object({ quedadaId: UuidSchema, userId: UuidSchema, checkedIn: z.boolean() })

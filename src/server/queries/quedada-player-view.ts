@@ -40,7 +40,7 @@ export async function loadQuedadaPlayerView(quedadaId: string): Promise<QuedadaP
 
   const creatorId = q.creator_id as string;
 
-  const [cats, pairs, partsRaw, rounds, games] = await Promise.all([
+  const [cats, pairs, partsRaw, rounds, games, guests] = await Promise.all([
     supabase
       .from("quedada_categories")
       .select("id,name,level_label,starts_at,court_label,max_slots,target_points,sort_order")
@@ -65,6 +65,11 @@ export async function loadQuedadaPlayerView(quedadaId: string): Promise<QuedadaP
       .select(
         "id,category_id,round_id,round_no,court_no,court_match_no,side_a_p1,side_a_p2,side_b_p1,side_b_p2,points_a,points_b,status,created_at,updated_at",
       )
+      .eq("quedada_id", quedadaId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("quedada_guests")
+      .select("id,display_name,paid,checked_in_at")
       .eq("quedada_id", quedadaId)
       .order("created_at", { ascending: true }),
   ]);
@@ -103,6 +108,7 @@ export async function loadQuedadaPlayerView(quedadaId: string): Promise<QuedadaP
     categories: (cats.data ?? []) as QuedadaPlayerViewData["categories"],
     pairs: (pairs.data ?? []) as QuedadaPlayerViewData["pairs"],
     participants,
+    guests: (guests.data ?? []) as QuedadaPlayerViewData["guests"],
     rounds: (rounds.data ?? []) as QuedadaPlayerViewData["rounds"],
     games: (games.data ?? []) as QuedadaPlayerViewData["games"],
   };

@@ -91,15 +91,21 @@ export async function QuedadasScreen() {
   const rowList = Array.from(uniqueRows.values());
   const allIds = rowList.map((r) => r.id);
 
-  // Conteo de participantes 'joined' por quedada.
+  // Conteo de participantes 'joined' por quedada (+ walk-ins, que ocupan cupo).
   const countByQuedada = new Map<string, number>();
   if (allIds.length) {
-    const { data: countRows } = await supabase
-      .from("quedada_participants")
-      .select("quedada_id")
-      .in("quedada_id", allIds)
-      .eq("status", "joined");
-    for (const cr of (countRows ?? []) as { quedada_id: string }[]) {
+    const [{ data: countRows }, { data: guestRows }] = await Promise.all([
+      supabase
+        .from("quedada_participants")
+        .select("quedada_id")
+        .in("quedada_id", allIds)
+        .eq("status", "joined"),
+      supabase.from("quedada_guests").select("quedada_id").in("quedada_id", allIds),
+    ]);
+    for (const cr of [
+      ...((countRows ?? []) as { quedada_id: string }[]),
+      ...((guestRows ?? []) as { quedada_id: string }[]),
+    ]) {
       countByQuedada.set(cr.quedada_id, (countByQuedada.get(cr.quedada_id) ?? 0) + 1);
     }
   }
