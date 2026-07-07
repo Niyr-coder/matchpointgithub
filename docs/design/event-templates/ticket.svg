@@ -48,7 +48,7 @@
     <g transform="translate(30,300)">
       <text x="0" y="0" class="chip" font-size="12" fill="#737373">JUGADOR</text>
       <text x="0" y="34" class="section" font-size="24" fill="#0a0a0a">Miguel Herrera</text>
-      <text x="0" y="60" class="meta" font-size="14" fill="#737373">CI 17······123 · DUPR 4.12</text>
+      <text x="0" y="60" class="meta" font-size="14" fill="#737373">CI 17······123 · MPR 4.12</text>
     </g>
 
     <!-- Two-column: Categoría / Compañero -->
@@ -60,7 +60,7 @@
     <g transform="translate(300,400)">
       <text x="0" y="0" class="chip" font-size="12" fill="#737373">COMPAÑERO</text>
       <text x="0" y="30" class="section" font-size="20" fill="#0a0a0a">Luis Vega</text>
-      <text x="0" y="52" class="body" font-size="14" fill="#737373">DUPR 4.05 · seed asignado #1</text>
+      <text x="0" y="52" class="body" font-size="14" fill="#737373">MPR 4.05 · seed asignado #1</text>
     </g>
 
     <!-- Horario + cancha row -->
