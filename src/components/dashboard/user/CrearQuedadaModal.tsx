@@ -58,6 +58,7 @@ export type QuedadaInitial = {
   ruleRows?: RuleDraft[];
   perks?: string;
   categories?: CatDraft[];
+  creatorPlays?: boolean;
 };
 
 const FORMATS = quedadaFormatOptions();
@@ -90,6 +91,8 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
   const [format, setFormat] = useState<Format | "">(initial?.format ?? "");
   const [matchMode, setMatchMode] = useState<MatchMode | "">(initial?.matchMode ?? "");
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? "open");
+  // Opt-in: el organizador solo queda inscrito como jugador si lo activa.
+  const [creatorPlays, setCreatorPlays] = useState<boolean>(initial?.creatorPlays ?? false);
   const [startsLocal, setStartsLocal] = useState(""); // nunca se precarga la fecha
   const [locationText, setLocationText] = useState(initial?.locationText ?? "");
   // Paso 2
@@ -276,6 +279,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     ruleRows: allRuleDrafts(),
     perks,
     categories,
+    creatorPlays,
   });
 
   // Carga una plantilla/duplicado en todos los pasos (no toca la fecha).
@@ -297,6 +301,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     setCustomRuleRows(split.customRules);
     setPerks(init.perks ?? "");
     setCategories(init.categories?.length ? init.categories : [emptyCategory()]);
+    setCreatorPlays(init.creatorPlays ?? false);
     setStep(0);
     toast({ icon: "check", title: "Plantilla cargada" });
   };
@@ -419,6 +424,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         prizes: prizeDraftsToPrizes(prizeRows).length > 0 ? prizeDraftsToPrizes(prizeRows) : undefined,
         rules: ruleDraftsToRules(allRuleDrafts()),
         categories: cats,
+        creatorPlays,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo crear", sub: res.error.message });
@@ -591,6 +597,21 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   </div>
                 </Field>
               </div>
+              <Field
+                label="Tu rol"
+                tip="Si juegas también, quedas inscrito como jugador al crear. Si solo organizas, no ocupas cupo; puedes inscribirte después desde la tarjeta de la quedada."
+              >
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([{ k: false, l: "Solo organizo", i: "clipboard-list" as const }, { k: true, l: "Juego también", i: "user-check" as const }]).map((o) => {
+                    const on = creatorPlays === o.k;
+                    return (
+                      <button key={String(o.k)} type="button" onClick={() => setCreatorPlays(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
+                        <Icon name={o.i} size={12} color={on ? "var(--color-mp-primary-active)" : "var(--fg)"} />{o.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
               <div className="mp-crear-quedada-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field
                   label="Fecha y hora"

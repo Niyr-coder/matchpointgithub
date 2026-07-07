@@ -208,6 +208,14 @@ cupo 16".)
 
 ## Inscripción (join) — pago offline + selección de categoría
 
+- **El creador NO queda inscrito automáticamente.** `createQuedada` recibe
+  `creatorPlays` (default `false`): solo se inserta en `quedada_participants`
+  si el organizador activa "Juego también" en el paso 1 del wizard ("Tu rol").
+  Si eligió "Solo organizo", puede inscribirse o salir después desde el menú
+  "⋯" de su tarjeta ("Inscribirme como jugador" / "Salir como jugador"). El
+  chat grupal no depende de esto: `fn_ensure_quedada_channel` agrega al
+  creador como admin del canal aunque no sea participante.
+
 - **Sin pantalla de pago.** `joinQuedada` (y `joinByInviteCode`) **no** crean
   `transactions` ni redirigen a `/pagos`. El pago es **offline** (transferencia /
   en el lugar); el organizador marca `quedada_participants.paid` a mano en la

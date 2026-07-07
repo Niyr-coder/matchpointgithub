@@ -60,6 +60,9 @@ export const CreateQuedadaSchema = z
     startsAt: z.string().datetime({ offset: true }),
     locationText: z.string().trim().max(140).optional(),
     clubId: UuidSchema.optional(),
+    // Si el organizador también juega, se inscribe al crear. Opt-in: por
+    // defecto NO queda inscrito (solo organiza).
+    creatorPlays: z.boolean().default(false),
     maxPlayers: z.coerce.number().int().min(2).max(64).optional(),
     feeCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
     perks: z.string().trim().max(280).optional(),

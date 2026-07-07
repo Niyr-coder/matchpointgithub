@@ -237,10 +237,12 @@ export async function createQuedada(input: unknown): Promise<ActionResult<{ id: 
       .single();
     if (error || !row) throw new MpError("QUEDADAS.CREATE_FAILED", error?.message ?? "No se pudo crear", 500);
 
-    // El organizador queda inscrito automáticamente.
-    await supabase
-      .from("quedada_participants")
-      .insert({ quedada_id: row.id, user_id: userId, status: "joined" } as never);
+    // El organizador solo queda inscrito si activó "Yo también juego" (opt-in).
+    if (d.creatorPlays) {
+      await supabase
+        .from("quedada_participants")
+        .insert({ quedada_id: row.id, user_id: userId, status: "joined" } as never);
+    }
 
     // Categorías iniciales (opcional).
     if (d.categories && d.categories.length > 0) {

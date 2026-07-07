@@ -1336,6 +1336,14 @@ function QuedadaCard({
             {q.iAmCreator && !cancelled && !finished && (
               <QKebabItem icon="user-plus" label="Invitar jugadores" onClick={() => { setMenuOpen(false); onInvite(); }} />
             )}
+            {/* El creador ya no queda inscrito al crear (opt-in): puede entrar
+                o salir como jugador desde aquí. */}
+            {q.iAmCreator && !q.iAmJoined && !full && !cancelled && !finished && (
+              <QKebabItem icon="plus" label="Inscribirme como jugador" onClick={() => { setMenuOpen(false); handleInscribirme(); }} />
+            )}
+            {q.iAmCreator && q.iAmJoined && !cancelled && !finished && (
+              <QKebabItem icon="log-out" label="Salir como jugador" danger onClick={() => { setMenuOpen(false); doLeave(); }} />
+            )}
             {q.iAmCreator && !cancelled && !finished && (
               <QKebabItem icon="copy" label="Duplicar" onClick={() => { setMenuOpen(false); onDuplicate(); }} />
             )}
