@@ -9,7 +9,7 @@ export type QuedadaStatus =
   | "finished"
   | "cancelled"
   | "full";
-export type QuedadaFormat = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
+export type QuedadaFormat = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre" | "torneo";
 export type Severity = "high" | "medium" | "low";
 export type MatchStatus = "scheduled" | "live" | "reported" | "confirmed" | "disputed" | "walkover" | "cancelled";
 export type MatchKind = "ranked" | "friendly" | "tournament" | "league";

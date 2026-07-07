@@ -192,13 +192,17 @@ export async function getCoach(input: unknown): Promise<ActionResult<CoachDetail
         documentUrl: c.document_url ?? null,
         verifiedAt: c.verified_at ?? null,
       })),
-      reviews: (reviews ?? []).map((r) => ({
-        id: r.id,
-        reviewerId: r.reviewer_id,
-        rating: r.rating,
-        comment: r.comment ?? null,
-        createdAt: r.created_at,
-      })),
+      reviews: (reviews ?? [])
+        // reviewer_id es nullable en DB (reseñas de cuentas borradas); el
+        // contrato del detalle exige reviewer, así que se omiten esas filas.
+        .filter((r) => r.reviewer_id != null)
+        .map((r) => ({
+          id: r.id,
+          reviewerId: r.reviewer_id as string,
+          rating: r.rating,
+          comment: r.comment ?? null,
+          createdAt: r.created_at,
+        })),
       clubIds: (clubLinks ?? []).map((l) => l.club_id as string),
     };
     return CoachDetailSchema.parse(detail);

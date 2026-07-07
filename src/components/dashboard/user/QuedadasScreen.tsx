@@ -4,6 +4,7 @@
 // (patrón ya usado en src/server/actions/quedadas.ts).
 import { getServerClient } from "@/lib/db/client.server";
 import { getSession } from "@/lib/auth/session";
+import { getMyEffectiveFlags } from "@/server/actions/featureFlags";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { loadQuedadaProfileStats } from "./loadQuedadaProfileStats.server";
 import { QuedadasScreenView, type QuedadaLite } from "./QuedadasScreenView";
@@ -91,15 +92,21 @@ export async function QuedadasScreen() {
   const rowList = Array.from(uniqueRows.values());
   const allIds = rowList.map((r) => r.id);
 
-  // Conteo de participantes 'joined' por quedada.
+  // Conteo de participantes 'joined' por quedada (+ walk-ins, que ocupan cupo).
   const countByQuedada = new Map<string, number>();
   if (allIds.length) {
-    const { data: countRows } = await supabase
-      .from("quedada_participants")
-      .select("quedada_id")
-      .in("quedada_id", allIds)
-      .eq("status", "joined");
-    for (const cr of (countRows ?? []) as { quedada_id: string }[]) {
+    const [{ data: countRows }, { data: guestRows }] = await Promise.all([
+      supabase
+        .from("quedada_participants")
+        .select("quedada_id")
+        .in("quedada_id", allIds)
+        .eq("status", "joined"),
+      supabase.from("quedada_guests").select("quedada_id").in("quedada_id", allIds),
+    ]);
+    for (const cr of [
+      ...((countRows ?? []) as { quedada_id: string }[]),
+      ...((guestRows ?? []) as { quedada_id: string }[]),
+    ]) {
       countByQuedada.set(cr.quedada_id, (countByQuedada.get(cr.quedada_id) ?? 0) + 1);
     }
   }
@@ -192,12 +199,17 @@ export async function QuedadasScreen() {
 
   const myActivityStats = meUserId ? await loadQuedadaProfileStats(meUserId) : null;
 
+  // Killswitch del formato Modo Torneo (flag ausente = encendido, fail-open).
+  const flagsRes = await getMyEffectiveFlags();
+  const torneoEnabled = flagsRes.ok ? (flagsRes.data["quedada_format_torneo"] ?? true) : true;
+
   return (
     <QuedadasScreenView
       meUserId={meUserId}
       discover={discover}
       mine={mine}
       myActivityStats={myActivityStats}
+      torneoEnabled={torneoEnabled}
     />
   );
 }

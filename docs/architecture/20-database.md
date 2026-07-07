@@ -2468,8 +2468,17 @@ emparejamiento y standings. Tablas nuevas:
   puntos; fallback categoría → quedada → 24).
 
 **Engines:** registry en `src/lib/quedadas/engines/`. Americano, Mexicano y
-Canguil usan roster/tabla individual; Round Robin y KOTC usan pareja cuando el
-modo es dobles; Libre crea partidos manuales. Standings DERIVADOS (append-only)
+Canguil usan roster/tabla individual; Round Robin, KOTC y Torneo usan pareja
+cuando el modo es dobles; Libre crea partidos manuales. **Modo Torneo (mig
+20260723000000):** `alter type mp_quedada_format add value 'torneo'` (migración
+propia — un valor de enum nuevo no puede usarse en la misma transacción). Engine
+`torneo.ts`: grupos (round robin, derivados del orden de cupos) → semifinales →
+final + bronce, SIN tablas de bracket (fases y podio derivados de los games).
+Hooks opcionales nuevos en `QuedadaEngine`: `roundNameFor` (nombre de fase de la
+ronda) y `podium` (podio propio del formato, usado por
+`writeCategoryPodiumRanks`). Flag killswitch `quedada_format_torneo` (mig
+20260723010000, default ON, ausente = ON) gatea la card del wizard y
+`createQuedada`. Standings DERIVADOS (append-only)
 de los games played (`standings.ts` / `pair-standings.ts`). Actions:
 `generateQuedadaRound` (siguiente ronda/fecha/turno), `createManualQuedadaGame`
 (Libre), `reportGame`, `deleteRound` (regenera), `finishQuedada` (podio según
@@ -2489,8 +2498,25 @@ organizador con controles, jugador sin). Lectura del jugador =
 calendario de partidos (scoreboard por cancha, byes) + tabla general según engine
 para todos los formatos.
 
+**Walk-ins (mig 20260722000000):** tabla `quedada_guests` (id uuid, quedada_id,
+display_name, paid, checked_in_at/by, created_by) — jugadores SIN cuenta que el
+organizador agrega a mano y que **juegan**: ocupan cupos en `quedada_pairs` y
+lados en `quedada_games` con su UUID. Para permitirlo, las FKs directas a
+`profiles` de `quedada_pairs.player_a/b_id` y `quedada_games.side_*` se
+reemplazaron por triggers de validación (`mp_quedada_player_ref_ok`: el id debe
+existir en `profiles` O en `quedada_guests` de la MISMA quedada). Al borrar un
+guest, un trigger limpia sus cupos (igual que `leaveQuedada`); la action
+`removeQuedadaWalkIn` bloquea el borrado si ya tiene games
+(`QUEDADAS.WALKIN_LOCKED`). RLS: read = quien ve la quedada; write =
+`mp_quedada_can_manage`/admin. Con `tg_audit` y en `supabase_realtime`. Actions:
+`addQuedadaWalkIn`/`removeQuedadaWalkIn`/`setGuestPaid`/`setGuestCheckedIn`.
+Los guests cuentan para el cupo (joinQuedada, tarjetas), entran a
+`autoAssignCategory` y a los standings; el aviso de pago NO les aplica (sin
+cuenta → sin notifs). Ojo: se pierde el cascade profile→games (profiles casi
+nunca se borran; el cascade por quedada_id sigue intacto).
+
 **Realtime en gestión:** las tablas (`quedadas`, `quedada_participants`,
-`quedada_categories`, `quedada_pairs`, `quedada_rounds`, `quedada_games`) están en `supabase_realtime`. El panel
+`quedada_guests`, `quedada_categories`, `quedada_pairs`, `quedada_rounds`, `quedada_games`) están en `supabase_realtime`. El panel
 (`QuedadaManagePanel`) usa `useRealtimeRefresh` en modo `onChange` (datos
 client-side vía `getQuedadaManageData` → refetchea con `reload()`, no
 `router.refresh`), filtrando por `quedada_id`/`id`, debounce 400ms. Creador +

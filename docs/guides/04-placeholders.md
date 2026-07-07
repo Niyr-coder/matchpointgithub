@@ -547,6 +547,18 @@ patrón opacity 0.5 + dashed border que ya está estandarizado.
 
 ## 3. 🟢 Stubs internos / Features pending
 
+### Quedadas Modo Torneo: la vista del jugador muestra "Ronda N" genérico
+- **Archivo**: `src/components/dashboard/user/QuedadaDetailView.tsx` (RoundRow,
+  hero "Ronda N en juego", CourtCard).
+- **Estado (2026-07-07)**: el panel del organizador ya muestra los nombres de
+  fase del Modo Torneo ("Fase de grupos · Fecha 2" / "Semifinales" / "Final y
+  bronce") vía `engine.roundNameFor` en `QuedadaGameView`. La vista read-only
+  del jugador usa etiquetas "Ronda N" genéricas porque sus labels son
+  cross-categoría y el ctx del engine es por categoría.
+- **Para quitarlo**: derivar el nombre de fase por categoría en
+  `QuedadaDetailView` (mismo helper `roundTitleFor` de `QuedadaGameView`,
+  scoping pairs/games a la categoría del game).
+
 ### Ciclo de vida de reservas: `confirmed` y `completed` son status huérfanos
 - **Enum**: `mp_reservation_status` (002_enums.sql).
 - **Estado (audit 2026-07-06)**: ninguna action/trigger/cron transiciona

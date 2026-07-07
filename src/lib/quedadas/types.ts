@@ -52,4 +52,16 @@ export type QuedadaEngine = {
   roundLabel: string;
   tableEntityLabel: string;
   planNextRound: (ctx: EngineContext) => RoundPlan | null;
+  /**
+   * Nombre de fase de una ronda (formatos con etapas, ej. Modo Torneo:
+   * "Fase de grupos · Fecha 2" / "Semifinales" / "Final"). null = usar el
+   * label genérico `roundLabel N`.
+   */
+  roundNameFor?: (ctx: EngineContext, roundNo: number) => string | null;
+  /**
+   * Podio propio del formato (ej. Modo Torneo: lo definen final y bronce, no
+   * la tabla). Devuelve los equipos rankeados (ids de jugador por puesto) o
+   * null si aún no se puede decidir; sin este hook se usa la tabla derivada.
+   */
+  podium?: (ctx: EngineContext) => string[][] | null;
 };

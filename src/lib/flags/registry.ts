@@ -230,6 +230,19 @@ export const KNOWN_FLAGS: KnownFlag[] = [
   },
 
   {
+    key: "quedada_format_torneo",
+    label: "Quedadas · Modo Torneo",
+    description:
+      "Killswitch del formato Modo Torneo (grupos → semifinales → final y bronce). Apagado = la opción desaparece del wizard y createQuedada rechaza el formato. Flag ausente = encendido.",
+    surfaces: [
+      "src/server/actions/quedadas.ts (createQuedada)",
+      "CrearQuedadaModal (selector de formato)",
+    ],
+    impact: "med",
+    wired: true,
+  },
+
+  {
     key: "paywall_enforce_quedadas",
     label: "Paywall · Quedadas",
     description: "Encendido = solo usuarios MATCHPOINT+ pueden crear quedadas. Apagado = todos pueden (estado inicial).",

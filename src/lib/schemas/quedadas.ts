@@ -6,7 +6,7 @@ import { UuidSchema, MpMatchModeSchema } from "./common";
 extendZodWithOpenApi(z);
 
 export const QuedadaFormatSchema = z
-  .enum(["americano", "mexicano", "round_robin", "kotc", "canguil", "libre"])
+  .enum(["americano", "mexicano", "round_robin", "kotc", "canguil", "libre", "torneo"])
   .openapi("QuedadaFormat");
 
 export const QuedadaVisibilitySchema = z.enum(["open", "private"]).openapi("QuedadaVisibility");
@@ -60,6 +60,9 @@ export const CreateQuedadaSchema = z
     startsAt: z.string().datetime({ offset: true }),
     locationText: z.string().trim().max(140).optional(),
     clubId: UuidSchema.optional(),
+    // Si el organizador también juega, se inscribe al crear. Opt-in: por
+    // defecto NO queda inscrito (solo organiza).
+    creatorPlays: z.boolean().default(false),
     maxPlayers: z.coerce.number().int().min(2).max(64).optional(),
     feeCents: z.coerce.number().int().min(0).max(1_000_000).default(0),
     perks: z.string().trim().max(280).optional(),
@@ -206,6 +209,25 @@ export const AutoAssignCategorySchema = z
 export const SetParticipantPaidSchema = z
   .object({ quedadaId: UuidSchema, userId: UuidSchema, paid: z.boolean() })
   .openapi("SetQuedadaParticipantPaid");
+
+// ── Walk-ins (guests sin cuenta MatchPoint) ──────────────────────────────────
+// El organizador agrega a quien llega sin app. El guest tiene UUID propio
+// (quedada_guests) y puede ocupar cupos y jugar games como cualquier inscrito.
+export const AddQuedadaWalkInSchema = z
+  .object({ quedadaId: UuidSchema, name: z.string().trim().min(1).max(80) })
+  .openapi("AddQuedadaWalkIn");
+
+export const RemoveQuedadaWalkInSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema })
+  .openapi("RemoveQuedadaWalkIn");
+
+export const SetGuestPaidSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema, paid: z.boolean() })
+  .openapi("SetQuedadaGuestPaid");
+
+export const SetGuestCheckedInSchema = z
+  .object({ quedadaId: UuidSchema, guestId: UuidSchema, checkedIn: z.boolean() })
+  .openapi("SetQuedadaGuestCheckedIn");
 
 // Check-in de asistencia (informativo). El organizador/co-host marca quién llegó.
 export const SetParticipantCheckedInSchema = z

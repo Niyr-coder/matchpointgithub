@@ -11,14 +11,18 @@ async function nameMap(supabase: Db, userIds: string[]): Promise<Map<string, str
   const ids = [...new Set(userIds.filter(Boolean))];
   const map = new Map<string, string>();
   if (ids.length === 0) return map;
-  const { data } = await supabase
-    .from("profiles")
-    .select("id,display_name,username")
-    .in("id", ids);
+  // Un id puede ser un profile o un walk-in (quedada_guests) — resolver ambos.
+  const [{ data }, { data: guests }] = await Promise.all([
+    supabase.from("profiles").select("id,display_name,username").in("id", ids),
+    supabase.from("quedada_guests").select("id,display_name").in("id", ids),
+  ]);
   for (const p of data ?? []) {
     const label =
       ((p.display_name as string | null) ?? (p.username as string | null) ?? "Jugador").trim();
     map.set(p.id as string, label);
+  }
+  for (const g of (guests ?? []) as unknown as Array<{ id: string; display_name: string }>) {
+    map.set(g.id, g.display_name);
   }
   return map;
 }

@@ -12,12 +12,14 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { individualStandings, type GameForStandings } from "@/lib/quedadas/standings";
 import { pairStandings } from "@/lib/quedadas/pair-standings";
+import { getQuedadaEngine } from "@/lib/quedadas/engines/registry";
 import type { QuedadaStandingsMode } from "@/lib/quedadas/types";
 
 export type {
   GameViewCategory,
   GameViewPair,
   GameViewParticipant,
+  GameViewGuest,
   GameViewRound,
   GameViewGame,
 } from "@/lib/quedadas/game-view-types";
@@ -26,6 +28,7 @@ import type {
   GameViewCategory,
   GameViewPair,
   GameViewParticipant,
+  GameViewGuest,
   GameViewRound,
   GameViewGame,
 } from "@/lib/quedadas/game-view-types";
@@ -36,10 +39,14 @@ type Props = {
   categories: GameViewCategory[];
   pairs: GameViewPair[];
   participants: GameViewParticipant[];
+  /** Walk-ins (guests sin cuenta): resuelven nombre por display_name. */
+  guests?: GameViewGuest[];
   rounds: GameViewRound[];
   games: GameViewGame[];
   meUserId: string | null;
   matchMode: "singles" | "doubles";
+  /** Formato de la quedada (para nombres de fase del engine, ej. torneo). */
+  format?: string;
   formatLabel: string;
   roundLabel: string;
   tableEntityLabel: string;
@@ -59,10 +66,50 @@ function nameOf(p: { display_name: string | null; username: string | null } | nu
   return p.display_name || (p.username ? `@${p.username}` : "Jugador");
 }
 
+/**
+ * Título de una ronda: usa el nombre de fase del engine si el formato define
+ * etapas (Modo Torneo: "Fase de grupos · Fecha 2" / "Semifinales" / "Final");
+ * fallback = "roundLabel N" genérico.
+ */
+function roundTitleFor(args: {
+  format?: string;
+  pairs: GameViewPair[];
+  games: GameViewGame[];
+  matchMode: "singles" | "doubles";
+  roundLabel: string;
+  roundNo: number;
+}): string {
+  const { format, pairs, games, matchMode, roundLabel, roundNo } = args;
+  const engine = format ? getQuedadaEngine(format) : null;
+  if (engine?.roundNameFor) {
+    const name = engine.roundNameFor(
+      {
+        pairs: pairs.map((p) => ({ id: p.id, slot_no: p.slot_no, player_a_id: p.player_a_id, player_b_id: p.player_b_id })),
+        prior: games.map((g) => ({
+          round_no: g.round_no ?? 0,
+          side_a_p1: g.side_a_p1,
+          side_a_p2: g.side_a_p2,
+          side_b_p1: g.side_b_p1,
+          side_b_p2: g.side_b_p2,
+          points_a: g.points_a,
+          points_b: g.points_b,
+          status: g.status,
+        })),
+        mode: matchMode,
+        courts: 0,
+      },
+      roundNo,
+    );
+    if (name) return name;
+  }
+  return `${roundLabel} ${roundNo}`;
+}
+
 export function QuedadaGameView({
   categories,
   pairs,
   participants,
+  guests,
   rounds,
   games,
   meUserId,
@@ -75,6 +122,7 @@ export function QuedadaGameView({
   canManualGame,
   quedadaTargetPoints,
   canManage,
+  format,
   onReportGame,
   onGenerateRound,
   onCreateManualGame,
@@ -86,7 +134,12 @@ export function QuedadaGameView({
     .sort((a, b) => a.sort_order - b.sort_order);
 
   const partById = new Map(participants.map((p) => [p.user_id, p]));
-  const nameFor = (id: string): string => nameOf(partById.get(id)?.profiles ?? null);
+  const guestById = new Map((guests ?? []).map((g) => [g.id, g]));
+  const nameFor = (id: string): string => {
+    const guest = guestById.get(id);
+    if (guest) return guest.display_name;
+    return nameOf(partById.get(id)?.profiles ?? null);
+  };
 
   const [viewMode, setViewMode] = useState<"category" | "courts">("category");
 
@@ -117,6 +170,7 @@ export function QuedadaGameView({
             games={games.filter((g) => g.category_id === c.id)}
             meUserId={meUserId}
             matchMode={matchMode}
+            format={format}
             formatLabel={formatLabel}
             roundLabel={roundLabel}
             tableEntityLabel={tableEntityLabel}
@@ -415,6 +469,7 @@ function CategoryGame({
   targetPoints,
   nameFor,
   canManage,
+  format,
   onReportGame,
   onGenerateRound,
   onCreateManualGame,
@@ -426,6 +481,7 @@ function CategoryGame({
   games: GameViewGame[];
   meUserId: string | null;
   matchMode: "singles" | "doubles";
+  format?: string;
   formatLabel: string;
   roundLabel: string;
   tableEntityLabel: string;
@@ -464,6 +520,8 @@ function CategoryGame({
 
   const roundNos = Array.from(new Set(rounds.map((r) => r.round_no))).sort((a, b) => a - b);
   const nextRoundNo = (roundNos.length ? Math.max(...roundNos) : 0) + 1;
+  const roundTitle = (rn: number): string =>
+    roundTitleFor({ format, pairs, games, matchMode, roundLabel, roundNo: rn });
   const playedCount = games.filter((g) => g.status === "played").length;
   const hasGames = games.length > 0;
   const submitManual = () => {
@@ -556,7 +614,7 @@ function CategoryGame({
                   className="btn btn-primary"
                   style={{ alignSelf: "flex-start" }}
                 >
-                  <Icon name="arrow-right" size={13} color="#fff" /> Siguiente {roundLabel.toLowerCase()} {nextRoundNo}
+                  <Icon name="arrow-right" size={13} color="#fff" /> Siguiente: {roundTitle(nextRoundNo)}
                 </button>
               )}
               {canManage && canManualGame && onCreateManualGame && (
@@ -624,7 +682,7 @@ function CategoryGame({
                             <span style={{ transition: "transform 200ms var(--ease-out)", transform: roundOpen ? "rotate(180deg)" : "none", display: "inline-flex", color: "var(--muted-fg)", flexShrink: 0 }}>
                               <Icon name="chevron-down" size={15} color="var(--muted-fg)" />
                             </span>
-                            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>{roundLabel} {rn}</span>
+                            <span className="font-heading" style={{ fontSize: 12.5, fontWeight: 900, textTransform: "uppercase" }}>{roundTitle(rn)}</span>
                             <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase", padding: "2px 8px", borderRadius: 9999, background: complete ? "var(--success-bg)" : "var(--color-mp-primary-light)", color: complete ? "var(--success-fg)" : "var(--color-mp-primary-active)", flexShrink: 0 }}>
                               {complete ? "Completa" : `${playedInRound}/${roundGames.length}`}
                             </span>

@@ -42,6 +42,36 @@ tabla.
 | Rey de la cancha (KOTC) | ✅ Activo | Orden por canchas/nivel; los equipos se emparejan según rendimiento reciente. |
 | Mezcla social (`canguil`) | ✅ Activo | Rotación social aleatoria cada ronda. |
 | Personalizado (`libre`) | ✅ Activo | El organizador crea partidos manuales y carga resultados. |
+| Modo Torneo (`torneo`) | ✅ Activo | Fase de grupos (round robin) → semifinales → final y bronce, como un torneo real. |
+
+### Modo Torneo (`torneo`) — mig 20260723000000
+
+- **Unidad:** parejas fijas en dobles, individual en singles (igual que
+  `round_robin`). El **orden de cupos es el seeding**.
+- **Estructura derivada** (sin tablas de bracket; todo sale de
+  `quedada_rounds`/`quedada_games`): 1 grupo con <6 equipos, 2 grupos (por seed
+  alternado) con ≥6. Rondas 1..K = fechas del round robin por grupo (método del
+  círculo). Ronda K+1 = **Semifinales** (A1-B2 / B1-A2 con 2 grupos; 1°-4° /
+  2°-3° con 1 grupo de ≥4; con 3 equipos no hay semis). Última ronda = **Final +
+  bronce**. Mínimo 3 equipos.
+- **Gates de progresión:** las semis solo se generan con TODA la fase de grupos
+  jugada; la final solo con ambas semis decididas (un empate en el marcador
+  bloquea — corrige el score). `planNextRound` devuelve null en esos casos.
+- **Podio:** hook `podium` del engine (final y bronce mandan, no la tabla);
+  `finishQuedada`/`finishQuedadaCategory` lo usan vía
+  `writeCategoryPodiumRanks`.
+- **Fases visibles:** hook `roundNameFor` → el panel muestra "Fase de grupos ·
+  Fecha 2" / "Semifinales" / "Final y bronce" (vía `QuedadaGameView`).
+- **Killswitch:** flag `quedada_format_torneo` (default ON, ausente = ON):
+  apagado oculta la card del wizard y `createQuedada` rechaza el formato
+  (`QUEDADAS.FORMAT_DISABLED`).
+- **Roster bloqueado con games:** cambiar cupos re-armaría grupos/seeding, así
+  que `assignPair`/`removePair`/`autoAssignCategory` rechazan con
+  `QUEDADAS.TORNEO_ROSTER_LOCKED` si la categoría ya tiene partidos — borra las
+  rondas primero.
+- **Borrar rondas:** si borras una fecha intermedia de grupos, "Siguiente"
+  regenera ESA fecha faltante (no la posterior al máximo); semis/final también
+  se regeneran si se borran.
 
 ### Rotación de parejas (`americano`)
 
@@ -123,6 +153,30 @@ participante, cuota `fee_cents` por jugador) — la agrupación es solo
 presentacional para ver de un vistazo qué pareja ya pagó. Inscritos sin pareja
 caen a un grupo "Sin pareja asignada"; sin parejas, lista plana (comportamiento
 anterior).
+
+## Walk-ins (guests sin cuenta) — mig 20260722000000
+
+El organizador (o co-host) agrega desde el tab **Jugadores** ("Agregar walk-in")
+a quien llegó sin cuenta MatchPoint. El walk-in es una fila en `quedada_guests`
+con UUID propio y **juega como cualquier inscrito**: se le asigna cupo
+(manual o "Llenar al azar"), entra al motor de emparejamiento, a los games y a
+los standings (los engines operan sobre IDs opacos). Aparece con badge
+"Walk-in" en el roster, en Pagos (toggle pagado/check-in propio, sin "Avisar"
+porque no recibe notifs) y en el modal de detalles. Cuenta para el cupo
+efectivo. Quitar un walk-in libera sus cupos; si ya tiene partidos generados,
+se bloquea (`QUEDADAS.WALKIN_LOCKED`) — borra o ajusta esas rondas primero.
+Actions: `addQuedadaWalkIn` / `removeQuedadaWalkIn` / `setGuestPaid` /
+`setGuestCheckedIn`.
+
+- **`addQuedadaWalkIn` NO valida cupo a propósito**: el organizador es el dueño
+  de su cupo y el walk-in llega el día del evento; puede sobrellenar si quiere.
+  Los jugadores que intenten inscribirse después sí reciben `QUEDADAS.FULL`.
+- **Podio con walk-ins (mig 20260723020000)**: `quedada_guests.final_rank`.
+  `writeCategoryPodiumRanks` y `setQuedadaResults` escriben el puesto en
+  participante O guest según a quién corresponda el id; `PodiumSection` y el
+  tab Resultados lo leen de ambos.
+- **Stats del organizador**: `getMyQuedadasFinanceStats` suma inscritos +
+  walk-ins (mismo `fee_cents`), cuadrando con el hero de Pagos del panel.
 
 ## Pagos: check-in, aviso de pago y stats (mig 144–145)
 
@@ -207,6 +261,14 @@ categorías, se usa `max_players`. (`QuedadasScreen` lo calcula y lo pasa como
 cupo 16".)
 
 ## Inscripción (join) — pago offline + selección de categoría
+
+- **El creador NO queda inscrito automáticamente.** `createQuedada` recibe
+  `creatorPlays` (default `false`): solo se inserta en `quedada_participants`
+  si el organizador activa "Juego también" en el paso 1 del wizard ("Tu rol").
+  Si eligió "Solo organizo", puede inscribirse o salir después desde el menú
+  "⋯" de su tarjeta ("Inscribirme como jugador" / "Salir como jugador"). El
+  chat grupal no depende de esto: `fn_ensure_quedada_channel` agrega al
+  creador como admin del canal aunque no sea participante.
 
 - **Sin pantalla de pago.** `joinQuedada` (y `joinByInviteCode`) **no** crean
   `transactions` ni redirigen a `/pagos`. El pago es **offline** (transferencia /

@@ -14,7 +14,7 @@ export const QUEDADA_FORMAT_META: Record<QuedadaFormat, QuedadaFormatMeta> = {
   americano: {
     label: "Rotación de parejas",
     shortLabel: "Rotación",
-    description: "Rotás compañero y rival cada ronda; ranking individual por puntos",
+    description: "Rotas compañero y rival cada ronda; ranking individual por puntos",
   },
   mexicano: {
     label: "Escalera por nivel",
@@ -40,6 +40,11 @@ export const QUEDADA_FORMAT_META: Record<QuedadaFormat, QuedadaFormatMeta> = {
     label: "Personalizado",
     shortLabel: "Manual",
     description: "Partidos y resultados manuales",
+  },
+  torneo: {
+    label: "Modo Torneo",
+    shortLabel: "Torneo",
+    description: "Fase de grupos → semifinales → final y bronce, como un torneo real",
   },
 };
 

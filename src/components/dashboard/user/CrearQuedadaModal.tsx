@@ -33,7 +33,7 @@ import { SUMA_MIN, SUMA_MAX, sumaLabel } from "@/lib/quedadas/level";
 import { rosterModeFor } from "@/lib/quedadas/engines/registry";
 import { quedadaFormatOptions } from "@/lib/quedadas/format-labels";
 
-type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre";
+type Format = "americano" | "mexicano" | "round_robin" | "kotc" | "canguil" | "libre" | "torneo";
 type MatchMode = "singles" | "doubles";
 type Visibility = "open" | "private";
 
@@ -58,6 +58,7 @@ export type QuedadaInitial = {
   ruleRows?: RuleDraft[];
   perks?: string;
   categories?: CatDraft[];
+  creatorPlays?: boolean;
 };
 
 const FORMATS = quedadaFormatOptions();
@@ -76,7 +77,16 @@ function money(cents: number): string {
 
 type TemplateRow = { id: string; name: string; config: QuedadaInitial };
 
-export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; initial?: QuedadaInitial }) {
+export function CrearQuedadaModal({
+  onClose,
+  initial,
+  torneoEnabled = true,
+}: {
+  onClose: () => void;
+  initial?: QuedadaInitial;
+  /** Killswitch del formato Modo Torneo (flag quedada_format_torneo). */
+  torneoEnabled?: boolean;
+}) {
   const router = useRouter();
   const toast = useToast();
   const { ask, confirm } = usePromptModal();
@@ -84,12 +94,19 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
   const [step, setStep] = useState(0);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
+  // Con el killswitch apagado, un duplicado/plantilla con formato torneo no
+  // puede quedar seleccionado invisible (createQuedada lo rechazaría al final).
+  const sanitizeFormat = (f: Format | "" | undefined): Format | "" =>
+    f === "torneo" && !torneoEnabled ? "" : f ?? "";
+
   // Paso 1 — se siembran de `initial` (duplicar/plantilla) si viene.
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? DEFAULT_QUEDADA_DESCRIPTION);
-  const [format, setFormat] = useState<Format | "">(initial?.format ?? "");
+  const [format, setFormat] = useState<Format | "">(sanitizeFormat(initial?.format));
   const [matchMode, setMatchMode] = useState<MatchMode | "">(initial?.matchMode ?? "");
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? "open");
+  // Opt-in: el organizador solo queda inscrito como jugador si lo activa.
+  const [creatorPlays, setCreatorPlays] = useState<boolean>(initial?.creatorPlays ?? false);
   const [startsLocal, setStartsLocal] = useState(""); // nunca se precarga la fecha
   const [locationText, setLocationText] = useState(initial?.locationText ?? "");
   // Paso 2
@@ -276,13 +293,14 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     ruleRows: allRuleDrafts(),
     perks,
     categories,
+    creatorPlays,
   });
 
   // Carga una plantilla/duplicado en todos los pasos (no toca la fecha).
   const loadInitial = (init: QuedadaInitial) => {
     setTitle(init.title ?? "");
     setDescription(init.description ?? DEFAULT_QUEDADA_DESCRIPTION);
-    setFormat(init.format ?? "");
+    setFormat(sanitizeFormat(init.format));
     setMatchMode(init.matchMode ?? "");
     if (init.visibility) setVisibility(init.visibility);
     setLocationText(init.locationText ?? "");
@@ -297,6 +315,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
     setCustomRuleRows(split.customRules);
     setPerks(init.perks ?? "");
     setCategories(init.categories?.length ? init.categories : [emptyCategory()]);
+    setCreatorPlays(init.creatorPlays ?? false);
     setStep(0);
     toast({ icon: "check", title: "Plantilla cargada" });
   };
@@ -419,6 +438,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
         prizes: prizeDraftsToPrizes(prizeRows).length > 0 ? prizeDraftsToPrizes(prizeRows) : undefined,
         rules: ruleDraftsToRules(allRuleDrafts()),
         categories: cats,
+        creatorPlays,
       });
       if (!res.ok) {
         toast({ icon: "alert-triangle", title: "No se pudo crear", sub: res.error.message });
@@ -551,7 +571,7 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   Todos los formatos tienen vista de partidos, roster, pagos y tabla; cambia solo la mecánica del motor.
                 </div>
                 <div className="mp-crear-quedada-formats">
-                  {FORMATS.map((f) => {
+                  {FORMATS.filter((f) => f.k !== "torneo" || torneoEnabled).map((f) => {
                     const on = format === f.k;
                     return (
                       <button key={f.k} type="button" onClick={() => setFormat(f.k)} style={{ padding: 11, borderRadius: 10, border: on ? "2px solid var(--primary)" : "1px solid var(--border)", background: on ? "var(--color-mp-primary-light)" : "#fff", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
@@ -591,6 +611,21 @@ export function CrearQuedadaModal({ onClose, initial }: { onClose: () => void; i
                   </div>
                 </Field>
               </div>
+              <Field
+                label="Tu rol"
+                tip="Si juegas también, quedas inscrito como jugador al crear. Si solo organizas, no ocupas cupo; puedes inscribirte después desde la tarjeta de la quedada."
+              >
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([{ k: false, l: "Solo organizo", i: "clipboard-list" as const }, { k: true, l: "Juego también", i: "user-check" as const }]).map((o) => {
+                    const on = creatorPlays === o.k;
+                    return (
+                      <button key={String(o.k)} type="button" onClick={() => setCreatorPlays(o.k)} style={{ ...segBtn, ...(on ? segBtnOn : {}) }}>
+                        <Icon name={o.i} size={12} color={on ? "var(--color-mp-primary-active)" : "var(--fg)"} />{o.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
               <div className="mp-crear-quedada-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field
                   label="Fecha y hora"
