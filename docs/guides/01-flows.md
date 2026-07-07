@@ -336,6 +336,16 @@ canchas (`reservations`, `walkins`, `check_ins`, `courts`) debe llamar
 en vez de mantener su propia lista de `revalidatePath` — ver
 `docs/architecture/50-realtime.md` §"Patrón de refresh en 3 capas".
 
+**Regla 30 min (cancelaciones tardías, 2026-07-06):** si una reserva se
+cancela con MENOS de 30 min antes de su inicio, el slot NO reabre para
+jugadores: el picker lo muestra ocupado (`status:"held"` en
+`loadCourtBusyRanges`) y `createReservation` lo rechaza con
+`RESERVATION.SLOT_HELD` — pero recepción SÍ puede reasignarlo (reserva
+manual / walk-in; el gist constraint ignora `cancelled`, y el caller staff
+bypasea el check). Cancelada con ≥30 min de anticipación, reabre normal.
+Helper canónico: `isLateCancelHold` en
+`src/server/queries/court-busy-ranges.ts`.
+
 ---
 
 ## Pre-flight checklist al implementar un flow nuevo

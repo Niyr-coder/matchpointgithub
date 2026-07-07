@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920" role="img" aria-label="Cronograma del día — MATCHPOINT">
+  <title>Cronograma del día — MATCHPOINT</title>
+  <desc>Plantilla de cronograma del día para el evento. Formato IG-story vertical 1080x1920 con cropsafe area centrada Y en 250-1670. Renderable en app: layout se adapta a max-width 720 en web y usa el mismo componente de timeline.</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+      .time { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+      .label { font-family: "Inter", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+      .meta { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Full background -->
+  <rect width="1080" height="1920" fill="#0a0a0a"/>
+
+  <!-- Green top accent bar (in cropsafe) -->
+  <rect x="0" y="250" width="1080" height="6" fill="#10b981"/>
+
+  <!-- Header block (all inside cropsafe Y 250-1670) -->
+  <g transform="translate(80,320)">
+    <!-- sub-marca chip -->
+    <g>
+      <rect x="0" y="0" width="360" height="42" rx="21" fill="rgba(16,185,129,0.15)"/>
+      <text x="24" y="28" class="chip" font-size="18" fill="#10b981">CRONOGRAMA · DÍA DEL EVENTO</text>
+    </g>
+    <text x="0" y="118" class="heading" font-size="72" fill="#ffffff">Copa {CIUDAD}</text>
+    <text x="0" y="200" class="heading" font-size="56" fill="#10b981">{MES} · 2026</text>
+
+    <!-- Meta -->
+    <g transform="translate(0,240)" fill="#a3a3a3">
+      <text x="0" y="24" class="meta" font-size="22">Sábado · Club Los Chillos · Canchas 1 y 2</text>
+    </g>
+  </g>
+
+  <!-- Timeline block -->
+  <g transform="translate(80,640)">
+    <!-- vertical guide line -->
+    <line x1="140" y1="0" x2="140" y2="920" stroke="#2a2a2a" stroke-width="2"/>
+
+    <!-- Timeline items (schedule_blocks) -->
+    <!-- Item 1: 07:30 registro -->
+    <g transform="translate(0,0)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff" text-anchor="end" style="text-anchor: end;">
+        <tspan x="115" y="34">07:30</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#0a0a0a" stroke="#10b981" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#10b981">CHECK-IN</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Acreditación y calentamiento</text>
+    </g>
+    <!-- Item 2: 08:00 apertura -->
+    <g transform="translate(0,120)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff">
+        <tspan x="115" y="34" text-anchor="end">08:00</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#0a0a0a" stroke="#10b981" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#10b981">APERTURA</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Bienvenida y sorteo de grupos</text>
+    </g>
+    <!-- Item 3: 08:30 fase grupos -->
+    <g transform="translate(0,240)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff">
+        <tspan x="115" y="34" text-anchor="end">08:30</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#10b981" stroke="#10b981" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#10b981">FASE 1 · GRUPOS</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Round-robin dobles · MPR 4.0+</text>
+      <text x="170" y="78" class="meta" font-size="18" fill="#a3a3a3">Rally · BO3 a 15 · 3 partidos por equipo</text>
+    </g>
+    <!-- Item 4: 12:00 pausa -->
+    <g transform="translate(0,400)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff">
+        <tspan x="115" y="34" text-anchor="end">12:00</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#0a0a0a" stroke="#a3a3a3" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#a3a3a3">PAUSA</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Almuerzo e hidratación</text>
+    </g>
+    <!-- Item 5: 13:30 cuartos -->
+    <g transform="translate(0,520)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff">
+        <tspan x="115" y="34" text-anchor="end">13:30</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#10b981" stroke="#10b981" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#10b981">FASE 2 · CUARTOS</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Eliminación directa · 8 seeds</text>
+      <text x="170" y="78" class="meta" font-size="18" fill="#a3a3a3">Rally · BO3 a 15</text>
+    </g>
+    <!-- Item 6: 15:30 semis -->
+    <g transform="translate(0,680)">
+      <text x="0" y="34" class="time" font-size="40" fill="#ffffff">
+        <tspan x="115" y="34" text-anchor="end">15:30</tspan>
+      </text>
+      <circle cx="140" cy="20" r="10" fill="#10b981" stroke="#10b981" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#10b981">SEMIFINALES</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Los 4 mejores del cuadro</text>
+    </g>
+    <!-- Item 7: 17:00 final + podio -->
+    <g transform="translate(0,800)">
+      <text x="0" y="34" class="time" font-size="40" fill="#fbbf24">
+        <tspan x="115" y="34" text-anchor="end">17:00</tspan>
+      </text>
+      <circle cx="140" cy="20" r="12" fill="#fbbf24" stroke="#fbbf24" stroke-width="3"/>
+      <text x="170" y="14" class="chip" font-size="14" fill="#fbbf24">FINAL · PODIO</text>
+      <text x="170" y="46" class="label" font-size="24" fill="#ffffff">Final y premiación oficial</text>
+      <text x="170" y="78" class="meta" font-size="18" fill="#a3a3a3">Ranking sumado al circuito 2026</text>
+    </g>
+  </g>
+
+  <!-- CTA bar -->
+  <g transform="translate(80,1520)">
+    <rect x="0" y="0" width="920" height="90" rx="20" fill="#10b981"/>
+    <text x="40" y="42" class="chip" font-size="16" fill="#0a0a0a">INSCRÍBETE HASTA VIERNES 20H</text>
+    <text x="40" y="74" class="heading" font-size="26" fill="#0a0a0a">matchpoint.top/eventos</text>
+  </g>
+
+  <!-- Footer / signature -->
+  <g transform="translate(80,1650)">
+    <circle cx="10" cy="16" r="8" fill="#10b981"/>
+    <text x="26" y="22" class="heading" font-size="24" fill="#ffffff">MATCHPOINT</text>
+    <text x="920" y="22" class="meta" font-size="16" fill="#737373" text-anchor="end">@matchpoint.ec</text>
+  </g>
+</svg>

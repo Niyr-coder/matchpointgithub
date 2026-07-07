@@ -697,7 +697,9 @@ export async function approveRegistrationProofByPartner(
     await setAuditActor(admin, userId, auditActorRole(actorRole));
 
     const nowIso = new Date().toISOString();
-    const { error } = await admin
+    // CAS: ante dos aprobaciones concurrentes gana exactamente una; la
+    // cascada de captura solo corre si este UPDATE tomó la fila.
+    const { data: swapped, error } = await admin
       .from("transactions")
       .update({
         status: "captured",
@@ -705,8 +707,18 @@ export async function approveRegistrationProofByPartner(
         proof_reviewed_at: nowIso,
         proof_rejection_reason: null,
       } as never)
-      .eq("id", transactionId);
+      .eq("id", transactionId)
+      .eq("status", "proof_submitted")
+      .select("id")
+      .maybeSingle();
     if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+    if (!swapped) {
+      throw new MpError(
+        "PAYMENT_PROOF.INVALID_STATE",
+        "Otro revisor procesó este comprobante hace un instante",
+        409,
+      );
+    }
 
     await runTransactionCaptureCascade(admin, {
       id: transactionId,
@@ -745,7 +757,9 @@ export async function rejectRegistrationProofByPartner(
       await setAuditActor(admin, userId, auditActorRole(actorRole));
 
       const nowIso = new Date().toISOString();
-      const { error } = await admin
+      // CAS: sin el filtro por status, un reject concurrente con un approve
+      // podía revertir una transacción ya capturada a pending_proof.
+      const { data: swapped, error } = await admin
         .from("transactions")
         .update({
           status: "pending_proof",
@@ -755,8 +769,18 @@ export async function rejectRegistrationProofByPartner(
           proof_url: null,
           proof_submitted_at: null,
         } as never)
-        .eq("id", transactionId);
+        .eq("id", transactionId)
+        .eq("status", "proof_submitted")
+        .select("id")
+        .maybeSingle();
       if (error) throw new MpError("PAYMENT_PROOF.UPDATE_FAILED", error.message, 500);
+      if (!swapped) {
+        throw new MpError(
+          "PAYMENT_PROOF.INVALID_STATE",
+          "Otro revisor procesó este comprobante hace un instante",
+          409,
+        );
+      }
 
       if (tx.customer_user_id) {
         await notify({

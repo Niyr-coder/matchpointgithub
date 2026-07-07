@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080" role="img" aria-label="Podio 1° 2° 3° — MATCHPOINT">
+  <title>Podio 1° 2° 3° — MATCHPOINT</title>
+  <desc>Plantilla de podio con oro/plata/bronce. Formato IG-square 1080x1080. Muestra los tres puestos, categoría, premios opcionales por puesto y sello de la parada. Reusable para publicación post-evento y para pantalla en vivo en la cancha.</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+      .place { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.05em; }
+      .player-name { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .meta { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+      .prize { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0a0a0a"/>
+
+  <!-- Ambient radial glow -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="65%" r="65%">
+      <stop offset="0%" stop-color="rgba(251,191,36,0.14)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#glow)"/>
+
+  <!-- Header -->
+  <g transform="translate(60,80)">
+    <g>
+      <rect x="0" y="0" width="240" height="40" rx="20" fill="rgba(251,191,36,0.16)"/>
+      <text x="24" y="26" class="chip" font-size="14" fill="#fbbf24">PODIO OFICIAL</text>
+    </g>
+    <text x="0" y="118" class="heading" font-size="60" fill="#ffffff">Copa {CIUDAD}</text>
+    <text x="0" y="180" class="heading" font-size="36" fill="#10b981">{MES} · 2026</text>
+    <text x="0" y="220" class="meta" font-size="20" fill="#a3a3a3">Dobles Open · MPR 4.0+ · Sábado 12/09/2026</text>
+  </g>
+
+  <!-- Podium block -->
+  <g transform="translate(60,340)">
+    <!-- 2nd place (left, silver) -->
+    <g transform="translate(0,120)">
+      <rect x="0" y="0" width="300" height="480" rx="20" fill="#151515" stroke="#2a2a2a"/>
+      <!-- rank chip -->
+      <g transform="translate(24,24)">
+        <rect x="0" y="0" width="70" height="34" rx="17" fill="rgba(163,163,163,0.15)"/>
+        <text x="35" y="22" class="chip" font-size="14" fill="#a3a3a3" text-anchor="middle">2°</text>
+      </g>
+      <!-- big place -->
+      <text x="150" y="220" class="place" font-size="180" fill="#a3a3a3" text-anchor="middle">2</text>
+      <!-- names -->
+      <text x="24" y="300" class="player-name" font-size="22" fill="#ffffff">S. Andrade</text>
+      <text x="24" y="330" class="player-name" font-size="22" fill="#ffffff">T. Bravo</text>
+      <!-- prize -->
+      <g transform="translate(24,376)">
+        <text x="0" y="0" class="chip" font-size="12" fill="#a3a3a3">PREMIO</text>
+        <text x="0" y="34" class="prize" font-size="32" fill="#ffffff">$150</text>
+      </g>
+      <!-- ranking points -->
+      <g transform="translate(24,440)">
+        <text x="0" y="0" class="chip" font-size="11" fill="#a3a3a3">RANKING · 60 PTS</text>
+      </g>
+    </g>
+
+    <!-- 1st place (center, gold) - taller card -->
+    <g transform="translate(330,0)">
+      <rect x="0" y="0" width="300" height="600" rx="20" fill="#1a1300" stroke="#fbbf24" stroke-width="2"/>
+      <!-- rank chip -->
+      <g transform="translate(24,24)">
+        <rect x="0" y="0" width="70" height="34" rx="17" fill="rgba(251,191,36,0.2)"/>
+        <text x="35" y="22" class="chip" font-size="14" fill="#fbbf24" text-anchor="middle">1°</text>
+      </g>
+      <!-- Trophy icon top-right -->
+      <g transform="translate(228,24)" stroke="#fbbf24" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" fill="none">
+        <path d="M8 6 h32 v14 a16 16 0 0 1 -32 0z"/>
+        <path d="M8 10 h-6 a6 6 0 0 0 0 12 h6"/>
+        <path d="M40 10 h6 a6 6 0 0 1 0 12 h-6"/>
+        <path d="M18 42 h12 M14 50 h20"/>
+        <line x1="24" y1="34" x2="24" y2="42"/>
+      </g>
+      <!-- big place -->
+      <text x="150" y="282" class="place" font-size="240" fill="#fbbf24" text-anchor="middle">1</text>
+      <!-- names -->
+      <text x="24" y="380" class="player-name" font-size="26" fill="#ffffff">M. Herrera</text>
+      <text x="24" y="414" class="player-name" font-size="26" fill="#ffffff">L. Vega</text>
+      <!-- prize -->
+      <g transform="translate(24,470)">
+        <text x="0" y="0" class="chip" font-size="12" fill="#fbbf24">PREMIO</text>
+        <text x="0" y="42" class="prize" font-size="42" fill="#ffffff">$300</text>
+      </g>
+      <!-- ranking points -->
+      <g transform="translate(24,554)">
+        <text x="0" y="0" class="chip" font-size="12" fill="#fbbf24">RANKING · 100 PTS</text>
+      </g>
+    </g>
+
+    <!-- 3rd place (right, bronze) -->
+    <g transform="translate(660,180)">
+      <rect x="0" y="0" width="300" height="420" rx="20" fill="#151515" stroke="#2a2a2a"/>
+      <g transform="translate(24,24)">
+        <rect x="0" y="0" width="70" height="34" rx="17" fill="rgba(120,53,15,0.24)"/>
+        <text x="35" y="22" class="chip" font-size="14" fill="#c2410c" text-anchor="middle">3°</text>
+      </g>
+      <text x="150" y="200" class="place" font-size="160" fill="#c2410c" text-anchor="middle">3</text>
+      <text x="24" y="266" class="player-name" font-size="22" fill="#ffffff">R. Salas</text>
+      <text x="24" y="294" class="player-name" font-size="22" fill="#ffffff">N. Cueva</text>
+      <g transform="translate(24,338)">
+        <text x="0" y="0" class="chip" font-size="12" fill="#a3a3a3">PREMIO</text>
+        <text x="0" y="30" class="prize" font-size="28" fill="#ffffff">$75</text>
+      </g>
+      <g transform="translate(24,392)">
+        <text x="0" y="0" class="chip" font-size="11" fill="#a3a3a3">RANKING · 40 PTS</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Footer / signature -->
+  <g transform="translate(60,1000)">
+    <circle cx="10" cy="16" r="8" fill="#10b981"/>
+    <text x="26" y="22" class="heading" font-size="22" fill="#ffffff">MATCHPOINT</text>
+    <text x="960" y="22" class="meta" font-size="16" fill="#737373" text-anchor="end">matchpoint.top/eventos · @matchpoint.ec</text>
+  </g>
+</svg>

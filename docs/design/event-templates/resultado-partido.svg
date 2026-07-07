@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080" role="img" aria-label="Resultado por partido — MATCHPOINT">
+  <title>Resultado por partido — MATCHPOINT</title>
+  <desc>Plantilla de resultado por partido individual del bracket. Formato IG-square 1080x1080. Muestra dos equipos, sus scores por set, resaltado del ganador, categoría, ronda y sello de la parada. Layout aplica también a un card del feed público de resultados en la app.</desc>
+
+  <defs>
+    <style>
+      .heading { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
+      .section { font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .chip { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+      .player-name { font-family: "Inter", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
+      .score { font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+      .meta { font-family: "Inter", system-ui, sans-serif; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#fafafa"/>
+
+  <!-- Header sub-marca strip -->
+  <g transform="translate(0,0)">
+    <rect x="0" y="0" width="1080" height="120" fill="#0a0a0a"/>
+    <!-- Left: logo -->
+    <g transform="translate(56,40)">
+      <circle cx="10" cy="20" r="10" fill="#10b981"/>
+      <text x="30" y="30" class="heading" font-size="28" fill="#ffffff">MATCHPOINT</text>
+    </g>
+    <!-- Right: parada chip -->
+    <g transform="translate(760,40)">
+      <rect x="0" y="0" width="260" height="42" rx="21" fill="rgba(16,185,129,0.15)"/>
+      <text x="130" y="28" class="chip" font-size="15" fill="#10b981" text-anchor="middle">COPA {CIUDAD} · {MES}</text>
+    </g>
+  </g>
+
+  <!-- Match meta row -->
+  <g transform="translate(56,160)">
+    <text x="0" y="0" class="chip" font-size="14" fill="#047857">RESULTADO · CUARTOS DE FINAL</text>
+    <text x="0" y="34" class="section" font-size="22" fill="#0a0a0a">Dobles Open · MPR 4.0+</text>
+    <text x="0" y="62" class="meta" font-size="16" fill="#737373">Cancha 1 · Rally · BO3 a 15 · 14:12 · 42 min</text>
+  </g>
+
+  <!-- Divider -->
+  <rect x="56" y="248" width="80" height="4" rx="2" fill="#10b981"/>
+
+  <!-- MATCH card -->
+  <g transform="translate(56,290)">
+    <rect x="0" y="0" width="968" height="480" rx="24" fill="#ffffff" stroke="#e5e5e5"/>
+
+    <!-- Team A row (winner) -->
+    <g transform="translate(40,50)">
+      <!-- Winner indicator -->
+      <rect x="0" y="14" width="6" height="72" rx="3" fill="#10b981"/>
+      <!-- Seed -->
+      <g transform="translate(30,20)">
+        <rect x="0" y="0" width="60" height="60" rx="12" fill="rgba(16,185,129,0.12)"/>
+        <text x="30" y="42" class="heading" font-size="28" fill="#047857" text-anchor="middle">1</text>
+      </g>
+      <!-- Names -->
+      <text x="120" y="42" class="player-name" font-size="30" fill="#0a0a0a">M. Herrera / L. Vega</text>
+      <text x="120" y="72" class="meta" font-size="16" fill="#737373">Quito · Club Los Chillos</text>
+      <!-- Sets -->
+      <g transform="translate(600,10)">
+        <text x="0"   y="60" class="score" font-size="72" fill="#0a0a0a" text-anchor="middle">15</text>
+        <text x="140" y="60" class="score" font-size="72" fill="#0a0a0a" text-anchor="middle">11</text>
+        <text x="280" y="60" class="score" font-size="72" fill="#0a0a0a" text-anchor="middle">15</text>
+      </g>
+    </g>
+
+    <!-- Divider between teams -->
+    <line x1="80" y1="220" x2="928" y2="220" stroke="#e5e5e5" stroke-width="1"/>
+
+    <!-- Team B row -->
+    <g transform="translate(40,260)">
+      <rect x="0" y="14" width="6" height="72" rx="3" fill="#e5e5e5"/>
+      <g transform="translate(30,20)">
+        <rect x="0" y="0" width="60" height="60" rx="12" fill="#f5f5f5"/>
+        <text x="30" y="42" class="heading" font-size="28" fill="#737373" text-anchor="middle">8</text>
+      </g>
+      <text x="120" y="42" class="player-name" font-size="30" fill="#737373">A. Torres / P. Rojas</text>
+      <text x="120" y="72" class="meta" font-size="16" fill="#a3a3a3">Guayaquil · Club Estadio</text>
+      <g transform="translate(600,10)">
+        <text x="0"   y="60" class="score" font-size="72" fill="#a3a3a3" text-anchor="middle">11</text>
+        <text x="140" y="60" class="score" font-size="72" fill="#a3a3a3" text-anchor="middle">15</text>
+        <text x="280" y="60" class="score" font-size="72" fill="#a3a3a3" text-anchor="middle">7</text>
+      </g>
+    </g>
+
+    <!-- Set labels -->
+    <g transform="translate(696,430)" class="chip" font-size="12" fill="#737373">
+      <text x="0"   y="20" text-anchor="middle">SET 1</text>
+      <text x="140" y="20" text-anchor="middle">SET 2</text>
+      <text x="280" y="20" text-anchor="middle">SET 3</text>
+    </g>
+  </g>
+
+  <!-- Next round card -->
+  <g transform="translate(56,810)">
+    <rect x="0" y="0" width="968" height="88" rx="16" fill="#0a0a0a"/>
+    <text x="32" y="36" class="chip" font-size="13" fill="#10b981">PRÓXIMA RONDA · SEMIFINAL</text>
+    <text x="32" y="66" class="section" font-size="22" fill="#ffffff">Herrera / Vega vs Molina / Paz · 15:30</text>
+  </g>
+
+  <!-- Footer / CTA -->
+  <g transform="translate(56,950)">
+    <text x="0" y="24" class="meta" font-size="18" fill="#737373">Ranking del circuito 2026</text>
+    <text x="0" y="60" class="section" font-size="26" fill="#047857">Sigue el bracket en matchpoint.top</text>
+    <text x="968" y="60" class="meta" font-size="16" fill="#737373" text-anchor="end">@matchpoint.ec</text>
+  </g>
+</svg>
